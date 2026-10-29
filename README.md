@@ -1,86 +1,69 @@
 # lil guy machine
 
-A small 3D world with one little guy in it, and every move he makes is chosen by a decision
-model: an LLM behind any OpenAI-compatible endpoint, or a scripted/RL policy. It runs on a
-desktop window or an Android TV (first target: the Google TV Streamer).
-
-Design spec: [docs/agent-world-spec.html](docs/agent-world-spec.html).
+A little guy lives in a little room. Every choice he makes, when to eat, when to sleep, what to
+make and sell, is made by a model: an LLM behind any OpenAI-compatible endpoint, or a scripted
+policy. He runs on a desktop window or ambiently on a TV (a Google TV Streamer, for now).
 
 [<img src="https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png" alt="Buy Me A Coffee" height="41">](https://www.buymeacoffee.com/iandunn)
 
-## Status
+## The idea
 
-**Milestone 4 (the bedroom).** The guy lives in a bedroom: a game clock (1 game minute = 5 ticks,
-so a day is about 6 real minutes), a money ledger, three needs (energy, fullness, mood) and an
-economy of activities and purchases loaded from `sim/src/main/resources/content/bedroom.yaml`. He
-sketches and paints, sells art at the door, and buys food, canvases, an easel, records, books and
-decor. Models pick `do(activity)` or `buy(item)` from a list the sim builds each turn, with reasons
-for the locked ones. The scripted baseline lives 14 game days and buys the easel on day 2; TypeSafe's
-Jev lives 5-day runs with no fallbacks and buys the easel on day 3. The key-and-door room from
-milestones 1 and 3 is still the quick test for every backend (Jev 10 of 10).
+His world is small and a little tight. A day has a clock, his needs (energy, fullness, mood) run
+down, and food costs money. He earns it by making art and selling it at the door. That takes time
+and energy, and energy only comes from being fed, so every hour he spends is a trade.
 
-| # | Milestone | Status |
-|---|---|---|
-| 0 | Scaffold: Gradle modules, cube on desktop and TV | done |
-| 1 | Headless sim: key-and-door room, scripted policy | done |
-| 2 | 3D renderer | deferred; the 2D dev view covers the TV until then |
-| 3 | Connect a decision model: schema, OpenAI-compatible and TypeSafe backends, logs | done |
-| 4 | The bedroom: clock, money, needs, a painting job, a shop | done (CLI and TV) |
-| 5 | Memory v0 and saves | planned |
-| 6 | Personality v0: interests, skill, wants | planned |
+He is told he is bigger than his world: intelligent, creative, capable of a full life, stuck for
+now in a room where he can only eat, sleep, work and write. He keeps a **journal**, and the one
+who made his world reads it. Things he wants may be granted, but only if he writes them down and
+argues for them. The journal is the only door out. Writing in it costs the same hours and energy
+as staying alive, so he has to budget for wanting more.
+
+He also **remembers**. What happens to him is recorded, summarized into memories in the
+background, and the relevant ones (and his own journal entries) come back when he decides what to
+do next. Over a long run, the hope is that he becomes someone: with interests, plans and a history,
+and a world that has grown because he asked for it.
+
+## Where it stands
+
+- **Working:** the bedroom life sim (clock, money, needs, a data-driven list of activities and a
+  shop), decisions from a scripted policy or a model, long-term memory v0, and a 2D dev view on
+  desktop and TV for watching a run, stepping back through his decisions and reading his memories.
+- **In progress:** the tighter economy, the persona and the journal described above.
+- **Later:** personality (interests, skills, wants of his own), granting requests to grow the
+  world, and a proper 3D renderer in place of the dev view.
+
+For the details: the original design spec is
+[docs/agent-world-spec.html](docs/agent-world-spec.html) (its milestones have since been
+reshuffled), and [docs/DECISIONS.md](docs/DECISIONS.md) logs every design decision along the way.
 
 ## How it fits together
 
 ```
 :android ─┐
-:desktop ─┴─> :app (libGDX) ─> :agent ─┬─> :sim       (pure Kotlin world, 20 Hz tick)
-:cli ────────────────────────> :agent  └─> :decision  (DecisionModel, typed output)
+:desktop ─┴─> :app (libGDX) ─> :agent ─┬─> :sim       (pure Kotlin world)
+:cli ────────────────────────> :agent  ├─> :decision  (models and their typed replies)
+                                       └─> :memory-sqlite (his long-term memory)
 ```
 
-`:sim` and `:decision` know nothing about each other or about graphics; `:agent` joins them.
-The model picks *intents* (`Do`, `Buy`, `MoveTo`, `PickUp`, `Use`, `Say`, `Wait`) defined once as a sealed
-Kotlin type, which is both the JSON schema the model sees and the parser for its reply.
+The sim knows nothing about models or graphics; the agent layer joins them, and model calls never
+block the world. The world's numbers (prices, activities, items) live in one content file,
+[`bedroom.yaml`](sim/src/main/resources/content/bedroom.yaml).
 
 ## Quick start
 
 Needs JDK 17 and, for the TV, the Android SDK (platform 34).
 
 ```bash
-make test       # JVM unit tests
-make cli        # headless runner, scripted policy, key-and-door
-make cli ARGS="--scenario bedroom --days 14"   # the bedroom, 14 game days
-make desktop    # desktop window (the bedroom; SCENARIO=key-door for the old room)
+make test                                       # unit tests
+make cli ARGS="--scenario bedroom --days 3"     # headless run, scripted policy
+make desktop                                    # watch it in a window
 ```
 
-To use a model, copy `config/endpoints.example.yaml` to `config/endpoints.yaml` (gitignored).
-Each endpoint names the environment variable holding its key in `api_key_env`. Put
-`export NAME=value` lines in `~/.config/lil-guy-machine/secrets.env` (outside the repo; the
-Makefile loads it), or export the key in your shell:
-
-```bash
-make cli ARGS="--endpoint typesafe --runs 10"  # solve rate and median ticks; logs in runs/
-make cli ARGS="--scenario bedroom --endpoint typesafe --days 5"  # plus hours/money/needs JSONL
-make cli ARGS="--replay runs/<dir>/run-01.jsonl"  # replay a logged run without the model
-make desktop ENDPOINT=typesafe
-```
-
-On the TV (Developer options and network debugging on):
-
-```bash
-make tv-connect IP=<tv-ip>
-make tv-run
-make tv-logs
-make tv-profile # release-like build; judge performance on this
-```
-
-To drive it with a model on the TV, `make tv-push-config` copies `config/endpoints.yaml` and the
-API keys it names (from your shell) to the app's files on the device, then
-`make tv-run ENDPOINT=typesafe`. **Dev only:** the key then sits on the TV where anyone with adb
-access can read it. `make tv-clear-config` removes it; `make tv-pull-logs` fetches the decision
-logs.
-
-Remote: OK pauses, Back toggles panel detail (it never exits; Home does), up/down scroll the
-event list, right/left step one tick / one second while paused.
+To use a model, copy `config/endpoints.example.yaml` to `config/endpoints.yaml` (gitignored) and
+put the API keys it names in `~/.config/lil-guy-machine/secrets.env` as `export NAME=value` lines
+(the Makefile loads it). Then add `--endpoint <name>` to `make cli` or `ENDPOINT=<name>` to
+`make desktop`. On a TV with network debugging on: `make tv-connect IP=<tv-ip>`, then
+`make tv-run`. The [Makefile](Makefile) lists the rest.
 
 ## License
 
