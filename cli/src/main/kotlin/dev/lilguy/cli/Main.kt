@@ -6,6 +6,9 @@ import dev.lilguy.agent.DaySummary
 import dev.lilguy.agent.DecisionLog
 import dev.lilguy.agent.HourSample
 import dev.lilguy.agent.ReplayDecisionModel
+import dev.lilguy.agent.memory.AgentMemory
+import dev.lilguy.agent.memory.Summarizer
+import dev.lilguy.memory.SqliteMemoryStore
 import dev.lilguy.agent.Scenario
 import dev.lilguy.agent.runLockstep
 import dev.lilguy.decision.DecisionModel
@@ -44,6 +47,9 @@ private const val USAGE = """lil guy machine cli: lockstep runs of the key-and-d
   --strategy S        override the endpoint's structured_output: json_schema, tools or text
   --log-dir DIR       where run logs go (default runs/); --no-log to skip
   --replay FILE       play back a decision log instead of calling a model
+  --memory FILE       keep long-term memory in this SQLite file: every observation and action, plus
+                      summaries when --memory-endpoint is set; recalled memories join each prompt
+  --memory-endpoint N endpoint that writes the summaries (must write text, so not typesafe)
   --quiet             one line per run instead of every decision and event
 
 Key-and-door exits non-zero unless every run solved the room; the bedroom, unless every run
@@ -77,7 +83,7 @@ private class Args(argv: Array<String>) {
     companion object {
         val FLAGS = setOf("--quiet", "--no-log", "--help")
         val KNOWN = FLAGS + setOf(
-            "--scenario", "--endpoint", "--runs", "--days", "--minute-ticks", "--ticks", "--max-decisions", "--config", "--strategy", "--log-dir", "--replay",
+            "--scenario", "--endpoint", "--runs", "--days", "--minute-ticks", "--ticks", "--max-decisions", "--config", "--strategy", "--log-dir", "--replay", "--memory", "--memory-endpoint",
         )
     }
 }
@@ -161,10 +167,21 @@ fun main(argv: Array<String>) {
     val results = (1..runs).map { n ->
         val model = newModel()
         val log = logDir?.let { DecisionLog(File(it, "run-%02d.jsonl".format(n)), run = "$stamp-$n", model = model.id) }
+        val summaryModel = args.string("--memory-endpoint")?.let { name ->
+            requireNotNull(args.string("--memory")) { "--memory-endpoint needs --memory FILE" }
+            Endpoints.create(Endpoints.load(File(args.string("--config") ?: Endpoints.DEFAULT_PATH)), name)
+        }
+        val store = args.string("--memory")?.let { SqliteMemoryStore(File(it)) }
+        val memory = store?.let { st ->
+            val run = "$stamp-$n"
+            AgentMemory(st, run, summaryModel?.let { Summarizer(it, st, run, onFailure = { e -> System.err.println("summary failed: ${e.message}") }) })
+        }
         try {
-            runOnce(n, scenario, model, timeout, minuteTicks, maxTicks, maxDecisions, quiet, log, logDir)
+            runOnce(n, scenario, model, timeout, minuteTicks, maxTicks, maxDecisions, quiet, log, logDir, memory)
         } finally {
             log?.close()
+            store?.close()
+            (summaryModel as? AutoCloseable)?.close()
             (model as? AutoCloseable)?.close()
         }
     }
@@ -204,10 +221,11 @@ private fun runOnce(
     quiet: Boolean,
     log: DecisionLog?,
     logDir: File?,
+    memory: AgentMemory? = null,
 ): RunResult {
     val records = mutableListOf<AgentRuntime.DecisionRecord>()
     lateinit var stampOf: (Long) -> String
-    val (world, runtime) = scenario.create(model, timeout, minuteTicks) { d ->
+    val (world, runtime) = scenario.create(model, timeout, minuteTicks, longTerm = memory) { d ->
         records += d
         log?.write(d)
         if (!quiet) {
@@ -243,6 +261,7 @@ private fun runOnce(
             }
         }
     }
+    memory?.let { runBlocking { it.flush() } }
     val wall = started.elapsedNow()
     val capped = records.size >= maxDecisions
     val solved = if (bedroom != null) !capped else world.snapshot().completed

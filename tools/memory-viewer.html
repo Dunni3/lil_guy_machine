@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Memory viewer</title>
+<style>
+  :root {
+    --bg: #f6f5f1; --panel: #fff; --ink: #1d1d1b; --muted: #6d6b64; --line: #e2e0d8;
+    --obs: #2f6f9f; --act: #b5651d; --mem: #3d7a4a; --hl: #fff3c4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #17171a; --panel: #1f1f23; --ink: #e8e6df; --muted: #9a978d; --line: #33333a;
+            --obs: #6fb0e0; --act: #e3a15c; --mem: #7fc28c; --hl: #4a4222; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 2; }
+  header h1 { font-size: 15px; margin: 0 8px 0 0; }
+  select, input[type=search], button, label.file { font: inherit; padding: 5px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); }
+  label.file, button { cursor: pointer; }
+  input[type=file] { display: none; }
+  .stat { color: var(--muted); font-size: 13px; }
+  main { display: grid; grid-template-columns: minmax(280px, 2fr) 3fr; gap: 16px; padding: 16px; align-items: start; }
+  @media (max-width: 800px) { main { grid-template-columns: 1fr; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  section > h2 { margin: 0; padding: 10px 14px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 8px; }
+  .list { max-height: calc(100vh - 150px); overflow: auto; }
+  .mem { padding: 10px 14px; border-bottom: 1px solid var(--line); cursor: pointer; border-left: 3px solid var(--mem); }
+  .mem:hover, .mem.sel { background: var(--hl); }
+  .mem .meta { color: var(--muted); font-size: 12px; margin-bottom: 3px; }
+  .ev { display: grid; grid-template-columns: 82px 24px 1fr; gap: 6px; padding: 5px 14px; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .ev.in { background: var(--hl); }
+  .ev .t { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .ev .k { font-weight: 600; }
+  .ev.observation .k { color: var(--obs); }
+  .ev.action .k { color: var(--act); }
+  .ev .x { overflow-wrap: anywhere; }
+  .empty { padding: 28px 16px; color: var(--muted); text-align: center; }
+  #drop { margin: 40px auto; max-width: 520px; padding: 36px; border: 2px dashed var(--line); border-radius: 12px; text-align: center; color: var(--muted); }
+  #drop.over { border-color: var(--mem); color: var(--ink); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Memory viewer</h1>
+  <label class="file">Open .db<input id="file" type="file" accept=".db,.sqlite,.sqlite3"></label>
+  <select id="run" hidden></select>
+  <input id="q" type="search" placeholder="Filter text" hidden>
+  <select id="kind" hidden>
+    <option value="">All events</option><option value="observation">Observations</option><option value="action">Actions</option>
+  </select>
+  <button id="clear" hidden>Clear selection</button>
+  <span class="stat" id="stat"></span>
+</header>
+
+<div id="drop">Drop a memory database here, or use <b>Open .db</b>.<br>
+  <small>e.g. <code>runs/mem.db</code>. The file is read in your browser and never uploaded.</small></div>
+
+<main id="view" hidden>
+  <section>
+    <h2><span>Memories</span><span id="memCount"></span></h2>
+    <div class="list" id="mems"></div>
+  </section>
+  <section>
+    <h2><span>Event stream</span><span id="evCount"></span></h2>
+    <div class="list" id="evs"></div>
+  </section>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+let db = null, memories = [], events = [], selected = null;
+
+const SQL_READY = initSqlJs({ locateFile: f => 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/' + f });
+
+function rows(sql, params = []) {
+  const st = db.prepare(sql, params), out = [];
+  while (st.step()) out.push(st.getAsObject());
+  st.free();
+  return out;
+}
+
+async function open(file) {
+  const SQL = await SQL_READY;
+  db = new SQL.Database(new Uint8Array(await file.arrayBuffer()));
+  let runs;
+  try {
+    runs = rows(`SELECT run, COUNT(*) AS n, MIN(id) AS first FROM events GROUP BY run ORDER BY first DESC`);
+  } catch (e) { alert('Not a memory database: ' + e.message); return; }
+  const sel = $('run');
+  sel.innerHTML = runs.map(r => `<option value="${esc(r.run)}">${esc(r.run)} (${r.n} events)</option>`).join('');
+  $('drop').hidden = true;
+  for (const id of ['view', 'run', 'q', 'kind']) $(id).hidden = false;
+  loadRun();
+}
+
+function loadRun() {
+  const run = $('run').value;
+  events = rows(`SELECT id, tick, day, time, kind, text FROM events WHERE run = ? ORDER BY id`, [run]);
+  memories = rows(`SELECT id, level, from_id, to_id, from_day, from_time, to_day, to_time, text, source FROM memories WHERE run = ? ORDER BY level, id`, [run]);
+  selected = null;
+  render();
+}
+
+function span(m) {
+  if (m.from_day == null) return '';
+  if (m.from_day === m.to_day) return `Day ${m.from_day} ${m.from_time}–${m.to_time}`;
+  return `Day ${m.from_day} ${m.from_time} → day ${m.to_day} ${m.to_time}`;
+}
+const stamp = e => e.day != null ? `d${e.day} ${e.time}` : `t=${e.tick}`;
+
+function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+function render() {
+  $('memCount').textContent = memories.length;
+  $('mems').innerHTML = memories.length ? memories.map(m => `
+    <div class="mem ${selected === m.id ? 'sel' : ''}" data-id="${m.id}">
+      <div class="meta">L${m.level} · ${esc(span(m))} · events ${m.from_id}–${m.to_id} · ${esc(m.source)}</div>
+      ${esc(m.text)}
+    </div>`).join('') : '<div class="empty">No memories yet. Events are recorded; a summarizer writes memories as they pile up.</div>';
+
+  const mem = memories.find(m => m.id === selected);
+  const kind = $('kind').value, q = $('q').value.toLowerCase();
+  const shown = events.filter(e => (!kind || e.kind === kind) && (!q || e.text.toLowerCase().includes(q)));
+  $('evCount').textContent = shown.length === events.length ? events.length : `${shown.length} of ${events.length}`;
+  $('evs').innerHTML = shown.length ? shown.map(e => `
+    <div class="ev ${e.kind} ${mem && e.id >= mem.from_id && e.id <= mem.to_id ? 'in' : ''}" data-id="${e.id}">
+      <span class="t">${esc(stamp(e))}</span><span class="k">${e.kind === 'action' ? 'DO' : 'SEE'}</span><span class="x">${esc(e.text)}</span>
+    </div>`).join('') : '<div class="empty">No matching events.</div>';
+
+  $('clear').hidden = selected == null;
+  $('stat').textContent = `${events.length} events · ${memories.length} memories`;
+  if (mem) $('evs').querySelector('.ev.in')?.scrollIntoView({ block: 'nearest' });
+}
+
+$('mems').addEventListener('click', ev => {
+  const el = ev.target.closest('.mem');
+  if (!el) return;
+  const id = Number(el.dataset.id);
+  selected = selected === id ? null : id;
+  render();
+  if (selected != null) $('evs').querySelector('.ev.in')?.scrollIntoView({ block: 'start' });
+});
+$('clear').onclick = () => { selected = null; render(); };
+$('run').onchange = loadRun;
+$('q').oninput = $('kind').onchange = render;
+$('file').onchange = e => e.target.files[0] && open(e.target.files[0]);
+
+const drop = $('drop');
+document.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+document.addEventListener('dragleave', () => drop.classList.remove('over'));
+document.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); e.dataTransfer.files[0] && open(e.dataTransfer.files[0]); });
+</script>
+</body>
+</html>

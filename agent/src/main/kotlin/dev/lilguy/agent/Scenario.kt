@@ -1,5 +1,6 @@
 package dev.lilguy.agent
 
+import dev.lilguy.agent.memory.AgentMemory
 import dev.lilguy.decision.DecisionModel
 import dev.lilguy.sim.BedroomContent
 import dev.lilguy.sim.BedroomWorld
@@ -24,10 +25,11 @@ const val KEY_DOOR_GOAL = "get out of the room. The door is locked."
 fun keyDoorScenario(
     model: DecisionModel,
     timeout: Duration = 20.seconds,
+    longTerm: AgentMemory? = null,
     onDecision: (AgentRuntime.DecisionRecord) -> Unit = {},
 ): Pair<RoomWorld, AgentRuntime> {
     val world = RoomWorld.create()
-    val runtime = AgentRuntime(world, world.agentId, model, PromptBuilder(KEY_DOOR_GOAL, timeout), onDecision = onDecision)
+    val runtime = AgentRuntime(world, world.agentId, model, PromptBuilder(KEY_DOOR_GOAL, timeout), longTerm = longTerm, onDecision = onDecision)
     return world to runtime
 }
 
@@ -41,6 +43,7 @@ fun bedroomScenario(
     timeout: Duration = 20.seconds,
     ticksPerMinute: Int = GameClock.DEFAULT_TICKS_PER_MINUTE,
     content: BedroomContent = BedroomContent.default(),
+    longTerm: AgentMemory? = null,
     onDecision: (AgentRuntime.DecisionRecord) -> Unit = {},
 ): Pair<BedroomWorld, AgentRuntime> {
     val world = BedroomWorld.create(content, ticksPerMinute)
@@ -53,6 +56,7 @@ fun bedroomScenario(
     val runtime = AgentRuntime(
         world, world.agentId, model, prompts,
         schemaFor = { BedroomPrompt.replySchema(it, ticksPerMinute) },
+        longTerm = longTerm,
         fallback = { Intent.Wait(BedroomPrompt.WAIT_TICKS) },
         onDecision = onDecision,
     )
@@ -74,10 +78,11 @@ enum class Scenario(val id: String) {
         model: DecisionModel,
         timeout: Duration = 20.seconds,
         ticksPerMinute: Int = GameClock.DEFAULT_TICKS_PER_MINUTE,
+        longTerm: AgentMemory? = null,
         onDecision: (AgentRuntime.DecisionRecord) -> Unit = {},
     ): Pair<GridWorld, AgentRuntime> = when (this) {
-        KeyDoor -> keyDoorScenario(model, timeout, onDecision)
-        Bedroom -> bedroomScenario(model, timeout, ticksPerMinute, onDecision = onDecision)
+        KeyDoor -> keyDoorScenario(model, timeout, longTerm, onDecision)
+        Bedroom -> bedroomScenario(model, timeout, ticksPerMinute, longTerm = longTerm, onDecision = onDecision)
     }
 
     companion object {

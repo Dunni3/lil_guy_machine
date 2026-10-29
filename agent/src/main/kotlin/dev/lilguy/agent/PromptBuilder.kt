@@ -10,6 +10,9 @@ import dev.lilguy.sim.GridWorld
 import dev.lilguy.sim.RoomWorld
 import dev.lilguy.sim.World
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.time.Duration
@@ -34,13 +37,17 @@ class PromptBuilder(
         this(systemPrompt(goal), timeout, { obs, recent -> actionChoices(obs, goal, recent) })
 
     /** [closedChoice] adds the same decision as a set of options, for models that pick. */
-    fun build(obs: Observation, recent: List<Memory.Entry>, closedChoice: Boolean = false): DecisionRequest {
+    fun build(obs: Observation, recent: List<Memory.Entry>, closedChoice: Boolean = false, memories: List<String> = emptyList()): DecisionRequest {
         val history = recent.joinToString("\n") { e ->
             "${stamp(e.tick)}: ${json.encodeToString(Intent.serializer(), e.intent)} -> ${e.result?.let(::describe) ?: "running"}"
         }
         val user = buildString {
             appendLine(OBSERVATION_HEADER)
             appendLine(json.encodeToString(Observation.serializer(), obs))
+            if (memories.isNotEmpty()) {
+                appendLine("What you remember from earlier, oldest first:")
+                memories.forEach { appendLine("- $it") }
+            }
             if (history.isNotEmpty()) {
                 appendLine("Your recent actions, oldest first:")
                 appendLine(history)
@@ -51,8 +58,15 @@ class PromptBuilder(
             system = system,
             messages = listOf(Message(Message.Role.User, user)),
             timeout = timeout,
-            choices = if (closedChoice) choices(obs, recent) else null,
+            choices = if (closedChoice) choices(obs, recent)?.let { withMemories(it, memories) } else null,
         )
+    }
+
+    /** Adds what he remembers to the state a picking model judges the options against. */
+    private fun withMemories(set: ChoiceSet, memories: List<String>): ChoiceSet {
+        if (memories.isEmpty()) return set
+        val state = JsonObject(set.state + ("memories" to JsonArray(memories.map(::JsonPrimitive))))
+        return set.copy(state = state, instructions = set.instructions + " `state.memories` is what he remembers from earlier, oldest first.")
     }
 
     companion object {

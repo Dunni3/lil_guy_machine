@@ -8,6 +8,7 @@ serialization = "1.7.3"
 ktor = "3.0.0"
 kaml = "0.61.0"
 slf4j = "2.0.16"
+sqlite = "3.46.1.0"
 
 [libraries]
 gdx = { module = "com.badlogicgames.gdx:gdx", version.ref = "gdx" }
@@ -24,6 +25,8 @@ ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "kto
 kaml = { module = "com.charleskorn.kaml:kaml", version.ref = "kaml" }
 # Ktor logs through SLF4J; the CLI and desktop bind it to nothing instead of printing a warning.
 slf4j-nop = { module = "org.slf4j:slf4j-nop", version.ref = "slf4j" }
+# :memory-sqlite, the long-term memory database. JVM only: its natives are not packaged for the TV.
+sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqlite" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

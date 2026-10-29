@@ -14,6 +14,7 @@ memory and personality (`research_notes/2026-10-29_0313_bedroom-proposal-and-roa
 ```bash
 make test        # JVM unit tests (all modules)
 make cli         # headless runner (ARGS="--scenario bedroom --days 3 --endpoint typesafe")
+                 # add --memory runs/mem.db [--memory-endpoint NAME] for long-term memory
 make desktop     # LWJGL3 window
 make tv-connect IP=10.0.0.51   # wireless adb to the Streamer
 make tv-run      # build + install + launch debug APK (ENDPOINT=<name>, SCENARIO=key-door, MINUTE_TICKS=<n>)
@@ -45,6 +46,10 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   space), `AgentReply.kt` (reply envelope, `ActionExamples`, per-observation `replySchema`),
   `ActionChoices.kt` (the closed set for picking models), `Memory.kt`, `DecisionLog.kt` (JSONL
   log + `ReplayDecisionModel`).
+- Long-term memory (milestone 5, in progress): `agent/.../memory/`: `MemoryStore.kt` (storage interface,
+  events and memories, `InMemoryStore`), `AgentMemory.kt` (what `AgentRuntime` talks to), `Describe.kt`
+  (event text), `Summarizer.kt` (LLM writes level-1 memories), `Recall.kt` (which memories reach a
+  prompt). SQLite store: `memory-sqlite/` (JVM only; not in the TV build yet).
 - Renderer: `app/.../LilGuyGame.kt` (2D dev view in `DevView.kt`, sim clock in `SimSession.kt`,
   remote keys in `RemoteInput.kt`). Launchers: `desktop/`, `android/`.
   `LILGUY_SCREENSHOT=out.png LILGUY_SCREENSHOT_AT=<s> make desktop` saves one frame and quits.
