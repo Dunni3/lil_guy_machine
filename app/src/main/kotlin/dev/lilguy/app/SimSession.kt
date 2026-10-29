@@ -1,8 +1,9 @@
 package dev.lilguy.app
 
 import dev.lilguy.agent.AgentRuntime
-import dev.lilguy.agent.KeyDoorPolicy
+import dev.lilguy.agent.DecisionLog
 import dev.lilguy.agent.keyDoorScenario
+import dev.lilguy.decision.DecisionModel
 import dev.lilguy.sim.RoomWorld
 import dev.lilguy.sim.World
 import dev.lilguy.sim.WorldSnapshot
@@ -10,7 +11,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.min
-import kotlin.time.Duration
 
 /**
  * One running episode of the key-and-door room, ticked at a fixed 20 Hz from the render thread
@@ -20,7 +20,7 @@ import kotlin.time.Duration
  */
 class SimSession(
     private val scope: CoroutineScope,
-    private val thinkTime: Duration,
+    val setup: ModelSetup,
     val resetDelay: Float = 3f,
 ) {
     lateinit var world: RoomWorld
@@ -40,6 +40,8 @@ class SimSession(
         private set
 
     private var agent: Job? = null
+    private var model: DecisionModel? = null
+    private var log: DecisionLog? = null
     private var accumulator = 0f
 
     init {
@@ -47,15 +49,19 @@ class SimSession(
     }
 
     fun reset() {
-        agent?.cancel()
-        val (w, r) = keyDoorScenario(KeyDoorPolicy(thinkTime))
+        stopAgent()
+        episode++
+        val m = setup.create()
+        val episodeLog = setup.logFor(episode, m.id)
+        model = m
+        log = episodeLog
+        val (w, r) = keyDoorScenario(m, setup.timeout) { episodeLog?.write(it) }
         world = w
         runtime = r
         previous = w.snapshot()
         current = previous
         accumulator = 0f
         solvedFor = null
-        episode++
         agent = scope.launch { r.run() }
     }
 
@@ -90,8 +96,15 @@ class SimSession(
         if (current.completed) solvedFor = 0f
     }
 
-    fun dispose() {
+    fun dispose() = stopAgent()
+
+    private fun stopAgent() {
         agent?.cancel()
+        (model as? AutoCloseable)?.close()
+        log?.close()
+        agent = null
+        model = null
+        log = null
     }
 
     private companion object {

@@ -20,11 +20,11 @@ local.properties:
 # --- desktop / headless --------------------------------------------------------
 
 .PHONY: desktop
-desktop: ## Run the app in a desktop window
-	$(GRADLE) :desktop:run
+desktop: ## Run the app in a desktop window (ENDPOINT=<name> for a model from config/endpoints.yaml)
+	LILGUY_ENDPOINT=$(ENDPOINT) $(GRADLE) :desktop:run
 
 .PHONY: cli
-cli: ## Run the headless CLI (ARGS="--ticks 5000")
+cli: ## Run the headless CLI (ARGS="--endpoint hosted --runs 10"; ARGS=--help for all)
 	$(GRADLE) -q :cli:run $(if $(ARGS),--args="$(ARGS)")
 
 .PHONY: test
@@ -47,8 +47,21 @@ tv-install: local.properties ## Build and install the debug APK on the connected
 	$(GRADLE) :android:installDebug
 
 .PHONY: tv-run
-tv-run: tv-install ## Install and launch on the connected device
-	$(ADB) shell am start -n $(APP_ID)/dev.lilguy.android.AndroidLauncher
+tv-run: tv-install ## Install and launch on the connected device (ENDPOINT=<name> to pick a model)
+	$(ADB) shell am start -n $(APP_ID)/dev.lilguy.android.AndroidLauncher $(if $(ENDPOINT),--es endpoint $(ENDPOINT))
+
+.PHONY: tv-push-config
+tv-push-config: ## Push config/endpoints.yaml and its API keys to the device (dev only)
+	tools/adb/push-config.sh
+
+.PHONY: tv-clear-config
+tv-clear-config: ## Delete the pushed config and API keys from the device
+	tools/adb/push-config.sh --clear
+
+.PHONY: tv-pull-logs
+tv-pull-logs: ## Copy the app's decision logs from the device into runs/tv/
+	@mkdir -p runs/tv
+	$(ADB) pull /sdcard/Android/data/$(APP_ID)/files/runs/. runs/tv/
 
 .PHONY: tv-profile
 tv-profile: local.properties ## Install and launch a release-like build (for measuring performance)

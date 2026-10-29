@@ -1,5 +1,16 @@
-# Copy to config/endpoints.yaml (gitignored) and edit. Keys come from the environment,
-# never from this file. Not read by anything until milestone 3.
+# Copy to config/endpoints.yaml (gitignored) and edit. Keys come from the environment
+# variable named by api_key_env, never from this file. Read by the CLI (--endpoint NAME), the
+# desktop app (make desktop ENDPOINT=NAME) and the TV (make tv-push-config).
+#
+# Per-endpoint options (defaults in brackets):
+#   structured_output  json_schema | tools | text   [json_schema]
+#   strict             ask the server to enforce the schema exactly   [true]
+#   temperature        overrides the request's 0.7
+#   send_temperature   false for models that reject a temperature   [true]
+#   max_tokens, reasoning_effort   passed through when set
+#   timeout_s          per HTTP call   [30]
+#   max_retries        invalid replies sent back with the error   [2]
+#   tool_choice        for structured_output: tools   [required]
 endpoints:
   hosted:
     kind: openai_compat

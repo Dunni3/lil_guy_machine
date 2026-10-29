@@ -8,20 +8,22 @@ Design spec: [docs/agent-world-spec.html](docs/agent-world-spec.html).
 
 ## Status
 
-**Milestone 1 (headless sim), plus a temporary 2D dev view.** `:sim` has the 16x16
-key-and-door room with grid collision, A* and the intent lifecycle. A scripted policy solves it
-through the real agent loop: `make cli` prints the trace and finishes in about 0.1 s of wall
-time. Desktop and the TV show a top-down 2D view of the run with the agent's intent, decision
-and events, looping forever. No 3D renderer or model backend yet.
+**Milestone 3 (connect a decision model), built against OpenAI-compatible endpoints.** The
+model sends `{thought, intent}`, held to a JSON schema generated from the Kotlin types each
+turn, with ids limited to what the guy can see. `make cli` runs the key-and-door room in
+lockstep with the scripted policy or any configured endpoint, N times, and reports the solve
+rate. Desktop and the TV show the same run in a temporary top-down 2D view. The 3D renderer is
+deferred (see `docs/DECISIONS.md`).
 
-| # | Milestone | Exit criterion |
+| # | Milestone | Status |
 |---|---|---|
-| 0 | Scaffold | Rotating cube on the TV and on desktop |
-| 1 | Headless sim | `:cli` runs the key-and-door room with a scripted policy, with tests |
-| 2 | Render the sim | Scripted run visible on TV at 60 fps with camera and HUD |
-| 3 | Decision layer | `:cli` gets a parsed `Intent` back from a hosted endpoint |
-| 4 | LLM drives it | Hosted model solves the room on the TV; JSONL decision log |
-| 5 | Local swap | Same run against vLLM / llama.cpp by changing config only |
+| 0 | Scaffold: Gradle modules, cube on desktop and TV | done |
+| 1 | Headless sim: key-and-door room, scripted policy | done |
+| 2 | 3D renderer | deferred; the 2D dev view covers the TV until then |
+| 3 | Connect a decision model: schema, OpenAI-compatible backend, provider backend, logs | in progress |
+| 4 | The bedroom: clock, money, needs, a painting job, a shop | planned |
+| 5 | Memory v0 and saves | planned |
+| 6 | Personality v0: interests, skill, wants | planned |
 
 ## How it fits together
 
@@ -41,8 +43,17 @@ Needs JDK 17 and, for the TV, the Android SDK (platform 34).
 
 ```bash
 make test       # JVM unit tests
-make cli        # headless runner
+make cli        # headless runner, scripted policy
 make desktop    # desktop window
+```
+
+To use a model, copy `config/endpoints.example.yaml` to `config/endpoints.yaml` (gitignored),
+name the environment variable that holds the key in `api_key_env`, and export it:
+
+```bash
+make cli ARGS="--endpoint hosted --runs 10"   # solve rate and median ticks; logs in runs/
+make cli ARGS="--replay runs/<dir>/run-01.jsonl"  # replay a logged run without the model
+make desktop ENDPOINT=hosted
 ```
 
 On the TV (Developer options and network debugging on):
@@ -53,6 +64,12 @@ make tv-run
 make tv-logs
 make tv-profile # release-like build; judge performance on this
 ```
+
+To drive it with a model on the TV, `make tv-push-config` copies `config/endpoints.yaml` and the
+API keys it names (from your shell) to the app's files on the device, then
+`make tv-run ENDPOINT=hosted`. **Dev only:** the key then sits on the TV where anyone with adb
+access can read it. `make tv-clear-config` removes it; `make tv-pull-logs` fetches the decision
+logs.
 
 Remote: OK pauses, Back toggles panel detail (it never exits; Home does), up/down scroll the
 event list, right/left step one tick / one second while paused.

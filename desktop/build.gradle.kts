@@ -18,3 +18,8 @@ application {
         applicationDefaultJvmArgs = listOf("-XstartOnFirstThread")
     }
 }
+
+// Run from the repo root so config/endpoints.yaml and runs/ resolve there.
+tasks.named<JavaExec>("run") {
+    workingDir = rootProject.projectDir
+}

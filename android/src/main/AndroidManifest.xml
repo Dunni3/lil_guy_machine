@@ -8,8 +8,11 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- usesCleartextTraffic: model servers on the LAN (vLLM, llama.cpp, a mock) speak plain HTTP.
+         Hosted endpoints are HTTPS anyway. See docs/DECISIONS.md. -->
     <application
         android:allowBackup="false"
+        android:usesCleartextTraffic="true"
         android:banner="@drawable/banner"
         android:icon="@drawable/ic_launcher"
         android:label="@string/app_name"

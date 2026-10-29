@@ -10,13 +10,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * The 2D dev view over the milestone 1 sim: the scripted guy solves the key-and-door room in a
- * loop. The 3D world renderer replaces [DevView] at milestone 2.
+ * The 2D dev view over the key-and-door room, solved in a loop by whichever model [setup] names
+ * (the scripted policy unless an endpoint is configured). The 3D world renderer replaces
+ * [DevView] later.
  */
-class LilGuyGame : ApplicationAdapter() {
+class LilGuyGame(private val setup: ModelSetup = ModelSetup.scripted()) : ApplicationAdapter() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var session: SimSession
     private lateinit var view: DevView
@@ -33,7 +33,9 @@ class LilGuyGame : ApplicationAdapter() {
     override fun create() {
         Gdx.app.log(TAG, "GL ${Gdx.gl.glGetString(GL20.GL_RENDERER)}; " +
             "backbuffer ${Gdx.graphics.backBufferWidth}x${Gdx.graphics.backBufferHeight}")
-        session = SimSession(scope, thinkTime = THINK_TIME)
+        setup.notice?.let { Gdx.app.error(TAG, it) }
+        session = SimSession(scope, setup)
+        Gdx.app.log(TAG, "model ${session.runtime.modelId}; decision logs ${setup.logDir?.path ?: "off"}")
         view = DevView()
         profiler = GLProfiler(Gdx.graphics).apply { enable() }
         Gdx.input.setCatchKey(Input.Keys.BACK, true)
@@ -79,8 +81,6 @@ class LilGuyGame : ApplicationAdapter() {
 
     companion object {
         const val TAG = "LilGuy"
-        /** Fake model latency for the scripted policy, so a decision is visible as it happens. */
-        val THINK_TIME = 600.milliseconds
         private const val LOG_SECONDS = 5f
     }
 }
