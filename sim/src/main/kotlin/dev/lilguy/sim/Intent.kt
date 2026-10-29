@@ -23,6 +23,14 @@ sealed interface Intent {
 
     @Serializable @SerialName("wait")
     data class Wait(val ticks: Int) : Intent
+
+    /** Do an activity by id, such as "sketch" or "sleep". The sim walks the character to its spot. */
+    @Serializable @SerialName("do")
+    data class Do(val activity: String) : Intent
+
+    /** Buy an item from the shop by id. The sim walks the character to where buying happens. */
+    @Serializable @SerialName("buy")
+    data class Buy(val item: String) : Intent
 }
 
 @Serializable

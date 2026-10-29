@@ -1,21 +1,60 @@
 package dev.lilguy.sim
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlin.math.atan2
 import kotlin.math.roundToInt
 
-/** One character's view of the world, rendered as JSON for typed prompts and logs. */
+/**
+ * One character's view of the world, rendered as JSON for typed prompts and logs. The fields
+ * after [recentEvents] are the bedroom's life state; rooms without one leave them null, and null
+ * ones are left out of the JSON, so the key-and-door observation reads as it did.
+ */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class Observation(
     val tick: Long,
     val self: SelfState,
     val nearby: List<SeenEntity>,
-    /** Small local map, one string per row, centered on the character. */
+    /** Small local map, one string per row, centered on the character (the bedroom shows all of it). */
     val localMap: List<String>,
     val lastIntent: Intent?,
     val lastResult: IntentStatus?,
     val recentEvents: List<String>,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val clock: ClockReading? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val money: Int? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val needs: NeedLevels? = null,
+    /** Carried items, one entry each: art waiting to be sold. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val holding: List<String>? = null,
+    /** Everything else he owns, item id to count. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val owns: Map<String, Int>? = null,
+    /** What's playing in the background, such as "jazz_record, 32 min left". */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val music: String? = null,
+    /** Every do() activity: available ones with what they take and give, locked ones with why. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val activities: List<ActivityOption>? = null,
+    /** Item-on-item uses that are possible now. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val uses: List<UseOption>? = null,
+    /** Everything for sale he doesn't already have. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val shop: List<ShopOption>? = null,
 )
+
+/** An activity for do(). Exactly one of [locked] and ([takes], [gives]) is set. */
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+data class ActivityOption(
+    val id: String,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val takes: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val gives: String? = null,
+    /** Why it can't be done now, such as "needs an easel ($120)". */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val locked: String? = null,
+)
+
+@Serializable
+data class UseOption(val itemId: String, val on: String, val takes: String, val gives: String)
+
+@Serializable
+data class ShopOption(val id: String, val price: Int, val affordable: Boolean, val gives: String)
 
 @Serializable
 data class SelfState(
@@ -67,6 +106,29 @@ data class WorldSnapshot(
     val events: List<WorldEvent> = emptyList(),
     /** True once the character has walked out of the room. */
     val completed: Boolean = false,
+    /** The bedroom's clock, money and needs; null in rooms without them. */
+    val life: LifeSnapshot? = null,
+)
+
+/** Clock, money and needs for HUDs, at full precision. */
+data class LifeSnapshot(
+    val clock: ClockReading,
+    val money: Int,
+    val energy: Double,
+    val fullness: Double,
+    val mood: Double,
+    /** The mood his mood drifts toward: the baseline plus the room's comfort. */
+    val moodTarget: Double,
+    /** The activity under way (after any walk to it), and how far through it is, 0..1. */
+    val doing: String?,
+    val progress: Float?,
+    val music: String?,
+    val holding: List<String>,
+    val owns: Map<String, Int>,
+    /** Newest last. */
+    val transactions: List<Transaction>,
+    /** The clock that turns this world's ticks into game time, for stamping events. */
+    val clockScale: GameClock,
 )
 
 data class EntitySnapshot(

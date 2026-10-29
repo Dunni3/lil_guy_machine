@@ -1,0 +1,134 @@
+# The bedroom's content: the room, need rules, items and activities. Every job, purchase and
+# hobby is a row here; the engine (BedroomWorld) only knows the fields. Times are game minutes,
+# rates are per game hour, money is whole dollars. Numbers started as the plan's first guesses
+# (research_notes/2026-10-29_0313_bedroom-proposal-and-roadmap-v2.html); changes are noted inline
+# and in docs/DECISIONS.md.
+
+room:
+  # One string per row. '#' wall, '.' floor, '@' where he starts; other letters are slots
+  # (below). A slot is empty until he owns the item that goes there.
+  rows:
+    - "#####o######"
+    - "#b.......s.#"
+    - "#.........p#"
+    - "#....r.....#"
+    - "#..........D"
+    - "#e.........#"
+    - "#.@....cd..#"
+    - "############"
+  slots: { b: bed, d: desk, c: chair, e: easel, s: shelf, p: plant, o: poster, r: rug, D: door }
+  # Slots in the wall rather than on the floor.
+  wall_slots: [poster, door]
+
+start:
+  money: 40
+  time: "08:00"
+  needs: { energy: 80, fullness: 70, mood: 60 }
+  items: { door: 1, bed: 1, desk: 1, chair: 1, sketchbook: 1, meal: 2 }
+
+needs:
+  awake_energy_per_hour: -4
+  fullness_per_hour: -5
+  # Mood moves this much an hour toward the baseline plus the room's comfort.
+  mood_drift_per_hour: 3
+  mood_baseline: 50
+  # Below `low` energy or fullness, mood falls `low_mood_per_hour` instead of drifting.
+  low: 15
+  low_mood_per_hour: -5
+  # Activities marked `work` are refused below these.
+  work_floor:
+    - { need: energy, below: 5, reason: "too tired to work" }
+    - { need: fullness, below: 5, reason: "too hungry to work" }
+
+shop:
+  # Orders are placed and delivered at the door.
+  at: door
+  minutes: 10
+
+# kind is for display and grouping: fixture, furniture, decor, tool, food, supply, record, book, art.
+# A `slot` item is placed in that slot when owned; `blocks` means he stands beside it, not on it.
+# `stackable` items are counted; the rest are one of a kind. `tags` let an activity ask for "a
+# record" instead of a particular one; an item's id is always one of its tags.
+items:
+  - { id: door, name: door, kind: fixture, slot: door, blocks: true }
+  - { id: bed, name: bed, kind: furniture, slot: bed }
+  - { id: desk, name: desk, kind: furniture, slot: desk, blocks: true }
+  - { id: chair, name: chair, kind: furniture, slot: chair }
+  - { id: sketchbook, name: sketchbook, kind: tool }
+  - { id: meal, name: meal, kind: food, price: 18, pack: 3, stackable: true }
+  - { id: canvas, name: canvas, kind: supply, price: 15, stackable: true }
+  - { id: easel, name: easel, kind: furniture, slot: easel, blocks: true, price: 120 }
+  - { id: record_player, name: record player, kind: furniture, slot: shelf, blocks: true, price: 150 }
+  - { id: jazz_record, name: jazz record, kind: record, tags: [record], price: 20 }
+  - { id: ambient_record, name: ambient record, kind: record, tags: [record], price: 20 }
+  - { id: folk_record, name: folk record, kind: record, tags: [record], price: 20 }
+  - { id: novel, name: novel, kind: book, tags: [book], price: 12 }
+  - { id: poetry_book, name: poetry book, kind: book, tags: [book], price: 12 }
+  - { id: field_guide, name: field guide, kind: book, tags: [book], price: 12 }
+  # Comfort raises the mood his mood drifts back to.
+  - { id: plant, name: plant, kind: decor, slot: plant, blocks: true, price: 25, comfort: 4 }
+  - { id: poster, name: poster, kind: decor, slot: poster, blocks: true, price: 15, comfort: 3 }
+  - { id: rug, name: rug, kind: decor, slot: rug, price: 60, comfort: 6 }
+  # Art is carried until sold.
+  - { id: sketch, name: sketch, kind: art, tags: [art], carried: true, stackable: true, sell_price: 12 }
+  - { id: painting, name: painting, kind: art, tags: [art], carried: true, stackable: true, sell_price: 70 }
+
+# do(activity). `at`: where it happens (an owned slot item; the nearest is used). `requires`:
+# tags he must own. `consumes`: tags used up when it finishes. `effects`: need changes when it
+# finishes. `rates`: need changes per hour while doing it. `block`: refused when a need is above
+# or below a level. Activities end after `minutes`, or for `until`, at a time of day or when a
+# need reaches a level, whichever comes first; `stop_below` ends one early when a need drops.
+# Listed in the order options are offered to models.
+activities:
+  - id: eat
+    at: [desk]
+    minutes: 30
+    consumes: { meal: 1 }
+    effects: { fullness: 45 }
+    block: [{ need: fullness, above: 90, reason: "not hungry" }]
+  - id: sketch
+    at: [desk]
+    requires: [sketchbook]
+    minutes: 60
+    work: true
+    produces: { sketch: 1 }
+    effects: { energy: -6 }
+  - id: paint
+    at: [easel]
+    minutes: 180
+    work: true
+    consumes: { canvas: 1 }
+    produces: { painting: 1 }
+    effects: { energy: -15 }
+  - id: sell_art
+    at: [door]
+    minutes: 60
+    sells: art
+  - id: read
+    at: [bed, chair]
+    requires: [book]
+    minutes: 60
+    effects: { mood: 6 }
+  - id: listen
+    at: [chair]
+    requires: [record_player, record]
+    minutes: 30
+    effects: { mood: 10 }
+  - id: sleep
+    at: [bed]
+    until: { time: "07:00", need: energy, reaches: 100 }
+    asleep: true
+    rates: { energy: 12 }
+    # Added in tuning: he wakes up hungry rather than sleeping fullness down to 0.
+    stop_below: { fullness: 10 }
+    block: [{ need: energy, above: 94, reason: "not tired" }]
+
+# use(itemId, on): an item on another. Same fields as activities, plus the item's tag, the
+# target, and `background`: an effect that keeps going while he does anything else.
+uses:
+  - id: play_record
+    item: record
+    on: record_player
+    at: [record_player]
+    minutes: 1
+    background: { name: music, minutes: 45, rates: { mood: 4 } }
