@@ -40,6 +40,24 @@ data class Decision<A>(
     val latency: Duration,
     /** Raw model output, kept for logs and replays. */
     val raw: String,
+    /** Every reply that came back, in order; the last one is [raw]. Empty for in-process models. */
+    val attempts: List<Attempt> = emptyList(),
 )
 
-data class Usage(val promptTokens: Int = 0, val completionTokens: Int = 0)
+data class Usage(val promptTokens: Int = 0, val completionTokens: Int = 0) {
+    operator fun plus(other: Usage) = Usage(promptTokens + other.promptTokens, completionTokens + other.completionTokens)
+}
+
+/** One reply from the model and, if it was rejected, why. */
+data class Attempt(val raw: String, val error: String? = null)
+
+/**
+ * The model gave no usable reply. Carries what it did send, so the caller can log it before
+ * falling back.
+ */
+class DecisionFailed(
+    message: String,
+    val attempts: List<Attempt> = emptyList(),
+    val usage: Usage = Usage(),
+    cause: Throwable? = null,
+) : Exception(message, cause)

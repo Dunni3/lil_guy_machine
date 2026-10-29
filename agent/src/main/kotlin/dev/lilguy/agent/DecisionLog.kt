@@ -1,0 +1,127 @@
+package dev.lilguy.agent
+
+import dev.lilguy.decision.ActionSchema
+import dev.lilguy.decision.Capabilities
+import dev.lilguy.decision.Decision
+import dev.lilguy.decision.DecisionFailed
+import dev.lilguy.decision.DecisionModel
+import dev.lilguy.decision.DecisionRequest
+import dev.lilguy.decision.Usage
+import dev.lilguy.sim.Intent
+import dev.lilguy.sim.Observation
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import java.io.Closeable
+import java.io.File
+import kotlin.time.Duration
+
+/** One line of a decision log. Field names are snake_case for reading it from Python. */
+@Serializable
+data class DecisionLogEntry(
+    val run: String,
+    val model: String,
+    val tick: Long,
+    val observation: Observation?,
+    val request: LoggedRequest?,
+    /** Every reply in order, with the validation error of each rejected one. */
+    val attempts: List<LoggedAttempt>,
+    /** The last reply, valid or not. */
+    val raw: String?,
+    val thought: String?,
+    /** What was submitted: the model's intent, or the fallback. */
+    val intent: Intent,
+    @SerialName("latency_ms") val latencyMs: Long,
+    @SerialName("prompt_tokens") val promptTokens: Int,
+    @SerialName("completion_tokens") val completionTokens: Int,
+    val error: String? = null,
+    val fallback: Boolean = false,
+)
+
+@Serializable
+data class LoggedRequest(
+    val system: String,
+    val messages: List<LoggedMessage>,
+    val temperature: Double,
+    /** The per-request reply schema, ids and all. */
+    val schema: JsonObject?,
+)
+
+@Serializable
+data class LoggedMessage(val role: String, val content: String)
+
+@Serializable
+data class LoggedAttempt(val raw: String, val error: String? = null)
+
+/**
+ * Appends one JSON line per decision to [file]. Every line is flushed, so a killed run keeps
+ * what it logged. The system prompt is the same on every line; it's repeated so each line stands
+ * alone.
+ */
+class DecisionLog(val file: File, private val run: String, private val model: String) : Closeable {
+    private val out = file.also { it.parentFile?.mkdirs() }.bufferedWriter()
+
+    fun write(record: AgentRuntime.DecisionRecord) {
+        val line = json.encodeToString(DecisionLogEntry.serializer(), entryOf(run, model, record))
+        synchronized(out) {
+            out.write(line)
+            out.newLine()
+            out.flush()
+        }
+    }
+
+    override fun close() = synchronized(out) { out.close() }
+
+    companion object {
+        val json = Json { encodeDefaults = true; explicitNulls = true; ignoreUnknownKeys = true }
+
+        fun entryOf(run: String, model: String, r: AgentRuntime.DecisionRecord) = DecisionLogEntry(
+            run = run,
+            model = model,
+            tick = r.tick,
+            observation = r.observation,
+            request = r.request?.let { req ->
+                LoggedRequest(req.system, req.messages.map { LoggedMessage(it.role.name.lowercase(), it.content) }, req.temperature, r.schema)
+            },
+            attempts = r.attempts.map { LoggedAttempt(it.raw, it.error) },
+            raw = r.raw,
+            thought = r.rationale,
+            intent = r.intent,
+            latencyMs = r.latency.inWholeMilliseconds,
+            promptTokens = r.usage.promptTokens,
+            completionTokens = r.usage.completionTokens,
+            error = r.error,
+            fallback = r.fellBack,
+        )
+
+        fun read(file: File): List<DecisionLogEntry> =
+            file.readLines().filter { it.isNotBlank() }.map { json.decodeFromString(DecisionLogEntry.serializer(), it) }
+    }
+}
+
+/**
+ * Plays a decision log back without calling the model: each decide() returns the next logged
+ * reply through the same schema, and a logged fallback fails again so the runtime falls back the
+ * same way. Lockstep runs are deterministic, so a replay retraces the run tick for tick; a tick
+ * that doesn't match the log means the sim changed since it was recorded, and is an error.
+ */
+class ReplayDecisionModel(entries: List<DecisionLogEntry>, override val id: String = "replay") : DecisionModel {
+    private val remaining = ArrayDeque(entries)
+
+    override val capabilities = Capabilities(jsonSchema = true)
+
+    override suspend fun <A> decide(request: DecisionRequest, schema: ActionSchema<A>): Decision<A> {
+        val entry = remaining.removeFirstOrNull() ?: throw IllegalStateException("the replay log has no more decisions")
+        val tick = PromptBuilder.observationOf(request)?.tick
+        check(tick == null || tick == entry.tick) { "replay out of sync: the sim is at tick $tick but the log's next decision is at tick ${entry.tick}" }
+        if (entry.fallback) throw DecisionFailed("replayed fallback: ${entry.error}")
+        val reply = json.encodeToString(AgentReply.serializer(), AgentReply(entry.thought.orEmpty(), entry.intent))
+        val value = schema.decode(reply)
+        return Decision(value, schema.rationaleOf(value), Usage(entry.promptTokens, entry.completionTokens), Duration.ZERO, entry.raw ?: reply)
+    }
+
+    private companion object {
+        val json = Json { encodeDefaults = true; explicitNulls = true }
+    }
+}

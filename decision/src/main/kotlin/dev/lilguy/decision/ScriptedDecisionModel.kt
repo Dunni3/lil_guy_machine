@@ -16,6 +16,7 @@ class ScriptedDecisionModel(
 
     override suspend fun <A> decide(request: DecisionRequest, schema: ActionSchema<A>): Decision<A> {
         val raw = remaining.removeFirstOrNull() ?: error("ScriptedDecisionModel '$id' ran out of replies")
-        return Decision(schema.decode(raw), rationale = null, usage = Usage(), latency = Duration.ZERO, raw = raw)
+        val value = schema.decode(raw)
+        return Decision(value, schema.rationaleOf(value), usage = Usage(), latency = Duration.ZERO, raw = raw)
     }
 }
