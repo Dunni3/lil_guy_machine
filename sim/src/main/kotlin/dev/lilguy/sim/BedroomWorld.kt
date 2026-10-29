@@ -30,6 +30,12 @@ class BedroomWorld private constructor(
     private var doing: Doing? = null
     private var music: Music? = null
 
+    /** Bumped whenever what he owns or plays changes; with the minute and need levels it keys [options]. */
+    private var version = 0
+    private var options: Options? = null
+
+    private class Options(val key: List<Any>, val activities: List<ActivityOption>, val uses: List<UseOption>, val shop: List<ShopOption>)
+
     private class Doing(val activity: ActivitySpec, val startTick: Long, val endTick: Long)
     private class Music(val itemId: String, val spec: ActivitySpec.Background, val endTick: Long)
 
@@ -49,12 +55,14 @@ class BedroomWorld private constructor(
         owned.entries.sumOf { (id, n) -> if (tag in item(id).allTags) n else 0 } + if (extra != null && tag in item(extra).allTags) 1 else 0
 
     private fun add(id: String, n: Int) {
+        version++
         owned[id] = count(id) + n
         syncHolding()
     }
 
     /** Removes [n] items with [tag], first-listed first; returns what was taken. */
     private fun take(tag: String, n: Int): Map<String, Int> {
+        version++
         val taken = LinkedHashMap<String, Int>()
         var left = n
         for (id in owned.keys.toList()) {
@@ -217,6 +225,7 @@ class BedroomWorld private constructor(
         a.sells?.let { parts += sell(it) }
         a.background?.let { bg ->
             music = Music(usedItem!!, bg, ticks + clock.ticks(bg.minutes))
+            version++
             parts += "${item(usedItem).name} playing for ${GameClock.duration(bg.minutes)}"
         }
         if (a.rates.isNotEmpty()) parts += a.rates.keys.joinToString { "$it ${needs.level(needOf(it))}" }
@@ -255,6 +264,7 @@ class BedroomWorld private constructor(
         music?.let {
             if (ticks >= it.endTick) {
                 music = null
+                version++
                 event("the ${item(it.itemId).name} finished")
             }
         }
@@ -302,7 +312,8 @@ class BedroomWorld private constructor(
         val need = until.need?.let(::needOf)
         val perHour = need?.let { n -> a.rates[n.id] }
         val byNeed = if (need != null && perHour != null && perHour > 0) ((until.reaches!! - needs[need]) / perHour * 60).toLong() else Long.MAX_VALUE
-        val about = GameClock.duration(min(byClock, byNeed).coerceAtLeast(1).toInt())
+        val estimate = (min(byClock, byNeed) + ESTIMATE_MINUTES / 2) / ESTIMATE_MINUTES * ESTIMATE_MINUTES
+        val about = GameClock.duration(estimate.coerceAtLeast(ESTIMATE_MINUTES.toLong()).toInt())
         val stops = a.stopBelow.entries.joinToString("") { (n, level) -> ", or $n below ${level.toInt()}" }
         return "until ${until.time}" + (need?.let { " or ${it.id} ${until.reaches!!.toInt()}" } ?: "") + stops + ", about $about"
     }
@@ -404,14 +415,34 @@ class BedroomWorld private constructor(
             holding = holding(),
             owns = ownsMap(),
             music = musicText(),
-            activities = content.activities.map(::activityOption),
-            uses = useOptions(),
-            shop = shopItems().map(::shopOption),
+            activities = current.activities,
+            uses = current.uses,
+            shop = current.shop,
         )
     }
 
+    /**
+     * The option lists, rebuilt only when their inputs change: what he owns (money moves with it),
+     * the need levels he sees, and the 10-minute step of the clock (sleep's estimate is rounded to it). Building them is most of
+     * a tick's cost, and they change a few times a game hour.
+     */
+    private val current: Options
+        get() {
+            val key = listOf(version, clock.minutes(ticks) / ESTIMATE_MINUTES, needs.levels())
+            options?.let { if (it.key == key) return it }
+            return Options(key, content.activities.map(::activityOption), useOptions(), shopItems().map(::shopOption)).also { options = it }
+        }
+
     /** The whole room, one string per row, with owned furniture as its slot letter; legend in [mapLegend]. */
+    private var mapCache: Pair<Pair<Int, Cell>, List<String>>? = null
+
     private fun roomMap(): List<String> {
+        val key = version to guy.cell
+        mapCache?.let { if (it.first == key) return it.second }
+        return drawRoomMap().also { mapCache = key to it }
+    }
+
+    private fun drawRoomMap(): List<String> {
         val letters = placed().associate { (spec, cell) -> cell to letterOf(spec.slot!!) }
         return (0 until map.height).map { y ->
             buildString {
@@ -440,6 +471,8 @@ class BedroomWorld private constructor(
 
     companion object {
         private const val SNAPSHOT_TRANSACTIONS = 8
+        /** Duration estimates are rounded to this many minutes, so the option lists change less often. */
+        private const val ESTIMATE_MINUTES = 10
 
         private fun signed(v: Double): String {
             val text = if (v == v.toLong().toDouble()) v.toLong().toString() else "%.1f".format(v)
