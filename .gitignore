@@ -1,0 +1,32 @@
+# Gradle / Kotlin
+.gradle/
+build/
+.kotlin/
+local.properties
+*.class
+*.log
+
+# Android
+*.apk
+*.aab
+captures/
+.externalNativeBuild/
+.cxx/
+
+# IDEs / OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# Secrets and per-machine config
+.env
+.env.*
+!.env.example
+config/endpoints.yaml
+
+# Run output (JSONL decision logs, replays)
+runs/
+
+# Local-only notes from agents and Ian
+research_notes/

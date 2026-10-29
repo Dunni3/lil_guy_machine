@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent World Spec</title>
+<style>
+:root{
+  --bg:#f7f6f2; --surface:#ffffff; --ink:#1d1c1a; --muted:#6b675f; --line:#d9d5cc;
+  --accent:#2f6fdb; --accent-soft:#e3ecfb; --sim:#2e8b57; --sim-soft:#e2f2e9;
+  --dec:#b4581f; --dec-soft:#f9e8dc; --app:#7b4bc4; --app-soft:#eee6f9;
+  --ext:#5f6b7a; --ext-soft:#e8ebef; --code:#f0eee8;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#141413; --surface:#1d1d1b; --ink:#ecebe6; --muted:#a29e95; --line:#363531;
+    --accent:#6ea0f0; --accent-soft:#1d2a40; --sim:#5cc28a; --sim-soft:#18301f;
+    --dec:#e8935a; --dec-soft:#3a2416; --app:#ad8ae6; --app-soft:#2a1f3d;
+    --ext:#98a4b3; --ext-soft:#252a31; --code:#252421;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#141413; --surface:#1d1d1b; --ink:#ecebe6; --muted:#a29e95; --line:#363531;
+  --accent:#6ea0f0; --accent-soft:#1d2a40; --sim:#5cc28a; --sim-soft:#18301f;
+  --dec:#e8935a; --dec-soft:#3a2416; --app:#ad8ae6; --app-soft:#2a1f3d;
+  --ext:#98a4b3; --ext-soft:#252a31; --code:#252421;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif}
+main{max-width:920px;margin:0 auto;padding:32px 16px 80px}
+header{border-bottom:1px solid var(--line);padding-bottom:20px;margin-bottom:28px}
+.kicker{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+h1{font-size:34px;line-height:1.15;margin:6px 0 10px;letter-spacing:-.02em}
+h2{font-size:22px;margin:44px 0 10px;letter-spacing:-.01em}
+h2 .n{color:var(--muted);font-weight:500;margin-right:8px}
+h3{font-size:16px;margin:22px 0 6px}
+p{margin:8px 0}
+.lede{color:var(--muted);font-size:17px}
+nav.toc{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 18px;margin:20px 0}
+nav.toc ol{margin:0;padding-left:20px;columns:2;column-gap:28px}
+nav.toc a{color:var(--accent);text-decoration:none}
+@media (max-width:560px){nav.toc ol{columns:1}}
+.fig{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;margin:16px 0}
+.fig svg{width:100%;height:auto;display:block}
+.cap{font-size:13px;color:var(--muted);margin-top:8px}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13.5px}
+code{background:var(--code);padding:1px 5px;border-radius:4px}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto;line-height:1.5;border:1px solid var(--line)}
+pre code{background:none;padding:0}
+table{width:100%;border-collapse:collapse;font-size:14.5px;margin:12px 0}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+.scroll{overflow-x:auto}
+.pill{display:inline-block;font-size:12px;padding:1px 8px;border-radius:99px;font-weight:600}
+.p-sim{background:var(--sim-soft);color:var(--sim)}
+.p-dec{background:var(--dec-soft);color:var(--dec)}
+.p-app{background:var(--app-soft);color:var(--app)}
+.p-ext{background:var(--ext-soft);color:var(--ext)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:14px 0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.card h3{margin-top:0}
+.card ul{margin:6px 0;padding-left:18px}
+.callout{border-left:3px solid var(--accent);background:var(--accent-soft);padding:10px 14px;border-radius:0 8px 8px 0;margin:14px 0}
+ul.check{list-style:none;padding-left:0}
+ul.check li{padding-left:24px;position:relative;margin:4px 0}
+ul.check li::before{content:"";position:absolute;left:2px;top:7px;width:11px;height:11px;border:2px solid var(--sim);border-radius:3px}
+ul.no li::before{border-color:var(--muted)}
+footer{margin-top:60px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:14px}
+/* svg tokens */
+.s-box{fill:var(--surface);stroke:var(--line);stroke-width:1.5}
+.s-sim{fill:var(--sim-soft);stroke:var(--sim);stroke-width:1.5}
+.s-dec{fill:var(--dec-soft);stroke:var(--dec);stroke-width:1.5}
+.s-app{fill:var(--app-soft);stroke:var(--app);stroke-width:1.5}
+.s-ext{fill:var(--ext-soft);stroke:var(--ext);stroke-width:1.5}
+.s-zone{fill:none;stroke:var(--line);stroke-width:1.5;stroke-dasharray:6 5}
+.t{fill:var(--ink);font:600 14px -apple-system,Segoe UI,Inter,sans-serif}
+.ts{fill:var(--muted);font:12px -apple-system,Segoe UI,Inter,sans-serif}
+.tz{fill:var(--muted);font:600 11px -apple-system,Segoe UI,Inter,sans-serif;letter-spacing:.1em}
+.ln{stroke:var(--muted);stroke-width:1.6;fill:none}
+.ln-a{stroke:var(--accent);stroke-width:2;fill:none}
+.ln-d{stroke:var(--dec);stroke-width:2;fill:none}
+.ln-dash{stroke:var(--muted);stroke-width:1.4;fill:none;stroke-dasharray:4 4}
+.ah{fill:var(--muted)} .ah-a{fill:var(--accent)} .ah-d{fill:var(--dec)}
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <div class="kicker">Design spec · v0.1 · Oct 2026</div>
+  <h1>Agent World: a 3D sim driven by pluggable decision models</h1>
+  <p class="lede">A small 3D world rendered on the Google TV Streamer, with one character whose every action is chosen by an LLM (or other decision model) behind a backend‑agnostic, typed interface.</p>
+</header>
+
+<nav class="toc"><ol>
+  <li><a href="#goals">Goals &amp; principles</a></li>
+  <li><a href="#stack">Technology choices</a></li>
+  <li><a href="#overview">System overview</a></li>
+  <li><a href="#modules">Modules &amp; dependencies</a></li>
+  <li><a href="#sim">Simulation core</a></li>
+  <li><a href="#decision">Decision layer</a></li>
+  <li><a href="#timing">Timing &amp; the agent loop</a></li>
+  <li><a href="#render">Rendering &amp; TV app</a></li>
+  <li><a href="#mvp">MVP scope</a></li>
+  <li><a href="#milestones">Milestones</a></li>
+  <li><a href="#risks">Risks &amp; open questions</a></li>
+</ol></nav>
+
+<!-- 1 -->
+<h2 id="goals"><span class="n">01</span>Goals &amp; principles</h2>
+<div class="grid">
+  <div class="card"><h3>Goals</h3><ul>
+    <li>A tractable 3D world with one agent‑controlled character.</li>
+    <li>All character behavior comes from a decision model.</li>
+    <li>Any OpenAI‑compatible endpoint can be plugged in by config.</li>
+    <li>Typed decisions: the model returns a value of a Kotlin type, not loose text.</li>
+    <li>Grows to many agents and richer worlds without redesign.</li>
+  </ul></div>
+  <div class="card"><h3>Principles</h3><ul>
+    <li><b>Library, not engine.</b> We own the loop, world model and entities.</li>
+    <li><b>Sim is headless.</b> No graphics imports in the world logic.</li>
+    <li><b>Types are the contract.</b> One sealed class defines the action space, its JSON schema and its parser.</li>
+    <li><b>Never block a frame on a model.</b> Decisions are async intents.</li>
+    <li><b>Desktop first, TV second.</b> Same code, faster iteration.</li>
+  </ul></div>
+</div>
+
+<!-- 2 -->
+<h2 id="stack"><span class="n">02</span>Technology choices</h2>
+<div class="scroll"><table>
+  <tr><th>Concern</th><th>Choice</th><th>Why</th><th>Considered</th></tr>
+  <tr><td>Language</td><td><b>Kotlin</b> (JVM + Android)</td><td>One language across sim, decision layer and app; sealed classes and coroutines fit the design.</td><td>Java, Python (no good TV story)</td></tr>
+  <tr><td>Rendering / input / app shell</td><td><b>libGDX</b> 3D API</td><td>Thin OpenGL ES wrapper; runs on Android TV and desktop from one codebase; no editor or forced ECS.</td><td>Raw GLES (too much boilerplate), Filament (renderer only), Godot/Unity (framework cost)</td></tr>
+  <tr><td>Concurrency</td><td><b>kotlinx.coroutines</b></td><td>Model calls run off the render thread; cancellation is built in.</td><td>Threads + executors</td></tr>
+  <tr><td>Serialization &amp; schema</td><td><b>kotlinx.serialization</b> + schema generator</td><td>Action types → JSON schema → parsed value, from one definition.</td><td>Jackson, hand‑written schemas</td></tr>
+  <tr><td>HTTP</td><td><b>Ktor client</b> (OkHttp engine)</td><td>Kotlin‑native, works on JVM and Android.</td><td>Retrofit, raw OkHttp</td></tr>
+  <tr><td>Physics</td><td><b>None in MVP</b>; kinematic grid movement</td><td>Deterministic and easy to reason about. Bullet (gdx‑bullet) later if needed.</td><td>Bullet, Jolt</td></tr>
+  <tr><td>Build</td><td><b>Gradle</b> (Kotlin DSL), multi‑module</td><td>Standard for Android and libGDX.</td><td>—</td></tr>
+  <tr><td>Deploy</td><td><b>ADB</b> install to Google TV Streamer</td><td>Already working; <code>./gradlew :android:installDebug</code>.</td><td>—</td></tr>
+</table></div>
+
+<!-- 3 -->
+<h2 id="overview"><span class="n">03</span>System overview</h2>
+<p>The TV runs the world and draws it. Decisions come from a model endpoint over HTTP: a hosted provider during development, a local inference server later. Swapping between them is a config change.</p>
+<div class="fig">
+<svg viewBox="0 0 860 470" role="img" aria-label="System overview diagram">
+  <defs>
+    <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" class="ah"/></marker>
+    <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" class="ah-d"/></marker>
+  </defs>
+  <!-- TV zone -->
+  <rect x="20" y="20" width="520" height="430" rx="14" class="s-zone"/>
+  <text x="38" y="44" class="tz">GOOGLE TV STREAMER (ANDROID TV) · OR DESKTOP</text>
+
+  <rect x="50" y="64" width="460" height="74" rx="10" class="s-app"/>
+  <text x="70" y="94" class="t">TV app (libGDX)</text>
+  <text x="70" y="116" class="ts">render loop · camera · HUD · remote input · debug overlay</text>
+
+  <rect x="50" y="176" width="210" height="110" rx="10" class="s-sim"/>
+  <text x="70" y="206" class="t">Sim core</text>
+  <text x="70" y="228" class="ts">world state · fixed tick</text>
+  <text x="70" y="246" class="ts">entities · controllers</text>
+  <text x="70" y="264" class="ts">observe() / act()</text>
+
+  <rect x="300" y="176" width="210" height="110" rx="10" class="s-dec"/>
+  <text x="320" y="206" class="t">Agent runtime</text>
+  <text x="320" y="228" class="ts">one agent per character</text>
+  <text x="320" y="246" class="ts">prompt builder · memory</text>
+  <text x="320" y="264" class="ts">async decide loop</text>
+
+  <rect x="300" y="324" width="210" height="100" rx="10" class="s-dec"/>
+  <text x="320" y="354" class="t">Decision layer</text>
+  <text x="320" y="376" class="ts">DecisionModel interface</text>
+  <text x="320" y="394" class="ts">backends · schema · retry</text>
+
+  <rect x="50" y="324" width="210" height="100" rx="10" class="s-box"/>
+  <text x="70" y="354" class="t">Config</text>
+  <text x="70" y="376" class="ts">endpoints · model names</text>
+  <text x="70" y="394" class="ts">keys · agent settings</text>
+
+  <!-- arrows inside -->
+  <path d="M155 176 V138" class="ln" marker-end="url(#a1)"/>
+  <text x="162" y="162" class="ts">snapshot</text>
+  <path d="M300 214 H260" class="ln" marker-end="url(#a1)"/>
+  <text x="264" y="207" class="ts">act</text>
+  <path d="M260 250 H300" class="ln" marker-end="url(#a1)"/>
+  <text x="264" y="268" class="ts">obs</text>
+  <path d="M405 286 V324" class="ln" marker-end="url(#a1)"/>
+  <path d="M260 374 H300" class="ln-dash" marker-end="url(#a1)"/>
+
+  <!-- external -->
+  <text x="600" y="44" class="tz">NETWORK (OPENAI‑COMPATIBLE HTTP)</text>
+  <rect x="590" y="70" width="250" height="96" rx="10" class="s-ext"/>
+  <text x="610" y="100" class="t">Hosted provider</text>
+  <text x="610" y="122" class="ts">dev &amp; testing · structured output</text>
+  <text x="610" y="140" class="ts">provider TBD</text>
+
+  <rect x="590" y="196" width="250" height="110" rx="10" class="s-ext"/>
+  <text x="610" y="226" class="t">Local server (later)</text>
+  <text x="610" y="248" class="ts">vLLM or llama.cpp server</text>
+  <text x="610" y="266" class="ts">JSON schema / grammar decoding</text>
+  <text x="610" y="284" class="ts">logprobs for choice scoring</text>
+
+  <rect x="590" y="336" width="250" height="88" rx="10" class="s-ext"/>
+  <text x="610" y="366" class="t">Non‑LLM policies</text>
+  <text x="610" y="388" class="ts">scripted · random · RL (in‑process)</text>
+
+  <path d="M510 360 C 550 360, 550 118, 588 118" class="ln-d" marker-end="url(#a2)"/>
+  <path d="M510 370 C 560 370, 560 251, 588 251" class="ln-d" marker-end="url(#a2)"/>
+  <path d="M510 384 H588" class="ln-dash" marker-end="url(#a1)"/>
+</svg>
+<div class="cap">The TV is a display and an HTTP client. Model inference never runs on the TV.</div>
+</div>
+
+<!-- 4 -->
+<h2 id="modules"><span class="n">04</span>Modules &amp; dependencies</h2>
+<p>Dependencies point one way. The two core modules are plain Kotlin/JVM, so they can be tested and run from the command line with no device.</p>
+<div class="fig">
+<svg viewBox="0 0 860 330" role="img" aria-label="Module dependency diagram">
+  <defs><marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" class="ah"/></marker></defs>
+  <rect x="40" y="30" width="230" height="70" rx="10" class="s-app"/>
+  <text x="60" y="60" class="t">:android</text><text x="60" y="82" class="ts">TV launcher entry, manifest</text>
+  <rect x="315" y="30" width="230" height="70" rx="10" class="s-app"/>
+  <text x="335" y="60" class="t">:desktop</text><text x="335" y="82" class="ts">LWJGL3 window for dev</text>
+  <rect x="590" y="30" width="230" height="70" rx="10" class="s-box"/>
+  <text x="610" y="60" class="t">:cli</text><text x="610" y="82" class="ts">headless runs, evals, replays</text>
+
+  <rect x="180" y="140" width="230" height="70" rx="10" class="s-app"/>
+  <text x="200" y="170" class="t">:app</text><text x="200" y="192" class="ts">libGDX renderer + wiring</text>
+
+  <rect x="450" y="140" width="230" height="70" rx="10" class="s-dec"/>
+  <text x="470" y="170" class="t">:agent</text><text x="470" y="192" class="ts">runtime, prompts, memory</text>
+
+  <rect x="180" y="250" width="230" height="64" rx="10" class="s-sim"/>
+  <text x="200" y="278" class="t">:sim</text><text x="200" y="298" class="ts">pure Kotlin world</text>
+  <rect x="450" y="250" width="230" height="64" rx="10" class="s-dec"/>
+  <text x="470" y="278" class="t">:decision</text><text x="470" y="298" class="ts">pure Kotlin + Ktor client</text>
+
+  <path d="M155 100 L270 138" class="ln" marker-end="url(#a3)"/>
+  <path d="M410 100 L320 138" class="ln" marker-end="url(#a3)"/>
+  <path d="M705 100 L600 138" class="ln" marker-end="url(#a3)"/>
+  <path d="M410 175 H448" class="ln" marker-end="url(#a3)"/>
+  <path d="M295 210 V248" class="ln" marker-end="url(#a3)"/>
+  <path d="M520 210 L360 248" class="ln" marker-end="url(#a3)"/>
+  <path d="M565 210 V248" class="ln" marker-end="url(#a3)"/>
+</svg>
+<div class="cap">Arrow = "depends on". <code>:sim</code> and <code>:decision</code> know nothing about each other or about graphics; <code>:agent</code> joins them.</div>
+</div>
+
+<pre><code>agent-world/
+├─ sim/        world, entities, tick, observe/act, action types
+├─ decision/   DecisionModel, backends, schema gen, retries
+├─ agent/      AgentRuntime, PromptBuilder, Memory
+├─ app/        libGDX: WorldRenderer, Hud, InputBridge
+├─ desktop/    DesktopLauncher (LWJGL3)
+├─ android/    AndroidLauncher, AndroidManifest (leanback)
+├─ cli/        headless runner: ./gradlew :cli:run --args="--ticks 5000"
+└─ config/     agents.yaml, endpoints.yaml (keys from env)</code></pre>
+
+<!-- 5 -->
+<h2 id="sim"><span class="n">05</span>Simulation core <span class="pill p-sim">:sim</span></h2>
+<p>A deterministic world advanced by a fixed‑timestep tick (20 Hz). The renderer interpolates between snapshots, so draw rate and sim rate are independent.</p>
+
+<h3>World model (MVP)</h3>
+<ul>
+  <li><b>Space:</b> a bounded tile grid (e.g. 32×32) with a height per tile. Continuous positions, grid collision. Easy to describe in text, easy to path‑find (A*).</li>
+  <li><b>Entities:</b> plain Kotlin classes with an id, transform and components as fields. No ECS framework; add one only when entity count demands it.</li>
+  <li><b>Objects:</b> walls, doors, a few pickup items (key, apple), a container.</li>
+  <li><b>Character:</b> position, facing, inventory, simple needs (optional), current intent.</li>
+</ul>
+
+<h3>The boundary</h3>
+<pre><code>interface World {
+    val tick: Long
+    fun step()                                   // advance one fixed tick
+    fun observe(agentId: EntityId): Observation  // what this character can perceive
+    fun submit(agentId: EntityId, intent: Intent): IntentHandle
+    fun snapshot(): WorldSnapshot                // immutable, for rendering/replay
+}
+
+@Serializable
+sealed interface Intent {
+    @Serializable data class MoveTo(val target: Target) : Intent
+    @Serializable data class PickUp(val itemId: String) : Intent
+    @Serializable data class Use(val itemId: String, val on: String?) : Intent
+    @Serializable data class Say(val text: String) : Intent
+    @Serializable data class Wait(val ticks: Int) : Intent
+}</code></pre>
+
+<h3>Intents vs. primitives</h3>
+<p>Models choose <b>intents</b> ("go to the door"). A per‑character <b>controller</b> in the sim turns the intent into per‑tick motion, reports progress, and finishes with a result (<code>Succeeded</code>, <code>Failed(reason)</code>, <code>Interrupted</code>). Results go into the next observation so the model learns what happened.</p>
+
+<div class="fig">
+<svg viewBox="0 0 860 150" role="img" aria-label="Intent lifecycle">
+  <defs><marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" class="ah"/></marker></defs>
+  <rect x="20" y="40" width="140" height="56" rx="28" class="s-dec"/><text x="90" y="74" text-anchor="middle" class="t">Submitted</text>
+  <rect x="210" y="40" width="140" height="56" rx="28" class="s-sim"/><text x="280" y="74" text-anchor="middle" class="t">Validated</text>
+  <rect x="400" y="40" width="140" height="56" rx="28" class="s-sim"/><text x="470" y="74" text-anchor="middle" class="t">Executing</text>
+  <rect x="590" y="12" width="250" height="40" rx="20" class="s-box"/><text x="715" y="38" text-anchor="middle" class="ts">Succeeded</text>
+  <rect x="590" y="58" width="250" height="40" rx="20" class="s-box"/><text x="715" y="84" text-anchor="middle" class="ts">Failed(reason)</text>
+  <rect x="590" y="104" width="250" height="40" rx="20" class="s-box"/><text x="715" y="130" text-anchor="middle" class="ts">Interrupted (new intent)</text>
+  <path d="M160 68 H208" class="ln" marker-end="url(#a4)"/>
+  <path d="M350 68 H398" class="ln" marker-end="url(#a4)"/>
+  <path d="M540 60 L588 34" class="ln" marker-end="url(#a4)"/>
+  <path d="M540 70 L588 78" class="ln" marker-end="url(#a4)"/>
+  <path d="M540 80 L588 122" class="ln" marker-end="url(#a4)"/>
+  <path d="M280 96 C 280 140, 560 140, 588 80" class="ln-dash" marker-end="url(#a4)"/>
+  <text x="300" y="134" class="ts">invalid → Failed immediately</text>
+</svg>
+</div>
+
+<h3>Observation</h3>
+<p>A structured object with two renderings: JSON (for typed prompts and logs) and compact text (for prompts). It includes the character's state, nearby entities with relative direction and distance, a small local map, the last intent result, and recent events. Agents never see the whole world state.</p>
+
+<!-- 6 -->
+<h2 id="decision"><span class="n">06</span>Decision layer <span class="pill p-dec">:decision</span></h2>
+<p>A backend‑agnostic way to ask "given this context, return a value of type <code>A</code>". The Kotlin type is the single source of truth: it generates the JSON schema sent to the model and parses the reply back.</p>
+
+<div class="fig">
+<svg viewBox="0 0 860 400" role="img" aria-label="Decision layer adapter diagram">
+  <defs><marker id="a5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" class="ah"/></marker></defs>
+  <rect x="40" y="20" width="200" height="66" rx="10" class="s-box"/>
+  <text x="60" y="48" class="t">Kotlin type</text><text x="60" y="68" class="ts">sealed interface Intent</text>
+  <rect x="330" y="20" width="200" height="66" rx="10" class="s-dec"/>
+  <text x="350" y="48" class="t">ActionSchema&lt;A&gt;</text><text x="350" y="68" class="ts">JSON schema + decoder</text>
+  <path d="M240 53 H328" class="ln" marker-end="url(#a5)"/><text x="252" y="44" class="ts">generate</text>
+
+  <rect x="180" y="126" width="500" height="70" rx="10" class="s-dec"/>
+  <text x="200" y="156" class="t">DecisionModel</text>
+  <text x="200" y="178" class="ts">suspend fun &lt;A&gt; decide(req, schema): Decision&lt;A&gt;  · capabilities</text>
+  <path d="M430 86 V124" class="ln" marker-end="url(#a5)"/>
+
+  <rect x="20" y="246" width="250" height="134" rx="10" class="s-ext"/>
+  <text x="40" y="274" class="t">OpenAiCompatBackend</text>
+  <text x="40" y="296" class="ts">/v1/chat/completions</text>
+  <text x="40" y="314" class="ts">response_format: json_schema</text>
+  <text x="40" y="332" class="ts">or tool calling</text>
+  <text x="40" y="358" class="ts">hosted · vLLM · llama.cpp · Ollama</text>
+
+  <rect x="305" y="246" width="250" height="134" rx="10" class="s-ext"/>
+  <text x="325" y="274" class="t">ChoiceScoringBackend</text>
+  <text x="325" y="296" class="ts">later; local servers only</text>
+  <text x="325" y="314" class="ts">score a closed option set</text>
+  <text x="325" y="332" class="ts">via logprobs</text>
+  <text x="325" y="358" class="ts">cheap, calibrated choices</text>
+
+  <rect x="590" y="246" width="250" height="134" rx="10" class="s-ext"/>
+  <text x="610" y="274" class="t">LocalPolicyBackend</text>
+  <text x="610" y="296" class="ts">scripted / random / RL</text>
+  <text x="610" y="314" class="ts">in‑process, no network</text>
+  <text x="610" y="332" class="ts">baselines &amp; tests</text>
+  <text x="610" y="358" class="ts">same interface</text>
+
+  <path d="M290 196 L150 244" class="ln" marker-end="url(#a5)"/>
+  <path d="M430 196 V244" class="ln" marker-end="url(#a5)"/>
+  <path d="M570 196 L710 244" class="ln" marker-end="url(#a5)"/>
+</svg>
+<div class="cap">Wrapper decorators (logging, caching, rate limiting, retry‑with‑validation) also implement <code>DecisionModel</code> and stack around any backend.</div>
+</div>
+
+<h3>Core interface</h3>
+<pre><code>interface DecisionModel {
+    val id: String
+    val capabilities: Capabilities   // jsonSchema, toolCalls, logprobs, maxContext
+    suspend fun &lt;A&gt; decide(request: DecisionRequest, schema: ActionSchema&lt;A&gt;): Decision&lt;A&gt;
+}
+
+data class DecisionRequest(
+    val system: String,
+    val messages: List&lt;Message&gt;,
+    val temperature: Double = 0.7,
+    val timeout: Duration = 20.seconds,
+)
+
+data class Decision&lt;A&gt;(
+    val value: A,
+    val rationale: String?,          // optional "thought" field from the schema
+    val usage: Usage, val latency: Duration,
+    val raw: String,                 // kept for logs and replays
+)</code></pre>
+
+<h3>Getting typed output from any endpoint</h3>
+<div class="scroll"><table>
+  <tr><th>Backend capability</th><th>Strategy</th><th>Guarantee</th></tr>
+  <tr><td>Supports <code>json_schema</code> (vLLM, llama.cpp, most hosted)</td><td>Send schema; server constrains decoding</td><td>Always schema‑valid</td></tr>
+  <tr><td>Supports tool calling only</td><td>Expose each intent variant as a tool</td><td>Valid in practice; validate anyway</td></tr>
+  <tr><td>Plain text only</td><td>Prompt for JSON → parse → validate → retry with the error (max 2)</td><td>Best effort; falls back to <code>Wait</code></td></tr>
+</table></div>
+<div class="callout">Raw logit handling is not needed for typed output: vLLM and llama.cpp both do schema/grammar‑constrained decoding server‑side. Logits matter only for the later choice‑scoring backend.</div>
+
+<h3>Configuration</h3>
+<pre><code># endpoints.yaml
+endpoints:
+  hosted:
+    kind: openai_compat
+    base_url: https://api.provider.example/v1
+    api_key_env: PROVIDER_API_KEY
+    model: provider-model-name
+  local:
+    kind: openai_compat
+    base_url: http://inference-box.local:8000/v1
+    model: qwen-or-llama-instruct
+    structured_output: json_schema
+
+agents:
+  - character: hero
+    endpoint: hosted        # swap to "local" with no code change
+    decision_interval: on_intent_complete</code></pre>
+
+<!-- 7 -->
+<h2 id="timing"><span class="n">07</span>Timing &amp; the agent loop <span class="pill p-dec">:agent</span></h2>
+<p>Rendering runs at 60 fps, the sim at 20 Hz, and decisions take 0.5–10 s. The agent loop runs in its own coroutine and only touches the sim through <code>observe</code> and <code>submit</code>.</p>
+
+<div class="fig">
+<svg viewBox="0 0 860 300" role="img" aria-label="Timing diagram for render, sim and agent">
+  <defs><marker id="a6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" class="ah-a"/></marker></defs>
+  <text x="20" y="54" class="t">Render</text><text x="20" y="72" class="ts">60 fps</text>
+  <text x="20" y="134" class="t">Sim</text><text x="20" y="152" class="ts">20 Hz tick</text>
+  <text x="20" y="214" class="t">Agent</text><text x="20" y="232" class="ts">async</text>
+  <line x1="120" y1="58" x2="840" y2="58" class="ln-dash"/>
+  <line x1="120" y1="138" x2="840" y2="138" class="ln-dash"/>
+  <line x1="120" y1="218" x2="840" y2="218" class="ln-dash"/>
+  <!-- render ticks -->
+  <g class="ts">
+    <path d="M130 48v20M142 48v20M154 48v20M166 48v20M178 48v20M190 48v20M202 48v20M214 48v20M226 48v20M238 48v20M250 48v20M262 48v20M274 48v20M286 48v20M298 48v20M310 48v20M322 48v20M334 48v20M346 48v20M358 48v20M370 48v20M382 48v20M394 48v20M406 48v20M418 48v20M430 48v20M442 48v20M454 48v20M466 48v20M478 48v20M490 48v20M502 48v20M514 48v20M526 48v20M538 48v20M550 48v20M562 48v20M574 48v20M586 48v20M598 48v20M610 48v20M622 48v20M634 48v20M646 48v20M658 48v20M670 48v20M682 48v20M694 48v20M706 48v20M718 48v20M730 48v20M742 48v20M754 48v20M766 48v20M778 48v20M790 48v20M802 48v20M814 48v20M826 48v20" stroke="var(--app)" stroke-width="1.5"/>
+  </g>
+  <!-- sim ticks -->
+  <path d="M130 124v28M166 124v28M202 124v28M238 124v28M274 124v28M310 124v28M346 124v28M382 124v28M418 124v28M454 124v28M490 124v28M526 124v28M562 124v28M598 124v28M634 124v28M670 124v28M706 124v28M742 124v28M778 124v28M814 124v28" stroke="var(--sim)" stroke-width="2.5"/>
+  <!-- executing bars -->
+  <rect x="130" y="160" width="230" height="10" rx="5" fill="var(--sim)" opacity=".45"/>
+  <text x="134" y="186" class="ts">executing MoveTo(door)</text>
+  <rect x="440" y="160" width="300" height="10" rx="5" fill="var(--sim)" opacity=".45"/>
+  <text x="444" y="186" class="ts">executing PickUp(key) → Use(key, door)</text>
+  <!-- agent calls -->
+  <rect x="250" y="204" width="180" height="28" rx="6" class="s-dec"/>
+  <text x="262" y="223" class="ts">decide() in flight · 2.1 s</text>
+  <rect x="740" y="204" width="90" height="28" rx="6" class="s-dec"/>
+  <text x="750" y="223" class="ts">decide()…</text>
+  <!-- arrows -->
+  <path d="M250 152 L250 202" class="ln-a" marker-end="url(#a6)"/>
+  <text x="200" y="262" class="ts">observe() when intent nears end</text>
+  <path d="M430 204 L440 172" class="ln-a" marker-end="url(#a6)"/>
+  <text x="400" y="262" class="ts">submit(next intent)</text>
+  <path d="M740 172 L740 202" class="ln-a" marker-end="url(#a6)"/>
+  <rect x="360" y="160" width="80" height="10" rx="5" fill="var(--muted)" opacity=".3"/>
+  <text x="364" y="152" class="ts">idle gap</text>
+</svg>
+<div class="cap">Prefetch: request the next decision before the current intent ends to hide latency. A stale decision (world changed meaningfully) is re‑validated by the sim and may fail cleanly.</div>
+</div>
+
+<h3>Agent loop</h3>
+<pre><code>class AgentRuntime(val world: World, val id: EntityId, val model: DecisionModel) {
+    suspend fun run() = coroutineScope {
+        while (isActive) {
+            world.awaitDecisionPoint(id)            // intent done, near done, or interrupted
+            val obs = world.observe(id)
+            val req = prompts.build(obs, memory.recent())
+            val decision = runCatching { model.decide(req, IntentSchema) }
+                .getOrElse { fallback(it) }           // e.g. Wait(20)
+            memory.record(obs, decision)
+            world.submit(id, decision.value)
+            log.write(world.tick, obs, decision)      // JSONL, replayable
+        }
+    }
+}</code></pre>
+<p><b>Thread safety:</b> the sim owns its state on one thread. <code>observe</code> reads an immutable snapshot; <code>submit</code> enqueues into a channel drained at the start of the next tick.</p>
+
+<!-- 8 -->
+<h2 id="render"><span class="n">08</span>Rendering &amp; TV app <span class="pill p-app">:app</span></h2>
+<div class="grid">
+  <div class="card"><h3>Look</h3><ul>
+    <li>Low‑poly, flat‑shaded meshes built in code (boxes, cylinders) via <code>ModelBuilder</code>.</li>
+    <li>One directional light + ambient. No shadows in MVP.</li>
+    <li>Third‑person follow camera, plus an overhead debug camera.</li>
+    <li>Target 1080p at 60 fps on the Streamer's GPU.</li>
+  </ul></div>
+  <div class="card"><h3>HUD / overlay</h3><ul>
+    <li>Current intent and status.</li>
+    <li>Last model rationale (short).</li>
+    <li>Latency, tokens, endpoint name.</li>
+    <li>Speech bubbles for <code>Say</code>.</li>
+  </ul></div>
+  <div class="card"><h3>Remote input</h3><ul>
+    <li>D‑pad: orbit camera / switch camera.</li>
+    <li>OK: pause / resume agent.</li>
+    <li>Back: toggle debug overlay.</li>
+    <li>No direct character control: the agent is the only driver.</li>
+  </ul></div>
+</div>
+<p>Android packaging: a leanback launcher activity so it appears on the TV home row; network permission; config read from app storage or pushed over ADB (<code>adb push endpoints.yaml</code>).</p>
+
+<!-- 9 -->
+<h2 id="mvp"><span class="n">09</span>MVP scope</h2>
+<p><b>MVP definition:</b> on the TV, a character in a small room finds a key, unlocks a door, and exits. Every step is chosen by a hosted model through the typed interface, and swapping the endpoint in config to a local server works without code changes.</p>
+<div class="grid">
+  <div class="card"><h3>In</h3><ul class="check">
+    <li>One 16×16 room scene with walls, a door, a key, a couple of distractor objects</li>
+    <li>One character; intents: MoveTo, PickUp, Use, Say, Wait</li>
+    <li>Grid collision + A* path‑finding controller</li>
+    <li>OpenAiCompatBackend with json_schema and retry fallback</li>
+    <li>Scripted backend for tests</li>
+    <li>Async agent loop with fallback on timeout/error</li>
+    <li>HUD with intent, rationale, latency</li>
+    <li>JSONL decision log</li>
+    <li>Desktop + Android TV targets; headless CLI runner</li>
+  </ul></div>
+  <div class="card"><h3>Out (for now)</h3><ul class="check no">
+    <li>Multiple agents and agent‑to‑agent messaging</li>
+    <li>Physics engine</li>
+    <li>Procedural or large worlds</li>
+    <li>Long‑term memory / retrieval</li>
+    <li>Choice‑scoring via logprobs</li>
+    <li>Asset pipeline (glTF models, textures)</li>
+    <li>Phone/web control plane integration</li>
+    <li>Audio</li>
+  </ul></div>
+</div>
+
+<!-- 10 -->
+<h2 id="milestones"><span class="n">10</span>Milestones</h2>
+<div class="fig">
+<svg viewBox="0 0 860 210" role="img" aria-label="Milestone roadmap">
+  <line x1="40" y1="70" x2="820" y2="70" class="ln"/>
+  <g>
+    <circle cx="80" cy="70" r="11" class="s-app"/><text x="80" y="75" text-anchor="middle" class="t" style="font-size:12px">0</text>
+    <text x="80" y="108" text-anchor="middle" class="t">Scaffold</text>
+    <text x="80" y="128" text-anchor="middle" class="ts">Gradle modules</text>
+    <text x="80" y="144" text-anchor="middle" class="ts">spinning cube on TV</text>
+  </g>
+  <g>
+    <circle cx="235" cy="70" r="11" class="s-sim"/><text x="235" y="75" text-anchor="middle" class="t" style="font-size:12px">1</text>
+    <text x="235" y="108" text-anchor="middle" class="t">Headless sim</text>
+    <text x="235" y="128" text-anchor="middle" class="ts">room, intents, A*</text>
+    <text x="235" y="144" text-anchor="middle" class="ts">scripted agent wins</text>
+  </g>
+  <g>
+    <circle cx="390" cy="70" r="11" class="s-app"/><text x="390" y="75" text-anchor="middle" class="t" style="font-size:12px">2</text>
+    <text x="390" y="108" text-anchor="middle" class="t">Render the sim</text>
+    <text x="390" y="128" text-anchor="middle" class="ts">meshes, camera</text>
+    <text x="390" y="144" text-anchor="middle" class="ts">interpolation, HUD</text>
+  </g>
+  <g>
+    <circle cx="545" cy="70" r="11" class="s-dec"/><text x="545" y="75" text-anchor="middle" class="t" style="font-size:12px">3</text>
+    <text x="545" y="108" text-anchor="middle" class="t">Decision layer</text>
+    <text x="545" y="128" text-anchor="middle" class="ts">schema gen, backend</text>
+    <text x="545" y="144" text-anchor="middle" class="ts">CLI test vs hosted</text>
+  </g>
+  <g>
+    <circle cx="700" cy="70" r="11" class="s-dec"/><text x="700" y="75" text-anchor="middle" class="t" style="font-size:12px">4</text>
+    <text x="700" y="108" text-anchor="middle" class="t">LLM drives it</text>
+    <text x="700" y="128" text-anchor="middle" class="ts">agent loop on TV</text>
+    <text x="700" y="144" text-anchor="middle" class="ts">MVP done</text>
+  </g>
+  <g>
+    <circle cx="810" cy="70" r="11" class="s-ext"/><text x="810" y="75" text-anchor="middle" class="t" style="font-size:12px">5</text>
+    <text x="800" y="108" text-anchor="end" class="t">Local swap</text>
+    <text x="800" y="128" text-anchor="end" class="ts">vLLM / llama.cpp</text>
+    <text x="800" y="144" text-anchor="end" class="ts">config only</text>
+  </g>
+  <text x="40" y="30" class="tz">ORDER · EACH STEP RUNNABLE ON ITS OWN</text>
+  <text x="40" y="190" class="ts">Milestones 1 and 3 can proceed in parallel; neither needs the TV.</text>
+</svg>
+</div>
+<div class="scroll"><table>
+  <tr><th>#</th><th>Exit criterion</th></tr>
+  <tr><td>0</td><td><code>./gradlew :android:installDebug</code> shows a lit rotating cube on the Streamer; same on desktop.</td></tr>
+  <tr><td>1</td><td><code>:cli</code> runs the key‑and‑door scenario with a scripted policy to success in &lt;1 s, with unit tests for collision and intents.</td></tr>
+  <tr><td>2</td><td>The scripted run is visible on TV at 60 fps with a follow camera and HUD.</td></tr>
+  <tr><td>3</td><td><code>:cli</code> sends a fixed observation to the hosted endpoint and gets back a parsed <code>Intent</code>; invalid‑output fallback tested with a mock server.</td></tr>
+  <tr><td>4</td><td>Hosted model solves the scenario on TV in most runs; decisions logged as JSONL.</td></tr>
+  <tr><td>5</td><td>Same run against a local server by changing <code>endpoints.yaml</code> only.</td></tr>
+</table></div>
+
+<!-- 11 -->
+<h2 id="risks"><span class="n">11</span>Risks &amp; open questions</h2>
+<div class="scroll"><table>
+  <tr><th>Risk</th><th>Mitigation</th></tr>
+  <tr><td>Model latency makes the character look frozen</td><td>Prefetch decisions; idle animation; multi‑step plans as an optional schema later.</td></tr>
+  <tr><td>Provider structured‑output quirks (schema subset limits)</td><td>Keep schemas flat; test each backend in <code>:cli</code>; tool‑calling and retry fallbacks.</td></tr>
+  <tr><td>Kotlin schema generation edge cases with sealed classes</td><td>Small custom generator for our action types if library output isn't accepted by providers.</td></tr>
+  <tr><td>TV GPU / memory limits</td><td>Low‑poly, few draw calls, profile at milestone 2.</td></tr>
+  <tr><td>API keys on a TV device</td><td>Dev only; later route through your own backend/proxy so keys never live on the device.</td></tr>
+  <tr><td>Nondeterminism makes bugs hard to reproduce</td><td>Deterministic sim + JSONL decision log = exact replays without calling the model.</td></tr>
+</table></div>
+<h3>Open questions</h3>
+<ul>
+  <li>Which hosted provider for development, and does its OpenAI‑compatible endpoint support <code>json_schema</code> with our schema shapes?</li>
+  <li>Should agent calls go directly from the TV, or through the backend you're planning for the TV control plane (which also hides keys and allows logging)?</li>
+  <li>Does this live in the existing TV monorepo or its own repo?</li>
+  <li>What does the character "want"? A goal string in the prompt is fine for MVP; needs or rewards come later.</li>
+  <li>Local inference hardware and target model size, which sets the latency budget.</li>
+</ul>
+
+<footer>Agent World · design spec v0.1 · Kotlin · libGDX · OpenAI‑compatible decision backends</footer>
+</main>
+</body>
+</html>

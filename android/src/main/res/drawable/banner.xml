@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- TV home-row banner, 320x180 dp: a little guy on an olive field. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <path android:fillColor="#29301F" android:pathData="M0,0h320v180h-320z" />
+    <path android:fillColor="#D98C40" android:pathData="M160,44m-22,0a22,22 0,1 1,44 0a22,22 0,1 1,-44 0" />
+    <path android:fillColor="#D98C40" android:pathData="M134,74h52v52h-52z" />
+    <path android:fillColor="#D98C40" android:pathData="M138,126h16v22h-16zM166,126h16v22h-16z" />
+</vector>
