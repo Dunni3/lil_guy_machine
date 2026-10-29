@@ -2,6 +2,7 @@ package dev.lilguy.desktop
 
 import com.badlogic.gdx.ApplicationListener
 import com.badlogic.gdx.Gdx
+import com.badlogic.gdx.Input
 import com.badlogic.gdx.graphics.PixmapIO
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration
@@ -24,6 +25,8 @@ fun main() {
     // config/endpoints.yaml); without it the config's default agent endpoint is used, and
     // without a config the scripted policy. Keys come from this process's environment.
     // LILGUY_SCENARIO is bedroom (default) or key-door; LILGUY_MINUTE_TICKS the clock scale.
+    // LILGUY_MEMORY_ENDPOINT names the memory writer (default: the config's memory_endpoint;
+    // "none" for off); LILGUY_DAYS the bedroom run length (0 for no end).
     val setup = ModelSetup.fromConfig(
         configFile = File(System.getenv("LILGUY_CONFIG") ?: "config/endpoints.yaml"),
         endpoint = System.getenv("LILGUY_ENDPOINT")?.takeIf { it.isNotBlank() },
@@ -31,19 +34,35 @@ fun main() {
         logRoot = File("runs"),
         scenario = System.getenv("LILGUY_SCENARIO")?.takeIf { it.isNotBlank() }?.let(Scenario::parse) ?: Scenario.Bedroom,
         ticksPerMinute = System.getenv("LILGUY_MINUTE_TICKS")?.toIntOrNull() ?: GameClock.DEFAULT_TICKS_PER_MINUTE,
+        memoryEndpoint = System.getenv("LILGUY_MEMORY_ENDPOINT")?.takeIf { it.isNotBlank() },
+        days = System.getenv("LILGUY_DAYS")?.toIntOrNull().let { if (it == null) ModelSetup.DEFAULT_DAYS else it.takeIf { d -> d > 0 } },
     )
     val game = LilGuyGame(setup)
     val shotPath = System.getenv("LILGUY_SCREENSHOT")
-    val listener = if (shotPath == null) game else Screenshot(game, shotPath, System.getenv("LILGUY_SCREENSHOT_AT")?.toFloatOrNull() ?: 5f)
+    val listener = if (shotPath == null) game else Screenshot(game, shotPath, System.getenv("LILGUY_SCREENSHOT_AT")?.toFloatOrNull() ?: 5f, System.getenv("LILGUY_SCREENSHOT_KEYS").orEmpty())
     Lwjgl3Application(listener, config)
 }
 
-/** Dev aid: LILGUY_SCREENSHOT=out.png [LILGUY_SCREENSHOT_AT=seconds] saves one frame, then quits. */
-private class Screenshot(private val game: ApplicationListener, private val path: String, private val at: Float) :
+/**
+ * Dev aid: LILGUY_SCREENSHOT=out.png [LILGUY_SCREENSHOT_AT=seconds] saves one frame, then quits.
+ * LILGUY_SCREENSHOT_KEYS presses keys first, a comma-separated list of names as libGDX spells
+ * them, `@N` meaning "at second N" (e.g. `Enter,@20,Right,Down`).
+ */
+private class Screenshot(private val game: ApplicationListener, private val path: String, private val at: Float, keys: String) :
     ApplicationListener by game {
     private var elapsed = 0f
+    private val script = ArrayDeque(keys.split(',').map { it.trim() }.filter { it.isNotEmpty() })
+    private var waitUntil = 0f
 
     override fun render() {
+        while (script.isNotEmpty() && elapsed >= waitUntil) {
+            val next = script.removeFirst()
+            if (next.startsWith("@")) {
+                waitUntil = next.drop(1).toFloat()
+            } else {
+                Gdx.input.inputProcessor?.keyDown(Input.Keys.valueOf(next))
+            }
+        }
         game.render()
         elapsed += Gdx.graphics.deltaTime
         if (elapsed >= at) {

@@ -12,9 +12,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 
 /**
- * The 2D dev view over the key-and-door room, solved in a loop by whichever model [setup] names
- * (the scripted policy unless an endpoint is configured). The 3D world renderer replaces
- * [DevView] later.
+ * The 2D dev view over one run of the room [setup] names, driven by whichever model it names (the
+ * scripted policy unless an endpoint is configured). Runs start, pause and restart from the
+ * remote ([RemoteInput]); nothing starts on its own. The 3D world renderer replaces [DevView]
+ * later.
  */
 class LilGuyGame(private val setup: ModelSetup = ModelSetup.scripted()) : ApplicationAdapter() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -35,7 +36,7 @@ class LilGuyGame(private val setup: ModelSetup = ModelSetup.scripted()) : Applic
             "backbuffer ${Gdx.graphics.backBufferWidth}x${Gdx.graphics.backBufferHeight}")
         setup.notice?.let { Gdx.app.error(TAG, it) }
         session = SimSession(scope, setup)
-        Gdx.app.log(TAG, "model ${session.runtime.modelId}; decision logs ${setup.logDir?.path ?: "off"}")
+        Gdx.app.log(TAG, "model ${session.runtime.modelId}; memory ${session.memory.writer ?: "off"}; decision logs ${setup.logDir?.path ?: "off"}")
         view = DevView()
         profiler = GLProfiler(Gdx.graphics).apply { enable() }
         Gdx.input.setCatchKey(Input.Keys.BACK, true)
@@ -60,9 +61,9 @@ class LilGuyGame(private val setup: ModelSetup = ModelSetup.scripted()) : Applic
         worstDelta = maxOf(worstDelta, delta)
         logTimer += delta
         if (logTimer >= LOG_SECONDS) {
-            Gdx.app.log(TAG, "fps ${Gdx.graphics.framesPerSecond}; worst frame %.1f ms; update+draw cpu %.2f ms; %d draw calls/frame; backbuffer %dx%d; tick %d".format(
+            Gdx.app.log(TAG, "fps ${Gdx.graphics.framesPerSecond}; worst frame %.1f ms; update+draw cpu %.2f ms; %d draw calls/frame; backbuffer %dx%d; %s tick %d".format(
                 worstDelta * 1000, renderNanos / 1e6 / frames, drawCalls / frames,
-                Gdx.graphics.backBufferWidth, Gdx.graphics.backBufferHeight, session.current.tick,
+                Gdx.graphics.backBufferWidth, Gdx.graphics.backBufferHeight, session.state.name.lowercase(), session.current.tick,
             ))
             logTimer = 0f
             frames = 0

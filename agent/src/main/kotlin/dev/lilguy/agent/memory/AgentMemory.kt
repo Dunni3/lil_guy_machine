@@ -24,7 +24,28 @@ class AgentMemory(
     private val rule: Recall = Recall(),
 ) {
     private var lastEvents: Set<String> = emptySet()
-    private var job: Job? = null
+    @Volatile private var job: Job? = null
+
+    /** Ids of the memories the latest [recall] picked. Readable from any thread. */
+    @Volatile var lastRecalled: Set<Long> = emptySet()
+        private set
+
+    /** The model that writes memories, or null when nothing summarizes. */
+    val writer: String? get() = summarizer?.writer
+
+    /** Most events one memory covers, or null when nothing summarizes. */
+    val batchSize: Int? get() = summarizer?.batchSize
+
+    /** True while a background summary is being written. */
+    val summarizing: Boolean get() = job?.isActive == true
+
+    /** Level-1 memories so far, oldest first. */
+    fun memories(): List<StoredMemory> = store.memories(run, 1)
+
+    fun eventCount(): Int = store.countEventsAfter(run, 0)
+
+    /** Events not yet covered by a memory. */
+    fun pending(): Int = summarizer?.pending() ?: eventCount()
 
     /** Records the state he was shown. */
     fun observed(obs: Observation) {
@@ -44,14 +65,19 @@ class AgentMemory(
     /** The memories to show for [obs], as text lines, oldest first. */
     fun recall(obs: Observation): List<String> {
         val all = store.memories(run, 1)
-        if (all.isEmpty()) return emptyList()
+        if (all.isEmpty()) {
+            lastRecalled = emptySet()
+            return emptyList()
+        }
         val context = buildList {
             add(Describe.observation(obs, emptyList()))
             obs.activities.orEmpty().filter { it.locked == null }.forEach { add(it.id) }
             obs.shop.orEmpty().forEach { add(it.id) }
             obs.uses.orEmpty().forEach { add(it.itemId) }
         }.joinToString(" ").replace('_', ' ')
-        return rule.select(all, context).map(rule::render)
+        val picked = rule.select(all, context)
+        lastRecalled = picked.map { it.id }.toSet()
+        return picked.map(rule::render)
     }
 
     /** Waits for a running summary, then summarizes whatever is left. Call at the end of a run. */

@@ -33,4 +33,5 @@ endpoints:
 agents:
   - character: hero
     endpoint: typesafe        # swap to "local" with no code change
+    memory_endpoint: hosted   # writes long-term memories; must write text (not typesafe). Optional.
     decision_interval: on_intent_complete

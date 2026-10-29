@@ -12,7 +12,8 @@ import com.badlogic.gdx.math.MathUtils
 import com.badlogic.gdx.utils.Align
 import com.badlogic.gdx.utils.Disposable
 import com.badlogic.gdx.utils.viewport.FitViewport
-import dev.lilguy.agent.ActionExamples
+import dev.lilguy.agent.memory.Describe
+import dev.lilguy.app.SimSession.RunState
 import dev.lilguy.sim.EntitySnapshot
 import dev.lilguy.sim.Intent
 import dev.lilguy.sim.IntentStatus
@@ -22,17 +23,28 @@ import dev.lilguy.sim.WorldSnapshot
 import kotlinx.serialization.json.Json
 import kotlin.math.cos
 import kotlin.math.floor
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 
 /**
- * Temporary 2D dev view: the room from above on the left, the agent's state on the right (in the
- * bedroom: the clock, money and needs, what he's doing, the last decision, events and money). A
- * stand-in until the 3D renderer (milestone 2). Laid out on a fixed 1920x1080 canvas and scaled
+ * Temporary 2D dev view: the room from above on the left, and on the right a header (run state,
+ * model, clock) over one of four pages the remote flips between:
+ *
+ * - [Page.Now]: needs, what he's doing, the latest decision, recent events.
+ * - [Page.Memory]: short-term memory (recent actions, in every prompt) and the long-term
+ *   memories written so far, marking those recalled at the latest decision.
+ * - [Page.History]: every decision this run; picking an older one puts the map back to the
+ *   moment it was made.
+ * - [Page.Log]: money and the sim's event log.
+ *
+ * A stand-in until the 3D renderer (milestone 2). Laid out on a fixed 1920x1080 canvas and scaled
  * to fit. Fill rate stays low for the Streamer: one clear, then small shapes and text; no
  * full-screen layers.
  */
 class DevView : Disposable {
+    enum class Page(val title: String) { Now("NOW"), Memory("MEMORY"), History("HISTORY"), Log("LOG") }
+
     private val viewport = FitViewport(WIDTH, HEIGHT)
     private val shapes = ShapeRenderer()
     private val batch = SpriteBatch()
@@ -43,10 +55,43 @@ class DevView : Disposable {
     private val glyphs = GlyphLayout()
     private val json = Json
 
-    /** Back toggles between the full panel and a big-type summary. */
-    var detail = true
-    /** How many events the list is scrolled back from the newest. */
-    var scroll = 0
+    var page = Page.Now
+        private set
+
+    /** History only: the decision shown, as an index into [SimSession.history]; null follows the newest and shows the live world. */
+    var pinned: Int? = null
+        private set
+
+    /** Rows scrolled down from the top, per page. */
+    private val scroll = IntArray(Page.entries.size)
+
+    /** Set by the first BACK: a second BACK restarts, any other key cancels. */
+    var confirmRestart = false
+
+    /** LEFT (-1) and RIGHT (+1): the previous or next page. Leaving History returns the map to live. */
+    fun flip(by: Int) {
+        page = Page.entries[(page.ordinal + by).mod(Page.entries.size)]
+        pinned = null
+    }
+
+    /** UP (-1) and DOWN (+1): in History a newer or older decision, elsewhere scroll. */
+    fun move(by: Int, session: SimSession) {
+        if (page != Page.History) {
+            scroll[page.ordinal] = (scroll[page.ordinal] + by).coerceAtLeast(0)
+            return
+        }
+        val last = session.history.lastIndex
+        if (last < 0) return
+        val next = (pinned ?: last) - by
+        pinned = if (next >= last) null else next.coerceAtLeast(0)
+    }
+
+    /** After a restart: the live world, every page scrolled to the top. */
+    fun reset() {
+        pinned = null
+        scroll.fill(0)
+        confirmRestart = false
+    }
 
     // Map placement, recomputed per frame from the map size.
     private var tile = 0f
@@ -56,14 +101,19 @@ class DevView : Disposable {
     fun resize(width: Int, height: Int) = viewport.update(width, height, true)
 
     fun render(session: SimSession, fps: Int) {
-        val now = session.current
-        val before = session.previous
+        val moment = pinned?.takeIf { page == Page.History }?.let { session.history.getOrNull(it) }
+        val now = moment?.snapshot ?: session.current
+        val before = if (moment != null) now else session.previous
+        val alpha = if (moment != null) 1f else session.alpha
         val agent = now.agents.firstOrNull()
         val guy = now.entities.first { it.kind == "guy" }
         val guyBefore = before.entities.firstOrNull { it.id == guy.id } ?: guy
-        val gx = MathUtils.lerp(guyBefore.x, guy.x, session.alpha)
-        val gy = MathUtils.lerp(guyBefore.y, guy.y, session.alpha)
-        val bubble = agent?.saying ?: if (session.thinkingFor != null) "..." else if (now.life?.doing == "sleep") "z z z" else null
+        val gx = MathUtils.lerp(guyBefore.x, guy.x, alpha)
+        val gy = MathUtils.lerp(guyBefore.y, guy.y, alpha)
+        val thinking = moment == null && session.thinkingFor != null
+        val bubble = agent?.saying ?: if (thinking) "..." else if (now.life?.doing == "sleep") "z z z" else null
+        val bottomBanner = banner(session)
+        val topBanner = moment?.let { historyBanner(session, it) }
 
         layoutMap(now)
         viewport.apply()
@@ -78,8 +128,7 @@ class DevView : Disposable {
         now.entities.forEach { if (it.carriedBy == null && it.kind != "guy") drawEntity(it) }
         shapes.color = RULE
         shapes.rect(PANEL_X - 24f, MARGIN, 2f, HEIGHT - 2 * MARGIN)
-
-        now.life?.let { drawLifeShapes(it) }
+        drawPanelShapes(session)
         shapes.end()
 
         batch.begin()
@@ -89,13 +138,15 @@ class DevView : Disposable {
         shapes.begin(ShapeRenderer.ShapeType.Filled)
         drawGuy(gx, gy, guy.facingDegrees, carrying = agent?.inventory ?: emptyList())
         bubble?.let { bubbleShape(it, gx, gy) }
-        banner(session)?.let { bannerShape(it) }
+        bottomBanner?.let { bannerShape(it, top = false) }
+        topBanner?.let { bannerShape(it, top = true) }
         shapes.end()
 
         batch.begin()
         bubble?.let { bubbleText(it, gx, gy) }
-        banner(session)?.let { bannerText(it) }
-        drawPanel(session, now, fps)
+        bottomBanner?.let { bannerText(it, top = false) }
+        topBanner?.let { bannerText(it, top = true) }
+        drawPanel(session, fps)
         batch.end()
     }
 
@@ -308,131 +359,334 @@ class DevView : Disposable {
     private fun bubbleText(text: String, gx: Float, gy: Float) {
         val (x, y, w, h) = bubbleRect(text, gx, gy)
         bubbleLayout(text)
-        font.draw(batch, glyphs, x + w / 2 - glyphs.width / 2, y + h - BUBBLE_PAD)
+        // The layout centers each line within BUBBLE_MAX_WIDTH, so center that box on the bubble.
+        font.draw(batch, glyphs, x + w / 2 - BUBBLE_MAX_WIDTH / 2, y + h - BUBBLE_PAD)
     }
 
-    private fun banner(session: SimSession): String? {
-        val solved = session.solvedFor
-        return when {
-            solved != null -> "ESCAPED in ${session.current.tick} ticks · next episode in ${(session.resetDelay - solved).toInt() + 1} s"
-            session.paused -> if (session.viewBack > 0) "PAUSED · ${session.viewBack} ticks back · LEFT/RIGHT step · OK resumes live"
-            else "PAUSED · LEFT steps back a tick, RIGHT forward"
-            else -> null
-        }
+    /** The run's state, across the bottom of the map whenever it isn't simply running. */
+    private fun banner(session: SimSession): String? = when {
+        confirmRestart -> "Restart? BACK again for a fresh run · any other key cancels"
+        session.state == RunState.Ready -> "READY · press OK to start"
+        session.state == RunState.Paused -> "PAUSED · OK resumes"
+        session.state == RunState.Ended -> "ENDED · ${session.endedBecause} · BACK twice for a fresh run"
+        else -> null
     }
 
-    private fun bannerShape(text: String) {
+    /** Across the top of the map while it shows a past decision instead of the live world. */
+    private fun historyBanner(session: SimSession, moment: SimSession.Moment): String =
+        "THE PAST · decision ${(pinned ?: 0) + 1} of ${session.history.size} · ${stamp(moment.decision.tick, moment.snapshot)}"
+
+    private fun bannerY(top: Boolean): Float = if (top) HEIGHT - MARGIN - glyphs.height - 32 else MARGIN
+
+    private fun bannerShape(text: String, top: Boolean) {
         font.data.setScale(BANNER_SCALE)
         glyphs.setText(font, text)
-        shapes.color = BANNER_BG
-        shapes.rect(mapX + MAP_WIDTH / 2 - glyphs.width / 2 - 24, MARGIN, glyphs.width + 48, glyphs.height + 32)
+        shapes.color = if (top) PAST_BG else BANNER_BG
+        shapes.rect(mapX + MAP_WIDTH / 2 - glyphs.width / 2 - 24, bannerY(top), glyphs.width + 48, glyphs.height + 32)
     }
 
-    private fun bannerText(text: String) {
+    private fun bannerText(text: String, top: Boolean) {
         font.data.setScale(BANNER_SCALE)
         font.color = TEXT
         glyphs.setText(font, text)
-        font.draw(batch, text, mapX + MAP_WIDTH / 2 - glyphs.width / 2, MARGIN + glyphs.height + 16)
+        font.draw(batch, text, mapX + MAP_WIDTH / 2 - glyphs.width / 2, bannerY(top) + glyphs.height + 16)
     }
 
-    // --- panel ---------------------------------------------------------------------------------
+    // --- panel: text helpers -------------------------------------------------------------------
 
     private var cursor = 0f
+    /** Page text stops above this; once a line doesn't fit, the rest of the page is skipped. */
+    private var contentFloor = 0f
+    private var clipped = false
 
-    private fun line(text: String, scale: Float, color: Color, maxLines: Int = 3, gapAfter: Float = 0.25f) {
+    private fun line(text: String, scale: Float, color: Color, maxLines: Int = 3, gapAfter: Float = 0.25f, indent: Float = 0f) {
+        if (clipped) return
         font.data.setScale(scale)
         font.color = color
+        val width = PANEL_WIDTH - indent
         // Wrap, then cut to maxLines by truncating the source; BitmapFont can only truncate one line.
-        glyphs.setText(font, text, color, PANEL_WIDTH, Align.left, true)
-        var shown = text
+        glyphs.setText(font, text, color, width, Align.left, true)
         if (glyphs.runs.size > maxLines) {
-            val keep = (text.length * maxLines / glyphs.runs.size).coerceAtLeast(1)
-            shown = text.take(keep - 3) + "..."
-            glyphs.setText(font, shown, color, PANEL_WIDTH, Align.left, true)
+            val keep = (text.length * maxLines / glyphs.runs.size).coerceAtLeast(4)
+            glyphs.setText(font, text.take(keep - 3) + "...", color, width, Align.left, true)
         }
-        font.draw(batch, glyphs, PANEL_X, cursor)
+        if (cursor - glyphs.height < contentFloor) {
+            clipped = true
+            return
+        }
+        font.draw(batch, glyphs, PANEL_X + indent, cursor)
         cursor -= font.lineHeight * (glyphs.runs.size.coerceAtLeast(1) + gapAfter)
     }
 
     private fun heading(text: String) {
         cursor -= 14f
-        line(text, HEADING_SCALE, MUTED, gapAfter = 0.1f)
+        line(text, HEADING_SCALE, MUTED, maxLines = 1, gapAfter = 0.1f)
     }
 
-    private fun drawPanel(session: SimSession, s: WorldSnapshot, fps: Int) {
-        val agent = s.agents.firstOrNull()
-        val decision = session.decision
-        val deciding = session.thinkingFor
+    /** One line of text cut to [width] with "...", at [x] on the current line; doesn't move the cursor. */
+    private fun cell(text: String, x: Float, width: Float, scale: Float, color: Color, align: Int = Align.left) {
+        font.data.setScale(scale)
+        glyphs.setText(font, text, 0, text.length, color, width, align, false, "...")
+        font.draw(batch, glyphs, x, cursor)
+    }
+
+    /** "d2 14:30" in the bedroom, "t 140" in rooms without a clock. */
+    private fun stamp(tick: Long, s: WorldSnapshot): String =
+        s.life?.clockScale?.reading(tick)?.let { "d${it.day} ${it.time}" } ?: "t $tick"
+
+    // --- panel ---------------------------------------------------------------------------------
+
+    // Some shapes (need bars, the tab underline) are placed by the text pass and drawn by the next
+    // frame's shape pass, which is the same layout unless the header above them changed height.
+    private var barsTop = 0f
+    private var tabRuleY = 0f
+    private var tabX = 0f
+    private var tabWidth = 0f
+
+    private fun drawPanelShapes(session: SimSession) {
+        if (tabRuleY > 0f) {
+            shapes.color = RULE
+            shapes.rect(PANEL_X, tabRuleY, PANEL_WIDTH, 2f)
+            shapes.color = ACCENT
+            shapes.rect(tabX, tabRuleY, tabWidth, 4f)
+        }
+        val life = session.current.life
+        if (page == Page.Now && life != null && barsTop > 0f) drawNeedBars(life)
+    }
+
+    private fun drawPanel(session: SimSession, fps: Int) {
+        val live = session.current
         cursor = HEIGHT - MARGIN
+        contentFloor = FOOTER_Y + 40f
+        clipped = false
 
         font.data.setScale(TITLE_SCALE)
         font.color = ACCENT
         font.draw(batch, "lil guy machine", PANEL_X, cursor)
         val titleHeight = font.lineHeight
         font.data.setScale(BODY_SCALE)
-        font.color = TEXT
-        font.draw(batch, "t ${s.tick} · $fps fps", PANEL_X, cursor - 6, PANEL_WIDTH, Align.right, false)
+        font.color = stateColor(session.state)
+        font.draw(batch, "run ${session.run} · ${session.state.name.uppercase()}", PANEL_X, cursor - 6, PANEL_WIDTH, Align.right, false)
         cursor -= titleHeight
-        line("model ${session.runtime.modelId} · episode ${session.episode}", SMALL_SCALE, MUTED)
+        line("${session.runtime.modelId} · memory ${session.memory.writer ?: "off"} · $fps fps", SMALL_SCALE, MUTED, maxLines = 1)
         session.setup.notice?.let { line(it, SMALL_SCALE, FAILED, maxLines = 2) }
 
-        val big = if (detail) 1f else 1.25f
-        val life = s.life
-        if (life != null) return drawLifePanel(session, s, life, big)
-        heading("INTENT")
-        line(agent?.intent?.let { json.encodeToString(Intent.serializer(), it) } ?: "(none yet)", BODY_SCALE * big, TEXT)
-        val status = agent?.status
-        line(statusText(status), BODY_SCALE * big, statusColor(status), maxLines = 3)
-        if (agent != null && agent.inventory.isNotEmpty()) line("holding ${agent.inventory.joinToString()}", SMALL_SCALE * big, MUTED)
+        val life = live.life
+        val ends = session.setup.endTick?.let { "ends ${stamp(it, live)}" }
+        if (ends != null) cell(ends, PANEL_X, PANEL_WIDTH, SMALL_SCALE, MUTED, Align.right)
+        line(if (life != null) "day ${life.clock.day} · ${life.clock.time}     $${life.money}" else "tick ${live.tick}", CLOCK_SCALE, TEXT, maxLines = 1, gapAfter = 0.1f)
 
-        heading("LAST DECISION")
-        if (deciding != null) {
-            line("thinking... %.1f s".format(deciding.inWholeMilliseconds / 1000f), BODY_SCALE * big, ACCENT, maxLines = 1)
-        }
-        if (decision == null) {
-            line("(none yet)", BODY_SCALE * big, MUTED)
-        } else {
-            line(decision.rationale ?: "fallback: ${decision.error}", BODY_SCALE * big, if (decision.error != null) FAILED else TEXT)
-            if (detail) {
-                val ms = decision.latency.inWholeMilliseconds
-                val tokens = decision.usage.let { if (it.promptTokens + it.completionTokens > 0) " · ${it.promptTokens}+${it.completionTokens} tok" else "" }
-                val tries = if (decision.attempts.size > 1) " · ${decision.attempts.size} tries" else ""
-                line("t ${decision.tick} · $ms ms$tokens$tries · raw output:", SMALL_SCALE, MUTED, maxLines = 1, gapAfter = 0f)
-                line(decision.raw ?: "(none)", SMALL_SCALE, CODE, maxLines = 2)
-            }
+        drawTabs()
+        when (page) {
+            Page.Now -> drawNow(session, live)
+            Page.Memory -> drawMemory(session, live)
+            Page.History -> drawHistory(session)
+            Page.Log -> drawLog(live)
         }
 
-        if (!detail) {
-            cursor = MARGIN + 30f
-            line("BACK for details · OK to pause", SMALL_SCALE, MUTED, maxLines = 1)
-            return
+        clipped = false
+        contentFloor = 0f
+        cursor = FOOTER_Y
+        val ok = when (session.state) {
+            RunState.Ready -> "OK start · "
+            RunState.Running -> "OK pause · "
+            RunState.Paused -> "OK resume · "
+            RunState.Ended -> ""
         }
-
-        val events = s.events.asReversed()
-        scroll = scroll.coerceIn(0, (events.size - EVENT_ROWS).coerceAtLeast(0))
-        heading(if (scroll > 0) "EVENTS (scrolled back $scroll)" else "EVENTS")
-        if (events.isEmpty()) line("(none yet)", SMALL_SCALE, MUTED)
-        events.drop(scroll).take(EVENT_ROWS).forEach { line("t ${it.tick}  ${it.text}", EVENT_SCALE, TEXT, maxLines = 1, gapAfter = 0f) }
-
-        heading("ACTIONS")
-        // One example per action: the panel has room for five.
-        ActionExamples.distinctBy { it.first::class }.forEach { (intent, what) ->
-            line(json.encodeToString(Intent.serializer(), intent), SMALL_SCALE, CODE, maxLines = 1, gapAfter = 0f)
-            line(what, SMALL_SCALE * 0.9f, MUTED, maxLines = 1, gapAfter = 0.2f)
+        val upDown = when (page) {
+            Page.Now -> ""
+            Page.History -> "UP newer · DOWN older · "
+            else -> "UP/DOWN scroll · "
         }
-
-        cursor = MARGIN + 30f
-        line("OK pause · BACK less · UP/DOWN events · LEFT -1 tick · RIGHT +1 tick", SMALL_SCALE * 0.9f, MUTED, maxLines = 1)
+        line("${ok}LEFT/RIGHT pages · ${upDown}BACK twice restarts", SMALL_SCALE * 0.9f, MUTED, maxLines = 1)
     }
 
-    // --- bedroom panel ---------------------------------------------------------------------------
+    private fun drawTabs() {
+        cursor -= 22f
+        font.data.setScale(TAB_SCALE)
+        var x = PANEL_X
+        Page.entries.forEach { p ->
+            glyphs.setText(font, p.title)
+            font.color = if (p == page) TEXT else MUTED
+            font.draw(batch, p.title, x, cursor)
+            if (p == page) {
+                tabX = x
+                tabWidth = glyphs.width
+            }
+            x += glyphs.width + TAB_GAP
+        }
+        tabRuleY = cursor - font.capHeight - 18f
+        cursor = tabRuleY - 20f
+    }
 
-    // Bars are laid out by drawLifePanel (text pass) and filled by drawLifeShapes (shape pass) on
-    // the next frame's layout, which is the same unless the panel above them changed height.
-    private var barsTop = 0f
+    // --- pages ---------------------------------------------------------------------------------
 
-    private fun drawLifeShapes(life: LifeSnapshot) {
-        if (barsTop == 0f) return
+    private fun drawNow(session: SimSession, s: WorldSnapshot) {
+        val agent = s.agents.firstOrNull()
+        val life = s.life
+        if (life != null) {
+            heading("NEEDS")
+            barsTop = cursor + 6f
+            val levels = listOf("energy" to life.energy, "fullness" to life.fullness, "mood" to life.mood)
+            levels.forEachIndexed { i, (name, value) ->
+                font.data.setScale(SMALL_SCALE)
+                font.color = if (value < LOW) FAILED else TEXT
+                val y = barsTop - i * BAR_PITCH
+                font.draw(batch, name, PANEL_X, y - 2)
+                font.draw(batch, value.toInt().toString(), BAR_X + BAR_WIDTH + 16f, y - 2)
+            }
+            cursor = barsTop - 3 * BAR_PITCH - 6f
+            line("mood settles toward ${life.moodTarget.toInt()}", SMALL_SCALE * 0.9f, MUTED, maxLines = 1)
+
+            heading("DOING")
+            val doing = life.doing
+            val now = when {
+                doing != null -> doing + (life.progress?.let { " · ${(it * 100).toInt()}%" } ?: "")
+                agent?.intent != null -> Describe.intent(agent.intent!!)
+                else -> "(nothing yet)"
+            }
+            line(now, BODY_SCALE, if (doing != null) ACCENT else TEXT, maxLines = 2)
+            if (doing == null && agent?.status is IntentStatus.Failed) line(statusText(agent.status), SMALL_SCALE, FAILED, maxLines = 2)
+            life.music?.let { line("music: $it", SMALL_SCALE, CODE, maxLines = 1) }
+            if (life.holding.isNotEmpty()) {
+                line("holding " + life.holding.groupingBy { it }.eachCount().entries.joinToString { (k, v) -> if (v == 1) k else "$v $k" }, SMALL_SCALE * 0.9f, MUTED, maxLines = 2, gapAfter = 0.1f)
+            }
+            line("owns " + life.owns.entries.joinToString { (k, v) -> if (v == 1) k.replace('_', ' ') else "$v ${k.replace('_', ' ')}s" }, SMALL_SCALE * 0.9f, MUTED, maxLines = 2, gapAfter = 0.1f)
+        } else {
+            heading("INTENT")
+            line(agent?.intent?.let { json.encodeToString(Intent.serializer(), it) } ?: "(none yet)", BODY_SCALE, TEXT)
+            line(statusText(agent?.status), BODY_SCALE, statusColor(agent?.status), maxLines = 2)
+            if (agent != null && agent.inventory.isNotEmpty()) line("holding ${agent.inventory.joinToString()}", SMALL_SCALE, MUTED)
+        }
+
+        heading("LATEST DECISION")
+        val deciding = session.thinkingFor
+        val decision = session.decision
+        if (deciding != null) line("thinking... %.1f s".format(deciding.inWholeMilliseconds / 1000f), BODY_SCALE, ACCENT, maxLines = 1)
+        if (decision == null) {
+            if (deciding == null) line(if (session.state == RunState.Ready) "(none: the run starts when you press OK)" else "(none yet)", BODY_SCALE * 0.9f, MUTED)
+        } else {
+            line(decision.rationale ?: "fallback: ${decision.error}", BODY_SCALE * 0.9f, if (decision.fellBack) FAILED else TEXT, maxLines = 3)
+            val recalled = if (decision.recalled.isNotEmpty()) " · ${decision.recalled.size} memories recalled" else ""
+            line("${Describe.intent(decision.intent)} · ${decision.latency.inWholeMilliseconds} ms$recalled", SMALL_SCALE * 0.9f, CODE, maxLines = 1)
+        }
+
+        heading("RECENT EVENTS")
+        if (s.events.isEmpty()) line("(none yet)", SMALL_SCALE, MUTED)
+        s.events.asReversed().take(NOW_EVENT_ROWS).forEach {
+            line("${stamp(it.tick, s)}  ${it.text}", SMALL_SCALE * 0.95f, TEXT, maxLines = 1, gapAfter = 0f)
+        }
+    }
+
+    private fun drawMemory(session: SimSession, s: WorldSnapshot) {
+        val mem = session.memory
+        val recent = session.runtime.recent
+        heading("SHORT-TERM · recent actions, sent with every prompt")
+        if (recent.isEmpty()) line("(nothing yet)", SMALL_SCALE, MUTED)
+        recent.asReversed().forEach { e ->
+            val result = e.result?.let { statusText(it) } ?: "in progress"
+            line("${stamp(e.tick, s)}  ${Describe.intent(e.intent)}  ·  $result", SMALL_SCALE * 0.9f, statusColor(e.result).takeIf { e.result is IntentStatus.Failed } ?: TEXT, maxLines = 1, gapAfter = 0f)
+        }
+
+        heading("LONG-TERM")
+        val writer = mem.writer
+        val batchSize = mem.batchSize
+        val events = mem.eventCount()
+        val status = when {
+            writer == null || batchSize == null -> "no memory writer configured: $events events recorded, none written up"
+            mem.summarizing -> "$writer is writing a memory..."
+            session.state == RunState.Ended && mem.pending() == 0 -> "$events events recorded, all written up · by $writer"
+            else -> "$events events recorded · next memory after ${(batchSize - mem.pending()).coerceAtLeast(0)} more · by $writer"
+        }
+        line(status, SMALL_SCALE * 0.9f, MUTED, maxLines = 2)
+        session.memoryError?.let { line("last write failed: $it", SMALL_SCALE * 0.9f, FAILED, maxLines = 2) }
+
+        val all = mem.memories().asReversed()
+        if (all.isEmpty()) return line("(no memories yet)", BODY_SCALE * 0.8f, MUTED)
+        val recalled = mem.lastRecalled
+        val skip = scroll[Page.Memory.ordinal].coerceAtMost(all.lastIndex).also { scroll[Page.Memory.ordinal] = it }
+        val count = if (all.size == 1) "1 memory" else "${all.size} memories, newest first"
+        line(if (skip > 0) "$count · $skip newer above" else count, SMALL_SCALE * 0.9f, MUTED, maxLines = 1, gapAfter = 0.5f)
+        all.drop(skip).forEach { m ->
+            val isRecalled = m.id in recalled
+            val label = m.span.label.ifEmpty { "events ${m.fromId}-${m.toId}" } + if (isRecalled) "  · recalled at the latest decision" else ""
+            line(label, SMALL_SCALE * 0.9f, if (isRecalled) ACCENT else MUTED, maxLines = 1, gapAfter = 0.05f)
+            line(m.text, MEMORY_SCALE, TEXT, maxLines = 6, gapAfter = 0.6f)
+        }
+    }
+
+    private fun drawHistory(session: SimSession) {
+        val h = session.history
+        if (h.isEmpty()) {
+            heading("DECISIONS")
+            return line("(none yet)", BODY_SCALE * 0.9f, MUTED)
+        }
+        val sel = (pinned ?: h.lastIndex).coerceIn(0, h.lastIndex)
+        heading(if (pinned == null) "DECISIONS · ${h.size} · following the newest" else "DECISIONS · ${sel + 1} of ${h.size}")
+
+        // Newest first, a window of rows that keeps the selection in view.
+        val pos = h.lastIndex - sel
+        val first = (pos - HISTORY_ROWS / 2).coerceIn(0, max(0, h.size - HISTORY_ROWS))
+        font.data.setScale(SMALL_SCALE * 0.95f)
+        val rowHeight = font.lineHeight
+        for (k in first until min(h.size, first + HISTORY_ROWS)) {
+            val i = h.lastIndex - k
+            val m = h[i]
+            val outcome = outcomeOf(session, i)
+            val selected = i == sel
+            val color = if (selected) TEXT else MUTED
+            cell(if (selected) ">" else "", PANEL_X, 20f, SMALL_SCALE * 0.95f, ACCENT)
+            cell(stamp(m.decision.tick, m.snapshot), PANEL_X + 24f, 130f, SMALL_SCALE * 0.95f, color)
+            cell(Describe.intent(m.decision.intent), PANEL_X + 160f, PANEL_WIDTH - 330f, SMALL_SCALE * 0.95f, if (m.decision.fellBack) FAILED else color)
+            cell(shortStatus(outcome), PANEL_X + PANEL_WIDTH - 160f, 160f, SMALL_SCALE * 0.95f, if (selected) statusColor(outcome) else MUTED, Align.right)
+            cursor -= rowHeight
+        }
+
+        val m = h[sel]
+        val d = m.decision
+        heading("DECISION ${sel + 1}")
+        val tokens = d.usage.let { if (it.promptTokens + it.completionTokens > 0) " · ${it.promptTokens}+${it.completionTokens} tok" else "" }
+        val tries = if (d.attempts.size > 1) " · ${d.attempts.size} tries" else ""
+        line("${stamp(d.tick, m.snapshot)} · tick ${d.tick} · ${d.latency.inWholeMilliseconds} ms$tokens$tries", SMALL_SCALE * 0.9f, MUTED, maxLines = 1)
+        line(Describe.intent(d.intent), BODY_SCALE * 0.9f, CODE, maxLines = 2, gapAfter = 0.15f)
+        line(d.rationale ?: "fallback: ${d.error}", BODY_SCALE * 0.8f, if (d.fellBack) FAILED else TEXT, maxLines = 4)
+        val outcome = outcomeOf(session, sel)
+        line("result: ${outcome?.let { statusText(it) } ?: "still going"}", SMALL_SCALE * 0.9f, statusColor(outcome), maxLines = 2)
+        d.observation?.let { line("saw: " + Describe.observation(it, emptyList()), SMALL_SCALE * 0.85f, MUTED, maxLines = 3) }
+        if (d.recalled.isNotEmpty()) {
+            line("recalled ${d.recalled.size} memor${if (d.recalled.size == 1) "y" else "ies"}:", SMALL_SCALE * 0.9f, ACCENT, maxLines = 1, gapAfter = 0.05f)
+            d.recalled.asReversed().forEach { line(it, SMALL_SCALE * 0.85f, MUTED, maxLines = 2, gapAfter = 0.15f, indent = 16f) }
+        }
+        if (d.fellBack) line("raw: ${d.raw ?: "(none)"}", SMALL_SCALE * 0.85f, FAILED, maxLines = 2)
+    }
+
+    /** How decision [i] ended: told by the next decision's observation, or the live status for the newest. */
+    private fun outcomeOf(session: SimSession, i: Int): IntentStatus? {
+        val d = session.history[i].decision
+        val next = session.history.getOrNull(i + 1)?.decision?.observation
+        if (next != null) return next.lastResult.takeIf { next.lastIntent == d.intent }
+        val agent = session.current.agents.firstOrNull() ?: return null
+        return agent.status.takeIf { agent.intent == d.intent }
+    }
+
+    private fun drawLog(s: WorldSnapshot) {
+        val life = s.life
+        if (life != null) {
+            heading("MONEY")
+            if (life.transactions.isEmpty()) line("(no transactions yet)", SMALL_SCALE, MUTED)
+            life.transactions.takeLast(MONEY_ROWS).asReversed().forEach { t ->
+                val amount = if (t.amount > 0) "+$${t.amount}" else "-$${-t.amount}"
+                line("d${t.day} ${t.time}  $amount  ${t.reason}  ($${t.balance})", SMALL_SCALE * 0.95f, if (t.amount > 0) SUCCEEDED else TEXT, maxLines = 1, gapAfter = 0f)
+            }
+        }
+        val events = s.events.asReversed()
+        val skip = scroll[Page.Log.ordinal].coerceAtMost((events.size - 1).coerceAtLeast(0)).also { scroll[Page.Log.ordinal] = it }
+        heading(if (skip > 0) "EVENTS · ${events.size} · $skip newer above" else "EVENTS · ${events.size}, newest first")
+        if (events.isEmpty()) line("(none yet)", SMALL_SCALE, MUTED)
+        events.drop(skip).forEach { line("${stamp(it.tick, s)}  ${it.text}", SMALL_SCALE * 0.95f, TEXT, maxLines = 2, gapAfter = 0.1f) }
+    }
+
+    private fun drawNeedBars(life: LifeSnapshot) {
         val needs = listOf(life.energy to ENERGY, life.fullness to FULLNESS, life.mood to MOOD)
         needs.forEachIndexed { i, (value, color) ->
             val y = barsTop - i * BAR_PITCH - BAR_HEIGHT
@@ -447,74 +701,19 @@ class DevView : Disposable {
         shapes.rect(BAR_X + BAR_WIDTH * (life.moodTarget / 100.0).toFloat() - 1.5f, moodY - 4, 3f, BAR_HEIGHT + 8)
     }
 
-    private fun drawLifePanel(session: SimSession, s: WorldSnapshot, life: LifeSnapshot, big: Float) {
-        val agent = s.agents.firstOrNull()
-        line("day ${life.clock.day} · ${life.clock.time}     $${life.money}", TITLE_SCALE * 0.85f, TEXT, maxLines = 1, gapAfter = 0.15f)
+    private fun shortStatus(status: IntentStatus?): String = when (status) {
+        IntentStatus.Succeeded -> "done"
+        IntentStatus.Interrupted -> "interrupted"
+        is IntentStatus.Failed -> "failed"
+        null -> ""
+        else -> "going"
+    }
 
-        heading("NEEDS")
-        barsTop = cursor + 6f
-        val levels = listOf("energy" to life.energy, "fullness" to life.fullness, "mood" to life.mood)
-        levels.forEachIndexed { i, (name, value) ->
-            font.data.setScale(SMALL_SCALE)
-            font.color = if (value < LOW) FAILED else TEXT
-            val y = barsTop - i * BAR_PITCH
-            font.draw(batch, name, PANEL_X, y - 2)
-            font.draw(batch, value.toInt().toString(), BAR_X + BAR_WIDTH + 16f, y - 2)
-        }
-        cursor = barsTop - 3 * BAR_PITCH - 6f
-        line("mood settles toward ${life.moodTarget.toInt()}", SMALL_SCALE * 0.9f, MUTED, maxLines = 1)
-
-        heading("NOW")
-        val doing = life.doing
-        val now = when {
-            doing != null -> "$doing" + (life.progress?.let { " · ${(it * 100).toInt()}%" } ?: "")
-            agent?.intent != null -> json.encodeToString(Intent.serializer(), agent.intent!!)
-            else -> "(nothing yet)"
-        }
-        line(now, BODY_SCALE * big, if (doing != null) ACCENT else TEXT, maxLines = 2)
-        if (doing == null && agent?.status is IntentStatus.Failed) line(statusText(agent.status), SMALL_SCALE * big, FAILED, maxLines = 2)
-        life.music?.let { line("music: $it", SMALL_SCALE, CODE, maxLines = 1) }
-        val stuff = buildList {
-            if (life.holding.isNotEmpty()) add("holding " + life.holding.groupingBy { it }.eachCount().entries.joinToString { (k, v) -> if (v == 1) k else "$v $k" })
-            add("owns " + life.owns.entries.joinToString { (k, v) -> if (v == 1) k.replace('_', ' ') else "$v ${k.replace('_', ' ')}s" })
-        }
-        stuff.forEach { line(it, SMALL_SCALE * 0.9f, MUTED, maxLines = 2, gapAfter = 0.1f) }
-
-        heading("LAST DECISION")
-        val deciding = session.thinkingFor
-        val decision = session.decision
-        if (deciding != null) line("thinking... %.1f s".format(deciding.inWholeMilliseconds / 1000f), BODY_SCALE * big, ACCENT, maxLines = 1)
-        if (decision == null) {
-            line("(none yet)", BODY_SCALE * big, MUTED)
-        } else {
-            line(decision.rationale ?: "fallback: ${decision.error}", BODY_SCALE * big * 0.9f, if (decision.error != null) FAILED else TEXT, maxLines = 2)
-            if (detail) line("${json.encodeToString(Intent.serializer(), decision.intent)} · ${decision.latency.inWholeMilliseconds} ms", SMALL_SCALE * 0.9f, CODE, maxLines = 1)
-        }
-
-        if (!detail) {
-            cursor = MARGIN + 30f
-            line("BACK for details · OK to pause", SMALL_SCALE, MUTED, maxLines = 1)
-            return
-        }
-
-        val events = s.events.asReversed()
-        scroll = scroll.coerceIn(0, (events.size - LIFE_EVENT_ROWS).coerceAtLeast(0))
-        heading(if (scroll > 0) "EVENTS (scrolled back $scroll)" else "EVENTS")
-        if (events.isEmpty()) line("(none yet)", SMALL_SCALE, MUTED)
-        events.drop(scroll).take(LIFE_EVENT_ROWS).forEach {
-            val at = life.clockScale.reading(it.tick)
-            line("d${at.day} ${at.time}  ${it.text}", SMALL_SCALE * 0.95f, TEXT, maxLines = 1, gapAfter = 0f)
-        }
-
-        heading("MONEY")
-        if (life.transactions.isEmpty()) line("(no transactions yet)", SMALL_SCALE, MUTED)
-        life.transactions.takeLast(MONEY_ROWS).asReversed().forEach { t ->
-            val amount = if (t.amount > 0) "+$${t.amount}" else "-$${-t.amount}"
-            line("d${t.day} ${t.time}  $amount  ${t.reason}  ($${t.balance})", SMALL_SCALE * 0.95f, if (t.amount > 0) SUCCEEDED else TEXT, maxLines = 1, gapAfter = 0f)
-        }
-
-        cursor = MARGIN + 30f
-        line("OK pause · BACK less · UP/DOWN events · LEFT -1 tick · RIGHT +1 tick", SMALL_SCALE * 0.9f, MUTED, maxLines = 1)
+    private fun stateColor(state: RunState): Color = when (state) {
+        RunState.Ready -> TEXT
+        RunState.Running -> SUCCEEDED
+        RunState.Paused -> INTERRUPTED
+        RunState.Ended -> ACCENT
     }
 
     private fun statusText(status: IntentStatus?): String = when (status) {
@@ -548,9 +747,11 @@ class DevView : Disposable {
         private const val MAP_WIDTH = 1060f
         private const val PANEL_X = MARGIN + MAP_WIDTH + 64f
         private const val PANEL_WIDTH = WIDTH - PANEL_X - MARGIN
-        private const val EVENT_ROWS = 6
-        private const val LIFE_EVENT_ROWS = 5
-        private const val MONEY_ROWS = 4
+        private const val FOOTER_Y = MARGIN + 30f
+        private const val NOW_EVENT_ROWS = 5
+        private const val HISTORY_ROWS = 7
+        private const val MONEY_ROWS = 5
+        private const val TAB_GAP = 48f
         private const val LABEL_SCALE = 1.1f
         private const val BAR_X = PANEL_X + 130f
         private const val BAR_WIDTH = 440f
@@ -560,10 +761,12 @@ class DevView : Disposable {
         private val FURNISHING = setOf("furniture", "decor", "fixture")
 
         private const val TITLE_SCALE = 2.4f
+        private const val CLOCK_SCALE = 1.9f
+        private const val TAB_SCALE = 1.6f
+        private const val MEMORY_SCALE = 1.45f
         private const val HEADING_SCALE = 1.35f
         private const val BODY_SCALE = 1.75f
         private const val SMALL_SCALE = 1.4f
-        private const val EVENT_SCALE = 1.5f
         private const val BUBBLE_SCALE = 1.6f
         private const val BANNER_SCALE = 1.8f
         private const val BUBBLE_PAD = 12f
@@ -588,6 +791,7 @@ class DevView : Disposable {
         private val BUBBLE = Color.valueOf("f4f1e8ff")
         private val BUBBLE_INK = Color.valueOf("15171cff")
         private val BANNER_BG = Color.valueOf("000000cc")
+        private val PAST_BG = Color.valueOf("3a2a5cdd")
         private val RULE = Color.valueOf("2c313bff")
         private val BED = Color.valueOf("3f5f9eff")
         private val PILLOW = Color.valueOf("dfe6f2ff")

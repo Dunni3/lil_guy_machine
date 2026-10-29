@@ -17,7 +17,8 @@ make cli         # headless runner (ARGS="--scenario bedroom --days 3 --endpoint
                  # add --memory runs/mem.db [--memory-endpoint NAME] for long-term memory
 make desktop     # LWJGL3 window
 make tv-connect IP=10.0.0.51   # wireless adb to the Streamer
-make tv-run      # build + install + launch debug APK (ENDPOINT=<name>, SCENARIO=key-door, MINUTE_TICKS=<n>)
+make tv-run      # build + install + launch debug APK (ENDPOINT=<name>, MEMORY_ENDPOINT=<name|none>,
+                 # SCENARIO=key-door, MINUTE_TICKS=<n>, DAYS=<n>); runs wait for OK on the remote
 make tv-push-config  # push config/endpoints.yaml + the keys it names (dev only)
 make tv-logs     # logcat, tag LilGuy
 make tv-profile  # release-like build (not debuggable) for measuring performance
@@ -50,9 +51,11 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   events and memories, `InMemoryStore`), `AgentMemory.kt` (what `AgentRuntime` talks to), `Describe.kt`
   (event text), `Summarizer.kt` (LLM writes level-1 memories), `Recall.kt` (which memories reach a
   prompt). SQLite store: `memory-sqlite/` (JVM only; not in the TV build yet).
-- Renderer: `app/.../LilGuyGame.kt` (2D dev view in `DevView.kt`, sim clock in `SimSession.kt`,
-  remote keys in `RemoteInput.kt`). Launchers: `desktop/`, `android/`.
-  `LILGUY_SCREENSHOT=out.png LILGUY_SCREENSHOT_AT=<s> make desktop` saves one frame and quits.
+- Renderer: `app/.../LilGuyGame.kt` (2D dev view in `DevView.kt`: map plus Now/Memory/History/Log
+  pages; run control, decision history and the app's memory in `SimSession.kt`; remote keys in
+  `RemoteInput.kt`: OK start/pause, LEFT/RIGHT pages, UP/DOWN scroll or pick, BACK twice restarts). Launchers: `desktop/`, `android/`.
+  `LILGUY_SCREENSHOT=out.png LILGUY_SCREENSHOT_AT=<s> make desktop` saves one frame and quits
+  (`LILGUY_SCREENSHOT_KEYS="Enter,@60,Right"` presses keys first).
 - Endpoint config example: `config/endpoints.example.yaml` (real one is gitignored). The app's
   model choice: `app/.../ModelSetup.kt`. Run logs go in `runs/` (gitignored).
 - ADB helpers: `tools/adb/`.

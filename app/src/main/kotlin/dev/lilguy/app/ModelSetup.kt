@@ -4,6 +4,7 @@ import dev.lilguy.agent.DecisionLog
 import dev.lilguy.agent.Scenario
 import dev.lilguy.decision.DecisionModel
 import dev.lilguy.decision.Endpoints
+import dev.lilguy.decision.EndpointsFile
 import dev.lilguy.sim.GameClock
 import java.io.File
 import java.time.LocalDateTime
@@ -18,37 +19,51 @@ import kotlin.time.Duration.Companion.seconds
  * from files pushed over adb (`make tv-push-config`).
  */
 class ModelSetup(
-    /** A fresh model for each episode. */
+    /** A fresh model for each run. */
     val create: () -> DecisionModel,
     val scenario: Scenario = Scenario.Bedroom,
     /** The bedroom's clock scale: ticks per game minute. */
     val ticksPerMinute: Int = GameClock.DEFAULT_TICKS_PER_MINUTE,
     /** Bounds one whole decision, retries included. */
     val timeout: Duration = 20.seconds,
-    /** One JSONL file per episode goes here; null to not log. */
+    /** One JSONL file per run goes here; null to not log. */
     val logDir: File? = null,
     /** Shown in the dev view, e.g. why the configured endpoint couldn't be used. */
     val notice: String? = null,
+    /** A fresh model for each run that writes long-term memories; null to record events without summarizing. */
+    val memoryModel: (() -> DecisionModel)? = null,
+    /** Bedroom: game days a run lasts before it ends; null for no end. */
+    val days: Int? = DEFAULT_DAYS,
 ) {
-    fun logFor(episode: Int, modelId: String): DecisionLog? =
-        logDir?.let { DecisionLog(File(it, "episode-%03d.jsonl".format(episode)), run = "${it.name}-$episode", model = modelId) }
+    fun copy(memoryModel: (() -> DecisionModel)? = this.memoryModel, notice: String? = this.notice) =
+        ModelSetup(create, scenario, ticksPerMinute, timeout, logDir, notice, memoryModel, days)
+
+    /** The tick a bedroom run ends on, or null if it doesn't end on its own. */
+    val endTick: Long? get() = days?.takeIf { scenario == Scenario.Bedroom }?.let { it.toLong() * GameClock.MINUTES_PER_DAY * ticksPerMinute }
+
+    fun logFor(run: Int, modelId: String): DecisionLog? =
+        logDir?.let { DecisionLog(File(it, "run-%03d.jsonl".format(run)), run = "${it.name}-$run", model = modelId) }
 
     companion object {
         /** Fake model latency for the scripted policy, so a decision is visible as it happens. */
         val THINK_TIME = 600.milliseconds
+
+        const val DEFAULT_DAYS = 3
 
         fun scripted(
             notice: String? = null,
             logDir: File? = null,
             scenario: Scenario = Scenario.Bedroom,
             ticksPerMinute: Int = GameClock.DEFAULT_TICKS_PER_MINUTE,
-        ) = ModelSetup({ scenario.scriptedPolicy(THINK_TIME) }, scenario, ticksPerMinute, logDir = logDir, notice = notice)
+            days: Int? = DEFAULT_DAYS,
+        ) = ModelSetup({ scenario.scriptedPolicy(THINK_TIME) }, scenario, ticksPerMinute, logDir = logDir, notice = notice, days = days)
 
         /**
          * The endpoint named [endpoint] (or the config's default agent endpoint) from [configFile].
          * Falls back to the scripted policy, with a notice saying why, when there's no config, no
          * endpoint chosen, or no key. [env] is the only place keys come from. Logs go in a new
-         * timestamped directory under [logRoot].
+         * timestamped directory under [logRoot]. Memories are written by [memoryEndpoint] (or the
+         * config's `memory_endpoint`; "none" turns it off), whichever model decides.
          */
         fun fromConfig(
             configFile: File,
@@ -57,21 +72,51 @@ class ModelSetup(
             logRoot: File?,
             scenario: Scenario = Scenario.Bedroom,
             ticksPerMinute: Int = GameClock.DEFAULT_TICKS_PER_MINUTE,
+            memoryEndpoint: String? = null,
+            days: Int? = DEFAULT_DAYS,
         ): ModelSetup {
             val logDir = logRoot?.let { File(it, "app-${scenario.id}-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))) }
-            fun scripted(notice: String? = null) = scripted(notice, logDir, scenario, ticksPerMinute)
             if (!configFile.isFile) {
-                return scripted(if (endpoint != null) "no config at ${configFile.path}; using the scripted policy" else null)
+                val notice = if (endpoint != null || memoryEndpoint != null) "no config at ${configFile.path}; using the scripted policy" else null
+                return scripted(notice, logDir, scenario, ticksPerMinute, days)
             }
-            return try {
-                val config = Endpoints.load(configFile)
-                val name = endpoint ?: config.defaultEndpoint ?: return scripted()
-                if (name == "scripted") return scripted()
-                val spec = config.endpoints[name] ?: throw IllegalArgumentException("no endpoint '$name' in ${configFile.path}")
-                Endpoints.create(config, name, env).let { (it as? AutoCloseable)?.close() } // fail now on a missing key
-                ModelSetup({ Endpoints.create(config, name, env) }, scenario, ticksPerMinute, spec.decisionTimeout, logDir)
+            val config = try {
+                Endpoints.load(configFile)
             } catch (e: Exception) {
-                scripted("${e.message}; using the scripted policy")
+                return scripted("${e.message}; using the scripted policy", logDir, scenario, ticksPerMinute, days)
+            }
+            val notices = mutableListOf<String>()
+            val writer = memoryWriter(config, memoryEndpoint ?: config.defaultMemoryEndpoint, env, notices)
+            val base = scripted(null, logDir, scenario, ticksPerMinute, days)
+            val agent = try {
+                val name = endpoint ?: config.defaultEndpoint ?: "scripted"
+                if (name == "scripted") {
+                    base
+                } else {
+                    val spec = config.endpoints[name] ?: throw IllegalArgumentException("no endpoint '$name' in ${configFile.path}")
+                    Endpoints.create(config, name, env).let { (it as? AutoCloseable)?.close() } // fail now on a missing key
+                    ModelSetup({ Endpoints.create(config, name, env) }, scenario, ticksPerMinute, spec.decisionTimeout, logDir, days = days)
+                }
+            } catch (e: Exception) {
+                notices.add(0, "${e.message}; using the scripted policy")
+                base
+            }
+            return agent.copy(memoryModel = writer, notice = notices.joinToString("; ").ifEmpty { null })
+        }
+
+        /** A factory for the memory-writing model, or null (with a notice when one was asked for but can't be used). */
+        private fun memoryWriter(config: EndpointsFile, name: String?, env: (String) -> String?, notices: MutableList<String>): (() -> DecisionModel)? {
+            if (name == null || name == "none") return null
+            return try {
+                require(name in config.endpoints) { "no memory endpoint '$name'" }
+                val probe = Endpoints.create(config, name, env)
+                (probe as? AutoCloseable)?.close()
+                require(!probe.capabilities.closedChoice) { "memory endpoint '$name' only picks from options" }
+                val factory: () -> DecisionModel = { Endpoints.create(config, name, env) }
+                factory
+            } catch (e: Exception) {
+                notices += "${e.message}; memories won't be written"
+                null
             }
         }
 

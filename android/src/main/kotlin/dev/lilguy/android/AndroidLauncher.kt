@@ -27,7 +27,9 @@ class AndroidLauncher : AndroidApplication() {
      * the API keys it names. Keys on the TV are for development only. Pick the endpoint with
      * `make tv-run ENDPOINT=<name>` (an `endpoint` intent extra), or let the config's default
      * agent endpoint apply. With no config the scripted policy runs. Extras `scenario`
-     * (bedroom or key-door) and `minute_ticks` (the clock scale) pick the room.
+     * (bedroom or key-door) and `minute_ticks` (the clock scale) pick the room; `memory_endpoint`
+     * the memory writer (default the config's `memory_endpoint`, "none" for off); `days` the
+     * bedroom run length (0 for no end).
      */
     private fun modelSetup(): ModelSetup {
         val dir = getExternalFilesDir(null) ?: filesDir
@@ -39,6 +41,8 @@ class AndroidLauncher : AndroidApplication() {
             logRoot = File(dir, "runs"),
             scenario = intent?.getStringExtra("scenario")?.takeIf { it.isNotBlank() }?.let(Scenario::parse) ?: Scenario.Bedroom,
             ticksPerMinute = intent?.getIntExtra("minute_ticks", GameClock.DEFAULT_TICKS_PER_MINUTE) ?: GameClock.DEFAULT_TICKS_PER_MINUTE,
+            memoryEndpoint = intent?.getStringExtra("memory_endpoint")?.takeIf { it.isNotBlank() },
+            days = (intent?.getIntExtra("days", ModelSetup.DEFAULT_DAYS) ?: ModelSetup.DEFAULT_DAYS).takeIf { it > 0 },
         )
     }
 }

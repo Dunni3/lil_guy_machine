@@ -42,6 +42,9 @@ class Summarizer(
         SchemaHints(descriptions = mapOf("memory.memory" to "The memory, in the first person, two to four sentences.")),
     ) { null }
 
+    /** The writing model's id. */
+    val writer: String get() = model.id
+
     /** Events not yet covered by a level-1 memory. */
     fun pending(): Int = store.countEventsAfter(run, store.coveredThrough(run, 1))
 
