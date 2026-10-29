@@ -84,7 +84,7 @@ class Summarizer(
         messages = listOf(
             Message(
                 Message.Role.User,
-                events.joinToString("\n", prefix = "Log:\n", postfix = "\n\nWrite the memory.") { "[${it.stamp}] ${if (it.kind == EventKind.Action) "I did" else "I saw"}: ${it.text}" },
+                events.joinToString("\n", prefix = "Log:\n", postfix = "\n\nWrite the memory.") { "[${it.stamp}] ${if (it.kind == EventKind.Observation) "I saw" else "I did"}: ${it.text}" },
             ),
         ),
         temperature = 0.3,

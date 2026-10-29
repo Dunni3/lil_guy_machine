@@ -29,11 +29,13 @@ import kotlin.math.sin
 
 /**
  * Temporary 2D dev view: the room from above on the left, and on the right a header (run state,
- * model, clock) over one of four pages the remote flips between:
+ * model, clock) over one of five pages the remote flips between:
  *
  * - [Page.Now]: needs, what he's doing, the latest decision, recent events.
  * - [Page.Memory]: short-term memory (recent actions, in every prompt) and the long-term
  *   memories written so far, marking those recalled at the latest decision.
+ * - [Page.Journal]: a reader for his journal: a list of entries, and the picked one in full with
+ *   the wants he argued for. UP/DOWN steps through them; it follows the newest until you move.
  * - [Page.History]: every decision this run; picking an older one puts the map back to the
  *   moment it was made.
  * - [Page.Log]: money and the sim's event log.
@@ -43,7 +45,7 @@ import kotlin.math.sin
  * full-screen layers.
  */
 class DevView : Disposable {
-    enum class Page(val title: String) { Now("NOW"), Memory("MEMORY"), History("HISTORY"), Log("LOG") }
+    enum class Page(val title: String) { Now("NOW"), Memory("MEMORY"), Journal("JOURNAL"), History("HISTORY"), Log("LOG") }
 
     private val viewport = FitViewport(WIDTH, HEIGHT)
     private val shapes = ShapeRenderer()
@@ -62,6 +64,9 @@ class DevView : Disposable {
     var pinned: Int? = null
         private set
 
+    /** Journal only: the entry shown, as an index into the entries oldest first; null follows the newest. */
+    private var journalPick: Int? = null
+
     /** Rows scrolled down from the top, per page. */
     private val scroll = IntArray(Page.entries.size)
 
@@ -74,8 +79,15 @@ class DevView : Disposable {
         pinned = null
     }
 
-    /** UP (-1) and DOWN (+1): in History a newer or older decision, elsewhere scroll. */
+    /** UP (-1) and DOWN (+1): in History a newer or older decision, in Journal a newer or older entry, elsewhere scroll. */
     fun move(by: Int, session: SimSession) {
+        if (page == Page.Journal) {
+            val last = session.memory.journalEntries().lastIndex
+            if (last < 0) return
+            val next = (journalPick ?: last) - by
+            journalPick = if (next >= last) null else next.coerceAtLeast(0)
+            return
+        }
         if (page != Page.History) {
             scroll[page.ordinal] = (scroll[page.ordinal] + by).coerceAtLeast(0)
             return
@@ -89,6 +101,7 @@ class DevView : Disposable {
     /** After a restart: the live world, every page scrolled to the top. */
     fun reset() {
         pinned = null
+        journalPick = null
         scroll.fill(0)
         confirmRestart = false
     }
@@ -399,8 +412,9 @@ class DevView : Disposable {
     private var contentFloor = 0f
     private var clipped = false
 
-    private fun line(text: String, scale: Float, color: Color, maxLines: Int = 3, gapAfter: Float = 0.25f, indent: Float = 0f) {
+    private fun line(raw: String, scale: Float, color: Color, maxLines: Int = 3, gapAfter: Float = 0.25f, indent: Float = 0f) {
         if (clipped) return
+        val text = plain(raw)
         font.data.setScale(scale)
         font.color = color
         val width = PANEL_WIDTH - indent
@@ -418,13 +432,21 @@ class DevView : Disposable {
         cursor -= font.lineHeight * (glyphs.runs.size.coerceAtLeast(1) + gapAfter)
     }
 
+    /** Model text in characters the bitmap font has: dashes, curly quotes and ellipses made plain. */
+    private fun plain(text: String): String {
+        if (text.none { it.code > 0x7e }) return text
+        return text.replace("\u2014", " - ").replace('\u2013', '-').replace('\u2018', '\'').replace('\u2019', '\'')
+            .replace('\u201c', '"').replace('\u201d', '"').replace("\u2026", "...")
+    }
+
     private fun heading(text: String) {
         cursor -= 14f
         line(text, HEADING_SCALE, MUTED, maxLines = 1, gapAfter = 0.1f)
     }
 
     /** One line of text cut to [width] with "...", at [x] on the current line; doesn't move the cursor. */
-    private fun cell(text: String, x: Float, width: Float, scale: Float, color: Color, align: Int = Align.left) {
+    private fun cell(raw: String, x: Float, width: Float, scale: Float, color: Color, align: Int = Align.left) {
+        val text = plain(raw)
         font.data.setScale(scale)
         glyphs.setText(font, text, 0, text.length, color, width, align, false, "...")
         font.draw(batch, glyphs, x, cursor)
@@ -468,7 +490,7 @@ class DevView : Disposable {
         font.color = stateColor(session.state)
         font.draw(batch, "run ${session.run} · ${session.state.name.uppercase()}", PANEL_X, cursor - 6, PANEL_WIDTH, Align.right, false)
         cursor -= titleHeight
-        line("${session.runtime.modelId} · memory ${session.memory.writer ?: "off"} · $fps fps", SMALL_SCALE, MUTED, maxLines = 1)
+        line("${session.runtime.modelId} · memory ${session.memory.writer ?: "off"} · journal ${session.memory.journalWriter ?: "off"} · $fps fps", SMALL_SCALE, MUTED, maxLines = 1)
         session.setup.notice?.let { line(it, SMALL_SCALE, FAILED, maxLines = 2) }
 
         val life = live.life
@@ -480,6 +502,7 @@ class DevView : Disposable {
         when (page) {
             Page.Now -> drawNow(session, live)
             Page.Memory -> drawMemory(session, live)
+            Page.Journal -> drawJournal(session)
             Page.History -> drawHistory(session)
             Page.Log -> drawLog(live)
         }
@@ -495,7 +518,7 @@ class DevView : Disposable {
         }
         val upDown = when (page) {
             Page.Now -> ""
-            Page.History -> "UP newer · DOWN older · "
+            Page.History, Page.Journal -> "UP newer · DOWN older · "
             else -> "UP/DOWN scroll · "
         }
         line("${ok}LEFT/RIGHT pages · ${upDown}BACK twice restarts", SMALL_SCALE * 0.9f, MUTED, maxLines = 1)
@@ -567,7 +590,8 @@ class DevView : Disposable {
             if (deciding == null) line(if (session.state == RunState.Ready) "(none: the run starts when you press OK)" else "(none yet)", BODY_SCALE * 0.9f, MUTED)
         } else {
             line(decision.rationale ?: "fallback: ${decision.error}", BODY_SCALE * 0.9f, if (decision.fellBack) FAILED else TEXT, maxLines = 3)
-            val recalled = if (decision.recalled.isNotEmpty()) " · ${decision.recalled.size} memories recalled" else ""
+            val recalled = (if (decision.recalled.isNotEmpty()) " · ${decision.recalled.size} memories recalled" else "") +
+                if (decision.recalledJournal.isNotEmpty()) " · ${decision.recalledJournal.size} journal entries" else ""
             line("${Describe.intent(decision.intent)} · ${decision.latency.inWholeMilliseconds} ms$recalled", SMALL_SCALE * 0.9f, CODE, maxLines = 1)
         }
 
@@ -615,6 +639,56 @@ class DevView : Disposable {
         }
     }
 
+    private fun drawJournal(session: SimSession) {
+        val mem = session.memory
+        val writer = mem.journalWriter
+        val entries = mem.journalEntries()
+        val status = when {
+            writer == null -> "no journal writer configured (journal_endpoint): journaling costs time and energy but writes nothing"
+            mem.writingJournal -> "$writer is writing an entry..."
+            else -> "${entries.sumOf { it.wants.size }} wants so far · by $writer"
+        }
+        if (entries.isEmpty()) {
+            heading("JOURNAL")
+            line(status, SMALL_SCALE * 0.9f, MUTED, maxLines = 2)
+            session.journalError?.let { line("last entry failed: $it", SMALL_SCALE * 0.9f, FAILED, maxLines = 2) }
+            return line("(no entries yet)", BODY_SCALE * 0.8f, MUTED)
+        }
+        val sel = (journalPick ?: entries.lastIndex).coerceIn(0, entries.lastIndex)
+        heading(if (journalPick == null) "JOURNAL · ${entries.size} · following the newest" else "JOURNAL · ${sel + 1} of ${entries.size}")
+        line(status, SMALL_SCALE * 0.9f, MUTED, maxLines = 1)
+        session.journalError?.let { line("last entry failed: $it", SMALL_SCALE * 0.9f, FAILED, maxLines = 1) }
+
+        // Newest first, a window of rows that keeps the pick in view.
+        val pos = entries.lastIndex - sel
+        val first = (pos - JOURNAL_ROWS / 2).coerceIn(0, max(0, entries.size - JOURNAL_ROWS))
+        val scale = SMALL_SCALE * 0.95f
+        font.data.setScale(scale)
+        val rowHeight = font.lineHeight
+        for (k in first until min(entries.size, first + JOURNAL_ROWS)) {
+            val i = entries.lastIndex - k
+            val e = entries[i]
+            val selected = i == sel
+            val color = if (selected) TEXT else MUTED
+            cell(if (selected) ">" else "", PANEL_X, 20f, scale, ACCENT)
+            cell(e.label, PANEL_X + 24f, 170f, scale, color)
+            cell(e.text, PANEL_X + 200f, PANEL_WIDTH - 340f, scale, color)
+            val wants = if (e.wants.size == 1) "1 want" else "${e.wants.size} wants"
+            cell(wants, PANEL_X + PANEL_WIDTH - 130f, 130f, scale, if (selected) CODE else MUTED, Align.right)
+            cursor -= rowHeight
+        }
+
+        // The picked entry in full.
+        val e = entries[sel]
+        val shown = if (e.id in mem.lastRecalledJournal) " · shown at the latest decision" else ""
+        heading("${e.label.uppercase()}$shown")
+        line(e.text, MEMORY_SCALE, TEXT, maxLines = 16, gapAfter = 0.4f)
+        e.wants.forEach { w ->
+            line("wants [${w.kind}] ${w.text}", SMALL_SCALE * 0.95f, CODE, maxLines = 2, gapAfter = 0.05f)
+            line("because ${w.because}", SMALL_SCALE * 0.9f, MUTED, maxLines = 4, gapAfter = 0.3f, indent = 16f)
+        }
+    }
+
     private fun drawHistory(session: SimSession) {
         val h = session.history
         if (h.isEmpty()) {
@@ -656,6 +730,10 @@ class DevView : Disposable {
         if (d.recalled.isNotEmpty()) {
             line("recalled ${d.recalled.size} memor${if (d.recalled.size == 1) "y" else "ies"}:", SMALL_SCALE * 0.9f, ACCENT, maxLines = 1, gapAfter = 0.05f)
             d.recalled.asReversed().forEach { line(it, SMALL_SCALE * 0.85f, MUTED, maxLines = 2, gapAfter = 0.15f, indent = 16f) }
+        }
+        if (d.recalledJournal.isNotEmpty()) {
+            line("journal shown (${d.recalledJournal.size}):", SMALL_SCALE * 0.9f, ACCENT, maxLines = 1, gapAfter = 0.05f)
+            d.recalledJournal.asReversed().forEach { line(it, SMALL_SCALE * 0.85f, MUTED, maxLines = 2, gapAfter = 0.15f, indent = 16f) }
         }
         if (d.fellBack) line("raw: ${d.raw ?: "(none)"}", SMALL_SCALE * 0.85f, FAILED, maxLines = 2)
     }
@@ -750,6 +828,7 @@ class DevView : Disposable {
         private const val FOOTER_Y = MARGIN + 30f
         private const val NOW_EVENT_ROWS = 5
         private const val HISTORY_ROWS = 7
+        private const val JOURNAL_ROWS = 5
         private const val MONEY_ROWS = 5
         private const val TAB_GAP = 48f
         private const val LABEL_SCALE = 1.1f

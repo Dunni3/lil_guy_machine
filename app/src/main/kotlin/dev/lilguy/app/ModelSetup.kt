@@ -34,9 +34,14 @@ class ModelSetup(
     val memoryModel: (() -> DecisionModel)? = null,
     /** Bedroom: game days a run lasts before it ends; null for no end. */
     val days: Int? = DEFAULT_DAYS,
+    /** A fresh model for each run that writes his journal; null and journaling writes nothing. */
+    val journalModel: (() -> DecisionModel)? = null,
 ) {
-    fun copy(memoryModel: (() -> DecisionModel)? = this.memoryModel, notice: String? = this.notice) =
-        ModelSetup(create, scenario, ticksPerMinute, timeout, logDir, notice, memoryModel, days)
+    fun copy(
+        memoryModel: (() -> DecisionModel)? = this.memoryModel,
+        notice: String? = this.notice,
+        journalModel: (() -> DecisionModel)? = this.journalModel,
+    ) = ModelSetup(create, scenario, ticksPerMinute, timeout, logDir, notice, memoryModel, days, journalModel)
 
     /** The tick a bedroom run ends on, or null if it doesn't end on its own. */
     val endTick: Long? get() = days?.takeIf { scenario == Scenario.Bedroom }?.let { it.toLong() * GameClock.MINUTES_PER_DAY * ticksPerMinute }
@@ -63,7 +68,8 @@ class ModelSetup(
          * Falls back to the scripted policy, with a notice saying why, when there's no config, no
          * endpoint chosen, or no key. [env] is the only place keys come from. Logs go in a new
          * timestamped directory under [logRoot]. Memories are written by [memoryEndpoint] (or the
-         * config's `memory_endpoint`; "none" turns it off), whichever model decides.
+         * config's `memory_endpoint`; "none" turns it off), whichever model decides, and the journal
+         * by [journalEndpoint] (or `journal_endpoint`) the same way.
          */
         fun fromConfig(
             configFile: File,
@@ -74,10 +80,11 @@ class ModelSetup(
             ticksPerMinute: Int = GameClock.DEFAULT_TICKS_PER_MINUTE,
             memoryEndpoint: String? = null,
             days: Int? = DEFAULT_DAYS,
+            journalEndpoint: String? = null,
         ): ModelSetup {
             val logDir = logRoot?.let { File(it, "app-${scenario.id}-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))) }
             if (!configFile.isFile) {
-                val notice = if (endpoint != null || memoryEndpoint != null) "no config at ${configFile.path}; using the scripted policy" else null
+                val notice = if (endpoint != null || memoryEndpoint != null || journalEndpoint != null) "no config at ${configFile.path}; using the scripted policy" else null
                 return scripted(notice, logDir, scenario, ticksPerMinute, days)
             }
             val config = try {
@@ -86,7 +93,8 @@ class ModelSetup(
                 return scripted("${e.message}; using the scripted policy", logDir, scenario, ticksPerMinute, days)
             }
             val notices = mutableListOf<String>()
-            val writer = memoryWriter(config, memoryEndpoint ?: config.defaultMemoryEndpoint, env, notices)
+            val writer = textWriter(config, memoryEndpoint ?: config.defaultMemoryEndpoint, env, notices, "memory", "memories won't be written")
+            val journal = textWriter(config, journalEndpoint ?: config.defaultJournalEndpoint, env, notices, "journal", "the journal won't be written")
             val base = scripted(null, logDir, scenario, ticksPerMinute, days)
             val agent = try {
                 val name = endpoint ?: config.defaultEndpoint ?: "scripted"
@@ -101,21 +109,24 @@ class ModelSetup(
                 notices.add(0, "${e.message}; using the scripted policy")
                 base
             }
-            return agent.copy(memoryModel = writer, notice = notices.joinToString("; ").ifEmpty { null })
+            return agent.copy(memoryModel = writer, journalModel = journal, notice = notices.joinToString("; ").ifEmpty { null })
         }
 
-        /** A factory for the memory-writing model, or null (with a notice when one was asked for but can't be used). */
-        private fun memoryWriter(config: EndpointsFile, name: String?, env: (String) -> String?, notices: MutableList<String>): (() -> DecisionModel)? {
+        /**
+         * A factory for a model that writes text ([what]: memories or the journal), or null, with a
+         * notice ending in [without] when one was asked for but can't be used.
+         */
+        private fun textWriter(config: EndpointsFile, name: String?, env: (String) -> String?, notices: MutableList<String>, what: String, without: String): (() -> DecisionModel)? {
             if (name == null || name == "none") return null
             return try {
-                require(name in config.endpoints) { "no memory endpoint '$name'" }
+                require(name in config.endpoints) { "no $what endpoint '$name'" }
                 val probe = Endpoints.create(config, name, env)
                 (probe as? AutoCloseable)?.close()
-                require(!probe.capabilities.closedChoice) { "memory endpoint '$name' only picks from options" }
+                require(!probe.capabilities.closedChoice) { "$what endpoint '$name' only picks from options" }
                 val factory: () -> DecisionModel = { Endpoints.create(config, name, env) }
                 factory
             } catch (e: Exception) {
-                notices += "${e.message}; memories won't be written"
+                notices += "${e.message}; $without"
                 null
             }
         }

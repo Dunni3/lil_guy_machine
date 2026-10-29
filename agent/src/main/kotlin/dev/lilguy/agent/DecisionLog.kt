@@ -1,5 +1,8 @@
 package dev.lilguy.agent
 
+import dev.lilguy.agent.memory.JournalSession
+import dev.lilguy.agent.memory.JournalStep
+import dev.lilguy.agent.memory.Want
 import dev.lilguy.decision.ActionSchema
 import dev.lilguy.decision.Capabilities
 import dev.lilguy.decision.Decision
@@ -13,6 +16,8 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import java.io.Closeable
 import java.io.File
 import kotlin.time.Duration
@@ -61,6 +66,44 @@ data class LoggedChoices(
 @Serializable
 data class LoggedMessage(val role: String, val content: String)
 
+/**
+ * A journal session, logged between the decisions: every model call (a search with what it found,
+ * or the final write), the entry and wants, and whether it was kept. `kind` tells these lines from
+ * decision lines, which [DecisionLog.read] keeps to itself.
+ */
+@Serializable
+data class JournalLogEntry(
+    val kind: String = KIND,
+    val run: String,
+    val writer: String,
+    val tick: Long,
+    val day: Int?,
+    val time: String?,
+    val status: String,
+    val calls: List<LoggedJournalCall>,
+    val entry: String?,
+    val wants: List<Want>,
+    @SerialName("latency_ms") val latencyMs: Long,
+    @SerialName("prompt_tokens") val promptTokens: Int,
+    @SerialName("completion_tokens") val completionTokens: Int,
+    val error: String? = null,
+) {
+    companion object {
+        const val KIND = "journal"
+    }
+}
+
+@Serializable
+data class LoggedJournalCall(
+    val raw: String,
+    /** "search" or "write". */
+    val step: String,
+    val source: String? = null,
+    val query: String? = null,
+    /** For a search: each hit as "stamp: text". */
+    val results: List<String> = emptyList(),
+)
+
 @Serializable
 data class LoggedAttempt(val raw: String, val error: String? = null)
 
@@ -72,8 +115,12 @@ data class LoggedAttempt(val raw: String, val error: String? = null)
 class DecisionLog(val file: File, private val run: String, private val model: String) : Closeable {
     private val out = file.also { it.parentFile?.mkdirs() }.bufferedWriter()
 
-    fun write(record: AgentRuntime.DecisionRecord) {
-        val line = json.encodeToString(DecisionLogEntry.serializer(), entryOf(run, model, record))
+    fun write(record: AgentRuntime.DecisionRecord) = append(json.encodeToString(DecisionLogEntry.serializer(), entryOf(run, model, record)))
+
+    /** Journal sessions go in the same file, marked `"kind": "journal"`. */
+    fun write(session: JournalSession) = append(json.encodeToString(JournalLogEntry.serializer(), journalEntryOf(run, session)))
+
+    private fun append(line: String) {
         synchronized(out) {
             out.write(line)
             out.newLine()
@@ -111,8 +158,36 @@ class DecisionLog(val file: File, private val run: String, private val model: St
             fallback = r.fellBack,
         )
 
-        fun read(file: File): List<DecisionLogEntry> =
-            file.readLines().filter { it.isNotBlank() }.map { json.decodeFromString(DecisionLogEntry.serializer(), it) }
+        fun journalEntryOf(run: String, s: JournalSession) = JournalLogEntry(
+            run = run,
+            writer = s.writer,
+            tick = s.tick,
+            day = s.day,
+            time = s.time,
+            status = s.status.name.lowercase(),
+            calls = s.calls.map { c ->
+                when (val step = c.step) {
+                    is JournalStep.Search -> LoggedJournalCall(c.raw, "search", step.source.id, step.query, c.results.map { "${it.stamp}: ${it.text}" })
+                    is JournalStep.Write -> LoggedJournalCall(c.raw, "write")
+                }
+            },
+            entry = s.entry,
+            wants = s.wants,
+            latencyMs = s.latency.inWholeMilliseconds,
+            promptTokens = s.usage.promptTokens,
+            completionTokens = s.usage.completionTokens,
+            error = s.error,
+        )
+
+        /** The decisions in a log, leaving out journal lines. */
+        fun read(file: File): List<DecisionLogEntry> = lines(file).filterNot(::isJournal).map { json.decodeFromString(DecisionLogEntry.serializer(), it) }
+
+        /** The journal sessions in a log. */
+        fun readJournal(file: File): List<JournalLogEntry> = lines(file).filter(::isJournal).map { json.decodeFromString(JournalLogEntry.serializer(), it) }
+
+        private fun lines(file: File) = file.readLines().filter { it.isNotBlank() }
+
+        private fun isJournal(line: String) = json.parseToJsonElement(line).jsonObject["kind"] == JsonPrimitive(JournalLogEntry.KIND)
     }
 }
 

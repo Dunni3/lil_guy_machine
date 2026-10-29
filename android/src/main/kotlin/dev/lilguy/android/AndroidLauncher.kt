@@ -28,7 +28,8 @@ class AndroidLauncher : AndroidApplication() {
      * `make tv-run ENDPOINT=<name>` (an `endpoint` intent extra), or let the config's default
      * agent endpoint apply. With no config the scripted policy runs. Extras `scenario`
      * (bedroom or key-door) and `minute_ticks` (the clock scale) pick the room; `memory_endpoint`
-     * the memory writer (default the config's `memory_endpoint`, "none" for off); `days` the
+     * the memory writer (default the config's `memory_endpoint`, "none" for off); `journal_endpoint`
+     * the journal writer, the same way; `days` the
      * bedroom run length (0 for no end).
      */
     private fun modelSetup(): ModelSetup {
@@ -42,6 +43,7 @@ class AndroidLauncher : AndroidApplication() {
             scenario = intent?.getStringExtra("scenario")?.takeIf { it.isNotBlank() }?.let(Scenario::parse) ?: Scenario.Bedroom,
             ticksPerMinute = intent?.getIntExtra("minute_ticks", GameClock.DEFAULT_TICKS_PER_MINUTE) ?: GameClock.DEFAULT_TICKS_PER_MINUTE,
             memoryEndpoint = intent?.getStringExtra("memory_endpoint")?.takeIf { it.isNotBlank() },
+            journalEndpoint = intent?.getStringExtra("journal_endpoint")?.takeIf { it.isNotBlank() },
             days = (intent?.getIntExtra("days", ModelSetup.DEFAULT_DAYS) ?: ModelSetup.DEFAULT_DAYS).takeIf { it > 0 },
         )
     }

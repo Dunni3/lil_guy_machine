@@ -14,10 +14,11 @@ memory and personality (`research_notes/2026-10-29_0313_bedroom-proposal-and-roa
 ```bash
 make test        # JVM unit tests (all modules)
 make cli         # headless runner (ARGS="--scenario bedroom --days 3 --endpoint typesafe")
-                 # add --memory runs/mem.db [--memory-endpoint NAME] for long-term memory
+                 # add --memory runs/mem.db [--memory-endpoint NAME] for long-term memory,
+                 # --journal-endpoint NAME for the journal, --grant paint,easel,... to unlock tiers
 make desktop     # LWJGL3 window
 make tv-connect IP=10.0.0.51   # wireless adb to the Streamer
-make tv-run      # build + install + launch debug APK (ENDPOINT=<name>, MEMORY_ENDPOINT=<name|none>,
+make tv-run      # build + install + launch debug APK (ENDPOINT=<name>, MEMORY_ENDPOINT=<name|none>, JOURNAL_ENDPOINT=,
                  # SCENARIO=key-door, MINUTE_TICKS=<n>, DAYS=<n>); runs wait for OK on the remote
 make tv-push-config  # push config/endpoints.yaml + the keys it names (dev only)
 make tv-logs     # logcat, tag LilGuy
@@ -37,9 +38,10 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
 - The bedroom: `sim/.../BedroomWorld.kt` (engine), `BedroomContent.kt` (schema of the content file),
   `GameClock.kt` (clock scale knob), `Ledger.kt` (money ledger and needs). Content, which is where
   numbers and new jobs, items and hobbies go: `sim/src/main/resources/content/bedroom.yaml`.
+  Anything with `tier` above 0 is gated until its id is granted (`BedroomContent.unlocked`).
 - Scenario wiring, scripted policies, lockstep runner: `agent/.../Scenario.kt` (`Scenario` enum),
   `KeyDoorPolicy.kt`, `BedroomPolicy.kt`. Bedroom prompt, schema, choice set: `BedroomPrompt.kt`;
-  run summaries: `BedroomReport.kt`.
+  who he is (shared with the journal): `Persona.kt`; run summaries and the journal report: `BedroomReport.kt`.
 - Decision layer: `decision/.../DecisionModel.kt`, `ActionSchema.kt` (schema + reply parser),
   `JsonSchemaGenerator.kt`, `SchemaValidator.kt`, `OpenAiCompatBackend.kt`, `TypesafeBackend.kt`
   (System One, picks from `DecisionRequest.choices`), `Endpoints.kt` (config loader and factory).
@@ -49,9 +51,11 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   log + `ReplayDecisionModel`).
 - Long-term memory (milestone 5, in progress): `agent/.../memory/`: `MemoryStore.kt` (storage interface,
   events and memories, `InMemoryStore`), `AgentMemory.kt` (what `AgentRuntime` talks to), `Describe.kt`
-  (event text), `Summarizer.kt` (LLM writes level-1 memories), `Recall.kt` (which memories reach a
-  prompt). SQLite store: `memory-sqlite/` (JVM only; not in the TV build yet).
-- Renderer: `app/.../LilGuyGame.kt` (2D dev view in `DevView.kt`: map plus Now/Memory/History/Log
+  (event text), `Summarizer.kt` (LLM writes level-1 memories), `Recall.kt` (which memories and journal
+  entries reach a prompt), `Keywords.kt` (shared keyword scoring), `JournalWriter.kt` (the journal's
+  search-then-write LLM loop; `AgentMemory` keeps an entry only when the activity succeeds).
+  SQLite store: `memory-sqlite/` (JVM only; not in the TV build yet).
+- Renderer: `app/.../LilGuyGame.kt` (2D dev view in `DevView.kt`: map plus Now/Memory/Journal/History/Log
   pages; run control, decision history and the app's memory in `SimSession.kt`; remote keys in
   `RemoteInput.kt`: OK start/pause, LEFT/RIGHT pages, UP/DOWN scroll or pick, BACK twice restarts). Launchers: `desktop/`, `android/`.
   `LILGUY_SCREENSHOT=out.png LILGUY_SCREENSHOT_AT=<s> make desktop` saves one frame and quits

@@ -11,6 +11,10 @@ import java.io.File
  * The bedroom as data: the room, need rules, items and activities, loaded from YAML
  * (`content/bedroom.yaml` on the classpath by default). Field names match the file. [load]
  * checks that every id an activity names exists, so a typo fails at start-up, not mid-run.
+ *
+ * Items, activities and uses above tier 0 are gated: they exist in the file but not in the world
+ * until granted. [unlocked] is the content he can see, and it is checked the same way, so a
+ * tier-0 activity can't depend on a gated item.
  */
 @Serializable
 data class BedroomContent(
@@ -30,6 +34,21 @@ data class BedroomContent(
 
     /** Items with [tag] (an id is its own tag), in file order. */
     fun withTag(tag: String): List<ItemSpec> = items.filter { tag in it.allTags }
+
+    /** Ids of everything above tier 0: what can be granted. */
+    val gated: Set<String> get() = (items.filter { it.tier > 0 }.map { it.id } + (activities + uses).filter { it.tier > 0 }.map { it.id }).toSet()
+
+    /** The content with only tier 0 and the [granted] ids in it. */
+    fun unlocked(granted: Set<String>): BedroomContent {
+        val unknown = granted - gated
+        require(unknown.isEmpty()) { "can't grant $unknown: only gated ids (tier above 0) can be granted" }
+        fun open(id: String, tier: Int) = tier == 0 || id in granted
+        return copy(
+            items = items.filter { open(it.id, it.tier) },
+            activities = activities.filter { open(it.id, it.tier) },
+            uses = uses.filter { open(it.id, it.tier) },
+        ).also { it.validate() }
+    }
 
     companion object {
         private val yaml = Yaml(configuration = YamlConfiguration(strictMode = true))
@@ -139,6 +158,8 @@ data class ItemSpec(
     val carried: Boolean = false,
     @SerialName("sell_price") val sellPrice: Int? = null,
     val comfort: Int = 0,
+    /** Above 0, it's gated until granted; see [BedroomContent.unlocked]. */
+    val tier: Int = 0,
 ) {
     val allTags: Set<String> get() = setOf(id) + tags
 }
@@ -166,6 +187,10 @@ data class ActivitySpec(
     val item: String? = null,
     val on: String? = null,
     val background: Background? = null,
+    /** Above 0, it's gated until granted; see [BedroomContent.unlocked]. */
+    val tier: Int = 0,
+    /** What he does, for the prompt's "the only things you can do are ..."; the id when null. */
+    val phrase: String? = null,
 ) {
     @Serializable
     data class Until(val time: String, val need: String? = null, val reaches: Double? = null)

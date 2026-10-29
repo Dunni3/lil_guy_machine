@@ -8,7 +8,7 @@ import com.badlogic.gdx.InputAdapter
  * the only driver.
  *
  * - OK (Enter, Space, play/pause): start a ready run, pause, resume.
- * - LEFT/RIGHT: flip pages. UP/DOWN: scroll, or step through decisions on the History page.
+ * - LEFT/RIGHT: flip pages. UP/DOWN: scroll, or step through decisions (History) and entries (Journal).
  * - BACK twice: throw the run away for a fresh one, which waits for OK. Any other key between
  *   the two presses cancels. R on a keyboard restarts at once. Back is caught by the launcher so
  *   it never leaves the app; Home leaves.

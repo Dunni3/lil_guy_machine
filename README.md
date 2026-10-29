@@ -26,9 +26,9 @@ and a world that has grown because he asked for it.
 ## Where it stands
 
 - **Working:** the bedroom life sim (clock, money, needs, a data-driven list of activities and a
-  shop), decisions from a scripted policy or a model, long-term memory v0, and a 2D dev view on
-  desktop and TV for watching a run, stepping back through his decisions and reading his memories.
-- **In progress:** the tighter economy, the persona and the journal described above.
+  shop), decisions from a scripted policy or a model, long-term memory v0, the tighter economy,
+  the persona and the journal described above, and a 2D dev view on desktop and TV for watching a
+  run, stepping back through his decisions, and reading his memories and journal.
 - **Later:** personality (interests, skills, wants of his own), granting requests to grow the
   world, and a proper 3D renderer in place of the dev view.
 

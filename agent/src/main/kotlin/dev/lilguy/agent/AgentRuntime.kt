@@ -58,6 +58,8 @@ class AgentRuntime(
         val schema: JsonObject? = null,
         /** The long-term memories put into this decision's prompt. */
         val recalled: List<String> = emptyList(),
+        /** The journal entries put into this decision's prompt. */
+        val recalledJournal: List<String> = emptyList(),
     ) {
         val fellBack: Boolean get() = error != null
     }
@@ -83,11 +85,12 @@ class AgentRuntime(
             memory.settle(obs.lastIntent, obs.lastResult)
             longTerm?.observed(obs)
             val recalled = longTerm?.recall(obs).orEmpty()
-            val request = prompts.build(obs, memory.recent(), closedChoice = model.capabilities.closedChoice, memories = recalled)
+            val journal = longTerm?.recallJournal(obs).orEmpty()
+            val request = prompts.build(obs, memory.recent(), closedChoice = model.capabilities.closedChoice, memories = recalled, journal = journal)
             val schema = schemaFor(obs)
             val started = TimeSource.Monotonic.markNow()
             decidingSince = started
-            val base = DecisionRecord(obs.tick, Intent.Wait(0), null, null, Duration.ZERO, observation = obs, request = request, schema = schema.jsonSchema, recalled = recalled)
+            val base = DecisionRecord(obs.tick, Intent.Wait(0), null, null, Duration.ZERO, observation = obs, request = request, schema = schema.jsonSchema, recalled = recalled, recalledJournal = journal)
             val record = try {
                 val decision = withTimeout(request.timeout) { model.decide(request, schema) }
                 base.copy(
@@ -118,7 +121,7 @@ class AgentRuntime(
             }
             memory.record(obs.tick, record.intent)
             recent = memory.recent()
-            longTerm?.acted(obs, record.intent)
+            longTerm?.acted(obs, record.intent, prompts.persona?.let { AgentMemory.JournalBrief(it, PromptBuilder.situationOf(request)) })
             lastDecision = record
             onDecision(record)
             world.submit(id, record.intent)

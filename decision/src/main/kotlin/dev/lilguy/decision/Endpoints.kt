@@ -22,6 +22,9 @@ data class EndpointsFile(
 
     /** The endpoint that writes the first character's memories, if any. */
     val defaultMemoryEndpoint: String? get() = agents.firstOrNull()?.memoryEndpoint
+
+    /** The endpoint that writes the first character's journal, if any. */
+    val defaultJournalEndpoint: String? get() = agents.firstOrNull()?.journalEndpoint
 }
 
 @Serializable
@@ -73,6 +76,8 @@ data class AgentConfig(
     @SerialName("decision_interval") val decisionInterval: String = "on_intent_complete",
     /** Writes long-term memories from the event stream; must write text, so not a closed-choice model. */
     @SerialName("memory_endpoint") val memoryEndpoint: String? = null,
+    /** Writes his journal entries; must write text. Without one, journaling writes nothing. */
+    @SerialName("journal_endpoint") val journalEndpoint: String? = null,
 )
 
 object Endpoints {

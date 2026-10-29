@@ -1,5 +1,7 @@
 package dev.lilguy.agent
 
+import dev.lilguy.agent.memory.JournalEntry
+import dev.lilguy.agent.memory.Want
 import dev.lilguy.sim.BedroomWorld
 import dev.lilguy.sim.Need
 import kotlinx.serialization.SerialName
@@ -71,6 +73,43 @@ object BedroomReport {
         Need.Fullness to (hours.minOfOrNull { it.fullness } ?: 0.0),
         Need.Mood to (hours.minOfOrNull { it.mood } ?: 0.0),
     )
+
+    /** A want and every entry it appeared in, by when it was first written. */
+    data class WantSeen(val want: Want, val first: String, val again: List<String>)
+
+    /**
+     * Every want in [entries], oldest first, with repeats folded in: the same kind and text
+     * (ignoring case and punctuation) counts as asking again. The latest justification is kept,
+     * since a repeated want is often a better-argued one.
+     */
+    fun wants(entries: List<JournalEntry>): List<WantSeen> {
+        val seen = LinkedHashMap<String, WantSeen>()
+        entries.forEach { e ->
+            e.wants.forEach { w ->
+                val key = w.kind + ":" + w.text.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
+                seen[key] = seen[key]?.let { it.copy(want = w, again = it.again + e.label) } ?: WantSeen(w, e.label, emptyList())
+            }
+        }
+        return seen.values.toList()
+    }
+
+    /** The journal as text for the end of a run: each entry, then the wants collected from all of them. */
+    fun journal(entries: List<JournalEntry>): String = buildString {
+        if (entries.isEmpty()) return "journal: no entries"
+        appendLine("journal: ${entries.size} entr${if (entries.size == 1) "y" else "ies"}")
+        entries.forEach { e ->
+            appendLine("  ${e.label} (${e.source})")
+            e.text.lines().forEach { appendLine("    $it") }
+            e.wants.forEach { appendLine("    want [${it.kind}] ${it.text}: ${it.justification}") }
+        }
+        val wants = wants(entries)
+        appendLine("wants: ${wants.size}")
+        wants.forEach { w ->
+            val again = if (w.again.isEmpty()) "" else "; again ${w.again.joinToString()}"
+            appendLine("  [${w.want.kind}] ${w.want.text} (first ${w.first}$again)")
+            appendLine("      because ${w.want.because}")
+        }
+    }.trimEnd()
 
     private fun round1(v: Double) = Math.round(v * 10) / 10.0
 }

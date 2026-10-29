@@ -1,5 +1,6 @@
 package dev.lilguy.agent
 
+import dev.lilguy.agent.memory.JOURNAL_ACTIVITY
 import dev.lilguy.decision.ActionSchema
 import dev.lilguy.decision.ChoiceSet
 import dev.lilguy.decision.SchemaHints
@@ -20,43 +21,74 @@ import kotlinx.serialization.json.putJsonObject
 
 /**
  * How the bedroom is put to a model: the system prompt, the action examples, the per-request
- * reply schema and the closed choice set. The prompt describes his situation ("you live here;
- * you need money for food and anything you want") rather than giving him an objective; needs
- * and wants do the rest. Numbers come from the content file, so the prompt can't drift from
- * the rules.
+ * reply schema and the closed choice set. The prompt opens with who he is ([Persona]) and then
+ * describes his situation rather than giving him an objective; needs and wants do the rest.
+ * Everything else comes from the unlocked content, so the prompt can't drift from the rules or
+ * mention things that are still gated.
  */
 object BedroomPrompt {
     /** About half an hour of game time at the default scale; the choice set's "wait". */
     const val WAIT_TICKS = 150
 
-    fun examples(ticksPerMinute: Int): List<Pair<Intent, String>> = listOf(
-        Intent.Do("sketch") to "do an activity from `activities` that isn't locked; the game walks you there",
-        Intent.Buy("canvas") to "buy something from `shop` that you can afford; it arrives at the door",
-        Intent.Use("jazz_record", on = "record_player") to "use an item you own on another, as listed in `uses`",
-        Intent.MoveTo(Target.Entity("bed")) to "walk to something in the room",
-        Intent.Say("finally, an easel") to "say something out loud",
-        Intent.Wait(WAIT_TICKS) to "do nothing for N ticks, at most ${GridWorld.MAX_WAIT} ($ticksPerMinute ticks = 1 game minute)",
-    )
+    fun examples(content: BedroomContent, ticksPerMinute: Int): List<Pair<Intent, String>> = buildList {
+        val activity = content.activities.firstOrNull { it.work } ?: content.activities.first()
+        add(Intent.Do(activity.id) to "do an activity from `activities` that isn't locked; the game walks you there")
+        content.items.firstOrNull { it.price != null }?.let { add(Intent.Buy(it.id) to "buy something from `shop` that you can afford; it arrives at the door") }
+        content.uses.firstOrNull()?.let { u ->
+            val item = content.withTag(u.item!!).first().id
+            add(Intent.Use(item, on = u.on) to "use an item you own on another, as listed in `uses`")
+        }
+        add(Intent.MoveTo(Target.Entity("bed")) to "walk to something in the room")
+        add(Intent.Say("one day this room will have a window") to "say something out loud")
+        add(Intent.Wait(WAIT_TICKS) to "do nothing for N ticks, at most ${GridWorld.MAX_WAIT} ($ticksPerMinute ticks = 1 game minute)")
+    }
+
+    /** The journal line of the prompt, or null when the content has no journal activity. */
+    private fun journalHint(content: BedroomContent): String? {
+        val j = content.activity(JOURNAL_ACTIVITY) ?: return null
+        val energy = j.effects["energy"]?.let { if (it < 0) " and costs ${-it.toInt()} energy" else "" }.orEmpty()
+        val work = if (j.work) "; it's work, so you can only do it when you are fed and rested enough to work" else ""
+        val minutes = j.minutes?.let { GameClock.duration(it) } ?: "a while"
+        return "- Journal: writing in your journal takes $minutes$energy$work. It's where you say what you want and why."
+    }
 
     fun system(content: BedroomContent, ticksPerMinute: Int): String {
         val r = content.needs
-        val actions = examples(ticksPerMinute).joinToString("\n") { (intent, what) ->
+        val actions = examples(content, ticksPerMinute).joinToString("\n") { (intent, what) ->
             "- ${PromptBuilder.tag(intent)}: $what\n  ${PromptBuilder.exampleJson.encodeToString(Intent.serializer(), intent)}"
         }
         val art = content.items.filter { it.sellPrice != null }.joinToString(" and ") { "a ${it.name} sells for $${it.sellPrice}" }
-        val makers = content.activities.filter { it.produces.isNotEmpty() }.joinToString(" and ") { it.id }
+        val makers = content.activities.filter { it.produces.isNotEmpty() }.map { it.id }
         val work = content.activities.filter { it.work }.joinToString(", ") { it.id }
         val floor = r.workFloor.joinToString(" or ") { "${it.need} is below ${it.below?.toInt()}" }
         val sellAt = content.activities.firstOrNull { it.sells != null }
+        val decor = content.items.any { it.comfort > 0 }
+        val forSale = content.items.filter { it.price != null }
+        val wants = if (forSale.any { it.kind != "food" }) "for food and for anything you want to own" else "for food"
+        val mood = if (decor) {
+            "Mood drifts ${r.moodDriftPerHour.toInt()} an hour toward ${r.moodBaseline.toInt()} plus your room's comfort; nice things raise it for a while, and decor raises comfort."
+        } else {
+            "Mood drifts ${r.moodDriftPerHour.toInt()} an hour toward ${r.moodBaseline.toInt()}; some activities raise it for a while."
+        }
+        val lists = "`activities` lists everything you can do, with how long it takes and what it gives, or why it's locked. `shop` lists what's for sale, its price, whether you can afford it, and what it's for." +
+            if (content.uses.isNotEmpty()) " `uses` lists things you can use on other things." else ""
+        val options = if (content.uses.isNotEmpty()) "activities, uses, shop" else "activities, shop"
+        val music = if (content.uses.any { it.background != null }) " music: what's playing, if anything." else ""
+        val life = listOfNotNull(
+            "- Time: the clock shows the day and the time. Activities take game minutes or hours, and you choose again when one finishes.",
+            "- Needs, each from 0 to 100. Energy falls ${-r.awakeEnergyPerHour.toInt()} an hour while you're awake and comes back while you sleep. Fullness falls ${-r.fullnessPerHour.toInt()} an hour; eating brings it back. $mood Below ${r.low.toInt()} energy or fullness, mood falls ${-r.lowMoodPerHour.toInt()} an hour instead. When $floor you can't work ($work).",
+            "- Money: ${makers.joinToString(" and ")} make${if (makers.size > 1) "" else "s"} art, and ${sellAt?.id ?: "selling"} sells everything you hold at the door: $art. The shop delivers to the door, and you pay when it arrives.",
+            journalHint(content),
+            "- $lists",
+            "- Nothing ends the game. An action that can't be done fails at once, and lastResult says why. Read it and choose something else rather than repeating it.",
+        ).joinToString("\n")
         return """
-            |You are a little guy. You live in this bedroom. You need money for food and for anything you want to own. You'll be living here for a long time. Each turn you choose what to do next; the game carries it out, then shows you how things stand.
+            |${Persona.text(content)}
+            |
+            |You live in this bedroom. You need money $wants. Each turn you choose what to do next; the game carries it out, then shows you how things stand.
             |
             |How your life works:
-            |- Time: the clock shows the day and the time. Activities take game minutes or hours, and you choose again when one finishes.
-            |- Needs, each from 0 to 100. Energy falls ${-r.awakeEnergyPerHour.toInt()} an hour while you're awake and comes back while you sleep. Fullness falls ${-r.fullnessPerHour.toInt()} an hour; eating brings it back. Mood drifts ${r.moodDriftPerHour.toInt()} an hour toward ${r.moodBaseline.toInt()} plus your room's comfort; nice things raise it for a while, and decor raises comfort. Below ${r.low.toInt()} energy or fullness, mood falls ${-r.lowMoodPerHour.toInt()} an hour instead. When $floor you can't work ($work).
-            |- Money: $makers make art, and ${sellAt?.id ?: "selling"} sells everything you hold at the door: $art. The shop delivers to the door, and you pay when it arrives.
-            |- `activities` lists everything you can do, with how long it takes and what it gives, or why it's locked. `shop` lists what's for sale, its price, whether you can afford it, and what it's for. `uses` lists things you can use on other things.
-            |- Nothing ends the game. An action that can't be done fails at once, and lastResult says why. Read it and choose something else rather than repeating it.
+            |$life
             |
             |Actions (the "intent" field), each with an example:
             |$actions
@@ -65,11 +97,13 @@ object BedroomPrompt {
             |
             |The observation is JSON:
             |- clock: day and time. money: dollars. needs: energy, fullness and mood, 0 to 100.
-            |- holding: art you're carrying, to sell. owns: everything else you own, id to count. music: what's playing, if anything.
-            |- activities, uses, shop: your options, as above.
+            |- holding: art you're carrying, to sell. owns: everything else you own, id to count.$music
+            |- $options: your options, as above.
             |- self and nearby: where you are and the furniture around you, with tile x and y. localMap: the room, one string per row, north at the top.
             |- lastIntent and lastResult: your previous action and how it ended (succeeded, failed with a reason, or interrupted).
             |- recentEvents: the last few things that happened, stamped with day and time.
+            |
+            |Below the observation you may see what you remember from earlier, and what you wrote in your journal. The journal is your own words, written at a calmer moment: let the plans in it shape what you do with your hours.
         """.trimMargin()
     }
 
@@ -109,16 +143,17 @@ object BedroomPrompt {
 
     /**
      * The decision as a closed set: each activity that isn't locked, each use on offer, each
-     * purchase he can afford, and waiting half an hour. Walking and talking are left out; the
+     * purchase he can afford, and waiting half an hour. Without [journaling] (no model writes the
+     * entries) the journal is left out, so a picking model doesn't spend hours on nothing visible. Walking and talking are left out; the
      * activities walk him where he needs to be. The state is the life part of the observation
      * (no map or coordinates), plus his recent actions.
      *
      * Options are ordered activities (in content order), uses, purchases, wait: Jev leans toward
      * earlier options, so doing comes before spending and waiting is last.
      */
-    fun choices(obs: Observation, recent: List<Memory.Entry>, ticksPerMinute: Int): ChoiceSet {
+    fun choices(obs: Observation, recent: List<Memory.Entry>, ticksPerMinute: Int, content: BedroomContent, journaling: Boolean = true): ChoiceSet {
         val options = buildList {
-            obs.activities.orEmpty().filter { it.locked == null }.forEach { a ->
+            obs.activities.orEmpty().filter { it.locked == null && (journaling || it.id != JOURNAL_ACTIVITY) }.forEach { a ->
                 add(option(Intent.Do(a.id), "Do ${a.id}: takes ${a.takes}; gives ${a.gives}."))
             }
             obs.uses.orEmpty().forEach { u ->
@@ -130,7 +165,7 @@ object BedroomPrompt {
             add(option(Intent.Wait(WAIT_TICKS), "Wait about ${WAIT_TICKS / ticksPerMinute} minutes and do nothing."))
         }
         val state = buildJsonObject {
-            put("situation", "The character lives in this bedroom. He needs money for food and for anything he wants to own. His needs fall over time; nothing ends the game.")
+            put("situation", Persona.short(content) + " He lives in this bedroom and needs money for food. His needs fall over time; nothing ends the game.")
             obs.clock?.let { put("time", "day ${it.day}, ${it.time}") }
             put("money", obs.money ?: 0)
             obs.needs?.let { n ->
@@ -171,7 +206,8 @@ object BedroomPrompt {
         }
         return ChoiceSet(
             instructions = "What should the character in `state` do next? He lives here for the long run and looks after himself: his `needs` fall over time, " +
-                "and he needs money for food and for anything he wants. Choose what serves him best over the coming days, not just the next hour. " +
+                "and he needs money for food. Choose what serves him best over the coming days, not just the next hour. " +
+                (if (journaling) "Writing in his journal is how his world can grow, but it takes an hour and energy that earning his food also needs. " else "") +
                 "Read `state.last_action` and `state.recent_actions`: don't repeat an action that just failed.",
             state = state,
             options = options,

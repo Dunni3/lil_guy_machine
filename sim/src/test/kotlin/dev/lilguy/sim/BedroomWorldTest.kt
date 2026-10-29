@@ -2,6 +2,7 @@ package dev.lilguy.sim
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -9,11 +10,13 @@ import kotlin.test.assertTrue
 class BedroomWorldTest {
     private val content = BedroomContent.default()
 
+    /** The engine tests run on everything in the file, gated or not; [granted] narrows it. */
     private fun world(
         money: Int = content.start.money,
         needs: NeedLevels = content.start.needs,
         items: Map<String, Int> = content.start.items,
-    ) = BedroomWorld.create(content.copy(start = content.start.copy(money = money, needs = needs, items = items)))
+        granted: Set<String> = content.gated,
+    ) = BedroomWorld.create(content.copy(start = content.start.copy(money = money, needs = needs, items = items)), granted = granted)
 
     /** Submits [intent], steps until it ends, and returns its handle. */
     private fun BedroomWorld.run(intent: Intent, maxTicks: Int = 20_000): IntentHandle {
@@ -36,12 +39,31 @@ class BedroomWorldTest {
     fun `starts with the plan's day 1`() {
         val obs = world().obs()
         assertEquals(ClockReading(1, "08:00"), obs.clock)
-        assertEquals(40, obs.money)
+        assertEquals(20, obs.money)
         assertEquals(NeedLevels(80, 70, 60), obs.needs)
-        assertEquals(mapOf("bed" to 1, "desk" to 1, "chair" to 1, "sketchbook" to 1, "meal" to 2), obs.owns)
+        assertEquals(mapOf("bed" to 1, "desk" to 1, "chair" to 1, "sketchbook" to 1, "journal" to 1, "meal" to 2), obs.owns)
         assertEquals(emptyList(), obs.holding)
         assertEquals(setOf("door", "bed", "desk", "chair"), obs.nearby.map { it.id }.toSet())
         assertTrue(obs.localMap.any { 'b' in it } && obs.localMap.none { 'e' in it }, "the easel slot is empty until bought")
+    }
+
+    @Test
+    fun `tier 0 is the small world, and gated content comes in only when granted`() {
+        val w = world(granted = emptySet())
+        val obs = w.obs()
+        assertEquals(listOf("eat", "sketch", "sell_art", "journal", "sleep"), obs.activities!!.map { it.id })
+        assertEquals(listOf("meal"), obs.shop!!.map { it.id })
+        assertEquals("you have no art to sell; sketch makes some", w.activity("sell_art").locked)
+        assertTrue("no activity called 'paint'" in failure(w.run(Intent.Do("paint"))))
+        assertTrue("'easel' isn't for sale" in failure(w.run(Intent.Buy("easel"))))
+        assertTrue("e easel" in w.mapLegend, "an empty slot still has its name")
+        assertTrue("paint" in content.gated && "easel" in content.gated && "meal" !in content.gated)
+
+        // A grant has to bring what it needs with it, and only gated ids can be granted.
+        val painting = setOf("paint", "easel", "canvas", "painting")
+        assertEquals(listOf("eat", "sketch", "paint", "sell_art", "journal", "sleep"), world(money = 500, granted = painting).obs().activities!!.map { it.id })
+        assertTrue("canvas" in assertFailsWith<IllegalArgumentException> { content.unlocked(setOf("paint", "easel")) }.message!!)
+        assertTrue("meal" in assertFailsWith<IllegalArgumentException> { content.unlocked(setOf("meal")) }.message!!)
     }
 
     @Test
@@ -54,7 +76,7 @@ class BedroomWorldTest {
         assertNull(w.activity("sleep").locked, "energy 80 is tired enough")
         assertNull(w.activity("sketch").locked)
         assertEquals("1h", w.activity("sketch").takes)
-        assertEquals("1 sketch, sells for $12; energy -6", w.activity("sketch").gives)
+        assertEquals("1 sketch, sells for $3; energy -6", w.activity("sketch").gives)
         assertEquals("uses a meal (you have 2); fullness +45", w.activity("eat").gives)
         assertTrue(w.obs().uses!!.isEmpty())
 
@@ -76,7 +98,7 @@ class BedroomWorldTest {
         // Awake decay over the walk and the hour, plus the sketch's -6.
         assertTrue(obs.needs!!.energy in 69..70, "energy ${obs.needs!!.energy}")
         assertTrue(obs.recentEvents.last().endsWith("finished sketch: +1 sketch, energy -6"), obs.recentEvents.last())
-        assertEquals("$12 for the 1 sketch you hold", w.activity("sell_art").gives)
+        assertEquals("$3 for the 1 sketch you hold", w.activity("sell_art").gives)
     }
 
     @Test
@@ -85,16 +107,16 @@ class BedroomWorldTest {
         w.run(Intent.Do("sketch"))
         w.run(Intent.Do("sketch"))
         assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("sell_art")).status)
-        assertEquals(64, w.ledger.balance)
+        assertEquals(26, w.ledger.balance)
         assertEquals(emptyList(), w.obs().holding)
 
         assertIs<IntentStatus.Succeeded>(w.run(Intent.Buy("meal")).status)
-        assertEquals(46, w.ledger.balance)
+        assertEquals(2, w.ledger.balance)
         assertEquals(5, w.count("meal"))
-        assertEquals(listOf(24, -18), w.ledger.transactions.map { it.amount })
+        assertEquals(listOf(6, -24), w.ledger.transactions.map { it.amount })
         assertEquals(listOf("sold 2 sketches", "bought 3 meals"), w.ledger.transactions.map { it.reason })
-        assertEquals(40 + w.ledger.transactions.sumOf { it.amount }, w.ledger.balance)
-        assertTrue(w.obs().recentEvents.any { "bought 3 meals for $18 (money $46)" in it })
+        assertEquals(20 + w.ledger.transactions.sumOf { it.amount }, w.ledger.balance)
+        assertTrue(w.obs().recentEvents.any { "bought 3 meals for $24 (money $2)" in it })
         assertEquals(w.ledger.transactions, w.snapshot().life!!.transactions)
     }
 
@@ -102,10 +124,10 @@ class BedroomWorldTest {
     fun `the shop lists prices, affordability and what an item is for`() {
         val w = world()
         val shop = w.obs().shop!!.associateBy { it.id }
-        assertEquals(ShopOption("meal", 18, true, "3 meals; for eat"), shop["meal"])
+        assertEquals(ShopOption("meal", 24, false, "3 meals; for eat"), shop["meal"])
         assertEquals(ShopOption("easel", 120, false, "for paint (3h: 1 painting, sells for $70; uses a canvas), which also needs a canvas ($15)"), shop["easel"])
         assertEquals("comfort +4: mood settles 4 higher", shop.getValue("plant").gives)
-        assertEquals("the easel costs $120 and you have $40", failure(w.run(Intent.Buy("easel"))))
+        assertEquals("the easel costs $120 and you have $20", failure(w.run(Intent.Buy("easel"))))
         assertTrue("isn't for sale" in failure(w.run(Intent.Buy("bed"))))
 
         val rich = world(money = 500)

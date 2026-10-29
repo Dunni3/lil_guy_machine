@@ -4,6 +4,8 @@ import dev.lilguy.agent.AgentRuntime
 import dev.lilguy.agent.DecisionLog
 import dev.lilguy.agent.memory.AgentMemory
 import dev.lilguy.agent.memory.InMemoryStore
+import dev.lilguy.agent.memory.JournalSession
+import dev.lilguy.agent.memory.JournalWriter
 import dev.lilguy.agent.memory.Summarizer
 import dev.lilguy.decision.DecisionModel
 import dev.lilguy.sim.GridWorld
@@ -25,7 +27,7 @@ import kotlin.time.Duration
  * [restart] throws the run away and sets up a blank one, which again waits for [start].
  *
  * Ticks at a fixed 20 Hz from the render thread (which makes the render thread the sim thread).
- * The agent and the memory writer run in a per-run child of [scope], off that thread. Every
+ * The agent and the memory and journal writers run in a per-run child of [scope], off that thread. Every
  * decision is kept with the world as it was when it was made ([history]), so the view can flip
  * back through the whole run.
  */
@@ -58,6 +60,10 @@ class SimSession(
     @Volatile var memoryError: String? = null
         private set
 
+    /** The journal writer's latest failure this run, if any. */
+    @Volatile var journalError: String? = null
+        private set
+
     /** Why the run ended, once it has. */
     var endedBecause: String? = null
         private set
@@ -86,6 +92,7 @@ class SimSession(
     private var agent: Job? = null
     private var model: DecisionModel? = null
     private var writer: DecisionModel? = null
+    private var journalWriter: DecisionModel? = null
     private var log: DecisionLog? = null
     /** Decisions from the agent coroutine, waiting for the render thread to file them in [history]. */
     private var inbox = ConcurrentLinkedQueue<AgentRuntime.DecisionRecord>()
@@ -158,13 +165,19 @@ class SimSession(
         val summarizer = w?.let {
             Summarizer(it, store, runId, onFailure = { e -> if (run == thisRun) memoryError = e.message ?: e.toString() })
         }
-        memory = AgentMemory(store, runId, summarizer, scope = rs)
+        val jw = setup.journalModel?.invoke()
+        val onJournal = { s: JournalSession ->
+            runCatching { runLog?.write(s) }
+            if (run == thisRun && s.status == JournalSession.Status.Failed) journalError = s.error
+        }
+        memory = AgentMemory(store, runId, summarizer, scope = rs, journal = jw?.let { JournalWriter(it, store, runId) }, onJournal = onJournal)
         val (gw, r) = setup.scenario.create(m, setup.timeout, setup.ticksPerMinute, longTerm = memory) {
             runCatching { runLog?.write(it) }
             runInbox.add(it)
         }
         model = m
         writer = w
+        journalWriter = jw
         log = runLog
         inbox = runInbox
         runScope = rs
@@ -175,6 +188,7 @@ class SimSession(
         recent.addLast(current)
         state = RunState.Ready
         memoryError = null
+        journalError = null
         endedBecause = null
         accumulator = 0f
     }
@@ -183,11 +197,13 @@ class SimSession(
         runScope?.cancel()
         (model as? AutoCloseable)?.close()
         (writer as? AutoCloseable)?.close()
+        (journalWriter as? AutoCloseable)?.close()
         log?.close()
         runScope = null
         agent = null
         model = null
         writer = null
+        journalWriter = null
         log = null
         moments.clear()
         recent.clear()

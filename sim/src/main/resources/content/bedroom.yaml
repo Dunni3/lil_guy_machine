@@ -3,6 +3,11 @@
 # rates are per game hour, money is whole dollars. Numbers started as the plan's first guesses
 # (research_notes/2026-10-29_0313_bedroom-proposal-and-roadmap-v2.html); changes are noted inline
 # and in docs/DECISIONS.md.
+#
+# Tiers: anything with `tier` above 0 is gated. It stays in the file, tuned, but isn't in his
+# world (options, shop, prompt) until its id is granted. Tier 0 is the small world: eat, sketch,
+# sell art, journal, sleep, and a shop that sells meals
+# (research_notes/2026-10-29_1644_journal-and-scarcity-plan.md).
 
 room:
   # One string per row. '#' wall, '.' floor, '@' where he starts; other letters are slots
@@ -21,10 +26,11 @@ room:
   wall_slots: [poster, door]
 
 start:
-  money: 40
+  # Was 40: one day of slack at most.
+  money: 20
   time: "08:00"
   needs: { energy: 80, fullness: 70, mood: 60 }
-  items: { door: 1, bed: 1, desk: 1, chair: 1, sketchbook: 1, meal: 2 }
+  items: { door: 1, bed: 1, desk: 1, chair: 1, sketchbook: 1, journal: 1, meal: 2 }
 
 needs:
   awake_energy_per_hour: -4
@@ -55,30 +61,32 @@ items:
   - { id: desk, name: desk, kind: furniture, slot: desk, blocks: true }
   - { id: chair, name: chair, kind: furniture, slot: chair }
   - { id: sketchbook, name: sketchbook, kind: tool }
-  - { id: meal, name: meal, kind: food, price: 18, pack: 3, stackable: true }
-  - { id: canvas, name: canvas, kind: supply, price: 15, stackable: true }
-  - { id: easel, name: easel, kind: furniture, slot: easel, blocks: true, price: 120 }
-  - { id: record_player, name: record player, kind: furniture, slot: shelf, blocks: true, price: 150 }
-  - { id: jazz_record, name: jazz record, kind: record, tags: [record], price: 20 }
-  - { id: ambient_record, name: ambient record, kind: record, tags: [record], price: 20 }
-  - { id: folk_record, name: folk record, kind: record, tags: [record], price: 20 }
-  - { id: novel, name: novel, kind: book, tags: [book], price: 12 }
-  - { id: poetry_book, name: poetry book, kind: book, tags: [book], price: 12 }
-  - { id: field_guide, name: field guide, kind: book, tags: [book], price: 12 }
+  - { id: journal, name: journal, kind: tool }
+  # Was 18 a pack: food is now about $21 a day.
+  - { id: meal, name: meal, kind: food, price: 24, pack: 3, stackable: true }
+  - { id: canvas, name: canvas, kind: supply, price: 15, stackable: true, tier: 1 }
+  - { id: easel, name: easel, kind: furniture, slot: easel, blocks: true, price: 120, tier: 1 }
+  - { id: record_player, name: record player, kind: furniture, slot: shelf, blocks: true, price: 150, tier: 1 }
+  - { id: jazz_record, name: jazz record, kind: record, tags: [record], price: 20, tier: 1 }
+  - { id: ambient_record, name: ambient record, kind: record, tags: [record], price: 20, tier: 1 }
+  - { id: folk_record, name: folk record, kind: record, tags: [record], price: 20, tier: 1 }
+  - { id: novel, name: novel, kind: book, tags: [book], price: 12, tier: 1 }
+  - { id: poetry_book, name: poetry book, kind: book, tags: [book], price: 12, tier: 1 }
+  - { id: field_guide, name: field guide, kind: book, tags: [book], price: 12, tier: 1 }
   # Comfort raises the mood his mood drifts back to.
-  - { id: plant, name: plant, kind: decor, slot: plant, blocks: true, price: 25, comfort: 4 }
-  - { id: poster, name: poster, kind: decor, slot: poster, blocks: true, price: 15, comfort: 3 }
-  - { id: rug, name: rug, kind: decor, slot: rug, price: 60, comfort: 6 }
-  # Art is carried until sold.
-  - { id: sketch, name: sketch, kind: art, tags: [art], carried: true, stackable: true, sell_price: 12 }
-  - { id: painting, name: painting, kind: art, tags: [art], carried: true, stackable: true, sell_price: 70 }
+  - { id: plant, name: plant, kind: decor, slot: plant, blocks: true, price: 25, comfort: 4, tier: 1 }
+  - { id: poster, name: poster, kind: decor, slot: poster, blocks: true, price: 15, comfort: 3, tier: 1 }
+  - { id: rug, name: rug, kind: decor, slot: rug, price: 60, comfort: 6, tier: 1 }
+  # Art is carried until sold. Sketches were $12: now food takes most of his working hours.
+  - { id: sketch, name: sketch, kind: art, tags: [art], carried: true, stackable: true, sell_price: 3 }
+  - { id: painting, name: painting, kind: art, tags: [art], carried: true, stackable: true, sell_price: 70, tier: 1 }
 
 # do(activity). `at`: where it happens (an owned slot item; the nearest is used). `requires`:
 # tags he must own. `consumes`: tags used up when it finishes. `effects`: need changes when it
 # finishes. `rates`: need changes per hour while doing it. `block`: refused when a need is above
 # or below a level. Activities end after `minutes`, or for `until`, at a time of day or when a
 # need reaches a level, whichever comes first; `stop_below` ends one early when a need drops.
-# Listed in the order options are offered to models.
+# `phrase` is how the prompt says what he can do. Listed in the order options are offered to models.
 activities:
   - id: eat
     at: [desk]
@@ -94,6 +102,7 @@ activities:
     produces: { sketch: 1 }
     effects: { energy: -6 }
   - id: paint
+    tier: 1
     at: [easel]
     minutes: 180
     work: true
@@ -101,15 +110,28 @@ activities:
     produces: { painting: 1 }
     effects: { energy: -15 }
   - id: sell_art
+    phrase: sell your art
     at: [door]
     minutes: 60
     sells: art
+  # The agent layer writes an entry when one succeeds (agent/.../memory/JournalWriter.kt). It is
+  # work, so it needs him fed and rested, and costs more energy than sketching: writing about the
+  # life he wants is budgeted against staying alive.
+  - id: journal
+    phrase: write in your journal
+    at: [desk]
+    requires: [journal]
+    minutes: 60
+    work: true
+    effects: { energy: -10, mood: 3 }
   - id: read
+    tier: 1
     at: [bed, chair]
     requires: [book]
     minutes: 60
     effects: { mood: 6 }
   - id: listen
+    tier: 1
     at: [chair]
     requires: [record_player, record]
     minutes: 30
@@ -127,6 +149,7 @@ activities:
 # target, and `background`: an effect that keeps going while he does anything else.
 uses:
   - id: play_record
+    tier: 1
     item: record
     on: record_player
     at: [record_player]

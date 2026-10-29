@@ -22,22 +22,34 @@ import kotlin.time.Duration.Companion.seconds
  * Turns an observation plus recent memory into a request. The system prompt is fixed per
  * scenario: how the world works, the action space with an example of each action, the reply
  * format and what the observation fields mean. The user message is the observation as one line
- * of JSON and the recent intents with how each ended, each stamped by [stamp].
+ * of JSON, then what he recalls (memories, and journal entries in their own section), and the
+ * recent intents with how each ended, each stamped by [stamp].
  *
- * [choices] builds the same decision as a closed set, for models that pick.
+ * [choices] builds the same decision as a closed set, for models that pick. [persona] is who he
+ * is, for the journal; null in rooms without one.
  */
 class PromptBuilder(
     val system: String,
     private val timeout: Duration,
     private val choices: (Observation, List<Memory.Entry>) -> ChoiceSet,
     private val stamp: (Long) -> String = { "tick $it" },
+    val persona: String? = null,
 ) {
     /** The key-and-door room: [goal] in the system prompt and the key-and-door choice set. */
     constructor(goal: String, timeout: Duration = 20.seconds) :
         this(systemPrompt(goal), timeout, { obs, recent -> actionChoices(obs, goal, recent) })
 
-    /** [closedChoice] adds the same decision as a set of options, for models that pick. */
-    fun build(obs: Observation, recent: List<Memory.Entry>, closedChoice: Boolean = false, memories: List<String> = emptyList()): DecisionRequest {
+    /**
+     * [closedChoice] adds the same decision as a set of options, for models that pick. [memories]
+     * and [journal] are what long-term memory recalled for this decision.
+     */
+    fun build(
+        obs: Observation,
+        recent: List<Memory.Entry>,
+        closedChoice: Boolean = false,
+        memories: List<String> = emptyList(),
+        journal: List<String> = emptyList(),
+    ): DecisionRequest {
         val history = recent.joinToString("\n") { e ->
             "${stamp(e.tick)}: ${json.encodeToString(Intent.serializer(), e.intent)} -> ${e.result?.let(::describe) ?: "running"}"
         }
@@ -48,29 +60,47 @@ class PromptBuilder(
                 appendLine("What you remember from earlier, oldest first:")
                 memories.forEach { appendLine("- $it") }
             }
+            if (journal.isNotEmpty()) {
+                appendLine(JOURNAL_HEADER)
+                journal.forEach { appendLine("- $it") }
+            }
             if (history.isNotEmpty()) {
                 appendLine("Your recent actions, oldest first:")
                 appendLine(history)
             }
-            append("Choose your next action.")
+            append(ASK)
         }
         return DecisionRequest(
             system = system,
             messages = listOf(Message(Message.Role.User, user)),
             timeout = timeout,
-            choices = if (closedChoice) choices(obs, recent)?.let { withMemories(it, memories) } else null,
+            choices = if (closedChoice) choices(obs, recent)?.let { withRecall(it, memories, journal) } else null,
         )
     }
 
-    /** Adds what he remembers to the state a picking model judges the options against. */
-    private fun withMemories(set: ChoiceSet, memories: List<String>): ChoiceSet {
-        if (memories.isEmpty()) return set
-        val state = JsonObject(set.state + ("memories" to JsonArray(memories.map(::JsonPrimitive))))
-        return set.copy(state = state, instructions = set.instructions + " `state.memories` is what he remembers from earlier, oldest first.")
+    /** Adds what he remembers and what he wrote to the state a picking model judges the options against. */
+    private fun withRecall(set: ChoiceSet, memories: List<String>, journal: List<String>): ChoiceSet {
+        var state = set.state
+        var instructions = set.instructions
+        if (memories.isNotEmpty()) {
+            state = JsonObject(state + ("memories" to JsonArray(memories.map(::JsonPrimitive))))
+            instructions += " `state.memories` is what he remembers from earlier, oldest first."
+        }
+        if (journal.isNotEmpty()) {
+            state = JsonObject(state + ("journal" to JsonArray(journal.map(::JsonPrimitive))))
+            instructions += " `state.journal` is what he wrote in his journal, oldest first: his own plans, which should shape how he spends his hours."
+        }
+        return set.copy(state = state, instructions = instructions)
     }
 
     companion object {
         private const val OBSERVATION_HEADER = "Observation:"
+        const val JOURNAL_HEADER = "What you wrote in your journal, oldest first:"
+        private const val ASK = "Choose your next action."
+
+        /** The user message of [request] without the closing ask: his situation, for the journal. */
+        fun situationOf(request: DecisionRequest): String =
+            request.messages.lastOrNull { it.role == Message.Role.User }?.content?.removeSuffix(ASK)?.trimEnd().orEmpty()
         private val json = Json { encodeDefaults = true; ignoreUnknownKeys = true }
         /** Examples show every field, nulls included, the way a strict schema wants them. */
         internal val exampleJson = Json { encodeDefaults = true; explicitNulls = true }

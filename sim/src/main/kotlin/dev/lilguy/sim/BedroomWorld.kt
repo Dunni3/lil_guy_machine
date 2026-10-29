@@ -479,11 +479,18 @@ class BedroomWorld private constructor(
             return if (v >= 0) "+$text" else text
         }
 
+        /**
+         * A world of [content] with only tier 0 and the [granted] ids in it; [BedroomWorld.content]
+         * is that unlocked part.
+         */
         fun create(
             content: BedroomContent = BedroomContent.default(),
             ticksPerMinute: Int = GameClock.DEFAULT_TICKS_PER_MINUTE,
             characterId: String = "guy",
-        ): BedroomWorld {
+            granted: Set<String> = emptySet(),
+        ): BedroomWorld = build(content.unlocked(granted), ticksPerMinute, characterId)
+
+        private fun build(content: BedroomContent, ticksPerMinute: Int, characterId: String): BedroomWorld {
             val rows = content.room.rows
             require(rows.isNotEmpty() && rows.all { it.length == rows[0].length }) { "room rows must all be the same length" }
             val height = rows.size

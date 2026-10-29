@@ -1,10 +1,15 @@
 package dev.lilguy.memory
 
 import dev.lilguy.agent.memory.EventKind
+import dev.lilguy.agent.memory.JournalEntry
+import dev.lilguy.agent.memory.Keywords
 import dev.lilguy.agent.memory.MemoryEvent
 import dev.lilguy.agent.memory.MemoryStore
+import dev.lilguy.agent.memory.SearchHit
+import dev.lilguy.agent.memory.SearchSource
 import dev.lilguy.agent.memory.Span
 import dev.lilguy.agent.memory.StoredMemory
+import dev.lilguy.agent.memory.Want
 import java.io.File
 import java.sql.Connection
 import java.sql.DriverManager
@@ -16,6 +21,11 @@ import java.sql.ResultSet
  * - `events`: level 0, the stream of observations and actions as free text.
  * - `memories`: summaries; `level` 1 covers events `from_id..to_id`, level 2 would cover level-1
  *   memory ids, and so on.
+ * - `journal`: his entries, with their wants as a JSON array.
+ *
+ * Search narrows events with `LIKE` on the query's words and ranks in Kotlin with [Keywords], so
+ * results match [dev.lilguy.agent.memory.InMemoryStore]. FTS5 would rank differently, and a run's
+ * text is small, so it isn't used yet.
  *
  * One connection, every call synchronized: the agent loop and a background summary both use it,
  * and the traffic is a few rows a second at most. Pass `null` for a throwaway in-memory database.
@@ -44,6 +54,13 @@ class SqliteMemoryStore(file: File?) : MemoryStore {
                     text TEXT NOT NULL, source TEXT NOT NULL)""",
             )
             st.execute("CREATE INDEX IF NOT EXISTS memories_run ON memories (run, level, id)")
+            st.execute(
+                """CREATE TABLE IF NOT EXISTS journal (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run TEXT NOT NULL, tick INTEGER NOT NULL, day INTEGER, time TEXT,
+                    text TEXT NOT NULL, wants TEXT NOT NULL, source TEXT NOT NULL)""",
+            )
+            st.execute("CREATE INDEX IF NOT EXISTS journal_run ON journal (run, id)")
         }
     }
 
@@ -106,6 +123,48 @@ class SqliteMemoryStore(file: File?) : MemoryStore {
                 }
             }
         }
+
+    @Synchronized
+    override fun addJournal(run: String, tick: Long, day: Int?, time: String?, text: String, wants: List<Want>, source: String): Long =
+        db.prepareStatement("INSERT INTO journal (run, tick, day, time, text, wants, source) VALUES (?,?,?,?,?,?,?)").use { ps ->
+            ps.setString(1, run); ps.setLong(2, tick); ps.setObject(3, day); ps.setString(4, time)
+            ps.setString(5, text); ps.setString(6, Want.encode(wants)); ps.setString(7, source)
+            ps.executeUpdate()
+            lastId()
+        }
+
+    @Synchronized
+    override fun journal(run: String): List<JournalEntry> =
+        db.prepareStatement("SELECT id, run, tick, day, time, text, wants, source FROM journal WHERE run = ? ORDER BY id").use { ps ->
+            ps.setString(1, run)
+            ps.executeQuery().use { rs ->
+                buildList {
+                    while (rs.next()) add(
+                        JournalEntry(rs.getLong(1), rs.getString(2), rs.getLong(3), rs.intOrNull(4), rs.getString(5), rs.getString(6), Want.decode(rs.getString(7)), rs.getString(8)),
+                    )
+                }
+            }
+        }
+
+    @Synchronized
+    override fun search(run: String, source: SearchSource, query: String, limit: Int): List<SearchHit> {
+        if (source != SearchSource.Events) return super.search(run, source, query, limit)
+        val words = Keywords.of(query).toList()
+        if (words.isEmpty()) return emptyList()
+        val where = words.joinToString(" OR ") { "text LIKE ?" }
+        val candidates = db.prepareStatement("SELECT id, run, tick, day, time, kind, text FROM events WHERE run = ? AND ($where) ORDER BY id").use { ps ->
+            ps.setString(1, run)
+            words.forEachIndexed { i, w -> ps.setString(i + 2, "%$w%") }
+            ps.executeQuery().use { rs ->
+                buildList {
+                    while (rs.next()) add(
+                        MemoryEvent(rs.getLong(1), rs.getString(2), rs.getLong(3), rs.intOrNull(4), rs.getString(5), EventKind.of(rs.getString(6)), rs.getString(7)),
+                    )
+                }
+            }
+        }
+        return Keywords.rank(candidates, query, limit, { it.text }, { it.id }).map { (e, n) -> SearchHit(source, e.id, e.stamp, e.text, n) }
+    }
 
     @Synchronized
     override fun close() = db.close()

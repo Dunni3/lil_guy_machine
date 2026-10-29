@@ -396,3 +396,81 @@ it was then under a "THE PAST" banner) and **Log** (money and the event log).
   short-term memory to the view.
 - `make tv-run` now force-stops before launching (`am start -S`), so new extras take effect.
 - Decision logs from the app are named `run-NNN.jsonl` (were `episode-NNN.jsonl`).
+
+## 2026-10-29: Gated tiers and a tighter economy: food takes most of his working day
+
+From `research_notes/2026-10-29_1644_journal-and-scarcity-plan.md`. Money never bound (a day's
+food was about $16 against $12 a sketch), so nothing he chose had weight, and the prompt gave him
+a situation but no self.
+
+- **Tiers, not deletion.** Items, activities and uses take an optional `tier` (default 0). Above
+  0 they stay in `bedroom.yaml`, still tuned, but the world only has tier 0 plus the ids in
+  `granted` (`BedroomWorld.create(granted = ...)`, `bedroomScenario(granted = ...)`, CLI
+  `--grant`). `BedroomContent.unlocked(granted)` is the visible content and is validated like the
+  file, so a grant must bring what it needs (paint needs easel, canvas and painting) and a tier-0
+  activity can't depend on a gated item. Only gated ids can be granted. Tier 0: eat, sketch,
+  sell_art, journal, sleep, and a shop of meals. Granting is how a want gets answered later; the
+  mechanism for deciding grants is out of scope.
+- **Numbers.** Start money $40 -> $20, meals $18 -> $24 a pack of 3 (food ~$21 a day), sketch
+  $12 -> **$3**. The plan proposed $5, but its own budget undercounted: at $5 the survive-only
+  policy idled 7-9 waking hours a day, at $4 still 7-8. The target is stated as an outcome, so the
+  price was tuned to it: at $3 surviving takes ~7.5 hours of sketching a day and leaves 3-5 spare
+  waking hours (averaging ~4.5 over days 2-6, swinging with sleep), and he never holds more than
+  about a pack's worth of money. A policy that journals whenever it can is starving by day 3.
+  Tests pin both (`BedroomRunTest`).
+- **The scripted baseline changed.** It earns only until cash plus held art would buy the next
+  pack of meals, then spends spare time per `BedroomPolicy.Journaling`: `Never` (waits; the
+  economy's slack), `Spare` (default: journals when rested and fed) or `Always`. It no longer
+  saves for the easel, which is gated. It lives 14 days with no need at 0.
+- **The prompt is generated from the unlocked content.** Examples, the mood line (decor only when
+  there is decor), `uses` and music only when they exist, "for anything you want to own" only when
+  the shop sells more than food. It opens with a persona (`Persona.kt`, shared with the journal):
+  intelligent, aspirational, confined to a small world, told that the world's creator reads the
+  journal and may grant what he writes down with reasons. "The only things you can do are ..." is
+  built from the activities' new `phrase` field, so it stays true after a grant. Picking models
+  get a short third-person version in the choice set's `situation`.
+
+## 2026-10-29: The journal: a second, memory-aware LLM call that records what he wants
+
+- **Activity.** `journal` (tier 0) needs the starting `journal` item, takes an hour at the desk,
+  is `work` (refused below the work floor, so only when fed and rested), and costs energy -10 for
+  mood +3. The sim stays pure: it doesn't know a model writes anything.
+- **When an entry is written.** `AgentMemory.acted` starts a `JournalWriter` session when he
+  chooses `do(journal)` and it isn't locked; in the background when there's a scope (the app),
+  inline otherwise (lockstep runs, so they stay deterministic). At the next decision point
+  `observed` keeps the entry only if the activity succeeded, and throws it away if it failed or
+  was interrupted. An entry still being written when the activity ends is stored when it lands.
+- **The writer is a step loop, not native tool calls.** Each reply is schema-constrained,
+  `{"step": search | write}`, so it works with every backend and strategy. `search(source:
+  memories | events | journal, query)` returns up to 5 hits as the next user message (the
+  transcript uses the assistant role); after 3 searches the `search` variant is dropped from the
+  schema (an empty enum on its query), forcing `write`. The writer sees the persona and the
+  decision prompt's own user message (observation, recalled memories and journal, recent actions).
+- **Wants are structured and must be argued.** `write` returns `entry` (under 150 words) and
+  `wants: [{kind, text, justification}]`, kind one of activity, item, place, sense, other.
+  `Want` refuses a blank justification, so a bare want is a validation error the backend retries
+  with, not something to hope the model remembers.
+- **Storage.** A `journal` table/list in `MemoryStore` (SQLite stores wants as JSON) and
+  `search(run, source, query, limit)`, keyword-scored by the new `Keywords` (shared with
+  `Recall`): shared words, newest first on ties. SQLite narrows events with `LIKE` and ranks in
+  Kotlin so both stores rank the same; FTS5 would rank differently and isn't needed at this size.
+  Only "wrote in my journal" goes in the event stream (new `EventKind.Journal`), never the entry,
+  so memories don't paraphrase his entries back to him.
+- **Entries reach every decision.** `Recall.selectJournal`: the latest 2 entries always, then
+  older ones sharing words with the situation, within their own 800-character budget (memories
+  keep 1200), so neither crowds the other out; only the latest is guaranteed. They go in the user
+  message under "What you wrote in your journal, oldest first:", after the memories and like
+  them, since the system prompt is fixed text; the system prompt says the journal is his own
+  words and should shape how he spends his hours. Picking models get `state.journal`.
+  `DecisionRecord.recalledJournal` keeps what each decision was shown.
+- **Who writes.** `agents[0].journal_endpoint` in the config (`JOURNAL_ENDPOINT=<name|none>` for
+  `make desktop` and `make tv-run`, `--journal-endpoint` for the CLI, which keeps entries in
+  `--memory FILE` or in memory). It must write text. Without one, journaling still costs time and
+  energy but writes nothing, and it is left out of a picking model's choices.
+- **Reading it.** A **Journal** page in the dev view (between Memory and History). Journal
+  sessions are logged in the decision log as `"kind": "journal"` lines (calls, search results,
+  entry, wants, tokens); `DecisionLog.read` skips them, so replays still work. CLI bedroom runs
+  print the entries and the collected wants (repeats folded, with the days they recurred) and
+  write `journal-NN.txt`; `summary.json` counts entries, failures, wants and journal tokens.
+- Nothing grants wants yet. Before the persona's promise is made in earnest, someone has to read
+  the wants and answer some (a grant via `granted`, or a "not yet, because").

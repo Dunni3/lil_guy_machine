@@ -113,7 +113,7 @@ class MemoryTest {
         val obs = world.observe(world.agentId)
         val prompts = dev.lilguy.agent.PromptBuilder(
             dev.lilguy.agent.BedroomPrompt.system(dev.lilguy.sim.BedroomContent.default(), 5), Duration.ZERO,
-            { o, r -> dev.lilguy.agent.BedroomPrompt.choices(o, r, 5) },
+            { o, r -> dev.lilguy.agent.BedroomPrompt.choices(o, r, 5, world.content) },
         )
         val plain = prompts.build(obs, emptyList(), closedChoice = true).choices!!
         assertNull(plain.state["memories"])

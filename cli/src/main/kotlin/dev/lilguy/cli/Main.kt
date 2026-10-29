@@ -7,6 +7,10 @@ import dev.lilguy.agent.DecisionLog
 import dev.lilguy.agent.HourSample
 import dev.lilguy.agent.ReplayDecisionModel
 import dev.lilguy.agent.memory.AgentMemory
+import dev.lilguy.agent.memory.InMemoryStore
+import dev.lilguy.agent.memory.JournalSession
+import dev.lilguy.agent.memory.JournalWriter
+import dev.lilguy.agent.memory.MemoryStore
 import dev.lilguy.agent.memory.Summarizer
 import dev.lilguy.memory.SqliteMemoryStore
 import dev.lilguy.agent.Scenario
@@ -50,12 +54,17 @@ private const val USAGE = """lil guy machine cli: lockstep runs of the key-and-d
   --memory FILE       keep long-term memory in this SQLite file: every observation and action, plus
                       summaries when --memory-endpoint is set; recalled memories join each prompt
   --memory-endpoint N endpoint that writes the summaries (must write text, so not typesafe)
+  --journal-endpoint N bedroom: endpoint that writes his journal when he journals (must write text);
+                      entries join every later prompt, and the run ends with them and his wants.
+                      Kept in --memory FILE if given, otherwise in memory for the run
+  --grant IDS         bedroom: unlock gated content, comma-separated ids (e.g. paint,easel,canvas,painting)
   --quiet             one line per run instead of every decision and event
 
 Key-and-door exits non-zero unless every run solved the room; the bedroom, unless every run
 lived its days without hitting the decision cap. Bedroom runs also write hours-NN.jsonl (money
 and needs each game hour), money-NN.jsonl (every transaction) and needs-NN.jsonl (every need
-change) next to the decision log."""
+change) next to the decision log, and journal-NN.txt when there is a journal. Journal sessions
+are logged in the decision log too, as lines with "kind": "journal"."""
 
 private class Args(argv: Array<String>) {
     private val values = mutableMapOf<String, String>()
@@ -83,7 +92,7 @@ private class Args(argv: Array<String>) {
     companion object {
         val FLAGS = setOf("--quiet", "--no-log", "--help")
         val KNOWN = FLAGS + setOf(
-            "--scenario", "--endpoint", "--runs", "--days", "--minute-ticks", "--ticks", "--max-decisions", "--config", "--strategy", "--log-dir", "--replay", "--memory", "--memory-endpoint",
+            "--scenario", "--endpoint", "--runs", "--days", "--minute-ticks", "--ticks", "--max-decisions", "--config", "--strategy", "--log-dir", "--replay", "--memory", "--memory-endpoint", "--journal-endpoint", "--grant",
         )
     }
 }
@@ -118,6 +127,18 @@ private data class BedroomResult(
     val bought: List<String>,
     /** Decisions per intent: "do sketch" to 40. */
     val choices: Map<String, Int>,
+    val journal: JournalResult? = null,
+)
+
+@Serializable
+private data class JournalResult(
+    /** Entries kept: written and the activity succeeded. */
+    val entries: Int,
+    /** Sessions the writer failed. */
+    val failed: Int,
+    val wants: Int,
+    @SerialName("prompt_tokens") val promptTokens: Int,
+    @SerialName("completion_tokens") val completionTokens: Int,
 )
 
 fun main(argv: Array<String>) {
@@ -148,6 +169,7 @@ fun main(argv: Array<String>) {
     }
     val maxDecisions = args.int("--max-decisions", if (scenario == Scenario.Bedroom) 60 * days else 60)
     val quiet = args.flag("--quiet")
+    val granted = args.string("--grant")?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }?.toSet().orEmpty()
 
     // Each run gets a fresh model, so nothing carries over between runs.
     val (label, timeout, newModel) = try {
@@ -167,21 +189,34 @@ fun main(argv: Array<String>) {
     val results = (1..runs).map { n ->
         val model = newModel()
         val log = logDir?.let { DecisionLog(File(it, "run-%02d.jsonl".format(n)), run = "$stamp-$n", model = model.id) }
+        val config by lazy { Endpoints.load(File(args.string("--config") ?: Endpoints.DEFAULT_PATH)) }
         val summaryModel = args.string("--memory-endpoint")?.let { name ->
             requireNotNull(args.string("--memory")) { "--memory-endpoint needs --memory FILE" }
-            Endpoints.create(Endpoints.load(File(args.string("--config") ?: Endpoints.DEFAULT_PATH)), name)
+            Endpoints.create(config, name)
         }
-        val store = args.string("--memory")?.let { SqliteMemoryStore(File(it)) }
+        val journalModel = args.string("--journal-endpoint")?.let { Endpoints.create(config, it) }
+        val store: MemoryStore? = args.string("--memory")?.let { SqliteMemoryStore(File(it)) } ?: journalModel?.let { InMemoryStore() }
+        val sessions = mutableListOf<JournalSession>()
         val memory = store?.let { st ->
             val run = "$stamp-$n"
-            AgentMemory(st, run, summaryModel?.let { Summarizer(it, st, run, onFailure = { e -> System.err.println("summary failed: ${e.message}") }) })
+            AgentMemory(
+                st, run,
+                summarizer = summaryModel?.let { Summarizer(it, st, run, onFailure = { e -> System.err.println("summary failed: ${e.message}") }) },
+                journal = journalModel?.let { JournalWriter(it, st, run) },
+                onJournal = { s ->
+                    sessions += s
+                    log?.write(s)
+                    if (!quiet) printJournal(s)
+                },
+            )
         }
         try {
-            runOnce(n, scenario, model, timeout, minuteTicks, maxTicks, maxDecisions, quiet, log, logDir, memory)
+            runOnce(n, scenario, model, timeout, minuteTicks, maxTicks, maxDecisions, quiet, log, logDir, memory, granted, sessions)
         } finally {
             log?.close()
             store?.close()
             (summaryModel as? AutoCloseable)?.close()
+            (journalModel as? AutoCloseable)?.close()
             (model as? AutoCloseable)?.close()
         }
     }
@@ -222,10 +257,12 @@ private fun runOnce(
     log: DecisionLog?,
     logDir: File?,
     memory: AgentMemory? = null,
+    granted: Set<String> = emptySet(),
+    sessions: List<JournalSession> = emptyList(),
 ): RunResult {
     val records = mutableListOf<AgentRuntime.DecisionRecord>()
     lateinit var stampOf: (Long) -> String
-    val (world, runtime) = scenario.create(model, timeout, minuteTicks, longTerm = memory) { d ->
+    val (world, runtime) = scenario.create(model, timeout, minuteTicks, longTerm = memory, granted = granted) { d ->
         records += d
         log?.write(d)
         if (!quiet) {
@@ -279,6 +316,17 @@ private fun runOnce(
             moneyEnd = b.ledger.balance,
             bought = days.flatMap { it.bought },
             choices = records.groupingBy { b.describe(it.intent).split(' ').take(2).joinToString(" ") }.eachCount().toList().sortedByDescending { it.second }.toMap(),
+            journal = memory?.takeIf { it.journaling }?.let { m ->
+                val entries = m.journalEntries()
+                logDir?.let { dir -> File(dir, "journal-%02d.txt".format(n)).writeText(BedroomReport.journal(entries) + "\n") }
+                JournalResult(
+                    entries = entries.size,
+                    failed = sessions.count { it.status == JournalSession.Status.Failed },
+                    wants = BedroomReport.wants(entries).size,
+                    promptTokens = sessions.sumOf { it.usage.promptTokens },
+                    completionTokens = sessions.sumOf { it.usage.completionTokens },
+                )
+            },
         )
     }
     val result = RunResult(
@@ -305,6 +353,7 @@ private fun runOnce(
         n, outcome, result.decisions, result.fallbacks, result.retries, failed, result.promptTokens, result.completionTokens, wall.inWholeMilliseconds / 1000.0,
     ))
     life?.let { printBedroom(it) }
+    memory?.takeIf { it.journaling }?.let { println(BedroomReport.journal(it.journalEntries()).prependIndent("  ")) }
     return result
 }
 
@@ -315,6 +364,18 @@ private fun printBedroom(life: BedroomResult) {
     }
     println("  lowest needs ${life.lowest}; ticks with a need at 0: ${life.ticksAtZero}")
     println("  choices ${life.choices}")
+    life.journal?.let { j ->
+        println("  journal: ${j.entries} entries, ${j.failed} failed, ${j.wants} wants, ${j.promptTokens}+${j.completionTokens} tokens")
+    }
+}
+
+private fun printJournal(s: JournalSession) {
+    val stamp = if (s.day != null) "d%2d %s".format(s.day, s.time) else "t=%4d".format(s.tick)
+    val what = when (s.status) {
+        JournalSession.Status.Failed -> "FAILED: ${s.error}"
+        else -> "${s.status.name.lowercase()}: ${s.searches} searches, ${s.wants.size} wants, ${s.latency.inWholeMilliseconds} ms"
+    }
+    println("%s  journal %s".format(stamp, what))
 }
 
 private fun <T> writeJsonl(file: File, rows: List<T>, serializer: kotlinx.serialization.KSerializer<T>) {
