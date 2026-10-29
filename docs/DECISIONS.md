@@ -226,3 +226,111 @@ One file outside the repo (mode 600) that every worktree sees, holding `export N
 lines. The Makefile `-include`s it, so `make cli`, `make desktop` and `make tv-push-config` get
 the keys in their environment. The app's own env-file reader accepts the same `export` lines.
 Nothing prints the values.
+
+## 2026-10-29: Rooms share a GridWorld base
+
+Milestone 4 adds a second room, so the intent lifecycle (inbox, validate, run, finish, the
+decision-point flag), A* walking, speech, events and publishing moved from `RoomWorld` into an
+abstract `GridWorld`. A room supplies `plan` and `publish`, plus hooks (`afterWork`, `workEnded`,
+`entered`, `passable`, `stamp`). Work gained `Until` (start, run until a condition, finish) and
+`Steps` (walk, then do). `RoomWorld` behaves exactly as before: the scripted run still takes 212
+ticks and Jev 148. Key-and-door stays as the quick CLI test.
+
+## 2026-10-29: A game clock on top of ticks; 1 game minute = 5 ticks by default
+
+`GameClock` maps ticks to day and hh:mm, starting day 1 at 08:00. Bedroom rules are written in game
+minutes and hours and converted once, so `ticksPerMinute` is the single clock-scale knob: CLI
+`--minute-ticks`, desktop `MINUTE_TICKS=`, TV `--ei minute_ticks`. At 5, a game day is 7200 ticks,
+6 real minutes. Walking stays at 4 tiles a second of real time, so a smaller scale makes walks
+cheaper in game minutes; at 5, a tile is a game minute.
+
+## 2026-10-29: Bedroom content is one YAML file on the classpath
+
+`sim/src/main/resources/content/bedroom.yaml` holds the room (rows plus slot letters), the start
+state, need rules, items, activities and uses. It's read with kaml (now also a `:sim` dependency;
+pure JVM, already used on Android by `:decision`) in strict mode, and `BedroomContent` checks
+cross-references at load. A job, a hobby, a purchase or decor is a row; `BedroomWorld` only knows
+the fields: `at`, `requires`, `consumes`, `produces`, `sells`, `effects`, `rates`, `asleep`, `until`,
+`stop_below`, `block`, `work`, and for uses `item`, `on`, `background`.
+
+## 2026-10-29: Money and needs change only through logged entries
+
+`Ledger` keeps whole dollars and refuses to go below zero; every credit and debit is a
+`Transaction` (tick, day, time, amount, balance, reason), and each one is also a world event, so it
+shows in the observation's recentEvents and the decision log. Needs are doubles 0 to 100 shown to
+models as whole numbers rounded down. Rates are applied every game minute but logged as one
+`NeedChange` per need and reason per game hour (a day is a few dozen lines, not thousands); one-off
+effects are logged as they happen. The CLI writes `hours-NN.jsonl` (money and needs every game
+hour), `money-NN.jsonl` and `needs-NN.jsonl` beside each bedroom decision log.
+
+## 2026-10-29: The bedroom's action space and observation
+
+`do(activity)` and `buy(item)` are new `Intent` variants; the sim walks him to the nearest owned
+spot (`at`) or to the door for the shop. `use(item, on)` is item-on-item (a record on the record
+player) and needs only ownership, not holding. `move_to`, `say` and `wait` work as before;
+`pick_up` is refused with a reason, since owned things are already his. Key-and-door rejects `do`
+and `buy`, and its schema leaves them out.
+
+The observation adds clock, money, needs, holding (carried art), owns, music, `activities` (every
+`do` activity: takes and gives, or `locked` with a reason such as "needs an easel ($120)"),
+`uses` and `shop` (price, affordable, what it's for). These fields are left out of the JSON when
+null, so the key-and-door observation is unchanged. The per-request schema and the TypeSafe
+choice set include exactly the unlocked activities, the offered uses and the affordable purchases.
+Choice options are ordered activities (content order: eat, sketch, paint, sell_art, read, listen,
+sleep), uses, purchases, then wait (30 game minutes).
+
+## 2026-10-29: Bedroom numbers: what changed from the plan's first guesses
+
+Kept: start ($40, bed, desk, chair, sketchbook, 2 meals; energy 80, fullness 70, mood 60), the
+activity and shop tables, energy -4/h awake, fullness -5/h, mood drift 3/h toward 50 plus comfort,
+low at 15, work refused below 5.
+
+Changed or filled in:
+- Below 15 energy or fullness, mood falls 5/h *instead of* drifting; otherwise drift cancels most
+  of it.
+- Sleep also ends when fullness falls below 10 (`stop_below`). Both the scripted policy and Jev
+  went to sleep at fullness around 40 and slept it down to 0.
+- Sleep is refused above energy 94 ("not tired") and eating above fullness 90 ("not hungry").
+- Sell art is not `work`, so a hungry guy can still sell what he holds.
+- Unspecified in the plan: comfort plant 4, poster 3, rug 6; three records and three books, each
+  one of a kind; buying takes 10 minutes at the door; the day starts at 08:00.
+
+Economy as built: sketching nets about $60–90 a day, the easel comes on day 2 (scripted) or day 3
+(Jev), and painting then makes about $150–300 a day. That is more than the plan guessed, and the
+whole shop costs about $500, so money stops being a constraint within about three days of buying
+the easel. That is the first thing to tune, probably alongside milestone 6's wants.
+
+## 2026-10-29: The bedroom prompt describes his situation, plus two facts for closed-choice models
+
+The system prompt opens "You live in this bedroom. You need money for food and for anything you
+want to own. You'll be living here for a long time." There is no objective; the rules, prices and
+options come from the content file. Jev, given only the situation, looped sketch → sell every hour
+and never bought the easel in two 4-day runs (buy:easel peaked as the runner-up at p ≈ 0.2). Two
+changes, both factual rather than objectives: the choice instructions say "choose what serves him
+best over the coming days, not just the next hour", and shop entries say what an item would
+unlock and what that pays ("unlocks paint (3h: 1 painting, sells for $70; uses a canvas)"). After
+both, Jev bought the easel on day 3 in all five runs and painted.
+
+## 2026-10-29: The app runs the bedroom by default; the CLI picks a scenario
+
+The app and the TV start the bedroom with a clock, money and needs panel (bars; a tick mark for
+where mood settles), what he's doing with progress, music, what he owns, the last decision,
+events stamped with game time, and recent transactions. `SCENARIO=key-door` (desktop and
+`tv-run`) brings back the old room. The CLI defaults to key-door (`--scenario bedroom --days N`
+for the life sim); bedroom runs cap decisions at 60 a game day and count as passed if they live
+their days without hitting the cap.
+
+## 2026-10-29: Bedroom option lists are cached between ticks
+
+Building the observation's activities, uses and shop text every tick cost about 107 µs on the Mac
+JIT (key-and-door: 2.6 µs). On the TV's debug build, frame CPU was 8–13 ms against 4.4 ms. The
+lists are now rebuilt only when what he owns or plays changes, a visible need level changes, or
+the clock passes a 10-minute step; sleep's duration estimate is rounded to 10 minutes to match.
+The room map is cached by cell. About 15 µs a tick now. No behaviour change.
+
+## 2026-10-29: Milestone 4 runs on the TV
+
+`make tv-run ENDPOINT=typesafe` ran the bedroom on the Streamer at 60 fps. Jev answered 18
+decisions in a median of 202 ms (max 1.06 s) with no fallbacks. The guy sketched and sold, bought
+and ate meals, and slept, the same pattern as the headless runs. Ian's next levers: a richer
+world and simulation, and a memory system (with an LLM writing memories) for milestone 5.

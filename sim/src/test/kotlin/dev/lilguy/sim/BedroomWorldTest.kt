@@ -1,0 +1,241 @@
+package dev.lilguy.sim
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+class BedroomWorldTest {
+    private val content = BedroomContent.default()
+
+    private fun world(
+        money: Int = content.start.money,
+        needs: NeedLevels = content.start.needs,
+        items: Map<String, Int> = content.start.items,
+    ) = BedroomWorld.create(content.copy(start = content.start.copy(money = money, needs = needs, items = items)))
+
+    /** Submits [intent], steps until it ends, and returns its handle. */
+    private fun BedroomWorld.run(intent: Intent, maxTicks: Int = 20_000): IntentHandle {
+        val handle = submit(agentId, intent)
+        repeat(maxTicks) {
+            step()
+            val s = handle.status
+            if (s is IntentStatus.Succeeded || s is IntentStatus.Failed || s is IntentStatus.Interrupted) return handle
+        }
+        error("$intent still ${handle.status} after $maxTicks ticks")
+    }
+
+    private fun BedroomWorld.obs() = observe(agentId)
+
+    private fun failure(handle: IntentHandle) = assertIs<IntentStatus.Failed>(handle.status).reason
+
+    private fun BedroomWorld.activity(id: String) = obs().activities!!.first { it.id == id }
+
+    @Test
+    fun `starts with the plan's day 1`() {
+        val obs = world().obs()
+        assertEquals(ClockReading(1, "08:00"), obs.clock)
+        assertEquals(40, obs.money)
+        assertEquals(NeedLevels(80, 70, 60), obs.needs)
+        assertEquals(mapOf("bed" to 1, "desk" to 1, "chair" to 1, "sketchbook" to 1, "meal" to 2), obs.owns)
+        assertEquals(emptyList(), obs.holding)
+        assertEquals(setOf("door", "bed", "desk", "chair"), obs.nearby.map { it.id }.toSet())
+        assertTrue(obs.localMap.any { 'b' in it } && obs.localMap.none { 'e' in it }, "the easel slot is empty until bought")
+    }
+
+    @Test
+    fun `locked activities say why`() {
+        val w = world()
+        assertEquals("needs an easel ($120)", w.activity("paint").locked)
+        assertEquals("you have no art to sell; sketch or paint makes some", w.activity("sell_art").locked)
+        assertEquals("needs a book ($12)", w.activity("read").locked)
+        assertEquals("needs a record player ($150)", w.activity("listen").locked)
+        assertNull(w.activity("sleep").locked, "energy 80 is tired enough")
+        assertNull(w.activity("sketch").locked)
+        assertEquals("1h", w.activity("sketch").takes)
+        assertEquals("1 sketch, sells for $12; energy -6", w.activity("sketch").gives)
+        assertEquals("uses a meal (you have 2); fullness +45", w.activity("eat").gives)
+        assertTrue(w.obs().uses!!.isEmpty())
+
+        assertEquals("can't paint: needs an easel ($120)", failure(w.run(Intent.Do("paint"))))
+        assertTrue("no activity called 'dance'" in failure(w.run(Intent.Do("dance"))))
+    }
+
+    @Test
+    fun `sketching takes an hour at the desk and makes a sketch`() {
+        val w = world()
+        val start = w.tick
+        assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("sketch")).status)
+        val obs = w.obs()
+        assertEquals(listOf("sketch"), obs.holding)
+        val minutes = (w.tick - start) / w.clock.ticksPerMinute
+        assertTrue(minutes in 60..75, "walk plus an hour, took $minutes min")
+        val desk = obs.nearby.first { it.id == "desk" }
+        assertTrue(desk.inReach)
+        // Awake decay over the walk and the hour, plus the sketch's -6.
+        assertTrue(obs.needs!!.energy in 69..70, "energy ${obs.needs!!.energy}")
+        assertTrue(obs.recentEvents.last().endsWith("finished sketch: +1 sketch, energy -6"), obs.recentEvents.last())
+        assertEquals("$12 for the 1 sketch you hold", w.activity("sell_art").gives)
+    }
+
+    @Test
+    fun `selling art and buying go through the ledger`() {
+        val w = world()
+        w.run(Intent.Do("sketch"))
+        w.run(Intent.Do("sketch"))
+        assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("sell_art")).status)
+        assertEquals(64, w.ledger.balance)
+        assertEquals(emptyList(), w.obs().holding)
+
+        assertIs<IntentStatus.Succeeded>(w.run(Intent.Buy("meal")).status)
+        assertEquals(46, w.ledger.balance)
+        assertEquals(5, w.count("meal"))
+        assertEquals(listOf(24, -18), w.ledger.transactions.map { it.amount })
+        assertEquals(listOf("sold 2 sketches", "bought 3 meals"), w.ledger.transactions.map { it.reason })
+        assertEquals(40 + w.ledger.transactions.sumOf { it.amount }, w.ledger.balance)
+        assertTrue(w.obs().recentEvents.any { "bought 3 meals for $18 (money $46)" in it })
+        assertEquals(w.ledger.transactions, w.snapshot().life!!.transactions)
+    }
+
+    @Test
+    fun `the shop lists prices, affordability and what an item is for`() {
+        val w = world()
+        val shop = w.obs().shop!!.associateBy { it.id }
+        assertEquals(ShopOption("meal", 18, true, "3 meals; for eat"), shop["meal"])
+        assertEquals(ShopOption("easel", 120, false, "for paint (3h: 1 painting, sells for $70; uses a canvas), which also needs a canvas ($15)"), shop["easel"])
+        assertEquals("comfort +4: mood settles 4 higher", shop.getValue("plant").gives)
+        assertEquals("the easel costs $120 and you have $40", failure(w.run(Intent.Buy("easel"))))
+        assertTrue("isn't for sale" in failure(w.run(Intent.Buy("bed"))))
+
+        val rich = world(money = 500)
+        rich.run(Intent.Buy("easel"))
+        assertEquals("you already have the easel", failure(rich.run(Intent.Buy("easel"))))
+        assertTrue(rich.obs().shop!!.none { it.id == "easel" }, "one of a kind: gone from the shop once owned")
+        assertEquals("needs a canvas ($15)", rich.activity("paint").locked)
+        assertEquals("unlocks paint (3h: 1 painting, sells for $70; uses a canvas)", rich.obs().shop!!.first { it.id == "canvas" }.gives)
+        rich.run(Intent.Buy("canvas"))
+        assertIs<IntentStatus.Succeeded>(rich.run(Intent.Do("paint")).status)
+        assertEquals(listOf("painting"), rich.obs().holding)
+        assertEquals(0, rich.count("canvas"))
+        rich.run(Intent.Do("sell_art"))
+        assertEquals(500 - 120 - 15 + 70, rich.ledger.balance)
+    }
+
+    @Test
+    fun `needs follow the hourly rules`() {
+        val w = world()
+        w.run(Intent.Wait(GridWorld.MAX_WAIT)) // 40 game minutes
+        while (w.clock.reading(w.tick) != ClockReading(1, "09:00")) w.step()
+        assertEquals(NeedLevels(76, 65, 57), w.obs().needs)
+        val reasons = w.needs.changes.map { it.need to it.reason }.toSet()
+        assertEquals(setOf(Need.Energy to "awake", Need.Fullness to "hunger", Need.Mood to "drift toward 50"), reasons)
+        val sums = w.needs.changes.groupBy { it.need }.mapValues { (_, c) -> c.sumOf { it.delta } }
+        assertEquals(-4.0, sums.getValue(Need.Energy), 1e-6)
+        assertEquals(-5.0, sums.getValue(Need.Fullness), 1e-6)
+    }
+
+    @Test
+    fun `low energy or fullness pulls mood down and blocks work`() {
+        val w = world(needs = NeedLevels(energy = 4, fullness = 50, mood = 50))
+        assertEquals("too tired to work (energy 4)", w.activity("sketch").locked)
+        assertEquals("can't sketch: too tired to work (energy 4)", failure(w.run(Intent.Do("sketch"))))
+        repeat(w.clock.ticks(60)) { w.step() }
+        // Low energy: mood falls 5 an hour instead of drifting.
+        assertTrue(w.obs().needs!!.mood in 44..45, "mood ${w.obs().needs!!.mood}")
+
+        val hungry = world(needs = NeedLevels(energy = 60, fullness = 3, mood = 50))
+        assertEquals("too hungry to work (fullness 3)", hungry.activity("sketch").locked)
+        assertNull(hungry.activity("eat").locked)
+        hungry.run(Intent.Do("eat"))
+        assertTrue(hungry.obs().needs!!.fullness >= 45)
+        assertEquals(1, hungry.count("meal"))
+    }
+
+    @Test
+    fun `sleep lasts until 07 00 or full energy`() {
+        val w = world(needs = NeedLevels(energy = 30, fullness = 90, mood = 50))
+        assertNull(w.activity("sleep").locked)
+        assertEquals("until 07:00 or energy 100, or fullness below 10, about 5h 50m", w.activity("sleep").takes)
+        w.run(Intent.Do("sleep"))
+        assertEquals(100, w.obs().needs!!.energy)
+        val woke = w.clock.reading(w.tick)
+        assertEquals(1, woke.day)
+        assertTrue(woke.time in "13:45".."14:05", "woke at ${woke.time}")
+        assertEquals("not tired (energy 100)", w.activity("sleep").locked)
+
+        // Going to bed at 03:00 with energy 24, he wakes at 07:00 before reaching 100.
+        val late = world(needs = NeedLevels(energy = 100, fullness = 100, mood = 50))
+        while (late.clock.reading(late.tick) != ClockReading(2, "02:00")) late.step()
+        late.run(Intent.Do("eat")) // or hunger would wake him first
+        while (late.clock.reading(late.tick) != ClockReading(2, "03:00")) late.step()
+        assertEquals(24, late.obs().needs!!.energy)
+        late.run(Intent.Do("sleep"))
+        assertEquals(ClockReading(2, "07:00"), late.clock.reading(late.tick))
+        assertTrue(late.obs().needs!!.energy in 66..72, "energy ${late.obs().needs!!.energy}")
+    }
+
+    @Test
+    fun `hunger wakes him up`() {
+        val w = world(needs = NeedLevels(energy = 10, fullness = 20, mood = 50))
+        w.run(Intent.Do("sleep"))
+        assertEquals(9, w.obs().needs!!.fullness)
+        assertTrue(w.obs().needs!!.energy < 100)
+        assertTrue(w.obs().recentEvents.last().endsWith("stopped early: fullness 9"), w.obs().recentEvents.last())
+    }
+
+    @Test
+    fun `a record on the player plays music in the background`() {
+        val w = world(money = 500)
+        w.run(Intent.Buy("record_player"))
+        assertEquals("needs a record ($20)", w.activity("listen").locked)
+        w.run(Intent.Buy("jazz_record"))
+        assertEquals(listOf(UseOption("jazz_record", "record_player", "1 min", "music for 45 min: mood +4/h")), w.obs().uses)
+        assertTrue("use the jazz record on something" in failure(w.run(Intent.Use("jazz_record"))))
+        assertTrue("does nothing" in failure(w.run(Intent.Use("jazz_record", on = "bed"))))
+        assertIs<IntentStatus.Succeeded>(w.run(Intent.Use("jazz_record", on = "record_player")).status)
+        assertTrue(w.obs().music!!.startsWith("jazz_record, 4"), w.obs().music)
+        assertEquals("playing jazz_record", w.obs().nearby.first { it.id == "record_player" }.state)
+
+        // Music plays while he does something else, and its mood shows in the need log.
+        w.run(Intent.Do("sketch"))
+        assertNull(w.obs().music)
+        while (w.clock.minuteOfDay(w.tick) % 60 != 0) w.step()
+        assertTrue(w.needs.changes.any { it.reason == "music" && it.delta > 0 })
+        assertTrue(w.obs().recentEvents.any { "the jazz record finished" in it } || w.snapshot().events.any { "the jazz record finished" in it.text })
+    }
+
+    @Test
+    fun `decor raises the mood baseline`() {
+        val w = world(money = 500)
+        assertEquals(50.0, w.snapshot().life!!.moodTarget)
+        w.run(Intent.Buy("rug"))
+        w.run(Intent.Buy("plant"))
+        assertEquals(60.0, w.snapshot().life!!.moodTarget)
+        assertTrue(w.obs().nearby.any { it.id == "rug" } && w.obs().localMap.any { 'r' in it })
+        // The plant blocks its tile; the rug doesn't.
+        val plant = w.obs().nearby.first { it.id == "plant" }
+        assertTrue(!w.passable(plant.x, plant.y))
+        val rug = w.obs().nearby.first { it.id == "rug" }
+        assertTrue(w.passable(rug.x, rug.y))
+    }
+
+    @Test
+    fun `pick_up does nothing here but other intents still work`() {
+        val w = world()
+        assertTrue("nothing to pick up" in failure(w.run(Intent.PickUp("bed"))))
+        assertIs<IntentStatus.Succeeded>(w.run(Intent.MoveTo(Target.Entity("bed"))).status)
+        assertTrue(w.obs().nearby.first { it.id == "bed" }.distance < 0.1f)
+        assertIs<IntentStatus.Succeeded>(w.run(Intent.Say("morning")).status)
+        assertTrue("wall or furniture" in failure(w.run(Intent.MoveTo(Target.Tile(0, 0)))))
+    }
+
+    @Test
+    fun `the key-and-door room rejects the new intents`() {
+        val room = RoomWorld.create()
+        val handle = room.submit(room.agentId, Intent.Do("sketch"))
+        room.step()
+        assertEquals("there are no activities in this room", failure(handle))
+        assertNull(room.observe(room.agentId).clock)
+    }
+}

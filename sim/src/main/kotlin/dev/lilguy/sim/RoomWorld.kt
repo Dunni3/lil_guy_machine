@@ -1,144 +1,26 @@
 package dev.lilguy.sim
 
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.first
-import java.util.concurrent.ConcurrentLinkedQueue
-import kotlin.math.abs
 import kotlin.math.hypot
-import kotlin.math.max
-import kotlin.math.roundToInt
 
 /**
  * Milestone 1 world: one room, one character, a locked door, its key and a few distractors.
- *
- * Threading: call [step] from one thread only, the sim thread. Everything else is safe from any
- * thread. [observe] and [snapshot] return values published at the end of the last tick, and
- * [submit] queues the intent for the start of the next one.
+ * The intent lifecycle, walking and publishing live in [GridWorld].
  */
 class RoomWorld private constructor(
-    val map: TileMap,
-    private val guy: Character,
+    map: TileMap,
+    guy: Character,
     private val items: List<Item>,
     private val doors: List<Door>,
     private val exit: Cell?,
-) : World {
-    private var ticks = 0L
-    private val inbox = ConcurrentLinkedQueue<Handle>()
-    private val events = ArrayDeque<WorldEvent>()
-    private var running: Running? = null
-    private var last: Handle? = null
-    private var saying: String? = null
-    private var sayUntil = 0L
+) : GridWorld(map, guy) {
     private var completed = false
 
-    // Decision points. `pending` counts submitted intents the sim hasn't drained yet; the flag
-    // only goes up when the character is idle with nothing queued, and only after the tick's
-    // observation is published, so an agent woken on another thread never reads a stale one.
-    private val lock = Any()
-    private var pending = 0
-    private val idle = MutableStateFlow(true)
-    private var finishedThisTick = false
-
-    @Volatile private var published: Published = publish()
-
-    override val tick: Long get() = published.snapshot.tick
-
-    val agentId: EntityId get() = guy.id
-
-    /** True when the character has nothing to do and nothing queued: the agent should decide. */
-    fun awaitingDecision(agentId: EntityId): Boolean {
-        requireAgent(agentId)
-        return idle.value
-    }
-
-    override fun step() {
-        ticks++
-        drainInbox()
-        running?.let { advance(it) }
-        if (saying != null && ticks >= sayUntil) saying = null
-        published = publish()
-        if (finishedThisTick) {
-            finishedThisTick = false
-            synchronized(lock) { if (pending == 0) idle.value = true }
-        }
-    }
-
-    override fun observe(agentId: EntityId): Observation {
-        requireAgent(agentId)
-        return published.observation
-    }
-
-    override fun submit(agentId: EntityId, intent: Intent): IntentHandle {
-        requireAgent(agentId)
-        val handle = Handle(intent)
-        synchronized(lock) {
-            pending++
-            idle.value = false
-        }
-        inbox.add(handle)
-        return handle
-    }
-
-    override fun snapshot(): WorldSnapshot = published.snapshot
-
-    override suspend fun awaitDecisionPoint(agentId: EntityId) {
-        requireAgent(agentId)
-        idle.first { it }
-    }
-
-    private fun requireAgent(agentId: EntityId) = require(agentId == guy.id) { "no character '${agentId.value}'" }
-
-    // --- intent lifecycle --------------------------------------------------------------------
-
-    private fun drainInbox() {
-        while (true) {
-            val handle = inbox.poll() ?: break
-            synchronized(lock) { pending-- }
-            running?.let { interrupt(it) }
-            last = handle
-            try {
-                val work = plan(handle.intent)
-                handle.status = IntentStatus.Validated
-                running = Running(handle, work)
-            } catch (e: Rejected) {
-                finish(handle, IntentStatus.Failed(e.reason))
-            }
-        }
-    }
-
-    private fun interrupt(run: Running) {
-        run.handle.status = IntentStatus.Interrupted
-        running = null
-        event("${describe(run.handle.intent)} was interrupted")
-    }
-
-    private fun finish(handle: Handle, status: IntentStatus) {
-        handle.status = status
-        if (running?.handle === handle) running = null
-        if (status is IntentStatus.Failed) event("${describe(handle.intent)} failed: ${status.reason}")
-        finishedThisTick = true
-    }
-
-    private fun advance(run: Running) {
-        val handle = run.handle
-        if (handle.status == IntentStatus.Validated) handle.status = IntentStatus.Executing
-        when (val work = run.work) {
-            is Work.Walk -> {
-                walk(work.path)
-                if (work.path.isEmpty()) finish(handle, IntentStatus.Succeeded)
-            }
-            is Work.Timed -> {
-                work.ticksLeft--
-                if (work.ticksLeft <= 0) {
-                    val failure = work.finish()
-                    finish(handle, if (failure == null) IntentStatus.Succeeded else IntentStatus.Failed(failure))
-                }
-            }
-        }
+    init {
+        publishFirst()
     }
 
     /** Validates [intent] against the current state and returns the work that carries it out. */
-    private fun plan(intent: Intent): Work = when (intent) {
+    override fun plan(intent: Intent): Work = when (intent) {
         is Intent.MoveTo -> {
             val goal = when (val target = intent.target) {
                 is Target.Tile -> {
@@ -155,8 +37,7 @@ class RoomWorld private constructor(
                     cellOf(target.id) ?: reject("there is nothing called '${target.id}'")
                 }
             }
-            val path = pathToward(goal) ?: reject("there is no way to reach ${describe(intent.target)}")
-            Work.Walk(ArrayDeque(path.cells))
+            walkTo(goal, describe(intent.target))
         }
 
         is Intent.PickUp -> {
@@ -204,61 +85,23 @@ class RoomWorld private constructor(
             }
         }
 
-        is Intent.Say -> {
-            val text = intent.text.trim()
-            if (text.isEmpty()) reject("say needs some text")
-            if (text.length > MAX_SAY) reject("say is limited to $MAX_SAY characters")
-            val duration = (text.length * 2).coerceIn(MIN_SAY_TICKS, MAX_SAY_TICKS)
-            saying = text
-            sayUntil = ticks + duration
-            event("${guy.id.value} says \"$text\"")
-            Work.Timed(duration) { null }
-        }
-
-        is Intent.Wait -> {
-            if (intent.ticks !in 1..MAX_WAIT) reject("wait ticks must be between 1 and $MAX_WAIT")
-            Work.Timed(intent.ticks) { null }
-        }
+        is Intent.Say -> say(intent)
+        is Intent.Wait -> waitFor(intent)
+        is Intent.Do -> reject("there are no activities in this room")
+        is Intent.Buy -> reject("there is no shop in this room")
     }
 
     // --- movement ----------------------------------------------------------------------------
 
-    private fun walk(path: ArrayDeque<Cell>) {
-        var budget = SPEED
-        while (budget > 0f && path.isNotEmpty()) {
-            val next = path.first()
-            val tx = next.x + 0.5f
-            val ty = next.y + 0.5f
-            val dx = tx - guy.x
-            val dy = ty - guy.y
-            val d = hypot(dx, dy)
-            if (d > 1e-4f) guy.facing = Direction.of(dx, dy)
-            if (d <= budget) {
-                guy.x = tx
-                guy.y = ty
-                budget -= d
-                path.removeFirst()
-                if (next == exit && !completed) {
-                    completed = true
-                    event("${guy.id.value} walked out of the room")
-                }
-            } else {
-                guy.x += dx / d * budget
-                guy.y += dy / d * budget
-                budget = 0f
-            }
+    override fun entered(cell: Cell) {
+        if (cell == exit && !completed) {
+            completed = true
+            event("${guy.id.value} walked out of the room")
         }
     }
 
     /** Doors block movement until unlocked; items never do. */
-    fun passable(x: Int, y: Int): Boolean = map.isFloor(x, y) && doors.none { it.locked && it.cell.x == x && it.cell.y == y }
-
-    /** A path onto [goal], or, when [goal] blocks (a locked door), onto the nearest tile beside it. */
-    private fun pathToward(goal: Cell): Pathfinder.Path? {
-        val find = { to: Cell -> Pathfinder.find(map.width, map.height, guy.cell, to, ::passable) }
-        if (passable(goal.x, goal.y)) return find(goal)
-        return NEIGHBOURS.mapNotNull { (dx, dy) -> find(Cell(goal.x + dx, goal.y + dy)) }.minByOrNull { it.cost }
-    }
+    override fun passable(x: Int, y: Int): Boolean = map.isFloor(x, y) && doors.none { it.locked && it.cell.x == x && it.cell.y == y }
 
     // --- lookup ------------------------------------------------------------------------------
 
@@ -270,29 +113,9 @@ class RoomWorld private constructor(
 
     private fun doorAt(cell: Cell) = doors.find { it.cell == cell }
 
-    private fun describe(intent: Intent): String = when (intent) {
-        is Intent.MoveTo -> "move_to ${describe(intent.target)}"
-        is Intent.PickUp -> "pick_up ${intent.itemId}"
-        is Intent.Use -> "use ${intent.itemId}" + (intent.on?.let { " on $it" } ?: "")
-        is Intent.Say -> "say"
-        is Intent.Wait -> "wait ${intent.ticks}"
-    }
-
-    private fun describe(target: Target): String = when (target) {
-        is Target.Tile -> "(${target.x}, ${target.y})"
-        is Target.Entity -> target.id
-    }
-
-    private fun event(text: String) {
-        events.addLast(WorldEvent(ticks, text))
-        while (events.size > MAX_EVENTS) events.removeFirst()
-    }
-
     // --- publishing --------------------------------------------------------------------------
 
-    private class Published(val snapshot: WorldSnapshot, val observation: Observation)
-
-    private fun publish(): Published {
+    override fun publish(): Published {
         val entities = buildList {
             add(EntitySnapshot(guy.id, "guy", guy.x, guy.y, 1f, guy.facing.degrees))
             doors.forEach { add(EntitySnapshot(EntityId(it.id), "door", it.cell.x + 0.5f, it.cell.y + 0.5f, 1f, 0f, it.state)) }
@@ -306,16 +129,7 @@ class RoomWorld private constructor(
                 }
             }
         }
-        val run = running
-        val agent = AgentSnapshot(
-            id = guy.id,
-            intent = last?.intent,
-            status = last?.status,
-            inventory = guy.inventory.toList(),
-            path = (run?.work as? Work.Walk)?.path?.toList() ?: emptyList(),
-            saying = saying,
-        )
-        val snapshot = WorldSnapshot(ticks, map, entities, listOf(agent), events.toList(), completed)
+        val snapshot = WorldSnapshot(ticks, map, entities, listOf(agentSnapshot()), eventLog(), completed)
         return Published(snapshot, observe(entities))
     }
 
@@ -337,7 +151,7 @@ class RoomWorld private constructor(
             localMap = localMap(),
             lastIntent = last?.intent,
             lastResult = last?.status,
-            recentEvents = events.takeLast(OBSERVED_EVENTS).map { "t${it.tick}: ${it.text}" },
+            recentEvents = recentEvents(),
         )
     }
 
@@ -365,12 +179,6 @@ class RoomWorld private constructor(
 
     // --- internals ---------------------------------------------------------------------------
 
-    private class Character(val id: EntityId, var x: Float, var y: Float) {
-        var facing = Direction.S
-        val inventory = mutableListOf<String>()
-        val cell: Cell get() = Cell(x.toInt(), y.toInt())
-    }
-
     /** [cell] is null while carried. */
     private class Item(val id: String, val kind: String, var cell: Cell?)
 
@@ -379,45 +187,16 @@ class RoomWorld private constructor(
         val state: String get() = if (locked) "locked" else "open"
     }
 
-    private class Handle(override val intent: Intent) : IntentHandle {
-        @Volatile override var status: IntentStatus = IntentStatus.Submitted
-    }
-
-    private class Running(val handle: Handle, val work: Work)
-
-    private sealed interface Work {
-        class Walk(val path: ArrayDeque<Cell>) : Work
-
-        /** Runs for [ticksLeft] ticks, then [finish] applies the effect: null or a failure reason. */
-        class Timed(var ticksLeft: Int, val finish: () -> String?) : Work
-    }
-
-    private class Rejected(val reason: String) : Exception(reason, null, false, false)
-
-    private fun reject(reason: String): Nothing = throw Rejected(reason)
-
     companion object {
         const val EXIT_ID = "exit"
-        /** Tiles per tick: 4 tiles a second at 20 Hz. */
-        const val SPEED = 0.2f
         const val PICK_UP_TICKS = 6
         const val USE_TICKS = 10
-        const val MAX_WAIT = 200
-        const val MAX_SAY = 200
-        const val MIN_SAY_TICKS = 20
-        const val MAX_SAY_TICKS = 80
-        /** Chebyshev tiles: picking up and using need the target on or beside your tile. */
-        const val REACH = 1
         /** Perception radius in tiles. Walls don't block sight yet. */
         const val VIEW_RADIUS = 12f
         const val LOCAL_RADIUS = 4
-        const val MAX_EVENTS = 50
-        const val OBSERVED_EVENTS = 5
 
         const val MAP_LEGEND = "@ you, # wall, . floor, D locked door, / open door, E exit, " +
             "k key, a apple, b book, blank = outside"
-
-        private val NEIGHBOURS = listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1, 1 to 1, 1 to -1, -1 to 1, -1 to -1)
 
         fun create(spec: RoomSpec = Rooms.KeyAndDoor, characterId: String = "guy"): RoomWorld {
             val height = spec.rows.size
@@ -444,13 +223,6 @@ class RoomWorld private constructor(
                 }
             }
             return RoomWorld(TileMap(width, height, terrain), guy ?: error("room has no '@'"), items, doors, exit)
-        }
-
-        private fun chebyshev(a: Cell, b: Cell) = max(abs(a.x - b.x), abs(a.y - b.y))
-
-        private fun round(value: Float, places: Int): Float {
-            val scale = if (places == 1) 10f else 100f
-            return (value * scale).roundToInt() / scale
         }
     }
 }

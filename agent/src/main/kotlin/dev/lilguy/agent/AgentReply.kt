@@ -4,7 +4,7 @@ import dev.lilguy.decision.ActionSchema
 import dev.lilguy.decision.SchemaHints
 import dev.lilguy.sim.Intent
 import dev.lilguy.sim.Observation
-import dev.lilguy.sim.RoomWorld
+import dev.lilguy.sim.GridWorld
 import dev.lilguy.sim.Target
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -33,12 +33,14 @@ val ActionExamples: List<Pair<Intent, String>> = listOf(
 )
 
 /** One line per intent variant for schema descriptions and tool definitions. */
-private val VARIANT_DESCRIPTIONS = mapOf(
+internal val VARIANT_DESCRIPTIONS = mapOf(
     "move_to" to "Walk to an entity (stopping beside it if it blocks the way, like a locked door) or to a floor tile.",
     "pick_up" to "Pick up an item on your tile or one of the 8 tiles around it.",
     "use" to "Use an item you are holding: on an entity beside you, or by itself when \"on\" is null.",
     "say" to "Say something out loud.",
     "wait" to "Do nothing for some ticks (20 ticks = 1 s of game time).",
+    "do" to "Do an activity; the game walks you to where it happens.",
+    "buy" to "Buy an item from the shop.",
 )
 
 /**
@@ -64,8 +66,11 @@ fun replySchema(obs: Observation): ActionSchema<AgentReply> {
             "pick_up.itemId" to inView,
             "use.itemId" to obs.self.inventory,
             "use.on" to inView,
+            // No activities or shop in this room, so the schema leaves do and buy out.
+            "do.activity" to emptyList(),
+            "buy.item" to emptyList(),
         ),
-        ranges = mapOf("wait.ticks" to 1..RoomWorld.MAX_WAIT),
+        ranges = mapOf("wait.ticks" to 1..GridWorld.MAX_WAIT),
     )
     return ActionSchema.of("reply", AgentReply.serializer(), hints) { it.thought }
 }

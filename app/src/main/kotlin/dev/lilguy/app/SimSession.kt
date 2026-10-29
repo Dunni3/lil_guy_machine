@@ -2,9 +2,8 @@ package dev.lilguy.app
 
 import dev.lilguy.agent.AgentRuntime
 import dev.lilguy.agent.DecisionLog
-import dev.lilguy.agent.keyDoorScenario
 import dev.lilguy.decision.DecisionModel
-import dev.lilguy.sim.RoomWorld
+import dev.lilguy.sim.GridWorld
 import dev.lilguy.sim.World
 import dev.lilguy.sim.WorldSnapshot
 import kotlinx.coroutines.CoroutineScope
@@ -14,18 +13,19 @@ import kotlin.math.min
 import kotlin.time.Duration
 
 /**
- * One running episode of the key-and-door room, ticked at a fixed 20 Hz from the render thread
+ * One running episode of [ModelSetup.scenario] (the bedroom, or the key-and-door room), ticked at a fixed 20 Hz from the render thread
  * (which makes the render thread the sim thread). The agent runs in [scope], off that thread.
  * Keeps a rolling history of snapshots so the view can interpolate between the last two and,
  * while paused, scrub back through past ticks. After the guy walks out
- * it waits [resetDelay] seconds and starts a new episode.
+ * of the key-and-door room it waits [resetDelay] seconds and starts a new episode; the bedroom
+ * goes on until reset.
  */
 class SimSession(
     private val scope: CoroutineScope,
     val setup: ModelSetup,
     val resetDelay: Float = 3f,
 ) {
-    lateinit var world: RoomWorld
+    lateinit var world: GridWorld
         private set
     lateinit var runtime: AgentRuntime
         private set
@@ -79,7 +79,7 @@ class SimSession(
         val episodeLog = setup.logFor(episode, m.id)
         model = m
         log = episodeLog
-        val (w, r) = keyDoorScenario(m, setup.timeout) { episodeLog?.write(it) }
+        val (w, r) = setup.scenario.create(m, setup.timeout, setup.ticksPerMinute) { episodeLog?.write(it) }
         world = w
         runtime = r
         history.clear()

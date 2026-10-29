@@ -16,6 +16,7 @@ import dev.lilguy.agent.ActionExamples
 import dev.lilguy.sim.EntitySnapshot
 import dev.lilguy.sim.Intent
 import dev.lilguy.sim.IntentStatus
+import dev.lilguy.sim.LifeSnapshot
 import dev.lilguy.sim.Terrain
 import dev.lilguy.sim.WorldSnapshot
 import kotlinx.serialization.json.Json
@@ -25,7 +26,8 @@ import kotlin.math.min
 import kotlin.math.sin
 
 /**
- * Temporary 2D dev view: the room from above on the left, the agent's state on the right. A
+ * Temporary 2D dev view: the room from above on the left, the agent's state on the right (in the
+ * bedroom: the clock, money and needs, what he's doing, the last decision, events and money). A
  * stand-in until the 3D renderer (milestone 2). Laid out on a fixed 1920x1080 canvas and scaled
  * to fit. Fill rate stays low for the Streamer: one clear, then small shapes and text; no
  * full-screen layers.
@@ -61,7 +63,7 @@ class DevView : Disposable {
         val guyBefore = before.entities.firstOrNull { it.id == guy.id } ?: guy
         val gx = MathUtils.lerp(guyBefore.x, guy.x, session.alpha)
         val gy = MathUtils.lerp(guyBefore.y, guy.y, session.alpha)
-        val bubble = agent?.saying ?: if (session.thinkingFor != null) "..." else null
+        val bubble = agent?.saying ?: if (session.thinkingFor != null) "..." else if (now.life?.doing == "sleep") "z z z" else null
 
         layoutMap(now)
         viewport.apply()
@@ -73,12 +75,21 @@ class DevView : Disposable {
         shapes.begin(ShapeRenderer.ShapeType.Filled)
         drawTerrain(now)
         agent?.path?.forEach { shapes.color = PATH; shapes.circle(sx(it.x + 0.5f), sy(it.y + 0.5f), tile * 0.09f, 12) }
-        now.entities.forEach { if (it.carriedBy == null) drawEntity(it) }
+        now.entities.forEach { if (it.carriedBy == null && it.kind != "guy") drawEntity(it) }
+        shapes.color = RULE
+        shapes.rect(PANEL_X - 24f, MARGIN, 2f, HEIGHT - 2 * MARGIN)
+
+        now.life?.let { drawLifeShapes(it) }
+        shapes.end()
+
+        batch.begin()
+        if (now.life != null) now.entities.forEach { labelFurniture(it) }
+        batch.end()
+
+        shapes.begin(ShapeRenderer.ShapeType.Filled)
         drawGuy(gx, gy, guy.facingDegrees, carrying = agent?.inventory ?: emptyList())
         bubble?.let { bubbleShape(it, gx, gy) }
         banner(session)?.let { bannerShape(it) }
-        shapes.color = RULE
-        shapes.rect(PANEL_X - 24f, MARGIN, 2f, HEIGHT - 2 * MARGIN)
         shapes.end()
 
         batch.begin()
@@ -126,6 +137,7 @@ class DevView : Disposable {
         val cx = sx(e.x)
         val cy = sy(e.y)
         val t = tile
+        if (e.kind in FURNISHING) return drawFurniture(e, cx, cy, t)
         when (e.kind) {
             "door" -> if (e.state == "locked") {
                 shapes.color = DOOR_LOCKED
@@ -163,6 +175,76 @@ class DevView : Disposable {
         }
     }
 
+    /** Bedroom furniture and decor, by item id. Simple blocks; a label is drawn under each. */
+    private fun drawFurniture(e: EntitySnapshot, cx: Float, cy: Float, t: Float) {
+        val h = t / 2
+        when (e.id.value) {
+            "bed" -> {
+                shapes.color = BED
+                shapes.rect(cx - h + 4, cy - h + 4, t - 8, t - 8)
+                shapes.color = PILLOW
+                shapes.rect(cx - h + 10, cy + h * 0.35f, t - 20, h * 0.45f)
+            }
+            "desk" -> {
+                shapes.color = WOOD
+                shapes.rect(cx - h + 3, cy - h * 0.7f, t - 6, h * 1.4f)
+                shapes.color = PAPER
+                shapes.rect(cx - h * 0.4f, cy - h * 0.3f, h * 0.7f, h * 0.5f)
+            }
+            "chair" -> {
+                shapes.color = WOOD_DARK
+                shapes.rect(cx - h * 0.5f, cy - h * 0.5f, h, h)
+                shapes.rect(cx - h * 0.5f, cy + h * 0.4f, h, h * 0.2f)
+            }
+            "easel" -> {
+                shapes.color = WOOD
+                shapes.rectLine(cx - h * 0.6f, cy - h * 0.8f, cx, cy + h * 0.8f, 5f)
+                shapes.rectLine(cx + h * 0.6f, cy - h * 0.8f, cx, cy + h * 0.8f, 5f)
+                shapes.color = PAPER
+                shapes.rect(cx - h * 0.45f, cy - h * 0.1f, h * 0.9f, h * 0.7f)
+            }
+            "record_player" -> {
+                shapes.color = WOOD_DARK
+                shapes.rect(cx - h + 6, cy - h + 6, t - 12, t - 12)
+                shapes.color = if (e.state != null) ACCENT else VINYL
+                shapes.circle(cx, cy, h * 0.6f, 24)
+                shapes.color = WOOD
+                shapes.circle(cx, cy, h * 0.12f, 10)
+            }
+            "plant" -> {
+                shapes.color = POT
+                shapes.rect(cx - h * 0.35f, cy - h * 0.7f, h * 0.7f, h * 0.5f)
+                shapes.color = LEAF
+                shapes.circle(cx, cy + h * 0.15f, h * 0.5f, 18)
+            }
+            "poster" -> {
+                shapes.color = POSTER
+                shapes.rect(cx - h * 0.6f, cy - h * 0.7f, h * 1.2f, h * 1.4f)
+            }
+            "rug" -> {
+                shapes.color = RUG
+                shapes.rect(cx - t * 0.9f, cy - h * 0.8f, t * 1.8f, h * 1.6f)
+            }
+            "door" -> {
+                shapes.color = WOOD
+                shapes.rect(cx - h + 4, cy - h + 2, t - 8, t - 4)
+                shapes.color = KEY
+                shapes.circle(cx - h * 0.4f, cy, t * 0.05f, 10)
+            }
+            else -> {
+                shapes.color = Color.MAGENTA
+                shapes.circle(cx, cy, t * 0.15f, 12)
+            }
+        }
+    }
+
+    private fun labelFurniture(e: EntitySnapshot) {
+        if (e.kind !in FURNISHING) return
+        font.data.setScale(LABEL_SCALE)
+        font.color = MUTED
+        font.draw(batch, e.id.value.replace('_', ' '), sx(e.x) - tile, sy(e.y) - tile * 0.32f, tile * 2, Align.center, false)
+    }
+
     private fun drawKey(cx: Float, cy: Float, size: Float) {
         shapes.color = KEY
         shapes.circle(cx - size * 0.16f, cy, size * 0.15f, 18)
@@ -190,6 +272,11 @@ class DevView : Disposable {
             shapes.circle(cx + fx * r * 0.45f - fy * side * r * 0.35f, cy + fy * r * 0.45f + fx * side * r * 0.35f, r * 0.16f, 10)
         }
         if ("key" in carrying) drawKey(cx + r * 0.9f, cy - r * 0.9f, tile * 0.6f)
+        // Art he carries: one small card each, up to a handful.
+        carrying.filter { it == "sketch" || it == "painting" }.take(6).forEachIndexed { i, art ->
+            shapes.color = if (art == "painting") POSTER else PAPER
+            shapes.rect(cx + r * 0.7f + i * 7f, cy - r * 1.1f, tile * 0.16f, tile * 0.2f)
+        }
     }
 
     // --- speech bubble and banners -------------------------------------------------------------
@@ -290,6 +377,8 @@ class DevView : Disposable {
         session.setup.notice?.let { line(it, SMALL_SCALE, FAILED, maxLines = 2) }
 
         val big = if (detail) 1f else 1.25f
+        val life = s.life
+        if (life != null) return drawLifePanel(session, s, life, big)
         heading("INTENT")
         line(agent?.intent?.let { json.encodeToString(Intent.serializer(), it) } ?: "(none yet)", BODY_SCALE * big, TEXT)
         val status = agent?.status
@@ -336,6 +425,98 @@ class DevView : Disposable {
         line("OK pause · BACK less · UP/DOWN events · LEFT -1 tick · RIGHT +1 tick", SMALL_SCALE * 0.9f, MUTED, maxLines = 1)
     }
 
+    // --- bedroom panel ---------------------------------------------------------------------------
+
+    // Bars are laid out by drawLifePanel (text pass) and filled by drawLifeShapes (shape pass) on
+    // the next frame's layout, which is the same unless the panel above them changed height.
+    private var barsTop = 0f
+
+    private fun drawLifeShapes(life: LifeSnapshot) {
+        if (barsTop == 0f) return
+        val needs = listOf(life.energy to ENERGY, life.fullness to FULLNESS, life.mood to MOOD)
+        needs.forEachIndexed { i, (value, color) ->
+            val y = barsTop - i * BAR_PITCH - BAR_HEIGHT
+            shapes.color = BAR_BG
+            shapes.rect(BAR_X, y, BAR_WIDTH, BAR_HEIGHT)
+            shapes.color = if (value < LOW) FAILED else color
+            shapes.rect(BAR_X, y, BAR_WIDTH * (value / 100.0).toFloat().coerceIn(0f, 1f), BAR_HEIGHT)
+        }
+        // Where mood drifts to.
+        val moodY = barsTop - 2 * BAR_PITCH - BAR_HEIGHT
+        shapes.color = TEXT
+        shapes.rect(BAR_X + BAR_WIDTH * (life.moodTarget / 100.0).toFloat() - 1.5f, moodY - 4, 3f, BAR_HEIGHT + 8)
+    }
+
+    private fun drawLifePanel(session: SimSession, s: WorldSnapshot, life: LifeSnapshot, big: Float) {
+        val agent = s.agents.firstOrNull()
+        line("day ${life.clock.day} · ${life.clock.time}     $${life.money}", TITLE_SCALE * 0.85f, TEXT, maxLines = 1, gapAfter = 0.15f)
+
+        heading("NEEDS")
+        barsTop = cursor + 6f
+        val levels = listOf("energy" to life.energy, "fullness" to life.fullness, "mood" to life.mood)
+        levels.forEachIndexed { i, (name, value) ->
+            font.data.setScale(SMALL_SCALE)
+            font.color = if (value < LOW) FAILED else TEXT
+            val y = barsTop - i * BAR_PITCH
+            font.draw(batch, name, PANEL_X, y - 2)
+            font.draw(batch, value.toInt().toString(), BAR_X + BAR_WIDTH + 16f, y - 2)
+        }
+        cursor = barsTop - 3 * BAR_PITCH - 6f
+        line("mood settles toward ${life.moodTarget.toInt()}", SMALL_SCALE * 0.9f, MUTED, maxLines = 1)
+
+        heading("NOW")
+        val doing = life.doing
+        val now = when {
+            doing != null -> "$doing" + (life.progress?.let { " · ${(it * 100).toInt()}%" } ?: "")
+            agent?.intent != null -> json.encodeToString(Intent.serializer(), agent.intent!!)
+            else -> "(nothing yet)"
+        }
+        line(now, BODY_SCALE * big, if (doing != null) ACCENT else TEXT, maxLines = 2)
+        if (doing == null && agent?.status is IntentStatus.Failed) line(statusText(agent.status), SMALL_SCALE * big, FAILED, maxLines = 2)
+        life.music?.let { line("music: $it", SMALL_SCALE, CODE, maxLines = 1) }
+        val stuff = buildList {
+            if (life.holding.isNotEmpty()) add("holding " + life.holding.groupingBy { it }.eachCount().entries.joinToString { (k, v) -> if (v == 1) k else "$v $k" })
+            add("owns " + life.owns.entries.joinToString { (k, v) -> if (v == 1) k.replace('_', ' ') else "$v ${k.replace('_', ' ')}s" })
+        }
+        stuff.forEach { line(it, SMALL_SCALE * 0.9f, MUTED, maxLines = 2, gapAfter = 0.1f) }
+
+        heading("LAST DECISION")
+        val deciding = session.thinkingFor
+        val decision = session.decision
+        if (deciding != null) line("thinking... %.1f s".format(deciding.inWholeMilliseconds / 1000f), BODY_SCALE * big, ACCENT, maxLines = 1)
+        if (decision == null) {
+            line("(none yet)", BODY_SCALE * big, MUTED)
+        } else {
+            line(decision.rationale ?: "fallback: ${decision.error}", BODY_SCALE * big * 0.9f, if (decision.error != null) FAILED else TEXT, maxLines = 2)
+            if (detail) line("${json.encodeToString(Intent.serializer(), decision.intent)} · ${decision.latency.inWholeMilliseconds} ms", SMALL_SCALE * 0.9f, CODE, maxLines = 1)
+        }
+
+        if (!detail) {
+            cursor = MARGIN + 30f
+            line("BACK for details · OK to pause", SMALL_SCALE, MUTED, maxLines = 1)
+            return
+        }
+
+        val events = s.events.asReversed()
+        scroll = scroll.coerceIn(0, (events.size - LIFE_EVENT_ROWS).coerceAtLeast(0))
+        heading(if (scroll > 0) "EVENTS (scrolled back $scroll)" else "EVENTS")
+        if (events.isEmpty()) line("(none yet)", SMALL_SCALE, MUTED)
+        events.drop(scroll).take(LIFE_EVENT_ROWS).forEach {
+            val at = life.clockScale.reading(it.tick)
+            line("d${at.day} ${at.time}  ${it.text}", SMALL_SCALE * 0.95f, TEXT, maxLines = 1, gapAfter = 0f)
+        }
+
+        heading("MONEY")
+        if (life.transactions.isEmpty()) line("(no transactions yet)", SMALL_SCALE, MUTED)
+        life.transactions.takeLast(MONEY_ROWS).asReversed().forEach { t ->
+            val amount = if (t.amount > 0) "+$${t.amount}" else "-$${-t.amount}"
+            line("d${t.day} ${t.time}  $amount  ${t.reason}  ($${t.balance})", SMALL_SCALE * 0.95f, if (t.amount > 0) SUCCEEDED else TEXT, maxLines = 1, gapAfter = 0f)
+        }
+
+        cursor = MARGIN + 30f
+        line("OK pause · BACK less · UP/DOWN events · LEFT -1 tick · RIGHT +1 tick", SMALL_SCALE * 0.9f, MUTED, maxLines = 1)
+    }
+
     private fun statusText(status: IntentStatus?): String = when (status) {
         null -> "idle"
         IntentStatus.Submitted -> "submitted"
@@ -368,6 +549,15 @@ class DevView : Disposable {
         private const val PANEL_X = MARGIN + MAP_WIDTH + 64f
         private const val PANEL_WIDTH = WIDTH - PANEL_X - MARGIN
         private const val EVENT_ROWS = 6
+        private const val LIFE_EVENT_ROWS = 5
+        private const val MONEY_ROWS = 4
+        private const val LABEL_SCALE = 1.1f
+        private const val BAR_X = PANEL_X + 130f
+        private const val BAR_WIDTH = 440f
+        private const val BAR_HEIGHT = 18f
+        private const val BAR_PITCH = 34f
+        private const val LOW = 15.0
+        private val FURNISHING = setOf("furniture", "decor", "fixture")
 
         private const val TITLE_SCALE = 2.4f
         private const val HEADING_SCALE = 1.35f
@@ -399,6 +589,19 @@ class DevView : Disposable {
         private val BUBBLE_INK = Color.valueOf("15171cff")
         private val BANNER_BG = Color.valueOf("000000cc")
         private val RULE = Color.valueOf("2c313bff")
+        private val BED = Color.valueOf("3f5f9eff")
+        private val PILLOW = Color.valueOf("dfe6f2ff")
+        private val WOOD = Color.valueOf("a0703fff")
+        private val WOOD_DARK = Color.valueOf("6b4826ff")
+        private val PAPER = Color.valueOf("f1ead8ff")
+        private val VINYL = Color.valueOf("17181cff")
+        private val POT = Color.valueOf("b5583aff")
+        private val POSTER = Color.valueOf("d36fb0ff")
+        private val RUG = Color.valueOf("6d3f5a99")
+        private val BAR_BG = Color.valueOf("2c313bff")
+        private val ENERGY = Color.valueOf("f5c542ff")
+        private val FULLNESS = Color.valueOf("4cd18aff")
+        private val MOOD = Color.valueOf("5fd3e8ff")
 
         private val TEXT = Color.valueOf("eef0f4ff")
         private val MUTED = Color.valueOf("8d95a5ff")

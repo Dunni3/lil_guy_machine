@@ -8,6 +8,8 @@ import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration
 import com.badlogic.gdx.graphics.Pixmap
 import dev.lilguy.app.LilGuyGame
 import dev.lilguy.app.ModelSetup
+import dev.lilguy.agent.Scenario
+import dev.lilguy.sim.GameClock
 import java.io.File
 
 fun main() {
@@ -21,11 +23,14 @@ fun main() {
     // LILGUY_ENDPOINT picks an endpoint from the config (LILGUY_CONFIG, default
     // config/endpoints.yaml); without it the config's default agent endpoint is used, and
     // without a config the scripted policy. Keys come from this process's environment.
+    // LILGUY_SCENARIO is bedroom (default) or key-door; LILGUY_MINUTE_TICKS the clock scale.
     val setup = ModelSetup.fromConfig(
         configFile = File(System.getenv("LILGUY_CONFIG") ?: "config/endpoints.yaml"),
         endpoint = System.getenv("LILGUY_ENDPOINT")?.takeIf { it.isNotBlank() },
         env = System::getenv,
         logRoot = File("runs"),
+        scenario = System.getenv("LILGUY_SCENARIO")?.takeIf { it.isNotBlank() }?.let(Scenario::parse) ?: Scenario.Bedroom,
+        ticksPerMinute = System.getenv("LILGUY_MINUTE_TICKS")?.toIntOrNull() ?: GameClock.DEFAULT_TICKS_PER_MINUTE,
     )
     val game = LilGuyGame(setup)
     val shotPath = System.getenv("LILGUY_SCREENSHOT")

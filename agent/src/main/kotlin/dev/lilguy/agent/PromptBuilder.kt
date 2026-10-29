@@ -1,10 +1,12 @@
 package dev.lilguy.agent
 
+import dev.lilguy.decision.ChoiceSet
 import dev.lilguy.decision.DecisionRequest
 import dev.lilguy.decision.Message
 import dev.lilguy.sim.Intent
 import dev.lilguy.sim.IntentStatus
 import dev.lilguy.sim.Observation
+import dev.lilguy.sim.GridWorld
 import dev.lilguy.sim.RoomWorld
 import dev.lilguy.sim.World
 import kotlinx.serialization.json.Json
@@ -14,21 +16,27 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * Turns an observation plus recent memory into a request. The system prompt is fixed per goal:
- * how the world works, the action space with an example of each action, the reply format and
- * what the observation fields mean. The user message is the observation as one line of JSON and
- * the recent intents with how each ended.
+ * Turns an observation plus recent memory into a request. The system prompt is fixed per
+ * scenario: how the world works, the action space with an example of each action, the reply
+ * format and what the observation fields mean. The user message is the observation as one line
+ * of JSON and the recent intents with how each ended, each stamped by [stamp].
+ *
+ * [choices] builds the same decision as a closed set, for models that pick.
  */
 class PromptBuilder(
-    private val goal: String,
-    private val timeout: Duration = 20.seconds,
+    val system: String,
+    private val timeout: Duration,
+    private val choices: (Observation, List<Memory.Entry>) -> ChoiceSet,
+    private val stamp: (Long) -> String = { "tick $it" },
 ) {
-    val system: String = systemPrompt(goal)
+    /** The key-and-door room: [goal] in the system prompt and the key-and-door choice set. */
+    constructor(goal: String, timeout: Duration = 20.seconds) :
+        this(systemPrompt(goal), timeout, { obs, recent -> actionChoices(obs, goal, recent) })
 
     /** [closedChoice] adds the same decision as a set of options, for models that pick. */
     fun build(obs: Observation, recent: List<Memory.Entry>, closedChoice: Boolean = false): DecisionRequest {
         val history = recent.joinToString("\n") { e ->
-            "tick ${e.tick}: ${json.encodeToString(Intent.serializer(), e.intent)} -> ${e.result?.let(::describe) ?: "running"}"
+            "${stamp(e.tick)}: ${json.encodeToString(Intent.serializer(), e.intent)} -> ${e.result?.let(::describe) ?: "running"}"
         }
         val user = buildString {
             appendLine(OBSERVATION_HEADER)
@@ -43,7 +51,7 @@ class PromptBuilder(
             system = system,
             messages = listOf(Message(Message.Role.User, user)),
             timeout = timeout,
-            choices = if (closedChoice) actionChoices(obs, goal, recent) else null,
+            choices = if (closedChoice) choices(obs, recent) else null,
         )
     }
 
@@ -51,9 +59,9 @@ class PromptBuilder(
         private const val OBSERVATION_HEADER = "Observation:"
         private val json = Json { encodeDefaults = true; ignoreUnknownKeys = true }
         /** Examples show every field, nulls included, the way a strict schema wants them. */
-        private val exampleJson = Json { encodeDefaults = true; explicitNulls = true }
+        internal val exampleJson = Json { encodeDefaults = true; explicitNulls = true }
 
-        private fun describe(status: IntentStatus): String = when (status) {
+        internal fun describe(status: IntentStatus): String = when (status) {
             is IntentStatus.Failed -> "failed: ${status.reason}"
             else -> json.encodeToJsonElement(IntentStatus.serializer(), status).jsonObject.getValue("type").jsonPrimitive.content
         }
@@ -71,7 +79,7 @@ class PromptBuilder(
                 |How the world works:
                 |- Positions are tiles. x grows east and y grows south, so north is y = 0. Your own x and y have fractions: 3.5 is the middle of tile 3.
                 |- Time is in ticks: $tps ticks = 1 second of game time.
-                |- move_to finds a path around walls for you and walks ${(RoomWorld.SPEED * tps).toInt()} tiles a second. Moving to something that blocks the way, like a locked door, stops on a free tile beside it.
+                |- move_to finds a path around walls for you and walks ${(GridWorld.SPEED * tps).toInt()} tiles a second. Moving to something that blocks the way, like a locked door, stops on a free tile beside it.
                 |- pick_up and use only reach your own tile and the 8 tiles around it, so move next to a thing first.
                 |- An action that can't be done fails at once, and lastResult says why. Read it and try something else rather than repeating it.
                 |- You choose your next action when the current one has finished.
@@ -90,7 +98,7 @@ class PromptBuilder(
             """.trimMargin()
         }
 
-        private fun tag(intent: Intent): String =
+        internal fun tag(intent: Intent): String =
             json.encodeToJsonElement(Intent.serializer(), intent).jsonObject.getValue("type").jsonPrimitive.content
 
         /**

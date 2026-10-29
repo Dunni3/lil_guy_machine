@@ -3,19 +3,20 @@
 A 3D sim with one character driven entirely by a pluggable decision model (LLM over an
 OpenAI-compatible endpoint, or scripted/RL). Kotlin + libGDX, runs on desktop and Android TV.
 The spec is `docs/agent-world-spec.html` (milestones in section 10); decisions are in
-`docs/DECISIONS.md`. Current state: milestone 3 (connect a decision model): the key-and-door
-room driven by the scripted policy, TypeSafe's Jev (closed-choice) or an OpenAI-compatible
-endpoint, shown in a temporary 2D dev view in `:app`. The 3D renderer is deferred; milestones 4-6 are the bedroom, memory and
-personality (`research_notes/2026-10-29_0313_bedroom-proposal-and-roadmap-v2.html`).
+`docs/DECISIONS.md`. Current state: milestone 4 (the bedroom): a life sim with a game clock,
+money ledger, needs and data-driven activities and shop, driven by the scripted policy, TypeSafe's
+Jev (closed-choice) or an OpenAI-compatible endpoint, shown in a temporary 2D dev view in `:app`.
+Key-and-door stays as the quick backend test. The 3D renderer is deferred; milestones 5-6 are
+memory and personality (`research_notes/2026-10-29_0313_bedroom-proposal-and-roadmap-v2.html`).
 
 ## Commands
 
 ```bash
 make test        # JVM unit tests (all modules)
-make cli         # headless runner (ARGS="...")
+make cli         # headless runner (ARGS="--scenario bedroom --days 3 --endpoint typesafe")
 make desktop     # LWJGL3 window
 make tv-connect IP=10.0.0.51   # wireless adb to the Streamer
-make tv-run      # build + install + launch debug APK (ENDPOINT=<name> to pick a model)
+make tv-run      # build + install + launch debug APK (ENDPOINT=<name>, SCENARIO=key-door, MINUTE_TICKS=<n>)
 make tv-push-config  # push config/endpoints.yaml + the keys it names (dev only)
 make tv-logs     # logcat, tag LilGuy
 make tv-profile  # release-like build (not debuggable) for measuring performance
@@ -29,9 +30,14 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
 - Action space: `sim/.../Intent.kt` (`Intent`, `Target`, `IntentStatus`). It is the wire format;
   changing it changes what models see.
 - World boundary: `sim/.../World.kt`; observations and snapshots: `sim/.../Observation.kt`.
-  The room, its controller and the intent lifecycle: `sim/.../RoomWorld.kt` (map text in
-  `TileMap.kt`, A* in `Pathfinder.kt`).
-- Scenario wiring, scripted policy, lockstep runner: `agent/.../Scenario.kt`, `KeyDoorPolicy.kt`.
+  Intent lifecycle, walking, publishing: `sim/.../GridWorld.kt`. Key-and-door: `RoomWorld.kt`
+  (map text in `TileMap.kt`, A* in `Pathfinder.kt`).
+- The bedroom: `sim/.../BedroomWorld.kt` (engine), `BedroomContent.kt` (schema of the content file),
+  `GameClock.kt` (clock scale knob), `Ledger.kt` (money ledger and needs). Content, which is where
+  numbers and new jobs, items and hobbies go: `sim/src/main/resources/content/bedroom.yaml`.
+- Scenario wiring, scripted policies, lockstep runner: `agent/.../Scenario.kt` (`Scenario` enum),
+  `KeyDoorPolicy.kt`, `BedroomPolicy.kt`. Bedroom prompt, schema, choice set: `BedroomPrompt.kt`;
+  run summaries: `BedroomReport.kt`.
 - Decision layer: `decision/.../DecisionModel.kt`, `ActionSchema.kt` (schema + reply parser),
   `JsonSchemaGenerator.kt`, `SchemaValidator.kt`, `OpenAiCompatBackend.kt`, `TypesafeBackend.kt`
   (System One, picks from `DecisionRequest.choices`), `Endpoints.kt` (config loader and factory).

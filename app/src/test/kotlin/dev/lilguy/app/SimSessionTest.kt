@@ -1,6 +1,7 @@
 package dev.lilguy.app
 
 import dev.lilguy.agent.KeyDoorPolicy
+import dev.lilguy.agent.Scenario
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -12,7 +13,7 @@ import kotlin.time.Duration.Companion.milliseconds
 class SimSessionTest {
     private fun session(block: (SimSession) -> Unit) {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val s = SimSession(scope, ModelSetup({ KeyDoorPolicy(0.milliseconds) }))
+        val s = SimSession(scope, ModelSetup({ KeyDoorPolicy(0.milliseconds) }, Scenario.KeyDoor))
         try { block(s) } finally { s.dispose(); scope.cancel() }
     }
 
