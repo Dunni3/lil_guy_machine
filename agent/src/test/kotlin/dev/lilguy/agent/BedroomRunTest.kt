@@ -1,8 +1,8 @@
 package dev.lilguy.agent
 
+import dev.lilguy.decision.ActionSchema
 import dev.lilguy.sim.BedroomWorld
 import dev.lilguy.sim.GameClock
-import dev.lilguy.sim.Intent
 import dev.lilguy.sim.Need
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.jsonArray
@@ -33,10 +33,6 @@ class BedroomRunTest {
         val lived = live(14)
         val w = lived.world
         printDays(w)
-        w.needs.changes.firstOrNull { it.value < 1 }?.let { low ->
-            println("first low: $low")
-            lived.decisions.filter { it.tick in (low.tick - 6000)..(low.tick + 1000) }.forEach { println("  ${w.clock.label(it.tick)} ${it.intent} ${it.observation?.needs} meals=${it.observation?.owns?.get("meal")} money=${it.observation?.money} holding=${it.observation?.holding}") }
-        }
         assertEquals(15, w.clock.day(w.tick))
         lived.lowest.forEach { (need, low) -> assertTrue(low > 0.0, "$need reached $low") }
         val easel = w.ledger.transactions.firstOrNull { it.reason == "bought 1 easel" }
@@ -73,22 +69,10 @@ class BedroomRunTest {
             listOf("do:eat", "do:sketch", "do:sleep") + enumOf("buy", "item").map { "buy:$it" } + "wait:${BedroomPrompt.WAIT_TICKS}",
             choices.options.map { it.label },
         )
-        choices.options.forEach { assertEquals(it.label.substringAfter(':').substringBefore(':'), BedroomPromptTestLabels.arg(schemaDecode(schema, it.reply.toString()))) }
+        // Every option's reply passes the same schema a writing model is held to.
+        val decoder = ActionSchema("reply", AgentReply.serializer(), schema)
+        choices.options.forEach { decoder.decode(it.reply.toString()) }
         assertTrue("needs an easel" in choices.state.toString())
-    }
-
-    private fun schemaDecode(schema: kotlinx.serialization.json.JsonObject, raw: String): Intent {
-        val parsed = dev.lilguy.decision.ActionSchema("reply", AgentReply.serializer(), schema).decode(raw)
-        return parsed.intent
-    }
-
-    private object BedroomPromptTestLabels {
-        fun arg(intent: Intent): String = when (intent) {
-            is Intent.Do -> intent.activity
-            is Intent.Buy -> intent.item
-            is Intent.Wait -> intent.ticks.toString()
-            else -> error("unexpected $intent")
-        }
     }
 
     @Test

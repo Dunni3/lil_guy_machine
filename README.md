@@ -8,21 +8,22 @@ Design spec: [docs/agent-world-spec.html](docs/agent-world-spec.html).
 
 ## Status
 
-**Milestone 3 (connect a decision model).** Two backends: TypeSafe's Jev, which picks the next
-action from a closed set built each turn, and any OpenAI-compatible chat model, which writes
-`{thought, intent}` against a JSON schema generated from the Kotlin types with ids limited to
-what the guy can see. Jev solves the key-and-door room in 10 of 10 lockstep runs (148 ticks,
-5 decisions). `make cli` runs N lockstep runs with the scripted policy or any configured
-endpoint and reports the solve rate. Desktop and the TV show the same run in a temporary
-top-down 2D view. The 3D renderer is deferred (see `docs/DECISIONS.md`).
+**Milestone 4 (the bedroom).** The guy lives in a bedroom: a game clock (1 game minute = 5 ticks,
+so a day is about 6 real minutes), a money ledger, three needs (energy, fullness, mood) and an
+economy of activities and purchases loaded from `sim/src/main/resources/content/bedroom.yaml`. He
+sketches and paints, sells art at the door, and buys food, canvases, an easel, records, books and
+decor. Models pick `do(activity)` or `buy(item)` from a list the sim builds each turn, with reasons
+for the locked ones. The scripted baseline lives 14 game days and buys the easel on day 2; TypeSafe's
+Jev lives 5-day runs with no fallbacks and buys the easel on day 3. The key-and-door room from
+milestones 1 and 3 is still the quick test for every backend (Jev 10 of 10).
 
 | # | Milestone | Status |
 |---|---|---|
 | 0 | Scaffold: Gradle modules, cube on desktop and TV | done |
 | 1 | Headless sim: key-and-door room, scripted policy | done |
 | 2 | 3D renderer | deferred; the 2D dev view covers the TV until then |
-| 3 | Connect a decision model: schema, OpenAI-compatible and TypeSafe backends, logs | done on desktop; TV run pending |
-| 4 | The bedroom: clock, money, needs, a painting job, a shop | planned |
+| 3 | Connect a decision model: schema, OpenAI-compatible and TypeSafe backends, logs | done |
+| 4 | The bedroom: clock, money, needs, a painting job, a shop | done headless; TV run pending |
 | 5 | Memory v0 and saves | planned |
 | 6 | Personality v0: interests, skill, wants | planned |
 
@@ -35,7 +36,7 @@ top-down 2D view. The 3D renderer is deferred (see `docs/DECISIONS.md`).
 ```
 
 `:sim` and `:decision` know nothing about each other or about graphics; `:agent` joins them.
-The model picks *intents* (`MoveTo`, `PickUp`, `Use`, `Say`, `Wait`) defined once as a sealed
+The model picks *intents* (`Do`, `Buy`, `MoveTo`, `PickUp`, `Use`, `Say`, `Wait`) defined once as a sealed
 Kotlin type, which is both the JSON schema the model sees and the parser for its reply.
 
 ## Quick start
@@ -44,8 +45,9 @@ Needs JDK 17 and, for the TV, the Android SDK (platform 34).
 
 ```bash
 make test       # JVM unit tests
-make cli        # headless runner, scripted policy
-make desktop    # desktop window
+make cli        # headless runner, scripted policy, key-and-door
+make cli ARGS="--scenario bedroom --days 14"   # the bedroom, 14 game days
+make desktop    # desktop window (the bedroom; SCENARIO=key-door for the old room)
 ```
 
 To use a model, copy `config/endpoints.example.yaml` to `config/endpoints.yaml` (gitignored).
@@ -55,6 +57,7 @@ Makefile loads it), or export the key in your shell:
 
 ```bash
 make cli ARGS="--endpoint typesafe --runs 10"  # solve rate and median ticks; logs in runs/
+make cli ARGS="--scenario bedroom --endpoint typesafe --days 5"  # plus hours/money/needs JSONL
 make cli ARGS="--replay runs/<dir>/run-01.jsonl"  # replay a logged run without the model
 make desktop ENDPOINT=typesafe
 ```
