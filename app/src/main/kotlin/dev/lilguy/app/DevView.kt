@@ -61,7 +61,7 @@ class DevView : Disposable {
         val guyBefore = before.entities.firstOrNull { it.id == guy.id } ?: guy
         val gx = MathUtils.lerp(guyBefore.x, guy.x, session.alpha)
         val gy = MathUtils.lerp(guyBefore.y, guy.y, session.alpha)
-        val bubble = agent?.saying ?: if (session.runtime.decidingSince != null) "..." else null
+        val bubble = agent?.saying ?: if (session.thinkingFor != null) "..." else null
 
         layoutMap(now)
         viewport.apply()
@@ -228,7 +228,8 @@ class DevView : Disposable {
         val solved = session.solvedFor
         return when {
             solved != null -> "ESCAPED in ${session.current.tick} ticks · next episode in ${(session.resetDelay - solved).toInt() + 1} s"
-            session.paused -> "PAUSED · RIGHT steps a tick, LEFT a second"
+            session.paused -> if (session.viewBack > 0) "PAUSED · ${session.viewBack} ticks back · LEFT/RIGHT step · OK resumes live"
+            else "PAUSED · LEFT steps back a tick, RIGHT forward"
             else -> null
         }
     }
@@ -273,8 +274,8 @@ class DevView : Disposable {
 
     private fun drawPanel(session: SimSession, s: WorldSnapshot, fps: Int) {
         val agent = s.agents.firstOrNull()
-        val decision = session.runtime.lastDecision
-        val deciding = session.runtime.decidingSince
+        val decision = session.decision
+        val deciding = session.thinkingFor
         cursor = HEIGHT - MARGIN
 
         font.data.setScale(TITLE_SCALE)
@@ -296,7 +297,7 @@ class DevView : Disposable {
 
         heading("LAST DECISION")
         if (deciding != null) {
-            line("thinking... %.1f s".format(deciding.elapsedNow().inWholeMilliseconds / 1000f), BODY_SCALE * big, ACCENT, maxLines = 1)
+            line("thinking... %.1f s".format(deciding.inWholeMilliseconds / 1000f), BODY_SCALE * big, ACCENT, maxLines = 1)
         }
         if (decision == null) {
             line("(none yet)", BODY_SCALE * big, MUTED)
@@ -328,7 +329,7 @@ class DevView : Disposable {
         }
 
         cursor = MARGIN + 30f
-        line("OK pause · BACK less · UP/DOWN events · RIGHT +1 tick · LEFT +1 s", SMALL_SCALE * 0.9f, MUTED, maxLines = 1)
+        line("OK pause · BACK less · UP/DOWN events · LEFT -1 tick · RIGHT +1 tick", SMALL_SCALE * 0.9f, MUTED, maxLines = 1)
     }
 
     private fun statusText(status: IntentStatus?): String = when (status) {

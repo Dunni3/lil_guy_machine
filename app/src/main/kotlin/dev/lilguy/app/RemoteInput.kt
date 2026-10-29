@@ -2,7 +2,6 @@ package dev.lilguy.app
 
 import com.badlogic.gdx.Input.Keys
 import com.badlogic.gdx.InputAdapter
-import dev.lilguy.sim.World
 
 /**
  * TV remote (and keyboard) controls for the dev view. Nothing here moves the guy; the agent is
@@ -18,7 +17,7 @@ class RemoteInput(private val session: () -> SimSession, private val view: DevVi
             Keys.UP -> view.scroll--
             Keys.DOWN -> view.scroll++
             Keys.RIGHT -> s.step(1)
-            Keys.LEFT -> s.step(World.TICKS_PER_SECOND)
+            Keys.LEFT -> s.step(-1)
             Keys.R -> s.reset()
             else -> return false
         }

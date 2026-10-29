@@ -44,7 +44,7 @@ the action space, tick and FPS. It is the observability surface on the TV. libGD
 `ShapeRenderer` + `SpriteBatch` + the built-in 15 px `BitmapFont` scaled up. That font is soft
 but readable at 1080p; switch to a TTF via gdx-freetype if the dev view outlives milestone 2.
 Remote: OK pauses the sim (and so the agent), Back toggles detail and is caught so it never
-exits, D-pad up/down scrolls events, right/left step 1 tick / 1 s while paused. Home leaves.
+exits, D-pad up/down scrolls events, right/left step 1 tick forward / back while paused. Home leaves.
 
 ## 2026-10-28: The render thread is the sim thread in the app
 
@@ -87,3 +87,11 @@ dev view.
 The app gets onto the home screen as a tile in smarter-tv's dock: add `dev.lilguy.machine` to
 "Dock packages" in the phone controller's launcher config. It already shows in the dock's
 "All apps" grid because it's a LEANBACK_LAUNCHER activity. No smarter-tv code changes.
+
+## 2026-10-29: Stepping back scrubs a snapshot history
+
+LEFT used to step forward a second, because the world can only move forward and the agent runs
+against it live. `SimSession` now keeps a rolling two-minute history of snapshots. While paused,
+LEFT moves the view one tick back through it and RIGHT replays forward, advancing the real world
+only at the live tick. Only the view rewinds: the world and the agent's panels (last decision,
+thinking time) stay live, and resuming (OK) jumps back to the live tick.
