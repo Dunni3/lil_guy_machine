@@ -2,91 +2,85 @@ package dev.lilguy.app
 
 import com.badlogic.gdx.ApplicationAdapter
 import com.badlogic.gdx.Gdx
+import com.badlogic.gdx.Input
 import com.badlogic.gdx.graphics.GL20
-import com.badlogic.gdx.graphics.PerspectiveCamera
-import com.badlogic.gdx.graphics.VertexAttributes.Usage
-import com.badlogic.gdx.graphics.g2d.BitmapFont
-import com.badlogic.gdx.graphics.g2d.SpriteBatch
-import com.badlogic.gdx.graphics.g3d.Environment
-import com.badlogic.gdx.graphics.g3d.Material
-import com.badlogic.gdx.graphics.g3d.Model
-import com.badlogic.gdx.graphics.g3d.ModelBatch
-import com.badlogic.gdx.graphics.g3d.ModelInstance
-import com.badlogic.gdx.graphics.g3d.attributes.ColorAttribute
-import com.badlogic.gdx.graphics.g3d.environment.DirectionalLight
-import com.badlogic.gdx.graphics.g3d.utils.ModelBuilder
-import com.badlogic.gdx.math.Vector3
+import com.badlogic.gdx.graphics.profiling.GLProfiler
 import com.badlogic.gdx.utils.ScreenUtils
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * Milestone 0: a lit, rotating cube plus an FPS readout, to prove the toolchain and measure the
- * Streamer's GPU. The world renderer replaces the cube at milestone 2.
+ * The 2D dev view over the milestone 1 sim: the scripted guy solves the key-and-door room in a
+ * loop. The 3D world renderer replaces [DevView] at milestone 2.
  */
 class LilGuyGame : ApplicationAdapter() {
-    private lateinit var camera: PerspectiveCamera
-    private lateinit var environment: Environment
-    private lateinit var modelBatch: ModelBatch
-    private lateinit var cubeModel: Model
-    private lateinit var cube: ModelInstance
-    private lateinit var hudBatch: SpriteBatch
-    private lateinit var font: BitmapFont
-    private var angle = 0f
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private lateinit var session: SimSession
+    private lateinit var view: DevView
+    private lateinit var profiler: GLProfiler
+
+    // Perf log, every LOG_SECONDS: fps, worst frame, CPU time in update+draw (after the clear,
+    // which is where the driver blocks for vsync), draw calls per frame.
+    private var logTimer = 0f
+    private var worstDelta = 0f
+    private var frames = 0
+    private var renderNanos = 0L
+    private var drawCalls = 0
 
     override fun create() {
         Gdx.app.log(TAG, "GL ${Gdx.gl.glGetString(GL20.GL_RENDERER)}; " +
             "backbuffer ${Gdx.graphics.backBufferWidth}x${Gdx.graphics.backBufferHeight}")
-
-        camera = PerspectiveCamera(60f, Gdx.graphics.width.toFloat(), Gdx.graphics.height.toFloat()).apply {
-            position.set(3f, 2.5f, 3f)
-            lookAt(0f, 0f, 0f)
-            near = 0.1f
-            far = 100f
-            update()
-        }
-        environment = Environment().apply {
-            set(ColorAttribute(ColorAttribute.AmbientLight, 0.35f, 0.35f, 0.4f, 1f))
-            add(DirectionalLight().set(0.9f, 0.85f, 0.8f, -0.6f, -1f, -0.3f))
-        }
-        modelBatch = ModelBatch()
-        cubeModel = ModelBuilder().createBox(
-            1.5f, 1.5f, 1.5f,
-            Material(ColorAttribute.createDiffuse(0.85f, 0.55f, 0.25f, 1f)),
-            (Usage.Position or Usage.Normal).toLong(),
-        )
-        cube = ModelInstance(cubeModel)
-        hudBatch = SpriteBatch()
-        font = BitmapFont().apply { data.setScale(2f) }
+        session = SimSession(scope, thinkTime = THINK_TIME)
+        view = DevView()
+        profiler = GLProfiler(Gdx.graphics).apply { enable() }
+        Gdx.input.setCatchKey(Input.Keys.BACK, true)
+        Gdx.input.inputProcessor = RemoteInput({ session }, view)
     }
 
     override fun resize(width: Int, height: Int) {
-        camera.viewportWidth = width.toFloat()
-        camera.viewportHeight = height.toFloat()
-        camera.update()
-        hudBatch.projectionMatrix.setToOrtho2D(0f, 0f, width.toFloat(), height.toFloat())
+        Gdx.app.log(TAG, "resize ${width}x$height; backbuffer ${Gdx.graphics.backBufferWidth}x${Gdx.graphics.backBufferHeight}")
+        view.resize(width, height)
     }
 
     override fun render() {
-        angle = (angle + Gdx.graphics.deltaTime * 45f) % 360f
-        cube.transform.setToRotation(Vector3.Y, angle).rotate(Vector3.X, 20f)
-
-        ScreenUtils.clear(0.16f, 0.18f, 0.14f, 1f, true)
-        modelBatch.begin(camera)
-        modelBatch.render(cube, environment)
-        modelBatch.end()
-
-        hudBatch.begin()
-        font.draw(hudBatch, "lil guy machine - ${Gdx.graphics.framesPerSecond} fps", 32f, Gdx.graphics.height - 32f)
-        hudBatch.end()
+        val delta = Gdx.graphics.deltaTime
+        ScreenUtils.clear(DevView.BACKGROUND)
+        val start = System.nanoTime()
+        session.update(delta)
+        view.render(session, Gdx.graphics.framesPerSecond)
+        renderNanos += System.nanoTime() - start
+        drawCalls += profiler.drawCalls
+        profiler.reset()
+        frames++
+        worstDelta = maxOf(worstDelta, delta)
+        logTimer += delta
+        if (logTimer >= LOG_SECONDS) {
+            Gdx.app.log(TAG, "fps ${Gdx.graphics.framesPerSecond}; worst frame %.1f ms; update+draw cpu %.2f ms; %d draw calls/frame; backbuffer %dx%d; tick %d".format(
+                worstDelta * 1000, renderNanos / 1e6 / frames, drawCalls / frames,
+                Gdx.graphics.backBufferWidth, Gdx.graphics.backBufferHeight, session.current.tick,
+            ))
+            logTimer = 0f
+            frames = 0
+            worstDelta = 0f
+            renderNanos = 0
+            drawCalls = 0
+        }
     }
 
     override fun dispose() {
-        modelBatch.dispose()
-        cubeModel.dispose()
-        hudBatch.dispose()
-        font.dispose()
+        session.dispose()
+        scope.cancel()
+        view.dispose()
+        profiler.disable()
     }
 
     companion object {
         const val TAG = "LilGuy"
+        /** Fake model latency for the scripted policy, so a decision is visible as it happens. */
+        val THINK_TIME = 600.milliseconds
+        private const val LOG_SECONDS = 5f
     }
 }

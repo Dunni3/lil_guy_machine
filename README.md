@@ -8,9 +8,11 @@ Design spec: [docs/agent-world-spec.html](docs/agent-world-spec.html).
 
 ## Status
 
-**Milestone 0 (scaffold).** The Gradle modules build; desktop and Android show a lit, rotating
-cube with an FPS readout; the action space (`Intent`) and the decision/agent interfaces exist
-but no world or model backend does yet.
+**Milestone 1 (headless sim), plus a temporary 2D dev view.** `:sim` has the 16x16
+key-and-door room with grid collision, A* and the intent lifecycle. A scripted policy solves it
+through the real agent loop: `make cli` prints the trace and finishes in about 0.1 s of wall
+time. Desktop and the TV show a top-down 2D view of the run with the agent's intent, decision
+and events, looping forever. No 3D renderer or model backend yet.
 
 | # | Milestone | Exit criterion |
 |---|---|---|
@@ -49,7 +51,11 @@ On the TV (Developer options and network debugging on):
 make tv-connect IP=<tv-ip>
 make tv-run
 make tv-logs
+make tv-profile # release-like build; judge performance on this
 ```
+
+Remote: OK pauses, Back toggles panel detail (it never exits; Home does), up/down scroll the
+event list, right/left step one tick / one second while paused.
 
 ## License
 

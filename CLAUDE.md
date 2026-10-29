@@ -3,7 +3,8 @@
 A 3D sim with one character driven entirely by a pluggable decision model (LLM over an
 OpenAI-compatible endpoint, or scripted/RL). Kotlin + libGDX, runs on desktop and Android TV.
 The spec is `docs/agent-world-spec.html` (milestones in section 10); decisions are in
-`docs/DECISIONS.md`. Current state: milestone 0 (rotating cube; interfaces only).
+`docs/DECISIONS.md`. Current state: milestone 1 (headless key-and-door sim, scripted policy)
+plus a temporary 2D dev view in `:app` standing in for the 3D renderer.
 
 ## Commands
 
@@ -14,6 +15,7 @@ make desktop     # LWJGL3 window
 make tv-connect IP=10.0.0.51   # wireless adb to the Streamer
 make tv-run      # build + install + launch debug APK
 make tv-logs     # logcat, tag LilGuy
+make tv-profile  # release-like build (not debuggable) for measuring performance
 ```
 
 The Makefile exports `JAVA_HOME` (JDK 17 at `~/Library/Java/JavaVirtualMachines/temurin-17.jdk`)
@@ -24,9 +26,14 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
 - Action space: `sim/.../Intent.kt` (`Intent`, `Target`, `IntentStatus`). It is the wire format;
   changing it changes what models see.
 - World boundary: `sim/.../World.kt`; observations and snapshots: `sim/.../Observation.kt`.
+  The room, its controller and the intent lifecycle: `sim/.../RoomWorld.kt` (map text in
+  `TileMap.kt`, A* in `Pathfinder.kt`).
+- Scenario wiring, scripted policy, lockstep runner: `agent/.../Scenario.kt`, `KeyDoorPolicy.kt`.
 - Decision layer: `decision/.../DecisionModel.kt`, `ActionSchema.kt`, `ScriptedDecisionModel.kt`.
 - Agent loop: `agent/.../AgentRuntime.kt`, `PromptBuilder.kt`, `Memory.kt`.
-- Renderer: `app/.../LilGuyGame.kt`. Launchers: `desktop/`, `android/`.
+- Renderer: `app/.../LilGuyGame.kt` (2D dev view in `DevView.kt`, sim clock in `SimSession.kt`,
+  remote keys in `RemoteInput.kt`). Launchers: `desktop/`, `android/`.
+  `LILGUY_SCREENSHOT=out.png LILGUY_SCREENSHOT_AT=<s> make desktop` saves one frame and quits.
 - Endpoint config example: `config/endpoints.example.yaml` (real one is gitignored).
 - ADB helpers: `tools/adb/`.
 
@@ -43,13 +50,15 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
 
 Lessons carried over from `~/projects/smarter-tv` (its `research_notes/` has the detail):
 
-- Device: `kirkwood`, Android 14, 4 GB RAM. Panel 3840x2160 @ 60 Hz with the UI at 1920x1080.
+- Device: `kirkwood`, Android 14, 4 GB RAM, PowerVR GE9215. Userspace is 32-bit
+  (`armeabi-v7a` only), so the APK must carry armeabi-v7a natives. Panel 3840x2160 @ 60 Hz with the UI at 1920x1080.
   Usually at `10.0.0.51:5555` over wireless adb; accept the "Allow USB debugging?" prompt on
   the TV the first time.
 - If the emulator is also attached, set `ANDROID_SERIAL=10.0.0.51:5555`.
 - **Never** change HOME, disable launcher/setup packages, or run debloat from this repo.
   smarter-tv's launcher is HOME on the Streamer, and changing HOME once took the TV offline.
-  This app is a plain LEANBACK_LAUNCHER entry.
+  This app is a plain LEANBACK_LAUNCHER entry. To put it on the home screen, add
+  `dev.lilguy.machine` to "Dock packages" in smarter-tv's phone controller (launcher config).
 - The GPU is weak: each full-screen layer costs ~7 ms and per-frame full-screen gradients or AGSL
   shaders blew the 16.7 ms budget. Keep fill rate low and log the GL backbuffer size
   (`LilGuy` tag) to confirm whether the surface is 1080p or 4K.

@@ -25,7 +25,7 @@ desktop: ## Run the app in a desktop window
 
 .PHONY: cli
 cli: ## Run the headless CLI (ARGS="--ticks 5000")
-	$(GRADLE) -q :cli:run --args="$(ARGS)"
+	$(GRADLE) -q :cli:run $(if $(ARGS),--args="$(ARGS)")
 
 .PHONY: test
 test: ## Run all JVM unit tests
@@ -48,6 +48,11 @@ tv-install: local.properties ## Build and install the debug APK on the connected
 
 .PHONY: tv-run
 tv-run: tv-install ## Install and launch on the connected device
+	$(ADB) shell am start -n $(APP_ID)/dev.lilguy.android.AndroidLauncher
+
+.PHONY: tv-profile
+tv-profile: local.properties ## Install and launch a release-like build (for measuring performance)
+	$(GRADLE) :android:installProfile
 	$(ADB) shell am start -n $(APP_ID)/dev.lilguy.android.AndroidLauncher
 
 .PHONY: tv-stop

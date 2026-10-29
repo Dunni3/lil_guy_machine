@@ -4,8 +4,9 @@ plugins {
 }
 
 // libGDX ships its .so files inside per-ABI jars; unpack them into jniLibs.
-// The Streamer and Apple Silicon emulators are arm64; x86_64 covers Intel emulators.
-val gdxAbis = listOf("arm64-v8a", "x86_64")
+// The Streamer runs a 32-bit userspace (abilist is armeabi-v7a only) despite its 64-bit SoC.
+// arm64 covers Apple Silicon emulators; x86_64 covers Intel emulators.
+val gdxAbis = listOf("armeabi-v7a", "arm64-v8a", "x86_64")
 val natives: Configuration by configurations.creating
 val nativesDir = layout.buildDirectory.dir("gdx-natives")
 
@@ -25,6 +26,13 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+        }
+        // Release-like (not debuggable, so ART compiles it normally) but signed with the debug
+        // key so it installs over adb. Judge performance on this, not on debug.
+        create("profile") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += "release"
         }
     }
 
