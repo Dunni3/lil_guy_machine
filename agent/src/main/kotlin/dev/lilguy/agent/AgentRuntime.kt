@@ -72,7 +72,7 @@ class AgentRuntime(
             world.awaitDecisionPoint(id)
             val obs = world.observe(id)
             memory.settle(obs.lastIntent, obs.lastResult)
-            val request = prompts.build(obs, memory.recent())
+            val request = prompts.build(obs, memory.recent(), closedChoice = model.capabilities.closedChoice)
             val schema = schemaFor(obs)
             val started = TimeSource.Monotonic.markNow()
             decidingSince = started

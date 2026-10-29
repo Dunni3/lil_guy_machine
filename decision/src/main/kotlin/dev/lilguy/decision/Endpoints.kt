@@ -23,7 +23,7 @@ data class EndpointsFile(
 
 @Serializable
 data class EndpointConfig(
-    /** Backend: `openai_compat` is the only one so far. */
+    /** Backend: `openai_compat`, or `typesafe` (System One; picks from a closed set). */
     val kind: String = "openai_compat",
     @SerialName("base_url") val baseUrl: String,
     val model: String,
@@ -50,7 +50,7 @@ data class EndpointConfig(
     val timeout: Duration get() = (timeoutSeconds * 1000).toLong().milliseconds
 
     /** Long enough for every try plus the backoff between them; for the agent loop's timeout. */
-    val decisionTimeout: Duration get() = timeout * (maxRetries + 1) + OpenAiCompatBackend.MAX_BACKOFF
+    val decisionTimeout: Duration get() = timeout * (maxRetries + 1) + JsonHttp.MAX_BACKOFF
 }
 
 @Serializable
@@ -95,6 +95,7 @@ object Endpoints {
         }
         return when (endpoint.kind) {
             "openai_compat" -> OpenAiCompatBackend(endpoint, key, id = "$name:${endpoint.model}")
+            "typesafe" -> TypesafeBackend(endpoint, key, id = "$name:${endpoint.model}")
             else -> throw IllegalArgumentException("endpoint '$name' has unknown kind '${endpoint.kind}'")
         }
     }

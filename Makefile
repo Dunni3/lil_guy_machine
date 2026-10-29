@@ -7,6 +7,12 @@ ANDROID_HOME ?= $(HOME)/Library/Android/sdk
 JAVA_HOME ?= $(shell /usr/libexec/java_home -v 17 2>/dev/null || echo $(HOME)/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home)
 export ANDROID_HOME JAVA_HOME
 ADB := $(ANDROID_HOME)/platform-tools/adb
+
+# API keys live outside the repo, in one file every worktree sees: `export NAME=value` lines
+# (TYPESAFE_API_KEY and the like). Make exports them to the CLI, the desktop app and
+# tv-push-config. Never commit keys or echo them here.
+SECRETS_ENV ?= $(HOME)/.config/lil-guy-machine/secrets.env
+-include $(SECRETS_ENV)
 GRADLE := ./gradlew --console=plain
 APP_ID := dev.lilguy.machine
 

@@ -46,6 +46,16 @@ data class LoggedRequest(
     val temperature: Double,
     /** The per-request reply schema, ids and all. */
     val schema: JsonObject?,
+    /** For closed-choice models: the state and options they picked from. */
+    val choices: LoggedChoices? = null,
+)
+
+@Serializable
+data class LoggedChoices(
+    val instructions: String,
+    val state: JsonObject,
+    /** Label to description. */
+    val options: Map<String, String>,
 )
 
 @Serializable
@@ -82,7 +92,13 @@ class DecisionLog(val file: File, private val run: String, private val model: St
             tick = r.tick,
             observation = r.observation,
             request = r.request?.let { req ->
-                LoggedRequest(req.system, req.messages.map { LoggedMessage(it.role.name.lowercase(), it.content) }, req.temperature, r.schema)
+                LoggedRequest(
+                    req.system,
+                    req.messages.map { LoggedMessage(it.role.name.lowercase(), it.content) },
+                    req.temperature,
+                    r.schema,
+                    req.choices?.let { c -> LoggedChoices(c.instructions, c.state, c.options.associate { it.label to it.description }) },
+                )
             },
             attempts = r.attempts.map { LoggedAttempt(it.raw, it.error) },
             raw = r.raw,

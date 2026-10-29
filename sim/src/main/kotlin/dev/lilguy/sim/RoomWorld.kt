@@ -325,7 +325,8 @@ class RoomWorld private constructor(
             .map { e ->
                 val dx = e.x - guy.x
                 val dy = e.y - guy.y
-                SeenEntity(e.id.value, e.kind, e.x.toInt(), e.y.toInt(), Direction.of(dx, dy), round(hypot(dx, dy), 1), e.state)
+                val cell = Cell(e.x.toInt(), e.y.toInt())
+                SeenEntity(e.id.value, e.kind, cell.x, cell.y, Direction.of(dx, dy), round(hypot(dx, dy), 1), e.state, chebyshev(guy.cell, cell) <= REACH)
             }
             .filter { it.distance <= VIEW_RADIUS }
             .sortedBy { it.distance }

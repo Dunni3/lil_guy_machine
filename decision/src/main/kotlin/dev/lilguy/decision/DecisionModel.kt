@@ -1,5 +1,6 @@
 package dev.lilguy.decision
 
+import kotlinx.serialization.json.JsonObject
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -18,6 +19,8 @@ data class Capabilities(
     val jsonSchema: Boolean = false,
     val toolCalls: Boolean = false,
     val logprobs: Boolean = false,
+    /** Picks one of [DecisionRequest.choices] instead of writing a reply. */
+    val closedChoice: Boolean = false,
     val maxContext: Int = 8_192,
 )
 
@@ -26,7 +29,28 @@ data class DecisionRequest(
     val messages: List<Message>,
     val temperature: Double = 0.7,
     val timeout: Duration = 20.seconds,
+    /** The same decision as a closed set, for backends with [Capabilities.closedChoice]. */
+    val choices: ChoiceSet? = null,
 )
+
+/**
+ * A decision as a pick from concrete options, for models that choose rather than write.
+ * [state] is what they judge the options against; each option carries the exact reply it
+ * stands for, which still goes through the schema.
+ */
+data class ChoiceSet(
+    val instructions: String,
+    val state: JsonObject,
+    val options: List<Option>,
+) {
+    data class Option(
+        /** Short unique key, such as "pick_up:key". */
+        val label: String,
+        /** What choosing it means, in plain words. */
+        val description: String,
+        val reply: JsonObject,
+    )
+}
 
 data class Message(val role: Role, val content: String) {
     enum class Role { System, User, Assistant }

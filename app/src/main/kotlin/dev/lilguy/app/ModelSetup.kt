@@ -59,7 +59,7 @@ class ModelSetup(
         }
 
         /**
-         * `NAME=value` lines, `#` comments ignored. The TV has no shell environment, so
+         * `NAME=value` lines (an `export ` prefix and quotes allowed), `#` comments ignored. The TV has no shell environment, so
          * `make tv-push-config` writes the keys the config names into such a file on the device.
          * Dev only: a key on the TV can be read by anyone with adb access to it.
          */
@@ -68,7 +68,8 @@ class ModelSetup(
             return file.readLines()
                 .map { it.trim() }
                 .filter { it.isNotEmpty() && !it.startsWith("#") && '=' in it }
-                .associate { it.substringBefore('=').trim() to it.substringAfter('=').trim() }
+                .map { it.removePrefix("export ").trim() }
+                .associate { it.substringBefore('=').trim() to it.substringAfter('=').trim().removeSurrounding("\"").removeSurrounding("'") }
         }
     }
 }

@@ -25,7 +25,8 @@ class PromptBuilder(
 ) {
     val system: String = systemPrompt(goal)
 
-    fun build(obs: Observation, recent: List<Memory.Entry>): DecisionRequest {
+    /** [closedChoice] adds the same decision as a set of options, for models that pick. */
+    fun build(obs: Observation, recent: List<Memory.Entry>, closedChoice: Boolean = false): DecisionRequest {
         val history = recent.joinToString("\n") { e ->
             "tick ${e.tick}: ${json.encodeToString(Intent.serializer(), e.intent)} -> ${e.result?.let(::describe) ?: "running"}"
         }
@@ -38,7 +39,12 @@ class PromptBuilder(
             }
             append("Choose your next action.")
         }
-        return DecisionRequest(system = system, messages = listOf(Message(Message.Role.User, user)), timeout = timeout)
+        return DecisionRequest(
+            system = system,
+            messages = listOf(Message(Message.Role.User, user)),
+            timeout = timeout,
+            choices = if (closedChoice) actionChoices(obs, goal, recent) else null,
+        )
     }
 
     companion object {

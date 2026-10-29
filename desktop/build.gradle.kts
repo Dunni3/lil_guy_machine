@@ -6,6 +6,7 @@ plugins {
 kotlin { jvmToolchain(17) }
 
 dependencies {
+    runtimeOnly(libs.slf4j.nop)
     implementation(project(":app"))
     implementation(libs.gdx.backend.lwjgl3)
     implementation(variantOf(libs.gdx.platform) { classifier("natives-desktop") })

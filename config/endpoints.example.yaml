@@ -12,6 +12,13 @@
 #   max_retries        invalid replies sent back with the error   [2]
 #   tool_choice        for structured_output: tools   [required]
 endpoints:
+  # TypeSafe System One (docs.typesafe.ai): Jev picks from a closed set of options rather
+  # than writing JSON, so only kind, base_url, model, api_key_env and timeout_s apply.
+  typesafe:
+    kind: typesafe
+    base_url: https://api.typesafe.ai
+    api_key_env: TYPESAFE_API_KEY
+    model: jev-latest
   hosted:
     kind: openai_compat
     base_url: https://api.provider.example/v1
@@ -25,5 +32,5 @@ endpoints:
 
 agents:
   - character: hero
-    endpoint: hosted        # swap to "local" with no code change
+    endpoint: typesafe        # swap to "local" with no code change
     decision_interval: on_intent_complete

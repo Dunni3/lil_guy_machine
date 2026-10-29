@@ -8,6 +8,7 @@ plugins {
 kotlin { jvmToolchain(17) }
 
 dependencies {
+    runtimeOnly(libs.slf4j.nop)
     implementation(project(":agent"))
 }
 

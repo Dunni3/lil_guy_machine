@@ -12,13 +12,14 @@ class EndpointsTest {
     @Test
     fun `the example config parses`() {
         val config = Endpoints.load(example)
-        assertEquals(setOf("hosted", "local"), config.endpoints.keys)
+        assertEquals(setOf("typesafe", "hosted", "local"), config.endpoints.keys)
+        assertEquals("typesafe", config.endpoints.getValue("typesafe").kind)
         val hosted = config.endpoints.getValue("hosted")
         assertEquals("openai_compat", hosted.kind)
         assertEquals("PROVIDER_API_KEY", hosted.apiKeyEnv)
         assertEquals(StructuredOutput.JsonSchema, hosted.structuredOutput)
         assertEquals(null, config.endpoints.getValue("local").apiKeyEnv)
-        assertEquals("hosted", config.defaultEndpoint)
+        assertEquals("typesafe", config.defaultEndpoint)
     }
 
     @Test
@@ -30,6 +31,9 @@ class EndpointsTest {
         assertEquals("hosted:provider-model-name", model.id)
         assertTrue(model.capabilities.jsonSchema)
         (model as AutoCloseable).close()
+        val typesafe = Endpoints.create(config, "typesafe") { if (it == "TYPESAFE_API_KEY") "ts-test" else null }
+        assertTrue(typesafe.capabilities.closedChoice)
+        (typesafe as AutoCloseable).close()
         // No api_key_env: no key needed.
         (Endpoints.create(config, "local") { null } as AutoCloseable).close()
         assertFailsWith<IllegalArgumentException> { Endpoints.create(config, "nope") { null } }

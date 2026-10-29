@@ -11,15 +11,17 @@ import java.net.InetSocketAddress
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
- * A local `/v1/chat/completions` server for backend tests. [respond] gets the request body and
- * its 1-based number and returns (HTTP status, response body).
+ * A local HTTP server for backend tests; every POST path lands in [respond], which gets the
+ * request body and its 1-based number and returns (HTTP status, response body).
  */
 class MockChatServer(private val respond: (body: JsonObject, n: Int) -> Pair<Int, String>) : AutoCloseable {
     val requests = CopyOnWriteArrayList<JsonObject>()
     val authorizations = CopyOnWriteArrayList<String?>()
+    val paths = CopyOnWriteArrayList<String>()
 
     private val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
-        createContext("/v1/chat/completions") { exchange ->
+        createContext("/") { exchange ->
+            paths += exchange.requestURI.path
             val body = Json.parseToJsonElement(exchange.requestBody.readBytes().decodeToString()).jsonObject
             requests += body
             authorizations += exchange.requestHeaders.getFirst("Authorization")
@@ -33,6 +35,7 @@ class MockChatServer(private val respond: (body: JsonObject, n: Int) -> Pair<Int
     }
 
     val baseUrl: String get() = "http://127.0.0.1:${server.address.port}/v1"
+    val root: String get() = "http://127.0.0.1:${server.address.port}"
 
     override fun close() = server.stop(0)
 

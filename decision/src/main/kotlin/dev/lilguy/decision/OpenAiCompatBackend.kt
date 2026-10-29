@@ -1,18 +1,5 @@
 package dev.lilguy.decision
 
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.okhttp.OkHttp
-import io.ktor.client.plugins.HttpTimeout
-import io.ktor.client.request.header
-import io.ktor.client.request.post
-import io.ktor.client.request.setBody
-import io.ktor.client.statement.bodyAsText
-import io.ktor.http.ContentType
-import io.ktor.http.HttpHeaders
-import io.ktor.http.content.TextContent
-import io.ktor.http.isSuccess
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -27,7 +14,6 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
-import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
 /**
@@ -42,15 +28,12 @@ import kotlin.time.TimeSource
  * with the error, up to [EndpointConfig.maxRetries] times, after which [decide] throws
  * [DecisionFailed] and the caller falls back (the agent loop waits).
  */
-class OpenAiCompatBackend internal constructor(
+class OpenAiCompatBackend(
     private val config: EndpointConfig,
-    private val apiKey: String?,
-    override val id: String,
-    private val client: HttpClient,
+    apiKey: String?,
+    override val id: String = "openai_compat:${config.model}",
 ) : DecisionModel, AutoCloseable {
-    // Ktor stays an implementation detail of :decision, so callers never see HttpClient.
-    constructor(config: EndpointConfig, apiKey: String?, id: String = "openai_compat:${config.model}") :
-        this(config, apiKey, id, defaultClient(config))
+    private val http = JsonHttp(config.timeout, apiKey)
 
     override val capabilities = Capabilities(
         jsonSchema = config.structuredOutput == StructuredOutput.JsonSchema,
@@ -77,7 +60,7 @@ class OpenAiCompatBackend internal constructor(
         val attempts = mutableListOf<Attempt>()
         var usage = Usage()
         repeat(config.maxRetries + 1) {
-            val response = post(body(request, schema, messages, tools), attempts, usage)
+            val response = http.post(url, body(request, schema, messages, tools), attempts, usage)
             usage += usageOf(response)
             val reply = response["choices"]?.jsonArray?.firstOrNull()?.jsonObject?.get("message")?.jsonObject
                 ?: throw DecisionFailed("reply has no choices[0].message: ${response.toString().take(300)}", attempts, usage)
@@ -155,37 +138,6 @@ class OpenAiCompatBackend internal constructor(
             }
         }
 
-    /** Retries 429s and 5xx with backoff; other failures end the decision. */
-    private suspend fun post(body: JsonObject, attempts: List<Attempt>, usage: Usage): JsonObject {
-        var backoff = 1.seconds
-        while (true) {
-            val (status, text) = try {
-                val response = client.post(url) {
-                    apiKey?.let { header(HttpHeaders.Authorization, "Bearer $it") }
-                    setBody(TextContent(body.toString(), ContentType.Application.Json))
-                }
-                response.status to response.bodyAsText()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                throw DecisionFailed("request to $url failed: $e", attempts.toList(), usage, e)
-            }
-            if (status.isSuccess()) {
-                return try {
-                    Json.parseToJsonElement(text).jsonObject
-                } catch (e: Exception) {
-                    throw DecisionFailed("HTTP ${status.value} with a body that isn't a JSON object: ${text.take(300)}", attempts.toList(), usage, e)
-                }
-            }
-            val retryable = status.value == 429 || status.value >= 500
-            if (!retryable || backoff > MAX_BACKOFF / 2) {
-                throw DecisionFailed("HTTP ${status.value}: ${text.take(500)}", attempts.toList(), usage)
-            }
-            delay(backoff)
-            backoff *= 2
-        }
-    }
-
     /** Sends the bad reply back with what was wrong, in the form the strategy expects. */
     private fun correction(reply: JsonObject, call: JsonObject?, error: String): List<JsonObject> {
         if (call != null) {
@@ -222,20 +174,9 @@ class OpenAiCompatBackend internal constructor(
         )
     }
 
-    override fun close() = client.close()
+    override fun close() = http.close()
 
     companion object {
-        /** Upper bound on the time spent backing off from 429s and 5xx in one decision. */
-        val MAX_BACKOFF = 8.seconds
-
-        internal fun defaultClient(config: EndpointConfig) = HttpClient(OkHttp) {
-            expectSuccess = false
-            install(HttpTimeout) {
-                requestTimeoutMillis = config.timeout.inWholeMilliseconds
-                socketTimeoutMillis = config.timeout.inWholeMilliseconds
-            }
-        }
-
         private fun message(role: String, content: String): JsonObject = buildJsonObject {
             put("role", role)
             put("content", content)
