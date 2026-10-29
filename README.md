@@ -6,6 +6,8 @@ desktop window or an Android TV (first target: the Google TV Streamer).
 
 Design spec: [docs/agent-world-spec.html](docs/agent-world-spec.html).
 
+[<img src="https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png" alt="Buy Me A Coffee" height="41">](https://www.buymeacoffee.com/iandunn)
+
 ## Status
 
 **Milestone 4 (the bedroom).** The guy lives in a bedroom: a game clock (1 game minute = 5 ticks,
