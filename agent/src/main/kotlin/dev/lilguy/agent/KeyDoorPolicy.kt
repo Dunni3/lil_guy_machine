@@ -17,7 +17,8 @@ import kotlin.time.TimeSource
 /**
  * Hand-written policy for the key-and-door room: get the key, unlock the door, walk out. It reads
  * the observation out of the prompt, so it sees only what a language model would, and its reply
- * goes through the same JSON decode path as a real backend's.
+ * (an [AgentReply] with its rule as the thought) goes through the same schema check and decode as
+ * a real backend's.
  *
  * [thinkTime] fakes model latency so a watched run looks like one; tests and the CLI use zero.
  */
@@ -32,8 +33,9 @@ class KeyDoorPolicy(
         if (thinkTime.isPositive()) delay(thinkTime)
         val obs = PromptBuilder.observationOf(request) ?: error("no observation in the prompt")
         val (intent, rationale) = choose(obs)
-        val raw = json.encodeToString(Intent.serializer(), intent)
-        return Decision(schema.decode(raw), rationale, Usage(), started.elapsedNow(), raw)
+        val raw = json.encodeToString(AgentReply.serializer(), AgentReply(rationale, intent))
+        val value = schema.decode(raw)
+        return Decision(value, schema.rationaleOf(value), Usage(), started.elapsedNow(), raw)
     }
 
     private fun choose(obs: Observation): Pair<Intent, String> {

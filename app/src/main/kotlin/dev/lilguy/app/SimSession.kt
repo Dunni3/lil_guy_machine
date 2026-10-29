@@ -1,8 +1,9 @@
 package dev.lilguy.app
 
 import dev.lilguy.agent.AgentRuntime
-import dev.lilguy.agent.KeyDoorPolicy
+import dev.lilguy.agent.DecisionLog
 import dev.lilguy.agent.keyDoorScenario
+import dev.lilguy.decision.DecisionModel
 import dev.lilguy.sim.RoomWorld
 import dev.lilguy.sim.World
 import dev.lilguy.sim.WorldSnapshot
@@ -21,7 +22,7 @@ import kotlin.time.Duration
  */
 class SimSession(
     private val scope: CoroutineScope,
-    private val thinkTime: Duration,
+    val setup: ModelSetup,
     val resetDelay: Float = 3f,
 ) {
     lateinit var world: RoomWorld
@@ -63,6 +64,8 @@ class SimSession(
         private set
 
     private var agent: Job? = null
+    private var model: DecisionModel? = null
+    private var log: DecisionLog? = null
     private var accumulator = 0f
 
     init {
@@ -70,8 +73,13 @@ class SimSession(
     }
 
     fun reset() {
-        agent?.cancel()
-        val (w, r) = keyDoorScenario(KeyDoorPolicy(thinkTime))
+        stopAgent()
+        episode++
+        val m = setup.create()
+        val episodeLog = setup.logFor(episode, m.id)
+        model = m
+        log = episodeLog
+        val (w, r) = keyDoorScenario(m, setup.timeout) { episodeLog?.write(it) }
         world = w
         runtime = r
         history.clear()
@@ -79,7 +87,6 @@ class SimSession(
         viewBack = 0
         accumulator = 0f
         solvedFor = null
-        episode++
         agent = scope.launch { r.run() }
     }
 
@@ -128,8 +135,15 @@ class SimSession(
         if (next.completed) solvedFor = 0f
     }
 
-    fun dispose() {
+    fun dispose() = stopAgent()
+
+    private fun stopAgent() {
         agent?.cancel()
+        (model as? AutoCloseable)?.close()
+        log?.close()
+        agent = null
+        model = null
+        log = null
     }
 
     private companion object {

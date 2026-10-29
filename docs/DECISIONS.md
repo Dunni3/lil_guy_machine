@@ -93,5 +93,136 @@ The app gets onto the home screen as a tile in smarter-tv's dock: add `dev.lilgu
 LEFT used to step forward a second, because the world can only move forward and the agent runs
 against it live. `SimSession` now keeps a rolling two-minute history of snapshots. While paused,
 LEFT moves the view one tick back through it and RIGHT replays forward, advancing the real world
-only at the live tick. Only the view rewinds: the world and the agent's panels (last decision,
-thinking time) stay live, and resuming (OK) jumps back to the live tick.
+only at the live tick. Only the view rewinds; the world and the agent stay live. Each recorded
+tick also keeps the agent's latest decision and how long it had been waiting on the model, so the
+side panel and speech bubble match the frame on screen. Resuming (OK) jumps back to the live tick.
+
+## 2026-10-29: Revised milestones: 3D deferred, milestone 3 is "connect a decision model"
+
+Supersedes the spec's milestone list (section 10). The 3D renderer (old milestone 2) is
+deferred; the 2D dev view covers desktop and the TV until then. Milestone 3 is now "connect a
+decision model": the spec's decision layer plus a backend for the decision-model provider Ian
+is choosing, proven on the key-and-door room (at least 8 of 10 lockstep CLI solves, mock-server
+fallback test, watchable on the TV). The spec's "LLM drives it on the TV" folds into it and
+"local swap" moves to the roadmap. Then 4 the bedroom (clock, money, needs, a painting job, a
+shop), 5 memory v0 and saves, 6 personality v0. Plan:
+`research_notes/2026-10-29_0313_bedroom-proposal-and-roadmap-v2.html`.
+
+## 2026-10-29: The reply is an envelope, `{thought, intent}`
+
+Models reply with `AgentReply(thought, intent)`, not a bare intent, so their reasoning has a
+field (it becomes `Decision.rationale`). `thought` comes first so a model reasons before it
+commits, and is a non-null string defaulting to "" so the schema requires it while old replies
+still decode. Milestone 5 adds `remember` and `plan` as fields with defaults.
+
+## 2026-10-29: The schema is generated from serial descriptors, per request, in the strict subset
+
+`JsonSchemaGenerator` walks the kotlinx.serialization descriptor. The output fits OpenAI-style
+strict structured outputs, which most other providers also accept: no `$ref`/`oneOf`, every
+object `additionalProperties: false` with all properties required, nullable fields as
+`["string", "null"]`. Sealed types become `anyOf` with a one-value `type` enum, which is how the
+existing class discriminator already looks on the wire, so the `Intent` type didn't change.
+Extras the type can't carry (descriptions, id enums, ranges) come from `SchemaHints`, keyed by
+serial name.
+
+The schema is rebuilt every decision from the observation: ids are enums of what's in `nearby`,
+and `use.itemId` is the inventory. A variant with no valid id is dropped (no `use` with empty
+hands; no entity target with nothing in view). Order of variants follows kotlinx (class name).
+
+## 2026-10-29: Every reply is validated locally, whatever the strategy
+
+`ActionSchema.decode` checks JSON syntax, then the schema (via `SchemaValidator`, the same
+subset), then decodes. Its errors are written to be sent back to the model ("intent.itemId:
+"gold" is not one of "key", "apple""). json_schema, tools and text replies all go through it,
+because servers that claim schema support don't always enforce it. A rejected reply is retried
+with the error at most twice (`max_retries`), then `DecisionFailed` makes the agent loop submit
+its fallback, `wait 20`. Retries are inside one decision, so lockstep runs stay deterministic.
+
+## 2026-10-29: OpenAiCompatBackend: Ktor + OkHttp, three strategies from config
+
+The strategy comes from the endpoint's `structured_output` (json_schema, tools, text) via
+`Capabilities`. Tools are one function per intent variant with `thought` folded into each
+tool's parameters; a call is rebuilt into the envelope. 429 and 5xx are retried with backoff (at
+most 8 s); other HTTP errors end the decision. The OkHttp engine works on the JVM and Android.
+Ktor stays an implementation detail of `:decision` (the constructor that takes an `HttpClient` is
+internal), so nothing else compiles against it. YAML is read with kaml 0.61.0, the last release
+built on Kotlin 2.0 / serialization 1.7, which keeps the toolchain where it is.
+
+## 2026-10-29: Small observation and prompt changes for models
+
+`nearby` entries now carry their tile `x`/`y`, so `move_to` a tile doesn't require arithmetic.
+Short-term memory records how each intent ended, and the prompt lists recent actions with their
+results. The system prompt describes the world rules, the action space (from `ActionExamples`,
+nulls shown explicitly), the reply format and every observation field. The wait gloss now says
+"20 ticks = 1 s of game time", since in lockstep runs a second of game time takes no wall time.
+No gameplay changed.
+
+## 2026-10-29: Decision logs are JSONL, one line per decision, and replayable
+
+`DecisionLog` writes, per decision: run, model, tick, observation, request (system prompt,
+messages, temperature, the per-request schema), every attempt with its error, raw reply, thought,
+submitted intent, latency, tokens, error and whether it fell back. Keys are snake_case for
+pandas. `ReplayDecisionModel` feeds the logged replies back through the schema, and lockstep
+determinism makes the replay retrace the run tick for tick; a tick mismatch is an error. The CLI
+writes `runs/<time>_<endpoint>/run-NN.jsonl` plus `summary.json`; the app writes one file per
+episode.
+
+## 2026-10-29: CLI runs are capped at 60 decisions
+
+A model that keeps choosing failing intents costs a tick each, so a 2000-tick cap alone could
+mean 2000 calls. `--max-decisions` (default 60) bounds cost; a run that hits it counts as unsolved.
+While a network model thinks, `runLockstep` waits with a 2 ms delay instead of spinning; it still
+ticks only between decisions.
+
+## 2026-10-29: Keys on the TV come from a pushed secrets.env (dev only)
+
+The TV has no shell environment, so `make tv-push-config` copies `config/endpoints.yaml` and a
+`secrets.env` holding the variables its `api_key_env` entries name (taken from the developer's
+shell, never from a file in the repo) to the app's external files dir. The app reads keys only
+from there. Anyone with adb access can read that file, so it's for development only, with
+low-limit keys; `make tv-clear-config` removes it. The endpoint is picked with
+`make tv-run ENDPOINT=<name>` or the config's first `agents` entry.
+
+## 2026-10-29: The Android app allows cleartext HTTP
+
+Model servers on the LAN (vLLM, llama.cpp, a mock on the Mac) speak plain HTTP, and Android
+blocks that by default: the first TV run fell back with "CLEARTEXT communication not permitted".
+`usesCleartextTraffic="true"` in the manifest. Hosted endpoints are HTTPS regardless.
+
+## 2026-10-29: The decision-model provider backend waits for its docs
+
+The provider Ian is choosing gets its own backend once its docs and examples arrive; nothing is
+guessed. It plugs in as another `DecisionModel` and another `kind` in `Endpoints.create`. If it
+picks from a closed set, the per-request schema already enumerates the choices that matter (the
+variants and their ids), and a candidate list can be derived from it.
+
+## 2026-10-29: The provider is TypeSafe; its backend picks from a closed set
+
+Supersedes "The decision-model provider backend waits for its docs". The provider is TypeSafe
+(docs.typesafe.ai). Its System One API (`POST https://api.typesafe.ai/v1/systemone`, model
+`jev-latest`) isn't OpenAI-compatible: it answers typed questions about a `state` with
+calibrated probabilities and writes no text. So `TypesafeBackend` (`kind: typesafe`) asks one
+Choice question per decision. A backend declares `Capabilities.closedChoice`, and then the
+agent adds a `ChoiceSet` to the request: a compact JSON state (goal, rules, holding, what it
+sees with `in_reach`, last and recent actions with results, events; no ASCII map, per
+TypeSafe's advice that irrelevant detail costs accuracy) and the options. The options are every
+entity-argument action the reply schema allows (pick up, use on, walk to each visible thing; use
+a held item alone; wait 1 s). Tiles and `say` are left out: tiles are too many to list, and a
+picker can't write text. Each option carries the exact reply it stands for, which still goes
+through the schema. The rationale is the pick's probability, confidence and runner-up; the raw
+log keeps the full distribution.
+
+Options are ordered pick_up, use, move_to, wait, because TypeSafe documents a lean toward
+earlier options. Not tested the other way round yet.
+
+## 2026-10-29: `nearby` carries `inReach`
+
+Computed by the sim (Chebyshev distance 1, the same test pick_up and use apply). TypeSafe's docs
+say to keep arithmetic in code, and it saves chat models the same comparison. No gameplay change.
+
+## 2026-10-29: Keys live in ~/.config/lil-guy-machine/secrets.env, loaded by the Makefile
+
+One file outside the repo (mode 600) that every worktree sees, holding `export NAME=value`
+lines. The Makefile `-include`s it, so `make cli`, `make desktop` and `make tv-push-config` get
+the keys in their environment. The app's own env-file reader accepts the same `export` lines.
+Nothing prints the values.

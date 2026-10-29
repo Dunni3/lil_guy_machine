@@ -30,10 +30,15 @@ data class SelfState(
 data class SeenEntity(
     val id: String,
     val kind: String,
+    /** The tile it stands on, so a model can target tiles around it without arithmetic. */
+    val x: Int,
+    val y: Int,
     val direction: Direction,
     val distance: Float,
     /** Kind-specific state, such as "locked" or "open" for a door. */
     val state: String? = null,
+    /** On or beside your tile, so pick_up and use can reach it. Computed so models needn't. */
+    val inReach: Boolean = false,
 )
 
 /** Compass directions; north is toward row 0. */

@@ -3,8 +3,10 @@
 A 3D sim with one character driven entirely by a pluggable decision model (LLM over an
 OpenAI-compatible endpoint, or scripted/RL). Kotlin + libGDX, runs on desktop and Android TV.
 The spec is `docs/agent-world-spec.html` (milestones in section 10); decisions are in
-`docs/DECISIONS.md`. Current state: milestone 1 (headless key-and-door sim, scripted policy)
-plus a temporary 2D dev view in `:app` standing in for the 3D renderer.
+`docs/DECISIONS.md`. Current state: milestone 3 (connect a decision model): the key-and-door
+room driven by the scripted policy, TypeSafe's Jev (closed-choice) or an OpenAI-compatible
+endpoint, shown in a temporary 2D dev view in `:app`. The 3D renderer is deferred; milestones 4-6 are the bedroom, memory and
+personality (`research_notes/2026-10-29_0313_bedroom-proposal-and-roadmap-v2.html`).
 
 ## Commands
 
@@ -13,7 +15,8 @@ make test        # JVM unit tests (all modules)
 make cli         # headless runner (ARGS="...")
 make desktop     # LWJGL3 window
 make tv-connect IP=10.0.0.51   # wireless adb to the Streamer
-make tv-run      # build + install + launch debug APK
+make tv-run      # build + install + launch debug APK (ENDPOINT=<name> to pick a model)
+make tv-push-config  # push config/endpoints.yaml + the keys it names (dev only)
 make tv-logs     # logcat, tag LilGuy
 make tv-profile  # release-like build (not debuggable) for measuring performance
 ```
@@ -29,12 +32,18 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   The room, its controller and the intent lifecycle: `sim/.../RoomWorld.kt` (map text in
   `TileMap.kt`, A* in `Pathfinder.kt`).
 - Scenario wiring, scripted policy, lockstep runner: `agent/.../Scenario.kt`, `KeyDoorPolicy.kt`.
-- Decision layer: `decision/.../DecisionModel.kt`, `ActionSchema.kt`, `ScriptedDecisionModel.kt`.
-- Agent loop: `agent/.../AgentRuntime.kt`, `PromptBuilder.kt`, `Memory.kt`.
+- Decision layer: `decision/.../DecisionModel.kt`, `ActionSchema.kt` (schema + reply parser),
+  `JsonSchemaGenerator.kt`, `SchemaValidator.kt`, `OpenAiCompatBackend.kt`, `TypesafeBackend.kt`
+  (System One, picks from `DecisionRequest.choices`), `Endpoints.kt` (config loader and factory).
+- Agent loop: `agent/.../AgentRuntime.kt`, `PromptBuilder.kt` (system prompt with the action
+  space), `AgentReply.kt` (reply envelope, `ActionExamples`, per-observation `replySchema`),
+  `ActionChoices.kt` (the closed set for picking models), `Memory.kt`, `DecisionLog.kt` (JSONL
+  log + `ReplayDecisionModel`).
 - Renderer: `app/.../LilGuyGame.kt` (2D dev view in `DevView.kt`, sim clock in `SimSession.kt`,
   remote keys in `RemoteInput.kt`). Launchers: `desktop/`, `android/`.
   `LILGUY_SCREENSHOT=out.png LILGUY_SCREENSHOT_AT=<s> make desktop` saves one frame and quits.
-- Endpoint config example: `config/endpoints.example.yaml` (real one is gitignored).
+- Endpoint config example: `config/endpoints.example.yaml` (real one is gitignored). The app's
+  model choice: `app/.../ModelSetup.kt`. Run logs go in `runs/` (gitignored).
 - ADB helpers: `tools/adb/`.
 
 ## Rules of the road
@@ -42,6 +51,8 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
 - `:sim`, `:decision` and `:agent` stay pure Kotlin/JVM: no `com.badlogic` imports, no Android.
 - Never block a frame or a tick on a model call; decisions are async intents.
 - API keys come from the environment, never from committed files. Not on the TV long-term.
+  Locally they live in `~/.config/lil-guy-machine/secrets.env`, which the Makefile loads. Never
+  print them.
 - Keep toolchain versions in `gradle/libs.versions.toml` in step with smarter-tv unless there is a
   reason (record it in `docs/DECISIONS.md`).
 - Log decisions in `docs/DECISIONS.md`.

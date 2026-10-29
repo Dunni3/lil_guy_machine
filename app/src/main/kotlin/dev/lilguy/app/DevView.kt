@@ -287,6 +287,7 @@ class DevView : Disposable {
         font.draw(batch, "t ${s.tick} · $fps fps", PANEL_X, cursor - 6, PANEL_WIDTH, Align.right, false)
         cursor -= titleHeight
         line("model ${session.runtime.modelId} · episode ${session.episode}", SMALL_SCALE, MUTED)
+        session.setup.notice?.let { line(it, SMALL_SCALE, FAILED, maxLines = 2) }
 
         val big = if (detail) 1f else 1.25f
         heading("INTENT")
@@ -305,7 +306,9 @@ class DevView : Disposable {
             line(decision.rationale ?: "fallback: ${decision.error}", BODY_SCALE * big, if (decision.error != null) FAILED else TEXT)
             if (detail) {
                 val ms = decision.latency.inWholeMilliseconds
-                line("t ${decision.tick} · $ms ms · raw output:", SMALL_SCALE, MUTED, maxLines = 1, gapAfter = 0f)
+                val tokens = decision.usage.let { if (it.promptTokens + it.completionTokens > 0) " · ${it.promptTokens}+${it.completionTokens} tok" else "" }
+                val tries = if (decision.attempts.size > 1) " · ${decision.attempts.size} tries" else ""
+                line("t ${decision.tick} · $ms ms$tokens$tries · raw output:", SMALL_SCALE, MUTED, maxLines = 1, gapAfter = 0f)
                 line(decision.raw ?: "(none)", SMALL_SCALE, CODE, maxLines = 2)
             }
         }
@@ -323,7 +326,8 @@ class DevView : Disposable {
         events.drop(scroll).take(EVENT_ROWS).forEach { line("t ${it.tick}  ${it.text}", EVENT_SCALE, TEXT, maxLines = 1, gapAfter = 0f) }
 
         heading("ACTIONS")
-        ActionExamples.forEach { (intent, what) ->
+        // One example per action: the panel has room for five.
+        ActionExamples.distinctBy { it.first::class }.forEach { (intent, what) ->
             line(json.encodeToString(Intent.serializer(), intent), SMALL_SCALE, CODE, maxLines = 1, gapAfter = 0f)
             line(what, SMALL_SCALE * 0.9f, MUTED, maxLines = 1, gapAfter = 0.2f)
         }

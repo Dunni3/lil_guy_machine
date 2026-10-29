@@ -6,6 +6,8 @@ gdx = "1.13.1"
 coroutines = "1.9.0"
 serialization = "1.7.3"
 ktor = "3.0.0"
+kaml = "0.61.0"
+slf4j = "2.0.16"
 
 [libraries]
 gdx = { module = "com.badlogicgames.gdx:gdx", version.ref = "gdx" }
@@ -15,11 +17,13 @@ gdx-backend-android = { module = "com.badlogicgames.gdx:gdx-backend-android", ve
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
-# Not used yet; :decision takes these at milestone 3 (OpenAiCompatBackend).
+# :decision's HTTP backend (OpenAiCompatBackend). OkHttp runs on both the JVM and Android.
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
-ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
-ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
+# config/endpoints.yaml. 0.61 is the last kaml built on Kotlin 2.0 / serialization 1.7.
+kaml = { module = "com.charleskorn.kaml:kaml", version.ref = "kaml" }
+# Ktor logs through SLF4J; the CLI and desktop bind it to nothing instead of printing a warning.
+slf4j-nop = { module = "org.slf4j:slf4j-nop", version.ref = "slf4j" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
