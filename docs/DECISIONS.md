@@ -319,3 +319,18 @@ events stamped with game time, and recent transactions. `SCENARIO=key-door` (des
 `tv-run`) brings back the old room. The CLI defaults to key-door (`--scenario bedroom --days N`
 for the life sim); bedroom runs cap decisions at 60 a game day and count as passed if they live
 their days without hitting the cap.
+
+## 2026-10-29: Bedroom option lists are cached between ticks
+
+Building the observation's activities, uses and shop text every tick cost about 107 µs on the Mac
+JIT (key-and-door: 2.6 µs). On the TV's debug build, frame CPU was 8–13 ms against 4.4 ms. The
+lists are now rebuilt only when what he owns or plays changes, a visible need level changes, or
+the clock passes a 10-minute step; sleep's duration estimate is rounded to 10 minutes to match.
+The room map is cached by cell. About 15 µs a tick now. No behaviour change.
+
+## 2026-10-29: Milestone 4 runs on the TV
+
+`make tv-run ENDPOINT=typesafe` ran the bedroom on the Streamer at 60 fps. Jev answered 18
+decisions in a median of 202 ms (max 1.06 s) with no fallbacks. The guy sketched and sold, bought
+and ate meals, and slept, the same pattern as the headless runs. Ian's next levers: a richer
+world and simulation, and a memory system (with an LLM writing memories) for milestone 5.

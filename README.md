@@ -23,7 +23,7 @@ milestones 1 and 3 is still the quick test for every backend (Jev 10 of 10).
 | 1 | Headless sim: key-and-door room, scripted policy | done |
 | 2 | 3D renderer | deferred; the 2D dev view covers the TV until then |
 | 3 | Connect a decision model: schema, OpenAI-compatible and TypeSafe backends, logs | done |
-| 4 | The bedroom: clock, money, needs, a painting job, a shop | done headless; TV run pending |
+| 4 | The bedroom: clock, money, needs, a painting job, a shop | done (CLI and TV) |
 | 5 | Memory v0 and saves | planned |
 | 6 | Personality v0: interests, skill, wants | planned |
 
