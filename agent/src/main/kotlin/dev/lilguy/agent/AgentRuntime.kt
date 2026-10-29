@@ -1,5 +1,6 @@
 package dev.lilguy.agent
 
+import dev.lilguy.agent.memory.AgentMemory
 import dev.lilguy.decision.ActionSchema
 import dev.lilguy.decision.Attempt
 import dev.lilguy.decision.DecisionFailed
@@ -34,6 +35,8 @@ class AgentRuntime(
     private val prompts: PromptBuilder,
     private val schemaFor: (Observation) -> ActionSchema<AgentReply> = ::replySchema,
     private val memory: Memory = Memory(),
+    /** Long-term memory: records the stream and supplies recalled memories; null for none. */
+    private val longTerm: AgentMemory? = null,
     private val fallback: (Throwable) -> Intent = { Intent.Wait(World.TICKS_PER_SECOND) },
     private val onDecision: (DecisionRecord) -> Unit = {},
 ) {
@@ -72,7 +75,8 @@ class AgentRuntime(
             world.awaitDecisionPoint(id)
             val obs = world.observe(id)
             memory.settle(obs.lastIntent, obs.lastResult)
-            val request = prompts.build(obs, memory.recent(), closedChoice = model.capabilities.closedChoice)
+            longTerm?.observed(obs)
+            val request = prompts.build(obs, memory.recent(), closedChoice = model.capabilities.closedChoice, memories = longTerm?.recall(obs).orEmpty())
             val schema = schemaFor(obs)
             val started = TimeSource.Monotonic.markNow()
             decidingSince = started
@@ -106,6 +110,7 @@ class AgentRuntime(
                 decidingSince = null
             }
             memory.record(obs.tick, record.intent)
+            longTerm?.acted(obs, record.intent)
             lastDecision = record
             onDecision(record)
             world.submit(id, record.intent)
