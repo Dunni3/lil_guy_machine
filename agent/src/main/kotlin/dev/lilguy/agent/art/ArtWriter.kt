@@ -26,6 +26,8 @@ data class ArtReply(val title: String, val palette: List<String>, val tags: List
         require(title.isNotBlank()) { "the piece needs a title" }
         require(palette.isNotEmpty()) { "the palette needs at least one color" }
         palette.forEach { require(Artwork.parseColor(it) != null) { "palette colors are \"#RRGGBB\" hex, not \"$it\"" } }
+        val colors = Artwork.parseColors(palette).size
+        ops.forEach { require(it.color < colors) { "an op uses color ${it.color}, but the palette has $colors; give each color its own \"#RRGGBB\" string" } }
     }
 }
 
@@ -129,10 +131,11 @@ class ArtWriter(
         return try {
             val decision = withTimeout(timeout) { model.decide(request, schema(canvas)) }
             val reply = decision.value
-            val palette = reply.palette.take(canvas.colors).map { Artwork.parseColor(it)!! }
+            val palette = Artwork.parseColors(reply.palette).take(canvas.colors)
             val ops = reply.ops.take(canvas.ops)
             val art = Artwork.draw(canvas.size, palette, ops)
-            Drawing(tick, day, time, model.id, item, asked, reply.title.trim(), reply.tags.map { it.trim() }.filter { it.isNotEmpty() }, art, ops.size, reply.ops.size - ops.size, decision.raw, decision.usage, started.elapsedNow())
+            if (art.blank()) failed("the piece came out one solid color", decision.raw, decision.usage)
+            else Drawing(tick, day, time, model.id, item, asked, reply.title.trim(), reply.tags.map { it.trim() }.filter { it.isNotEmpty() }, art, ops.size, reply.ops.size - ops.size, decision.raw, decision.usage, started.elapsedNow())
         } catch (e: TimeoutCancellationException) {
             failed("timed out after $timeout")
         } catch (e: CancellationException) {
