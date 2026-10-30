@@ -12,6 +12,7 @@ import com.badlogic.gdx.math.MathUtils
 import com.badlogic.gdx.utils.Align
 import com.badlogic.gdx.utils.Disposable
 import com.badlogic.gdx.utils.viewport.FitViewport
+import dev.lilguy.agent.TokenReport
 import dev.lilguy.agent.memory.Describe
 import dev.lilguy.app.SimSession.RunState
 import dev.lilguy.sim.EntitySnapshot
@@ -37,6 +38,7 @@ import kotlin.math.sin
  *   memories written so far, marking those recalled at the latest decision.
  * - [Page.Journal]: a reader for his journal: a list of entries, and the picked one in full with
  *   the wants he argued for. UP/DOWN steps through them; it follows the newest until you move.
+ * - [Page.Tokens]: model tokens spent this run, by game day and by what they were for.
  * - [Page.History]: every decision this run; picking an older one puts the map back to the
  *   moment it was made.
  * - [Page.Log]: money and the sim's event log.
@@ -46,7 +48,7 @@ import kotlin.math.sin
  * full-screen layers.
  */
 class DevView : Disposable {
-    enum class Page(val title: String) { Room("ROOM"), Now("NOW"), Memory("MEMORY"), Journal("JOURNAL"), History("HISTORY"), Log("LOG") }
+    enum class Page(val title: String) { Room("ROOM"), Now("NOW"), Memory("MEMORY"), Journal("JOURNAL"), Tokens("TOKENS"), History("HISTORY"), Log("LOG") }
 
     private val viewport = FitViewport(WIDTH, HEIGHT)
     private val shapes = ShapeRenderer()
@@ -504,6 +506,7 @@ class DevView : Disposable {
             Page.Room, Page.Now -> drawNow(session, live)
             Page.Memory -> drawMemory(session, live)
             Page.Journal -> drawJournal(session)
+            Page.Tokens -> drawTokens(session)
             Page.History -> drawHistory(session)
             Page.Log -> drawLog(live)
         }
@@ -762,6 +765,13 @@ class DevView : Disposable {
         return agent.status.takeIf { agent.intent == d.intent }
     }
 
+    private fun drawTokens(session: SimSession) {
+        heading("TOKENS · every model call this run, by game day")
+        TokenReport.format(session.tokens, session.setup.ticksPerMinute, session.current.tick).lines().forEach {
+            line(it.trim(), SMALL_SCALE * 0.95f, TEXT, maxLines = 2, gapAfter = 0.15f)
+        }
+    }
+
     private fun drawLog(s: WorldSnapshot) {
         val life = s.life
         if (life != null) {
@@ -846,7 +856,7 @@ class DevView : Disposable {
         private const val HISTORY_ROWS = 7
         private const val JOURNAL_ROWS = 5
         private const val MONEY_ROWS = 5
-        private const val TAB_GAP = 48f
+        private const val TAB_GAP = 26f
         private const val LABEL_SCALE = 1.1f
         private const val BAR_X = PANEL_X + 130f
         private const val BAR_WIDTH = 440f
@@ -857,7 +867,7 @@ class DevView : Disposable {
 
         private const val TITLE_SCALE = 2.4f
         private const val CLOCK_SCALE = 1.9f
-        private const val TAB_SCALE = 1.6f
+        private const val TAB_SCALE = 1.45f
         private const val MEMORY_SCALE = 1.45f
         private const val HEADING_SCALE = 1.35f
         private const val BODY_SCALE = 1.75f

@@ -6,6 +6,13 @@ import dev.lilguy.agent.DaySummary
 import dev.lilguy.agent.DecisionLog
 import dev.lilguy.agent.HourSample
 import dev.lilguy.agent.ReplayDecisionModel
+import dev.lilguy.agent.TokenCall
+import dev.lilguy.agent.TokenDay
+import dev.lilguy.agent.TokenLedger
+import dev.lilguy.agent.TokenPrice
+import dev.lilguy.agent.TokenPurpose
+import dev.lilguy.agent.TokenReport
+import dev.lilguy.agent.TokenTotals
 import dev.lilguy.agent.memory.AgentMemory
 import dev.lilguy.agent.memory.InMemoryStore
 import dev.lilguy.agent.memory.JournalSession
@@ -65,7 +72,8 @@ private const val USAGE = """lil guy machine cli: lockstep runs of the key-and-d
 Key-and-door exits non-zero unless every run solved the room; the bedroom, unless every run
 lived its days without hitting the decision cap. Bedroom runs also write hours-NN.jsonl (money
 and needs each game hour), money-NN.jsonl (every transaction) and needs-NN.jsonl (every need
-change) next to the decision log, and journal-NN.txt when there is a journal. Journal sessions
+change) next to the decision log, tokens-NN.jsonl (every model call: sim tick, game day, purpose, tokens, cost when the endpoint has
+price_in/price_out) and journal-NN.txt when there is a journal. Journal sessions
 are logged in the decision log too, as lines with "kind": "journal"."""
 
 private class Args(argv: Array<String>) {
@@ -116,6 +124,17 @@ private data class RunResult(
     /** Intents the sim refused, with their reasons. */
     @SerialName("failed_intents") val failedIntents: Int = 0,
     val bedroom: BedroomResult? = null,
+    /** Every model call by game day and purpose; prompt_tokens and completion_tokens above are its total. */
+    val tokens: TokenResult? = null,
+)
+
+@Serializable
+private data class TokenResult(
+    val total: TokenTotals,
+    @SerialName("by_purpose") val byPurpose: Map<TokenPurpose, TokenTotals>,
+    @SerialName("by_day") val byDay: List<TokenDay>,
+    /** Total tokens over game days elapsed; null for a room with no clock. */
+    @SerialName("tokens_per_game_day") val tokensPerGameDay: Double? = null,
 )
 
 @Serializable
@@ -189,24 +208,29 @@ fun main(argv: Array<String>) {
     logDir?.let { println("logs: ${it.path}/") }
 
     val results = (1..runs).map { n ->
-        val model = newModel()
-        val log = logDir?.let { DecisionLog(File(it, "run-%02d.jsonl".format(n)), run = "$stamp-$n", model = model.id) }
+        val ledger = TokenLedger()
         val config by lazy { Endpoints.load(File(args.string("--config") ?: Endpoints.DEFAULT_PATH)) }
-        val summaryModel = args.string("--memory-endpoint")?.let { name ->
+        fun priceOf(name: String) = config.endpoints[name]?.let(TokenPrice::of)
+        val decisionModel = newModel()
+        val model = ledger.meter(decisionModel, TokenPurpose.Decision, if (replay == null && endpoint != "scripted") priceOf(endpoint) else null)
+        val log = logDir?.let { DecisionLog(File(it, "run-%02d.jsonl".format(n)), run = "$stamp-$n", model = model.id) }
+        val summaryEndpoint = args.string("--memory-endpoint")
+        val summaryModel = summaryEndpoint?.let { name ->
             requireNotNull(args.string("--memory")) { "--memory-endpoint needs --memory FILE" }
             Endpoints.create(config, name)
         }
         // Like the app: the journal (and thinking) defaults to the memory endpoint; "none" turns it off.
-        val journalModel = (args.string("--journal-endpoint") ?: args.string("--memory-endpoint"))?.takeIf { it != "none" }?.let { Endpoints.create(config, it) }
+        val journalEndpoint = (args.string("--journal-endpoint") ?: args.string("--memory-endpoint"))?.takeIf { it != "none" }
+        val journalModel = journalEndpoint?.let { Endpoints.create(config, it) }
         val store: MemoryStore? = args.string("--memory")?.let { SqliteMemoryStore(File(it)) } ?: journalModel?.let { InMemoryStore() }
         val sessions = mutableListOf<JournalSession>()
         val memory = store?.let { st ->
             val run = "$stamp-$n"
             AgentMemory(
                 st, run,
-                summarizer = summaryModel?.let { Summarizer(it, st, run, onFailure = { e -> System.err.println("summary failed: ${e.message}") }) },
-                journal = journalModel?.let { JournalWriter(it, st, run) },
-                thinker = journalModel?.let { Thinker(it) },
+                summarizer = summaryModel?.let { Summarizer(ledger.meter(it, TokenPurpose.Summary, priceOf(summaryEndpoint!!)), st, run, onFailure = { e -> System.err.println("summary failed: ${e.message}") }) },
+                journal = journalModel?.let { JournalWriter(ledger.meter(it, TokenPurpose.Journal, priceOf(journalEndpoint!!)), st, run) },
+                thinker = journalModel?.let { Thinker(ledger.meter(it, TokenPurpose.Think, priceOf(journalEndpoint!!))) },
                 onJournal = { s ->
                     sessions += s
                     log?.write(s)
@@ -215,13 +239,13 @@ fun main(argv: Array<String>) {
             )
         }
         try {
-            runOnce(n, scenario, model, timeout, minuteTicks, maxTicks, maxDecisions, quiet, log, logDir, memory, granted, sessions)
+            runOnce(n, scenario, model, timeout, minuteTicks, maxTicks, maxDecisions, quiet, log, logDir, ledger, memory, granted, sessions)
         } finally {
             log?.close()
             store?.close()
             (summaryModel as? AutoCloseable)?.close()
             (journalModel as? AutoCloseable)?.close()
-            (model as? AutoCloseable)?.close()
+            (decisionModel as? AutoCloseable)?.close()
         }
     }
 
@@ -260,6 +284,7 @@ private fun runOnce(
     quiet: Boolean,
     log: DecisionLog?,
     logDir: File?,
+    ledger: TokenLedger,
     memory: AgentMemory? = null,
     granted: Set<String> = emptySet(),
     sessions: List<JournalSession> = emptyList(),
@@ -278,6 +303,7 @@ private fun runOnce(
         }
     }
     val bedroom = world as? BedroomWorld
+    ledger.attach({ world.tick }, bedroom?.clock)
     stampOf = if (bedroom != null) { t -> bedroom.clock.reading(t).let { "d%2d %s".format(it.day, it.time) } } else { t -> "t=%4d".format(t) }
     if (!quiet) println("--- run $n ---")
 
@@ -334,6 +360,10 @@ private fun runOnce(
             },
         )
     }
+    logDir?.let { dir -> writeJsonl(File(dir, "tokens-%02d.jsonl".format(n)), ledger.calls(), TokenCall.serializer()) }
+    val spent = ledger.total()
+    val gameDays = endTick.toDouble() / (minuteTicks * GameClock.MINUTES_PER_DAY)
+    val tokens = TokenResult(spent, ledger.byPurpose(), ledger.byDay(), if (bedroom != null && gameDays > 0) spent.tokens / gameDays else null)
     val result = RunResult(
         run = n,
         scenario = scenario.id,
@@ -342,12 +372,13 @@ private fun runOnce(
         decisions = records.size,
         fallbacks = records.count { it.fellBack },
         retries = records.sumOf { (it.attempts.size - 1).coerceAtLeast(0) },
-        promptTokens = records.sumOf { it.usage.promptTokens },
-        completionTokens = records.sumOf { it.usage.completionTokens },
+        promptTokens = spent.promptTokens,
+        completionTokens = spent.completionTokens,
         wallMs = wall.inWholeMilliseconds,
         log = log?.file?.path,
         failedIntents = failed,
         bedroom = life,
+        tokens = tokens,
     )
     val outcome = when {
         life != null -> "LIVED to ${bedroom.clock.label(endTick)}" + if (capped) " (decision cap)" else ""
@@ -358,6 +389,7 @@ private fun runOnce(
         n, outcome, result.decisions, result.fallbacks, result.retries, failed, result.promptTokens, result.completionTokens, wall.inWholeMilliseconds / 1000.0,
     ))
     life?.let { printBedroom(it) }
+    if (bedroom != null) println(TokenReport.format(ledger, minuteTicks, endTick).prependIndent("  "))
     memory?.takeIf { it.journaling }?.let { println(BedroomReport.journal(it.journalEntries()).prependIndent("  ")) }
     return result
 }

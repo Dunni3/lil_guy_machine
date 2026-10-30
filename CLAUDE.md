@@ -57,6 +57,10 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   search-then-write LLM loop; `AgentMemory` keeps an entry only when the activity succeeds),
   `Thinker.kt` (the `think` intent's one LLM call; the thought goes to events and short-term memory).
   SQLite store: `memory-sqlite/` (JVM only; not in the TV build yet).
+- Token accounting: `agent/.../TokenLedger.kt`. `ledger.meter(model, purpose)` wraps a model so every call
+  (decision, think, journal, summary) is recorded with its sim tick and game day; `TokenReport` prints
+  tokens per game day and the 30-day projection. The CLI and the app (`SimSession`, the TOKENS page) wire it and
+  write `tokens-NN.jsonl`; `price_in`/`price_out` on an endpoint add cost.
 - Renderer: `app/.../LilGuyGame.kt`. The first page is the 3D room, `RoomView.kt` (camera, light by
   game hour, HUD, bubble), with code-built models keyed by item id in `RoomModels.kt` (1 unit = 1 tile,
   pivot bottom centre, front +Z; a model file can replace one later) and the guy in `Blob.kt` (face

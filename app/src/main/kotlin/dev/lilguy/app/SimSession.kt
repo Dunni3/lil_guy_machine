@@ -2,6 +2,8 @@ package dev.lilguy.app
 
 import dev.lilguy.agent.AgentRuntime
 import dev.lilguy.agent.DecisionLog
+import dev.lilguy.agent.TokenLedger
+import dev.lilguy.agent.TokenPurpose
 import dev.lilguy.agent.memory.AgentMemory
 import dev.lilguy.agent.memory.InMemoryStore
 import dev.lilguy.agent.memory.JournalSession
@@ -9,6 +11,7 @@ import dev.lilguy.agent.memory.JournalWriter
 import dev.lilguy.agent.memory.Thinker
 import dev.lilguy.agent.memory.Summarizer
 import dev.lilguy.decision.DecisionModel
+import dev.lilguy.sim.BedroomWorld
 import dev.lilguy.sim.GridWorld
 import dev.lilguy.sim.World
 import dev.lilguy.sim.WorldSnapshot
@@ -17,6 +20,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import java.io.File
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.math.min
 import kotlin.time.Duration
@@ -55,6 +59,10 @@ class SimSession(
 
     /** This run's long-term memory: the event stream always, memories when [ModelSetup.memoryModel] is set. */
     lateinit var memory: AgentMemory
+        private set
+
+    /** Every model call this run (decisions, thoughts, journal, summaries) with the game time it was made at. */
+    lateinit var tokens: TokenLedger
         private set
 
     /** The memory writer's latest failure this run, if any. */
@@ -156,7 +164,9 @@ class SimSession(
     private fun setUp() {
         run++
         val thisRun = run
-        val m = setup.create()
+        val ledger = TokenLedger()
+        val rawModel = setup.create()
+        val m = ledger.meter(rawModel, TokenPurpose.Decision, setup.prices.decision)
         val runLog = setup.logFor(run, m.id)
         val runInbox = ConcurrentLinkedQueue<AgentRuntime.DecisionRecord>()
         val rs = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job]))
@@ -164,7 +174,7 @@ class SimSession(
         val runId = "run-$run"
         val w = setup.memoryModel?.invoke()
         val summarizer = w?.let {
-            Summarizer(it, store, runId, onFailure = { e -> if (run == thisRun) memoryError = e.message ?: e.toString() })
+            Summarizer(ledger.meter(it, TokenPurpose.Summary, setup.prices.memory), store, runId, onFailure = { e -> if (run == thisRun) memoryError = e.message ?: e.toString() })
         }
         val jw = setup.journalModel?.invoke()
         val onJournal = { s: JournalSession ->
@@ -172,12 +182,14 @@ class SimSession(
             if (run == thisRun && s.status == JournalSession.Status.Failed) journalError = s.error
         }
         // The journal's model also writes his thoughts when he stops to think.
-        memory = AgentMemory(store, runId, summarizer, scope = rs, journal = jw?.let { JournalWriter(it, store, runId) }, onJournal = onJournal, thinker = jw?.let { Thinker(it) })
+        memory = AgentMemory(store, runId, summarizer, scope = rs, journal = jw?.let { JournalWriter(ledger.meter(it, TokenPurpose.Journal, setup.prices.journal), store, runId) }, onJournal = onJournal, thinker = jw?.let { Thinker(ledger.meter(it, TokenPurpose.Think, setup.prices.journal)) })
         val (gw, r) = setup.scenario.create(m, setup.timeout, setup.ticksPerMinute, longTerm = memory) {
             runCatching { runLog?.write(it) }
             runInbox.add(it)
         }
-        model = m
+        ledger.attach({ gw.tick }, (gw as? BedroomWorld)?.clock)
+        tokens = ledger
+        model = rawModel
         writer = w
         journalWriter = jw
         log = runLog
@@ -197,6 +209,8 @@ class SimSession(
 
     private fun tearDown() {
         runScope?.cancel()
+        // Summaries finish in the background after a run ends, so the file is written once the run is thrown away.
+        setup.logDir?.let { dir -> runCatching { tokens.writeJsonl(File(dir, "tokens-%03d.jsonl".format(run))) } }
         (model as? AutoCloseable)?.close()
         (writer as? AutoCloseable)?.close()
         (journalWriter as? AutoCloseable)?.close()
