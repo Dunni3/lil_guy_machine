@@ -22,7 +22,7 @@ class ModelSetup(
     /** A fresh model for each run. */
     val create: () -> DecisionModel,
     val scenario: Scenario = Scenario.Bedroom,
-    /** The bedroom's clock scale: ticks per game minute. */
+    /** The bedroom's clock scale, ticks per game minute: the first run's; the Run page changes it. */
     val ticksPerMinute: Int = GameClock.DEFAULT_TICKS_PER_MINUTE,
     /** Bounds one whole decision, retries included. */
     val timeout: Duration = 20.seconds,
@@ -32,7 +32,7 @@ class ModelSetup(
     val notice: String? = null,
     /** A fresh model for each run that writes long-term memories; null to record events without summarizing. */
     val memoryModel: (() -> DecisionModel)? = null,
-    /** Bedroom: game days a run lasts before it ends; null for no end. */
+    /** Bedroom: game days a run lasts before it ends, null for no end: the first run's; the Run page changes it. */
     val days: Int? = DEFAULT_DAYS,
     /** A fresh model for each run that writes his journal; null and journaling writes nothing. */
     val journalModel: (() -> DecisionModel)? = null,
@@ -43,8 +43,8 @@ class ModelSetup(
         journalModel: (() -> DecisionModel)? = this.journalModel,
     ) = ModelSetup(create, scenario, ticksPerMinute, timeout, logDir, notice, memoryModel, days, journalModel)
 
-    /** The tick a bedroom run ends on, or null if it doesn't end on its own. */
-    val endTick: Long? get() = days?.takeIf { scenario == Scenario.Bedroom }?.let { it.toLong() * GameClock.MINUTES_PER_DAY * ticksPerMinute }
+    /** The Run page's starting values; the viewer changes them from there. */
+    val settings: RunSettings get() = RunSettings(days, ticksPerMinute = ticksPerMinute)
 
     fun logFor(run: Int, modelId: String): DecisionLog? =
         logDir?.let { DecisionLog(File(it, "run-%03d.jsonl".format(run)), run = "${it.name}-$run", model = modelId) }

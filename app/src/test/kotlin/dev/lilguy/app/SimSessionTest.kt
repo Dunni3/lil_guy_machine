@@ -101,5 +101,12 @@ class SimSessionTest {
         assertEquals(RunState.Ended, s.state)
         assertEquals(24L * 60, s.current.tick)
         assertEquals("lived 1 day", s.endedBecause)
+
+        s.configure(s.settings.copy(days = 2))
+        assertEquals(RunState.Paused, s.state, "more days reopen an ended run")
+        s.step(2000)
+        assertEquals(RunState.Ended, s.state)
+        assertEquals(2L * 24 * 60, s.current.tick)
+        assertEquals("lived 2 days", s.endedBecause)
     }
 }

@@ -61,7 +61,8 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   game hour, HUD, bubble), with code-built models keyed by item id in `RoomModels.kt` (1 unit = 1 tile,
   pivot bottom centre, front +Z; a model file can replace one later) and the guy in `Blob.kt` (face
   textures per expression, animation in code from needs and activity). Then the 2D dev view in
-  `DevView.kt`: map plus Now/Memory/Journal/History/Log pages; run control, decision history and the app's memory in `SimSession.kt`; remote keys in
+  `DevView.kt`: map plus Now/Memory/Journal/History/Log/Run pages; run control, decision history and the app's memory in `SimSession.kt`;
+  the Run page's knobs (days, speed, how long the clock waits on the model, resolution) in `RunSettings.kt`; remote keys in
   `RemoteInput.kt`: OK start/pause, LEFT/RIGHT pages, UP/DOWN scroll or pick, BACK twice restarts). Launchers: `desktop/`, `android/`.
   `LILGUY_SCREENSHOT=out.png LILGUY_SCREENSHOT_AT=<s> make desktop` saves one frame and quits
   (add `LILGUY_CONFIG=/nonexistent` for the scripted policy, no API calls; `MINUTE_TICKS=1` for a faster clock)
