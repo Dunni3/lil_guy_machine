@@ -188,6 +188,8 @@ class JournalWriter(
             |
             |The one who made this world reads every entry, and may grant what you ask for, but only what you write down as a want with your reasons. A want without a reason is not considered. A good reason says what would change for you or your world, what it would cost or need, and how it fits your plans. You can ask again, and better, if a want isn't granted yet.
             |
+            |Your observation's `shop` is the catalog of what you can buy: furniture, decor, tools and things to enjoy for your room, with prices and what each is for. Before you write, think about what in it you want, what you are saving toward and why, and say so in the entry. A want can be an item from the catalog, or something it doesn't have.
+            |
             |Each reply is one step, a JSON object {"step": ...}:
             |- {"step": {"type": "search", "source": "memories" | "events" | "journal", "query": "a few keywords"}} looks through your past and shows you what it finds. memories: what you remember; events: the raw log of what you saw and did; journal: your earlier entries.
             |- {"step": {"type": "write", "entry": "...", "wants": [{"kind": ${WANT_KINDS.joinToString(" | ") { "\"$it\"" }}, "text": "...", "justification": "..."}]}} writes the entry and ends the session. wants may be empty.

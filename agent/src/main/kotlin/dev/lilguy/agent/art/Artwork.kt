@@ -56,6 +56,9 @@ class Artwork(val size: Int, val palette: List<Int>, private val cells: IntArray
     /** One string per row, one letter per cell (a for palette 0, b for 1, ...): a text model's view of it. */
     fun letters(): List<String> = (0 until size).map { y -> String(CharArray(size) { x -> 'a' + cells[y * size + x] }) }
 
+    /** True when every cell is the same palette color: nothing drawn shows. */
+    fun blank(): Boolean = cells.all { it == cells[0] }
+
     /** The picture as a PNG, each cell [scale] pixels square, so a small grid stays crisp in a viewer. */
     fun png(scale: Int = 8): ByteArray {
         val side = size * scale
@@ -87,8 +90,8 @@ class Artwork(val size: Int, val palette: List<Int>, private val cells: IntArray
                 if (inside(x, y)) cells[y * size + x] = c
             }
             for (op in ops) {
-                // An index past the palette's end (the schema allows up to the canvas's color limit) wraps around.
-                val c = op.color.mod(palette.size)
+                val c = op.color
+                require(c in palette.indices) { "color $c is past the palette's ${palette.size} colors" }
                 when (op) {
                     is DrawOp.Rect -> for (y in op.y until op.y + op.h) for (x in op.x until op.x + op.w) set(x, y, c)
                     is DrawOp.Circle -> for (y in op.y - op.r..op.y + op.r) for (x in op.x - op.r..op.x + op.r) {
@@ -110,7 +113,18 @@ class Artwork(val size: Int, val palette: List<Int>, private val cells: IntArray
          */
         fun parseColor(text: String): Int? = COLOR.find(text)?.groupValues?.get(1)?.toInt(16)
 
+        /**
+         * Every color in [entries], in order: each entry's leading color (as [parseColor]), then any
+         * further "#RRGGBB" in it. Models sometimes pack a whole palette into one string, joined by
+         * spaces, quotes or stray tokens. Entries with no leading color give none.
+         */
+        fun parseColors(entries: List<String>): List<Int> = entries.flatMap { entry ->
+            val lead = COLOR.find(entry) ?: return@flatMap emptyList()
+            (sequenceOf(lead) + MORE.findAll(entry, lead.range.last + 1)).map { it.groupValues[1].toInt(16) }.toList()
+        }
+
         private val COLOR = Regex("""^\s*#?([0-9a-fA-F]{6})""")
+        private val MORE = Regex("""#([0-9a-fA-F]{6})""")
 
         private fun line(op: DrawOp.Line, plot: (Int, Int) -> Unit) {
             var x = op.x0
