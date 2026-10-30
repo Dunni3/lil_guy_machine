@@ -129,7 +129,8 @@ activities:
   - id: sell_art
     phrase: sell your art
     at: [door]
-    minutes: 60
+    # Was 60: a sale is a hand-off at the door, not an hour of his day (Ian).
+    minutes: 1
     sells: art
   # The agent layer writes an entry when one succeeds (agent/.../memory/JournalWriter.kt). It is
   # work, so it needs him fed and rested, and costs more energy than sketching: writing about the
