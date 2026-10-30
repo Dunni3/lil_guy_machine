@@ -37,7 +37,8 @@ import kotlin.time.Duration
  * settings an earlier run started with.
  *
  * Ticks from the render thread (which makes the render thread the sim thread), as fast as
- * [settings] say, holding the clock while a slow decision is out ([RunSettings.decideCap]).
+ * [settings] say, holding the clock while a slow decision is out ([RunSettings.decideCap]) and
+ * while a drawing is still out after its activity has ended ([waitingOnArt]).
  * The agent and the memory and journal writers run in a per-run child of [scope], off that thread. Every
  * decision is kept with the world as it was when it was made ([history]), so the view can flip
  * back through the whole run.
@@ -312,7 +313,12 @@ class SimSession(
     }
 
     /** A decision has been out for as many game minutes as [RunSettings.decideCap] allows. */
+    /** True while a drawing has outlasted its activity ([ArtStudio.finishing]); the clock holds for it. */
+    val waitingOnArt: Boolean get() = memory.studio?.finishing == true
+
     private fun mustHold(): Boolean {
+        // Until the drawing lands the piece has no title or tags, so selling it couldn't meet a request.
+        if (waitingOnArt) return true
         val cap = settings.decideCap ?: return false
         return waitTicks >= cap.toLong() * ticksPerMinute && world.awaitingDecision(world.agentId)
     }
