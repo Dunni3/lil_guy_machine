@@ -6,6 +6,7 @@ import dev.lilguy.agent.memory.AgentMemory
 import dev.lilguy.agent.memory.InMemoryStore
 import dev.lilguy.agent.memory.JournalSession
 import dev.lilguy.agent.memory.JournalWriter
+import dev.lilguy.agent.memory.Thinker
 import dev.lilguy.agent.memory.Summarizer
 import dev.lilguy.decision.DecisionModel
 import dev.lilguy.sim.GridWorld
@@ -170,7 +171,8 @@ class SimSession(
             runCatching { runLog?.write(s) }
             if (run == thisRun && s.status == JournalSession.Status.Failed) journalError = s.error
         }
-        memory = AgentMemory(store, runId, summarizer, scope = rs, journal = jw?.let { JournalWriter(it, store, runId) }, onJournal = onJournal)
+        // The journal's model also writes his thoughts when he stops to think.
+        memory = AgentMemory(store, runId, summarizer, scope = rs, journal = jw?.let { JournalWriter(it, store, runId) }, onJournal = onJournal, thinker = jw?.let { Thinker(it) })
         val (gw, r) = setup.scenario.create(m, setup.timeout, setup.ticksPerMinute, longTerm = memory) {
             runCatching { runLog?.write(it) }
             runInbox.add(it)

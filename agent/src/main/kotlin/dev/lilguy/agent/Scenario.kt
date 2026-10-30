@@ -1,6 +1,7 @@
 package dev.lilguy.agent
 
 import dev.lilguy.agent.memory.AgentMemory
+import dev.lilguy.agent.memory.JOURNAL_ACTIVITY
 import dev.lilguy.decision.DecisionModel
 import dev.lilguy.sim.BedroomContent
 import dev.lilguy.sim.BedroomWorld
@@ -47,21 +48,27 @@ fun bedroomScenario(
     granted: Set<String> = emptySet(),
     onDecision: (AgentRuntime.DecisionRecord) -> Unit = {},
 ): Pair<BedroomWorld, AgentRuntime> {
-    val world = BedroomWorld.create(content, ticksPerMinute, granted = granted)
-    val unlocked = world.content
+    // Without a journal writer, journaling writes nothing, so going without it doesn't sink his mood.
+    val rules = if (longTerm?.journaling == true) content else content.copy(needs = content.needs.copy(neglect = emptyList()))
+    val world = BedroomWorld.create(rules, ticksPerMinute, granted = granted)
     val journaling = longTerm?.journaling == true
+    val thinking = longTerm?.thinking == true
+    // What he's told about: without a journal writer the journal would cost an hour and write nothing, so the prompt doesn't
+    // mention it and a picking model isn't offered it. The reply schema still takes it, as the sim does (the scripted baseline journals).
+    val shown = world.content.let { c -> if (journaling) c else c.copy(activities = c.activities.filter { it.id != JOURNAL_ACTIVITY }) }
     val prompts = PromptBuilder(
-        system = BedroomPrompt.system(unlocked, ticksPerMinute),
+        system = BedroomPrompt.system(shown, ticksPerMinute, thinking),
         timeout = timeout,
-        choices = { obs, recent -> BedroomPrompt.choices(obs, recent, ticksPerMinute, unlocked, journaling) },
+        choices = { obs, recent -> BedroomPrompt.choices(obs, recent, ticksPerMinute, shown, journaling, thinking) },
         stamp = BedroomPrompt.stamp(world.clock),
-        persona = Persona.text(unlocked),
+        persona = Persona.text(shown),
     )
     val runtime = AgentRuntime(
         world, world.agentId, model, prompts,
-        schemaFor = { BedroomPrompt.replySchema(it, ticksPerMinute) },
+        schemaFor = { BedroomPrompt.replySchema(it, ticksPerMinute, thinking) },
         longTerm = longTerm,
         fallback = { Intent.Wait(BedroomPrompt.WAIT_TICKS) },
+        thinkEvery = if (thinking) shown.think.every else null,
         onDecision = onDecision,
     )
     return world to runtime

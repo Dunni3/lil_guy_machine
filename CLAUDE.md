@@ -3,10 +3,11 @@
 A 3D sim with one character driven entirely by a pluggable decision model (LLM over an
 OpenAI-compatible endpoint, or scripted/RL). Kotlin + libGDX, runs on desktop and Android TV.
 The spec is `docs/agent-world-spec.html` (milestones in section 10); decisions are in
-`docs/DECISIONS.md`. Current state: milestone 4 (the bedroom): a life sim with a game clock,
+`docs/decisions/`. Current state: milestone 4 (the bedroom): a life sim with a game clock,
 money ledger, needs and data-driven activities and shop, driven by the scripted policy, TypeSafe's
-Jev (closed-choice) or an OpenAI-compatible endpoint, shown in a temporary 2D dev view in `:app`.
-Key-and-door stays as the quick backend test. The 3D renderer is deferred; milestones 5-6 are
+Jev (closed-choice) or an OpenAI-compatible endpoint, shown in `:app` as a 3D cutaway room (the
+spike of `research_notes/2026-10-29_2053_3d-room-and-character-plan.md`) with the 2D dev view's
+pages beside it. Key-and-door stays as the quick backend test. Milestones 5-6 are
 memory and personality (`research_notes/2026-10-29_0313_bedroom-proposal-and-roadmap-v2.html`).
 
 ## Commands
@@ -53,12 +54,17 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   events and memories, `InMemoryStore`), `AgentMemory.kt` (what `AgentRuntime` talks to), `Describe.kt`
   (event text), `Summarizer.kt` (LLM writes level-1 memories), `Recall.kt` (which memories and journal
   entries reach a prompt), `Keywords.kt` (shared keyword scoring), `JournalWriter.kt` (the journal's
-  search-then-write LLM loop; `AgentMemory` keeps an entry only when the activity succeeds).
+  search-then-write LLM loop; `AgentMemory` keeps an entry only when the activity succeeds),
+  `Thinker.kt` (the `think` intent's one LLM call; the thought goes to events and short-term memory).
   SQLite store: `memory-sqlite/` (JVM only; not in the TV build yet).
-- Renderer: `app/.../LilGuyGame.kt` (2D dev view in `DevView.kt`: map plus Now/Memory/Journal/History/Log
-  pages; run control, decision history and the app's memory in `SimSession.kt`; remote keys in
+- Renderer: `app/.../LilGuyGame.kt`. The first page is the 3D room, `RoomView.kt` (camera, light by
+  game hour, HUD, bubble), with code-built models keyed by item id in `RoomModels.kt` (1 unit = 1 tile,
+  pivot bottom centre, front +Z; a model file can replace one later) and the guy in `Blob.kt` (face
+  textures per expression, animation in code from needs and activity). Then the 2D dev view in
+  `DevView.kt`: map plus Now/Memory/Journal/History/Log pages; run control, decision history and the app's memory in `SimSession.kt`; remote keys in
   `RemoteInput.kt`: OK start/pause, LEFT/RIGHT pages, UP/DOWN scroll or pick, BACK twice restarts). Launchers: `desktop/`, `android/`.
   `LILGUY_SCREENSHOT=out.png LILGUY_SCREENSHOT_AT=<s> make desktop` saves one frame and quits
+  (add `LILGUY_CONFIG=/nonexistent` for the scripted policy, no API calls; `MINUTE_TICKS=1` for a faster clock)
   (`LILGUY_SCREENSHOT_KEYS="Enter,@60,Right"` presses keys first).
 - Endpoint config example: `config/endpoints.example.yaml` (real one is gitignored). The app's
   model choice: `app/.../ModelSetup.kt`. Run logs go in `runs/` (gitignored).
@@ -72,8 +78,8 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   Locally they live in `~/.config/lil-guy-machine/secrets.env`, which the Makefile loads. Never
   print them.
 - Keep toolchain versions in `gradle/libs.versions.toml` in step with smarter-tv unless there is a
-  reason (record it in `docs/DECISIONS.md`).
-- Log decisions in `docs/DECISIONS.md`.
+  reason (record it in `docs/decisions/`).
+- Decisions: one file per choice that constrains future work, in `docs/decisions/` (format and index in its README). Skim the index before related changes; skip routine implementation detail.
 
 ## The TV (Google TV Streamer)
 

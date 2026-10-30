@@ -31,6 +31,13 @@ sealed interface Intent {
     /** Buy an item from the shop by id. The sim walks the character to where buying happens. */
     @Serializable @SerialName("buy")
     data class Buy(val item: String) : Intent
+
+    /**
+     * Stop where he is and think. The sim only spends the time; the agent loop has a text model
+     * write the thought (what he wants to do next and to achieve) into his memory.
+     */
+    @Serializable @SerialName("think")
+    data object Think : Intent
 }
 
 @Serializable

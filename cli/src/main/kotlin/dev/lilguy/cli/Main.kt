@@ -10,6 +10,7 @@ import dev.lilguy.agent.memory.AgentMemory
 import dev.lilguy.agent.memory.InMemoryStore
 import dev.lilguy.agent.memory.JournalSession
 import dev.lilguy.agent.memory.JournalWriter
+import dev.lilguy.agent.memory.Thinker
 import dev.lilguy.agent.memory.MemoryStore
 import dev.lilguy.agent.memory.Summarizer
 import dev.lilguy.memory.SqliteMemoryStore
@@ -56,7 +57,8 @@ private const val USAGE = """lil guy machine cli: lockstep runs of the key-and-d
   --memory-endpoint N endpoint that writes the summaries (must write text, so not typesafe)
   --journal-endpoint N bedroom: endpoint that writes his journal when he journals (must write text);
                       entries join every later prompt, and the run ends with them and his wants.
-                      Kept in --memory FILE if given, otherwise in memory for the run
+                      Kept in --memory FILE if given, otherwise in memory for the run. It also
+                      writes his thoughts when he thinks. Defaults to --memory-endpoint; "none" for off
   --grant IDS         bedroom: unlock gated content, comma-separated ids (e.g. paint,easel,canvas,painting)
   --quiet             one line per run instead of every decision and event
 
@@ -194,7 +196,8 @@ fun main(argv: Array<String>) {
             requireNotNull(args.string("--memory")) { "--memory-endpoint needs --memory FILE" }
             Endpoints.create(config, name)
         }
-        val journalModel = args.string("--journal-endpoint")?.let { Endpoints.create(config, it) }
+        // Like the app: the journal (and thinking) defaults to the memory endpoint; "none" turns it off.
+        val journalModel = (args.string("--journal-endpoint") ?: args.string("--memory-endpoint"))?.takeIf { it != "none" }?.let { Endpoints.create(config, it) }
         val store: MemoryStore? = args.string("--memory")?.let { SqliteMemoryStore(File(it)) } ?: journalModel?.let { InMemoryStore() }
         val sessions = mutableListOf<JournalSession>()
         val memory = store?.let { st ->
@@ -203,6 +206,7 @@ fun main(argv: Array<String>) {
                 st, run,
                 summarizer = summaryModel?.let { Summarizer(it, st, run, onFailure = { e -> System.err.println("summary failed: ${e.message}") }) },
                 journal = journalModel?.let { JournalWriter(it, st, run) },
+                thinker = journalModel?.let { Thinker(it) },
                 onJournal = { s ->
                     sessions += s
                     log?.write(s)
@@ -270,6 +274,7 @@ private fun runOnce(
             val note = if (d.error != null) "FALLBACK: ${d.error}" else d.rationale.orEmpty()
             val tries = if (d.attempts.size > 1) " [${d.attempts.size} tries]" else ""
             println("%s  decide  %-52s %5d ms%s  %s".format(stampOf(d.tick), intent, d.latency.inWholeMilliseconds, tries, note))
+            d.thought?.let { println("%s  thought %s".format(stampOf(d.tick), it.text?.let { t -> "\"$t\"" } ?: "FAILED: ${it.error}")) }
         }
     }
     val bedroom = world as? BedroomWorld

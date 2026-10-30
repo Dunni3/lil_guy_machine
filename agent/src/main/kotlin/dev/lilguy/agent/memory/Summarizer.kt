@@ -28,7 +28,7 @@ class Summarizer(
     private val store: MemoryStore,
     private val run: String,
     /** Most events one memory covers. */
-    val batchSize: Int = 40,
+    val batchSize: Int = 20,
     private val timeout: Duration = 60.seconds,
     private val onFailure: (Throwable) -> Unit = {},
 ) {
@@ -84,16 +84,22 @@ class Summarizer(
         messages = listOf(
             Message(
                 Message.Role.User,
-                events.joinToString("\n", prefix = "Log:\n", postfix = "\n\nWrite the memory.") { "[${it.stamp}] ${if (it.kind == EventKind.Observation) "I saw" else "I did"}: ${it.text}" },
+                events.joinToString("\n", prefix = "Log:\n", postfix = "\n\nWrite the memory.") { "[${it.stamp}] ${verb(it.kind)}: ${it.text}" },
             ),
         ),
         temperature = 0.3,
         timeout = timeout,
     )
 
+    private fun verb(kind: EventKind) = when (kind) {
+        EventKind.Observation -> "I saw"
+        EventKind.Thought -> "I thought"
+        else -> "I did"
+    }
+
     companion object {
         val SYSTEM = """
-            |You write the memories of a little guy who lives alone in a bedroom. You are given a log of what he saw and did, oldest first: "I saw" lines are how things stood when he had to choose, "I did" lines are what he chose.
+            |You write the memories of a little guy who lives alone in a bedroom. You are given a log of what he saw and did, oldest first: "I saw" lines are how things stood when he had to choose, "I did" lines are what he chose, "I thought" lines are what he thought when he stopped to think.
             |Write one memory of this stretch, in the first person, as he would remember it: what he did, what changed (money, needs, things he got), what worked or didn't, and anything he should keep in mind next time.
             |Say only what the log shows. Keep it to two to four sentences and do not repeat the log line by line.
             |Reply with a JSON object {"memory": ...}.

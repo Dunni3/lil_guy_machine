@@ -41,6 +41,7 @@ internal val VARIANT_DESCRIPTIONS = mapOf(
     "wait" to "Do nothing for some ticks (20 ticks = 1 s of game time).",
     "do" to "Do an activity; the game walks you to where it happens.",
     "buy" to "Buy an item from the shop.",
+    "think" to "Stop and think about what you want to do next and what you want to achieve.",
 )
 
 /**
@@ -71,6 +72,8 @@ fun replySchema(obs: Observation): ActionSchema<AgentReply> {
             "buy.item" to emptyList(),
         ),
         ranges = mapOf("wait.ticks" to 1..GridWorld.MAX_WAIT),
+        // Key-and-door is the quick backend test; thinking is for the bedroom.
+        omit = setOf("think"),
     )
     return ActionSchema.of("reply", AgentReply.serializer(), hints) { it.thought }
 }

@@ -76,7 +76,7 @@ class BedroomWorldTest {
         assertNull(w.activity("sleep").locked, "energy 80 is tired enough")
         assertNull(w.activity("sketch").locked)
         assertEquals("1h", w.activity("sketch").takes)
-        assertEquals("1 sketch, sells for $3; energy -6", w.activity("sketch").gives)
+        assertEquals("1 sketch, sells for $3; energy -6; mood -4", w.activity("sketch").gives)
         assertEquals("uses a meal (you have 2); fullness +45", w.activity("eat").gives)
         assertTrue(w.obs().uses!!.isEmpty())
 
@@ -97,7 +97,7 @@ class BedroomWorldTest {
         assertTrue(desk.inReach)
         // Awake decay over the walk and the hour, plus the sketch's -6.
         assertTrue(obs.needs!!.energy in 69..70, "energy ${obs.needs!!.energy}")
-        assertTrue(obs.recentEvents.last().endsWith("finished sketch: +1 sketch, energy -6"), obs.recentEvents.last())
+        assertTrue(obs.recentEvents.last().endsWith("finished sketch: +1 sketch, energy -6, mood -4"), obs.recentEvents.last())
         assertEquals("$3 for the 1 sketch you hold", w.activity("sell_art").gives)
     }
 
@@ -172,6 +172,25 @@ class BedroomWorldTest {
         hungry.run(Intent.Do("eat"))
         assertTrue(hungry.obs().needs!!.fullness >= 45)
         assertEquals(1, hungry.count("meal"))
+    }
+
+    @Test
+    fun `going without journaling sinks his mood until he can't make art, and journaling ends it`() {
+        val rules = content.needs.copy(neglect = listOf(Neglect("journal", 2, -5.0, "two hours without writing")))
+        val w = BedroomWorld.create(content.copy(needs = rules, start = content.start.copy(needs = NeedLevels(energy = 80, fullness = 70, mood = 30))), granted = content.gated)
+        assertTrue(w.obs().neglect!!.startsWith("no journal yet, 0h since the start; after 2h without one"), w.obs().neglect)
+        repeat(w.clock.ticks(5 * 60)) { w.step() }
+        // Two hours drifting up from 30, then three falling 5 an hour.
+        assertTrue(w.snapshot().events.any { it.text == "two hours without writing: mood falls 5 an hour until you journal" })
+        assertTrue(w.obs().needs!!.mood in 20..22, "mood ${w.obs().needs!!.mood}")
+        assertTrue(w.activity("sketch").locked!!.startsWith("too low to make art (mood "), w.activity("sketch").locked)
+        assertTrue("mood falls 5 an hour until your next journal" in w.obs().neglect!!)
+
+        w.run(Intent.Do("journal"))
+        assertTrue(w.obs().neglect!!.startsWith("last journal 0h ago;"), w.obs().neglect)
+        val after = w.obs().needs!!.mood
+        repeat(w.clock.ticks(60)) { w.step() }
+        assertTrue(w.obs().needs!!.mood > after, "mood should drift back up after journaling")
     }
 
     @Test

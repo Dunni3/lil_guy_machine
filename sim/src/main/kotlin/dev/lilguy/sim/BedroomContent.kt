@@ -25,6 +25,7 @@ data class BedroomContent(
     val items: List<ItemSpec>,
     val activities: List<ActivitySpec>,
     val uses: List<ActivitySpec> = emptyList(),
+    val think: ThinkRules = ThinkRules(),
 ) {
     @Transient private val byId = items.associateBy { it.id }
 
@@ -96,6 +97,12 @@ data class BedroomContent(
         uses.forEach { require(it.item != null && it.on != null) { "use ${it.id} needs `item` and `on`" } }
         activities.forEach { require(it.item == null && it.on == null) { "activity ${it.id}: `item` and `on` are only for uses" } }
         needs.workFloor.forEach { needOf(it.need) }
+        needs.neglect.forEach { n ->
+            require(activities.any { it.id == n.activity }) { "neglect names activity '${n.activity}', which isn't in activities" }
+            require(n.afterHours >= 1 && n.moodPerHour < 0) { "neglect of ${n.activity}: after_hours must be at least 1 and mood_per_hour negative" }
+        }
+        require(think.minutes >= 1) { "think needs at least 1 minute" }
+        require(think.every == null || think.every >= 1) { "think.every must be at least 1" }
         GameClock.parseHhmm(start.time)
     }
 }
@@ -126,6 +133,20 @@ data class NeedRules(
     val low: Double,
     @SerialName("low_mood_per_hour") val lowMoodPerHour: Double,
     @SerialName("work_floor") val workFloor: List<NeedBlock>,
+    /** Mood falls instead of drifting while an activity has gone undone too long. */
+    val neglect: List<Neglect> = emptyList(),
+)
+
+/**
+ * Once [activity] hasn't finished for [afterHours] (counting from the start of the run), mood
+ * falls [moodPerHour] instead of drifting, until he does it again. [reason] says why, as an event.
+ */
+@Serializable
+data class Neglect(
+    val activity: String,
+    @SerialName("after_hours") val afterHours: Int,
+    @SerialName("mood_per_hour") val moodPerHour: Double,
+    val reason: String,
 )
 
 /** Refuses an activity when [need] is below [below] or above [above]. */
@@ -141,6 +162,14 @@ data class NeedBlock(
 
 @Serializable
 data class ShopRules(val at: String, val minutes: Int)
+
+/**
+ * The think intent: he stands where he is for [minutes] and it costs [energy] on top of being
+ * awake. [every]: the agent is made to think after this many decisions without one; null leaves it
+ * to the model.
+ */
+@Serializable
+data class ThinkRules(val minutes: Int = 10, val energy: Double = -2.0, val every: Int? = 4)
 
 @Serializable
 data class ItemSpec(

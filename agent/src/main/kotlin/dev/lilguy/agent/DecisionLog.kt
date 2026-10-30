@@ -42,6 +42,19 @@ data class DecisionLogEntry(
     @SerialName("completion_tokens") val completionTokens: Int,
     val error: String? = null,
     val fallback: Boolean = false,
+    /** When the intent was think: the thinker's call. */
+    val think: LoggedThink? = null,
+)
+
+@Serializable
+data class LoggedThink(
+    val thinker: String,
+    val text: String?,
+    val raw: String?,
+    @SerialName("latency_ms") val latencyMs: Long,
+    @SerialName("prompt_tokens") val promptTokens: Int,
+    @SerialName("completion_tokens") val completionTokens: Int,
+    val error: String? = null,
 )
 
 @Serializable
@@ -156,6 +169,9 @@ class DecisionLog(val file: File, private val run: String, private val model: St
             completionTokens = r.usage.completionTokens,
             error = r.error,
             fallback = r.fellBack,
+            think = r.thought?.let { t ->
+                LoggedThink(t.thinker, t.text, t.raw, t.latency.inWholeMilliseconds, t.usage.promptTokens, t.usage.completionTokens, t.error)
+            },
         )
 
         fun journalEntryOf(run: String, s: JournalSession) = JournalLogEntry(

@@ -3,15 +3,15 @@ package dev.lilguy.agent
 import dev.lilguy.sim.Intent
 import dev.lilguy.sim.IntentStatus
 
-/** Short-term memory: the last few intents the agent chose and how each ended. */
+/** Short-term memory: the last few intents the agent chose, how each ended, and what he thought when he stopped to think. */
 class Memory(private val capacity: Int = 8) {
-    /** [result] stays null until a later observation reports how the intent ended. */
-    data class Entry(val tick: Long, val intent: Intent, val result: IntentStatus? = null)
+    /** [result] stays null until a later observation reports how the intent ended. [thought] is set on a think. */
+    data class Entry(val tick: Long, val intent: Intent, val result: IntentStatus? = null, val thought: String? = null)
 
     private val entries = ArrayDeque<Entry>()
 
-    fun record(tick: Long, intent: Intent) {
-        entries.addLast(Entry(tick, intent))
+    fun record(tick: Long, intent: Intent, thought: String? = null) {
+        entries.addLast(Entry(tick, intent, thought = thought))
         while (entries.size > capacity) entries.removeFirst()
     }
 

@@ -124,6 +124,7 @@ abstract class GridWorld protected constructor(
         is Intent.Wait -> "wait ${intent.ticks}"
         is Intent.Do -> "do ${intent.activity}"
         is Intent.Buy -> "buy ${intent.item}"
+        Intent.Think -> "think"
     }
 
     protected fun describe(target: Target): String = when (target) {

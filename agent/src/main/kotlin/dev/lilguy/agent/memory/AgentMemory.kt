@@ -26,6 +26,9 @@ const val JOURNAL_ACTIVITY = "journal"
  * entry, in the background with a [scope] as above. The entry is kept only once the activity
  * succeeds; if it fails or is interrupted the entry is thrown away. [recallJournal] picks entries
  * for each decision, with their own budget.
+ *
+ * Thinking: when he chooses the think intent, a [Thinker] (if there is one) writes one thought,
+ * inline, and it goes into the event stream as he thought it.
  */
 class AgentMemory(
     private val store: MemoryStore,
@@ -36,6 +39,7 @@ class AgentMemory(
     private val journal: JournalWriter? = null,
     /** Every finished journal session, kept or not; called from whichever coroutine finished it. */
     private val onJournal: (JournalSession) -> Unit = {},
+    private val thinker: Thinker? = null,
 ) {
     /** What [acted] needs to write an entry: who he is, and his state in the decision prompt's words. */
     class JournalBrief(val persona: String, val situation: String)
@@ -71,6 +75,14 @@ class AgentMemory(
 
     /** True when the journal activity produces an entry. */
     val journaling: Boolean get() = journal != null
+
+    /** True when the think intent produces a thought. */
+    val thinking: Boolean get() = thinker != null
+
+    private val thoughtLog = java.util.concurrent.CopyOnWriteArrayList<Thought>()
+
+    /** Every thought so far, failed ones included, oldest first. Readable from any thread. */
+    fun thoughts(): List<Thought> = thoughtLog.toList()
 
     /** Most events one memory covers, or null when nothing summarizes. */
     val batchSize: Int? get() = summarizer?.batchSize
@@ -110,6 +122,18 @@ class AgentMemory(
         val s = summarizer ?: return
         if (s.pending() < s.batchSize) return
         if (scope == null) s.catchUp() else if (job?.isActive != true) job = scope.launch { s.catchUp() }
+    }
+
+    /**
+     * He chose to think at [obs]: one call to the thinker with the decision prompt's [system] and
+     * [situation], and the thought goes into the event stream. Null when nothing thinks.
+     */
+    suspend fun think(obs: Observation, system: String, situation: String): Thought? {
+        val t = thinker ?: return null
+        val thought = t.think(system, situation, obs.tick, obs.clock?.day, obs.clock?.time)
+        thought.text?.let { store.appendEvent(run, obs.tick, obs.clock?.day, obs.clock?.time, EventKind.Thought, it) }
+        thoughtLog += thought
+        return thought
     }
 
     /** The memories to show for [obs], as text lines, oldest first. */

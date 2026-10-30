@@ -121,7 +121,10 @@ enum class EventKind(val id: String) {
     Action("action"),
 
     /** He wrote in his journal; the entry itself is in the journal, not here. */
-    Journal("journal");
+    Journal("journal"),
+
+    /** What he thought when he stopped to think, in his own words. */
+    Thought("thought");
 
     companion object {
         fun of(id: String): EventKind = entries.first { it.id == id }

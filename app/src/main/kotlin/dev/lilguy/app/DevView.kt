@@ -29,7 +29,8 @@ import kotlin.math.sin
 
 /**
  * Temporary 2D dev view: the room from above on the left, and on the right a header (run state,
- * model, clock) over one of five pages the remote flips between:
+ * model, clock) over one of the pages the remote flips between. The first page, [Page.Room], is
+ * not drawn here: it is the 3D room ([RoomView]), full screen.
  *
  * - [Page.Now]: needs, what he's doing, the latest decision, recent events.
  * - [Page.Memory]: short-term memory (recent actions, in every prompt) and the long-term
@@ -45,7 +46,7 @@ import kotlin.math.sin
  * full-screen layers.
  */
 class DevView : Disposable {
-    enum class Page(val title: String) { Now("NOW"), Memory("MEMORY"), Journal("JOURNAL"), History("HISTORY"), Log("LOG") }
+    enum class Page(val title: String) { Room("ROOM"), Now("NOW"), Memory("MEMORY"), Journal("JOURNAL"), History("HISTORY"), Log("LOG") }
 
     private val viewport = FitViewport(WIDTH, HEIGHT)
     private val shapes = ShapeRenderer()
@@ -57,7 +58,7 @@ class DevView : Disposable {
     private val glyphs = GlyphLayout()
     private val json = Json
 
-    var page = Page.Now
+    var page = Page.Room
         private set
 
     /** History only: the decision shown, as an index into [SimSession.history]; null follows the newest and shows the live world. */
@@ -377,7 +378,7 @@ class DevView : Disposable {
     }
 
     /** The run's state, across the bottom of the map whenever it isn't simply running. */
-    private fun banner(session: SimSession): String? = when {
+    fun banner(session: SimSession): String? = when {
         confirmRestart -> "Restart? BACK again for a fresh run · any other key cancels"
         session.state == RunState.Ready -> "READY · press OK to start"
         session.state == RunState.Paused -> "PAUSED · OK resumes"
@@ -500,7 +501,7 @@ class DevView : Disposable {
 
         drawTabs()
         when (page) {
-            Page.Now -> drawNow(session, live)
+            Page.Room, Page.Now -> drawNow(session, live)
             Page.Memory -> drawMemory(session, live)
             Page.Journal -> drawJournal(session)
             Page.History -> drawHistory(session)
@@ -517,7 +518,7 @@ class DevView : Disposable {
             RunState.Ended -> ""
         }
         val upDown = when (page) {
-            Page.Now -> ""
+            Page.Room, Page.Now -> ""
             Page.History, Page.Journal -> "UP newer · DOWN older · "
             else -> "UP/DOWN scroll · "
         }
@@ -559,7 +560,8 @@ class DevView : Disposable {
                 font.draw(batch, value.toInt().toString(), BAR_X + BAR_WIDTH + 16f, y - 2)
             }
             cursor = barsTop - 3 * BAR_PITCH - 6f
-            line("mood settles toward ${life.moodTarget.toInt()}", SMALL_SCALE * 0.9f, MUTED, maxLines = 1)
+            life.moodSinking?.let { line(it, SMALL_SCALE * 0.9f, FAILED, maxLines = 2) }
+                ?: line("mood settles toward ${life.moodTarget.toInt()}", SMALL_SCALE * 0.9f, MUTED, maxLines = 1)
 
             heading("DOING")
             val doing = life.doing
@@ -590,6 +592,7 @@ class DevView : Disposable {
             if (deciding == null) line(if (session.state == RunState.Ready) "(none: the run starts when you press OK)" else "(none yet)", BODY_SCALE * 0.9f, MUTED)
         } else {
             line(decision.rationale ?: "fallback: ${decision.error}", BODY_SCALE * 0.9f, if (decision.fellBack) FAILED else TEXT, maxLines = 3)
+            decision.thought?.let { line("thought: " + (it.text ?: "none (${it.error})"), BODY_SCALE * 0.85f, if (it.text == null) FAILED else ACCENT, maxLines = 4) }
             val recalled = (if (decision.recalled.isNotEmpty()) " · ${decision.recalled.size} memories recalled" else "") +
                 if (decision.recalledJournal.isNotEmpty()) " · ${decision.recalledJournal.size} journal entries" else ""
             line("${Describe.intent(decision.intent)} · ${decision.latency.inWholeMilliseconds} ms$recalled", SMALL_SCALE * 0.9f, CODE, maxLines = 1)
@@ -610,6 +613,17 @@ class DevView : Disposable {
         recent.asReversed().forEach { e ->
             val result = e.result?.let { statusText(it) } ?: "in progress"
             line("${stamp(e.tick, s)}  ${Describe.intent(e.intent)}  ·  $result", SMALL_SCALE * 0.9f, statusColor(e.result).takeIf { e.result is IntentStatus.Failed } ?: TEXT, maxLines = 1, gapAfter = 0f)
+        }
+
+        val thoughts = mem.thoughts()
+        if (mem.thinking) {
+            heading("THOUGHTS · the latest is his plan, sent with every prompt")
+            if (thoughts.isEmpty()) line("(none yet)", SMALL_SCALE, MUTED)
+            thoughts.asReversed().take(THOUGHT_ROWS).forEachIndexed { i, t ->
+                val label = stamp(t.tick, s) + if (i == 0 && t.text != null) "  · his plan for now" else ""
+                line(label, SMALL_SCALE * 0.9f, if (i == 0) ACCENT else MUTED, maxLines = 1, gapAfter = 0.05f)
+                line(t.text ?: "no thought: ${t.error}", MEMORY_SCALE, if (t.text == null) FAILED else TEXT, maxLines = 5, gapAfter = 0.4f)
+            }
         }
 
         heading("LONG-TERM")
@@ -644,7 +658,7 @@ class DevView : Disposable {
         val writer = mem.journalWriter
         val entries = mem.journalEntries()
         val status = when {
-            writer == null -> "no journal writer configured (journal_endpoint): journaling costs time and energy but writes nothing"
+            writer == null -> "no journal writer configured (journal_endpoint, or memory_endpoint): he isn't offered the journal or think"
             mem.writingJournal -> "$writer is writing an entry..."
             else -> "${entries.sumOf { it.wants.size }} wants so far · by $writer"
         }
@@ -724,6 +738,7 @@ class DevView : Disposable {
         line("${stamp(d.tick, m.snapshot)} · tick ${d.tick} · ${d.latency.inWholeMilliseconds} ms$tokens$tries", SMALL_SCALE * 0.9f, MUTED, maxLines = 1)
         line(Describe.intent(d.intent), BODY_SCALE * 0.9f, CODE, maxLines = 2, gapAfter = 0.15f)
         line(d.rationale ?: "fallback: ${d.error}", BODY_SCALE * 0.8f, if (d.fellBack) FAILED else TEXT, maxLines = 4)
+        d.thought?.let { line("thought: " + (it.text ?: "none (${it.error})"), BODY_SCALE * 0.8f, if (it.text == null) FAILED else ACCENT, maxLines = 5) }
         val outcome = outcomeOf(session, sel)
         line("result: ${outcome?.let { statusText(it) } ?: "still going"}", SMALL_SCALE * 0.9f, statusColor(outcome), maxLines = 2)
         d.observation?.let { line("saw: " + Describe.observation(it, emptyList()), SMALL_SCALE * 0.85f, MUTED, maxLines = 3) }
@@ -827,6 +842,7 @@ class DevView : Disposable {
         private const val PANEL_WIDTH = WIDTH - PANEL_X - MARGIN
         private const val FOOTER_Y = MARGIN + 30f
         private const val NOW_EVENT_ROWS = 5
+        private const val THOUGHT_ROWS = 2
         private const val HISTORY_ROWS = 7
         private const val JOURNAL_ROWS = 5
         private const val MONEY_ROWS = 5

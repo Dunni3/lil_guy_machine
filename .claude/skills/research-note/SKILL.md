@@ -15,5 +15,5 @@ Write one markdown note in `research_notes/` following the format in CLAUDE.md (
 3. **Write** `research_notes/<YYYY-MM-DD_HHMM>_<kebab-slug>.md` (create the directory if missing; slug is 2-5 words). Frontmatter must include `title` and `summary`; also fill `date`, `author` (your model name, or the human if they dictated it), `tags`, `related` (commit hashes, file paths, other note filenames), and `status`.
 4. **Body:** context first, then the substance: what and why, how it works (with `file:line` / commit refs), decisions and rejected alternatives, gotchas, open questions / follow-ups. Be concrete and skimmable (headings, short bullets). Record what's true, including mistakes and things left unverified.
 5. **Never include** secrets, `.env` contents, device tokens/pairing codes, or API keys.
-6. If the note records a decision, also add the entry to `docs/DECISIONS.md` (the note is the narrative, DECISIONS.md is the ledger).
+6. If the note records a decision, also add a file to `docs/decisions/` and a line to its README index (the note is the narrative, the decision file is the outcome).
 7. Tell the user the note's path and its one-line summary. Don't commit unless asked.

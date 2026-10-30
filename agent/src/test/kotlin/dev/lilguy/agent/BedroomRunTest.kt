@@ -124,12 +124,12 @@ class BedroomRunTest {
         assertTrue(system.startsWith("You are intelligent, aspirational and creative"), system.take(80))
         assertTrue("the only things you can do are eat, sketch, sell your art, write in your journal and sleep." in system)
         assertTrue(Persona.CREATOR in system)
-        assertTrue("You live in this bedroom. You need money for food." in system)
+        assertTrue("You live in this bedroom. You need money for food, as a means, not the goal." in system)
         assertTrue("a sketch sells for $3" in system)
         assertTrue("- Journal: writing in your journal takes 1h and costs 10 energy; it's work" in system)
         assertTrue("what you wrote in your journal" in system)
         listOf("easel", "canvas", "record", "painting", "decor", "`uses`", "music").forEach { assertTrue(it !in system, "mentions gated '$it'") }
-        assertTrue("goal" !in system.lowercase(), "no objective, just his situation")
+        assertTrue(Persona.GOAL in system, "his goal is his journal")
 
         // Granting brings the gated content into the prompt.
         val grown = BedroomPrompt.system(dev.lilguy.sim.BedroomContent.default().unlocked(setOf("paint", "easel", "canvas", "painting")), 5)

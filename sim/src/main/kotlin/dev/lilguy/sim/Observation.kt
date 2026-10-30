@@ -37,6 +37,8 @@ data class Observation(
     @EncodeDefault(EncodeDefault.Mode.NEVER) val uses: List<UseOption>? = null,
     /** Everything for sale he doesn't already have. */
     @EncodeDefault(EncodeDefault.Mode.NEVER) val shop: List<ShopOption>? = null,
+    /** How long since each activity his mood depends on, such as "last journal 20h ago; ...". */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val neglect: String? = null,
 )
 
 /** An activity for do(). Exactly one of [locked] and ([takes], [gives]) is set. */
@@ -119,6 +121,8 @@ data class LifeSnapshot(
     val mood: Double,
     /** The mood his mood drifts toward: the baseline plus the room's comfort. */
     val moodTarget: Double,
+    /** Why his mood is falling instead of drifting, when a neglect rule is in force. */
+    val moodSinking: String? = null,
     /** The activity under way (after any walk to it), and how far through it is, 0..1. */
     val doing: String?,
     val progress: Float?,

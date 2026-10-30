@@ -34,7 +34,7 @@ and a world that has grown because he asked for it.
 
 For the details: the original design spec is
 [docs/agent-world-spec.html](docs/agent-world-spec.html) (its milestones have since been
-reshuffled), and [docs/DECISIONS.md](docs/DECISIONS.md) logs every design decision along the way.
+reshuffled), and [docs/decisions/](docs/decisions/README.md) records the design decisions along the way.
 
 ## How it fits together
 

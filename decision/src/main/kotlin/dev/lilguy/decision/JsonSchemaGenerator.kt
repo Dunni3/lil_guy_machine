@@ -23,6 +23,8 @@ data class SchemaHints(
     /** Allowed string values. An empty list makes a non-null property, and so its object, impossible. */
     val enums: Map<String, List<String>> = emptyMap(),
     val ranges: Map<String, IntRange> = emptyMap(),
+    /** Sealed variants to leave out, by serial name: for a variant with no field an enum could empty, such as `think`. */
+    val omit: Set<String> = emptySet(),
 )
 
 /**
@@ -61,7 +63,7 @@ object JsonSchemaGenerator {
                 orNull(buildJsonObject { put("type", "array"); put("items", items) }, isNullable, description)
             }
             PolymorphicKind.SEALED -> {
-                val variants = variantsOf(d).mapNotNull { (name, sub) -> objectSchema(sub, hints, discriminator = name) }
+                val variants = variantsOf(d).filter { it.first !in hints.omit }.mapNotNull { (name, sub) -> objectSchema(sub, hints, discriminator = name) }
                 if (variants.isEmpty()) return nullOnly(isNullable)
                 val all = if (isNullable) variants + NULL else variants
                 buildJsonObject {

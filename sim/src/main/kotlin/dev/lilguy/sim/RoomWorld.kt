@@ -89,6 +89,7 @@ class RoomWorld private constructor(
         is Intent.Wait -> waitFor(intent)
         is Intent.Do -> reject("there are no activities in this room")
         is Intent.Buy -> reject("there is no shop in this room")
+        Intent.Think -> Work.Timed(World.TICKS_PER_SECOND) { null }
     }
 
     // --- movement ----------------------------------------------------------------------------

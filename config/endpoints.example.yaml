@@ -34,6 +34,6 @@ agents:
   - character: hero
     endpoint: typesafe        # swap to "local" with no code change
     memory_endpoint: hosted   # writes long-term memories; must write text (not typesafe). Optional.
-    journal_endpoint: hosted  # writes his journal entries when he journals; must write text. Optional:
-                              # without it journaling writes nothing and a picking model doesn't see it.
+    journal_endpoint: hosted  # writes his journal entries and his thoughts (think); must write text.
+                              # Defaults to memory_endpoint; "none" and he is offered neither.
     decision_interval: on_intent_complete

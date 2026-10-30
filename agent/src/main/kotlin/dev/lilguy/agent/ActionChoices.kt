@@ -97,6 +97,7 @@ private fun label(intent: Intent): String = when (intent) {
     is Intent.Wait -> "wait:${intent.ticks}"
     is Intent.Do -> "do:${intent.activity}"
     is Intent.Buy -> "buy:${intent.item}"
+    Intent.Think -> "think"
 }
 
 private fun name(e: SeenEntity): String =

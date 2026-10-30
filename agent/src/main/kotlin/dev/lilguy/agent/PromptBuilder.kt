@@ -23,7 +23,7 @@ import kotlin.time.Duration.Companion.seconds
  * scenario: how the world works, the action space with an example of each action, the reply
  * format and what the observation fields mean. The user message is the observation as one line
  * of JSON, then what he recalls (memories, and journal entries in their own section), and the
- * recent intents with how each ended, each stamped by [stamp].
+ * recent intents with how each ended (and, for a think, what he thought), each stamped by [stamp].
  *
  * [choices] builds the same decision as a closed set, for models that pick. [persona] is who he
  * is, for the journal; null in rooms without one.
@@ -39,9 +39,12 @@ class PromptBuilder(
     constructor(goal: String, timeout: Duration = 20.seconds) :
         this(systemPrompt(goal), timeout, { obs, recent -> actionChoices(obs, goal, recent) })
 
+    fun stampOf(tick: Long): String = stamp(tick)
+
     /**
      * [closedChoice] adds the same decision as a set of options, for models that pick. [memories]
-     * and [journal] are what long-term memory recalled for this decision.
+     * and [journal] are what long-term memory recalled for this decision; [thought] is his latest
+     * thought ("stamp: text"), shown until the next one replaces it.
      */
     fun build(
         obs: Observation,
@@ -49,9 +52,11 @@ class PromptBuilder(
         closedChoice: Boolean = false,
         memories: List<String> = emptyList(),
         journal: List<String> = emptyList(),
+        thought: String? = null,
     ): DecisionRequest {
         val history = recent.joinToString("\n") { e ->
-            "${stamp(e.tick)}: ${json.encodeToString(Intent.serializer(), e.intent)} -> ${e.result?.let(::describe) ?: "running"}"
+            "${stamp(e.tick)}: ${json.encodeToString(Intent.serializer(), e.intent)} -> ${e.result?.let(::describe) ?: "running"}" +
+                (e.thought?.let { "; you thought: \"$it\"" } ?: "")
         }
         val user = buildString {
             appendLine(OBSERVATION_HEADER)
@@ -64,6 +69,10 @@ class PromptBuilder(
                 appendLine(JOURNAL_HEADER)
                 journal.forEach { appendLine("- $it") }
             }
+            if (thought != null) {
+                appendLine(THOUGHT_HEADER)
+                appendLine("- $thought")
+            }
             if (history.isNotEmpty()) {
                 appendLine("Your recent actions, oldest first:")
                 appendLine(history)
@@ -74,12 +83,12 @@ class PromptBuilder(
             system = system,
             messages = listOf(Message(Message.Role.User, user)),
             timeout = timeout,
-            choices = if (closedChoice) choices(obs, recent)?.let { withRecall(it, memories, journal) } else null,
+            choices = if (closedChoice) choices(obs, recent)?.let { withRecall(it, memories, journal, thought) } else null,
         )
     }
 
     /** Adds what he remembers and what he wrote to the state a picking model judges the options against. */
-    private fun withRecall(set: ChoiceSet, memories: List<String>, journal: List<String>): ChoiceSet {
+    private fun withRecall(set: ChoiceSet, memories: List<String>, journal: List<String>, thought: String?): ChoiceSet {
         var state = set.state
         var instructions = set.instructions
         if (memories.isNotEmpty()) {
@@ -90,12 +99,17 @@ class PromptBuilder(
             state = JsonObject(state + ("journal" to JsonArray(journal.map(::JsonPrimitive))))
             instructions += " `state.journal` is what he wrote in his journal, oldest first: his own plans, which should shape how he spends his hours."
         }
+        if (thought != null) {
+            state = JsonObject(state + ("latest_thought" to JsonPrimitive(thought)))
+            instructions += " `state.latest_thought` is what he decided the last time he stopped to think: his plan for now. Unless his needs won't allow it, choose what carries that plan forward."
+        }
         return set.copy(state = state, instructions = instructions)
     }
 
     companion object {
         private const val OBSERVATION_HEADER = "Observation:"
         const val JOURNAL_HEADER = "What you wrote in your journal, oldest first:"
+        const val THOUGHT_HEADER = "What you decided the last time you stopped to think (your plan for now):"
         private const val ASK = "Choose your next action."
 
         /** The user message of [request] without the closing ask: his situation, for the journal. */

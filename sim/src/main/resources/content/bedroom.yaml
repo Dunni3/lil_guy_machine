@@ -45,11 +45,25 @@ needs:
   work_floor:
     - { need: energy, below: 5, reason: "too tired to work" }
     - { need: fullness, below: 5, reason: "too hungry to work" }
+  # He needs to express himself: a day without finishing a journal entry (counted from the start of
+  # the run) and his mood falls instead of drifting, until he writes. Low mood stops him making
+  # art (sketch and paint block below 25), so it ends up costing him his income too.
+  neglect:
+    - { activity: journal, after_hours: 24, mood_per_hour: -5, reason: "a day without writing in your journal" }
 
 shop:
   # Orders are placed and delivered at the door.
   at: door
   minutes: 10
+
+think:
+  # The think intent: he stops where he is and works out what he wants; a text model writes the
+  # thought. Thinking is a little tiring, on top of the awake loss.
+  minutes: 10
+  energy: -2
+  # He is made to think after this many decisions without a think (the decision model isn't
+  # asked); remove it to leave thinking to the model. His latest thought is in every prompt.
+  every: 4
 
 # kind is for display and grouping: fixture, furniture, decor, tool, food, supply, record, book, art.
 # A `slot` item is placed in that slot when owned; `blocks` means he stands beside it, not on it.
@@ -100,7 +114,9 @@ activities:
     minutes: 60
     work: true
     produces: { sketch: 1 }
-    effects: { energy: -6 }
+    # Work wears his mood down; journaling is what lifts it (Ian).
+    effects: { energy: -6, mood: -4 }
+    block: [{ need: mood, below: 25, reason: "too low to make art" }]
   - id: paint
     tier: 1
     at: [easel]
@@ -108,7 +124,8 @@ activities:
     work: true
     consumes: { canvas: 1 }
     produces: { painting: 1 }
-    effects: { energy: -15 }
+    effects: { energy: -15, mood: -10 }
+    block: [{ need: mood, below: 25, reason: "too low to make art" }]
   - id: sell_art
     phrase: sell your art
     at: [door]
@@ -123,7 +140,8 @@ activities:
     requires: [journal]
     minutes: 60
     work: true
-    effects: { energy: -10, mood: 3 }
+    # Was mood +3: expressing himself is what makes him happier.
+    effects: { energy: -10, mood: 12 }
   - id: read
     tier: 1
     at: [bed, chair]

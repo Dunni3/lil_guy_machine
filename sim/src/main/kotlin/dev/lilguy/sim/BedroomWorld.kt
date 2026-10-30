@@ -28,6 +28,12 @@ class BedroomWorld private constructor(
     /** Item id to count; only counts above zero. */
     private val owned = LinkedHashMap<String, Int>()
     private var doing: Doing? = null
+
+    /** The tick each activity last finished, for the neglect rules; the run start counts as done. */
+    private val lastDone = mutableMapOf<String, Long>()
+
+    /** The neglect rule in force, if any. */
+    private var neglected: Neglect? = null
     private var music: Music? = null
 
     /** Bumped whenever what he owns or plays changes; with the minute and need levels it keys [options]. */
@@ -139,6 +145,7 @@ class BedroomWorld private constructor(
         is Intent.Wait -> waitFor(intent)
         is Intent.Do -> planDo(intent.activity)
         is Intent.Buy -> planBuy(intent.item)
+        Intent.Think -> planThink()
     }
 
     private fun goalOf(target: Target): Cell = when (target) {
@@ -187,6 +194,16 @@ class BedroomWorld private constructor(
         return Work.Steps(walkToNearest(listOf(content.shop.at)), Work.Timed(clock.ticks(content.shop.minutes)) { purchase(spec, price) })
     }
 
+    /** Thinking happens where he stands; the thought itself is the agent loop's. */
+    private fun planThink(): Work {
+        val t = content.think
+        return Work.Timed(clock.ticks(t.minutes)) {
+            val applied = needs.change(ticks, Need.Energy, t.energy, "think")
+            event("finished thinking: energy ${signed(applied)}")
+            null
+        }
+    }
+
     /** The timed part of an activity: sets [doing] when it starts and ends by duration or `until`. */
     private fun activity(a: ActivitySpec, finish: () -> String?): Work.Until {
         val until = a.until
@@ -212,6 +229,8 @@ class BedroomWorld private constructor(
 
     private fun complete(a: ActivitySpec, usedItem: String? = null): String? {
         a.consumes.forEach { (tag, n) -> if (countTag(tag) < n) return "you no longer have ${wanted(tag)}" }
+        lastDone[a.id] = ticks
+        if (neglected?.activity == a.id) neglected = null
         val parts = mutableListOf<String>()
         a.consumes.forEach { (tag, n) -> take(tag, n).forEach { (id, k) -> parts += "used ${quantity(id, k)}" } }
         a.produces.forEach { (id, n) ->
@@ -286,9 +305,14 @@ class BedroomWorld private constructor(
         rate(Need.Fullness, r.fullnessPerHour, "hunger")
         activity?.rates?.forEach { (need, perHour) -> rate(needOf(need), perHour, activity.id) }
         music?.spec?.rates?.forEach { (need, perHour) -> rate(needOf(need), perHour, music!!.spec.name) }
-        // Low energy or fullness replaces the drift: mood just falls.
-        if (needs[Need.Energy] < r.low || needs[Need.Fullness] < r.low) {
-            rate(Need.Mood, r.lowMoodPerHour, "low energy or fullness")
+        val now = r.neglect.firstOrNull { ticks - (lastDone[it.activity] ?: 0L) >= clock.ticks(it.afterHours * 60) }
+        if (now != null && neglected == null) event("${now.reason}: mood falls ${-now.moodPerHour.toInt()} an hour until you ${now.activity}")
+        neglected = now
+        // Low energy or fullness, or a neglected activity, replaces the drift: mood just falls, at the steeper rate.
+        val low = needs[Need.Energy] < r.low || needs[Need.Fullness] < r.low
+        if (low || now != null) {
+            if (now != null && (!low || now.moodPerHour < r.lowMoodPerHour)) rate(Need.Mood, now.moodPerHour, now.reason)
+            else rate(Need.Mood, r.lowMoodPerHour, "low energy or fullness")
         } else {
             val gap = moodTarget() - needs[Need.Mood]
             if (gap != 0.0) needs.change(ticks, Need.Mood, sign(gap) * min(r.moodDriftPerHour / 60, abs(gap)), "drift toward ${moodTarget().toInt()}", rate = true)
@@ -382,6 +406,7 @@ class BedroomWorld private constructor(
             fullness = needs[Need.Fullness],
             mood = needs[Need.Mood],
             moodTarget = moodTarget(),
+            moodSinking = neglected?.let { "${it.reason}: mood falls ${-it.moodPerHour.toInt()} an hour until the next ${it.activity}" },
             doing = d?.activity?.id,
             progress = d?.let { ((ticks - it.startTick).toFloat() / (it.endTick - it.startTick).coerceAtLeast(1)).coerceIn(0f, 1f) },
             music = musicText(),
@@ -418,7 +443,17 @@ class BedroomWorld private constructor(
             activities = current.activities,
             uses = current.uses,
             shop = current.shop,
+            neglect = neglectText(),
         )
+    }
+
+    /** "last journal 20h ago; after 24h without one, mood falls 5 an hour", or null with no neglect rules. */
+    private fun neglectText(): String? = content.needs.neglect.takeIf { it.isNotEmpty() }?.joinToString("; ") { n ->
+        val last = lastDone[n.activity]
+        val hours = (ticks - (last ?: 0L)) / clock.ticks(60)
+        val since = if (last == null) "no ${n.activity} yet, ${hours}h since the start" else "last ${n.activity} ${hours}h ago"
+        if (neglected == n) "$since: mood falls ${-n.moodPerHour.toInt()} an hour until your next ${n.activity}"
+        else "$since; after ${n.afterHours}h without one, mood falls ${-n.moodPerHour.toInt()} an hour"
     }
 
     /**
