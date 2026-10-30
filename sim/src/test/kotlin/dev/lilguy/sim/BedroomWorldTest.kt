@@ -8,7 +8,18 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class BedroomWorldTest {
-    private val content = BedroomContent.default()
+    /** The shipped file gates nothing; the tier mechanism is tested on what used to be tier 1. */
+    private val tier1 = setOf(
+        "canvas", "easel", "record_player", "jazz_record", "ambient_record", "folk_record", "novel", "poetry_book",
+        "field_guide", "plant", "poster", "rug", "painting", "paint", "read", "listen", "play_record",
+    )
+    private val content = BedroomContent.default().let { c ->
+        c.copy(
+            items = c.items.map { if (it.id in tier1) it.copy(tier = 1) else it },
+            activities = c.activities.map { if (it.id in tier1) it.copy(tier = 1) else it },
+            uses = c.uses.map { if (it.id in tier1) it.copy(tier = 1) else it },
+        )
+    }
 
     /** The engine tests run on everything in the file, gated or not; [granted] narrows it. */
     private fun world(
@@ -69,7 +80,7 @@ class BedroomWorldTest {
     @Test
     fun `locked activities say why`() {
         val w = world()
-        assertEquals("needs an easel ($120)", w.activity("paint").locked)
+        assertEquals("needs an easel ($17)", w.activity("paint").locked)
         assertEquals("you have no art to sell; sketch or paint makes some", w.activity("sell_art").locked)
         assertEquals("needs a book ($12)", w.activity("read").locked)
         assertEquals("needs a record player ($150)", w.activity("listen").locked)
@@ -80,7 +91,7 @@ class BedroomWorldTest {
         assertEquals("uses a meal (you have 2); fullness +45", w.activity("eat").gives)
         assertTrue(w.obs().uses!!.isEmpty())
 
-        assertEquals("can't paint: needs an easel ($120)", failure(w.run(Intent.Do("paint"))))
+        assertEquals("can't paint: needs an easel ($17)", failure(w.run(Intent.Do("paint"))))
         assertTrue("no activity called 'dance'" in failure(w.run(Intent.Do("dance"))))
     }
 
@@ -122,12 +133,12 @@ class BedroomWorldTest {
 
     @Test
     fun `the shop lists prices, affordability and what an item is for`() {
-        val w = world()
+        val w = world(money = 10)
         val shop = w.obs().shop!!.associateBy { it.id }
         assertEquals(ShopOption("meal", 24, false, "3 meals; for eat"), shop["meal"])
-        assertEquals(ShopOption("easel", 120, false, "for paint (3h: 1 painting, sells for $70; uses a canvas), which also needs a canvas ($15)"), shop["easel"])
+        assertEquals(ShopOption("easel", 17, false, "for paint (3h: 1 painting, sells for $70; uses a canvas), which also needs a canvas ($15)"), shop["easel"])
         assertEquals("comfort +4: mood settles 4 higher", shop.getValue("plant").gives)
-        assertEquals("the easel costs $120 and you have $20", failure(w.run(Intent.Buy("easel"))))
+        assertEquals("the easel costs $17 and you have $10", failure(w.run(Intent.Buy("easel"))))
         assertTrue("isn't for sale" in failure(w.run(Intent.Buy("bed"))))
 
         val rich = world(money = 500)
@@ -141,7 +152,7 @@ class BedroomWorldTest {
         assertEquals(listOf("painting"), rich.obs().holding)
         assertEquals(0, rich.count("canvas"))
         rich.run(Intent.Do("sell_art"))
-        assertEquals(500 - 120 - 15 + 70, rich.ledger.balance)
+        assertEquals(500 - 17 - 15 + 70, rich.ledger.balance)
     }
 
     @Test

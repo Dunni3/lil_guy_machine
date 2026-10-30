@@ -92,9 +92,22 @@ class BedroomRunTest {
         assertEquals(run(), run())
     }
 
+    /** The shipped file gates nothing; the small world and its grants are tested on what used to be tier 1. */
+    private val smallWorld = dev.lilguy.sim.BedroomContent.default().let { c ->
+        val tier1 = setOf(
+            "canvas", "easel", "record_player", "jazz_record", "ambient_record", "folk_record", "novel", "poetry_book",
+            "field_guide", "plant", "poster", "rug", "painting", "paint", "read", "listen", "play_record",
+        )
+        c.copy(
+            items = c.items.map { if (it.id in tier1) it.copy(tier = 1) else it },
+            activities = c.activities.map { if (it.id in tier1) it.copy(tier = 1) else it },
+            uses = c.uses.map { if (it.id in tier1) it.copy(tier = 1) else it },
+        )
+    }
+
     @Test
     fun `schema and choices offer exactly the valid activities and purchases`() {
-        val (world, _) = bedroomScenario(BedroomPolicy())
+        val (world, _) = bedroomScenario(BedroomPolicy(), content = smallWorld)
         val obs = world.observe(world.agentId)
         val schema = BedroomPrompt.replySchema(obs, world.clock.ticksPerMinute).jsonSchema
         val variants = schema["properties"]!!.jsonObject["intent"]!!.jsonObject["anyOf"]!!.jsonArray.map { it.jsonObject }
@@ -120,7 +133,7 @@ class BedroomRunTest {
 
     @Test
     fun `the system prompt opens with the persona and describes only the unlocked world`() {
-        val (world, _) = bedroomScenario(BedroomPolicy())
+        val (world, _) = bedroomScenario(BedroomPolicy(), content = smallWorld)
         val system = BedroomPrompt.system(world.content, world.clock.ticksPerMinute)
         assertTrue(system.startsWith("You are intelligent, aspirational and creative"), system.take(80))
         assertTrue("the only things you can do are eat, sketch, sell your art, hang your art on the wall, write in your journal and sleep." in system)
@@ -133,7 +146,7 @@ class BedroomRunTest {
         assertTrue(Persona.GOAL in system, "his goal is his journal")
 
         // Granting brings the gated content into the prompt.
-        val grown = BedroomPrompt.system(dev.lilguy.sim.BedroomContent.default().unlocked(setOf("paint", "easel", "canvas", "painting")), 5)
+        val grown = BedroomPrompt.system(smallWorld.unlocked(setOf("paint", "easel", "canvas", "painting")), 5)
         assertTrue("sketch and paint make art" in grown && "a painting sells for $70" in grown, grown)
         assertTrue("for food and for anything you want to own" in grown)
     }

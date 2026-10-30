@@ -121,7 +121,8 @@ object BedroomPrompt {
             "Mood drifts ${r.moodDriftPerHour.toInt()} an hour toward ${r.moodBaseline.toInt()}; some activities raise it for a while."
         }
         val sinking = moodRules(content)?.let { " $it" }.orEmpty()
-        val lists = "`activities` lists everything you can do, with how long it takes and what it gives, or why it's locked. `shop` lists what's for sale, its price, whether you can afford it, and what it's for." +
+        val lists = "`activities` lists everything you can do, with how long it takes and what it gives, or why it's locked. `shop` is the catalog: everything for sale, its price, whether you can afford it, and what it's for." +
+            (if (decor) " Your room has empty places for furniture and decor, and the catalog is where they come from." else "") +
             if (content.uses.isNotEmpty()) " `uses` lists things you can use on other things." else ""
         val options = if (content.uses.isNotEmpty()) "activities, uses, shop" else "activities, shop"
         val music = if (content.uses.any { it.background != null }) " music: what's playing, if anything." else ""
