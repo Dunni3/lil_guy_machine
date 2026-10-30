@@ -65,9 +65,8 @@ tv-clear-config: ## Delete the pushed config and API keys from the device
 	tools/adb/push-config.sh --clear
 
 .PHONY: tv-pull-logs
-tv-pull-logs: ## Copy the app's decision logs from the device into runs/tv/
-	@mkdir -p runs/tv
-	$(ADB) pull /sdcard/Android/data/$(APP_ID)/files/runs/. runs/tv/
+tv-pull-logs: ## Copy the app's run logs into runs/tv/ without overwriting earlier pulls (see tools/adb/pull-runs.sh)
+	tools/adb/pull-runs.sh
 
 .PHONY: tv-profile
 tv-profile: local.properties ## Install and launch a release-like build (for measuring performance)
