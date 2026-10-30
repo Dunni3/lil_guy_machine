@@ -1,0 +1,563 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Memory System Guide</title>
+<style>
+:root{
+  --bg:#f7f6f2; --surface:#ffffff; --ink:#1d1c1a; --muted:#6b675f; --line:#d9d5cc;
+  --accent:#2f6fdb; --accent-soft:#e3ecfb; --sim:#2e8b57; --sim-soft:#e2f2e9;
+  --dec:#b4581f; --dec-soft:#f9e8dc; --app:#7b4bc4; --app-soft:#eee6f9;
+  --ext:#5f6b7a; --ext-soft:#e8ebef; --code:#f0eee8;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#141413; --surface:#1d1d1b; --ink:#ecebe6; --muted:#a29e95; --line:#363531;
+    --accent:#6ea0f0; --accent-soft:#1d2a40; --sim:#5cc28a; --sim-soft:#18301f;
+    --dec:#e8935a; --dec-soft:#3a2416; --app:#ad8ae6; --app-soft:#2a1f3d;
+    --ext:#98a4b3; --ext-soft:#252a31; --code:#252421;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#141413; --surface:#1d1d1b; --ink:#ecebe6; --muted:#a29e95; --line:#363531;
+  --accent:#6ea0f0; --accent-soft:#1d2a40; --sim:#5cc28a; --sim-soft:#18301f;
+  --dec:#e8935a; --dec-soft:#3a2416; --app:#ad8ae6; --app-soft:#2a1f3d;
+  --ext:#98a4b3; --ext-soft:#252a31; --code:#252421;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif}
+main{max-width:920px;margin:0 auto;padding:32px 16px 80px}
+header{border-bottom:1px solid var(--line);padding-bottom:20px;margin-bottom:28px}
+.kicker{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+h1{font-size:34px;line-height:1.15;margin:6px 0 10px;letter-spacing:-.02em}
+h2{font-size:22px;margin:44px 0 10px;letter-spacing:-.01em}
+h2 .n{color:var(--muted);font-weight:500;margin-right:8px}
+h3{font-size:16px;margin:22px 0 6px}
+p{margin:8px 0}
+.lede{color:var(--muted);font-size:17px}
+nav.toc{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 18px;margin:20px 0}
+nav.toc ol{margin:6px 0 0;padding-left:22px;columns:2;column-gap:28px}
+nav.toc li{margin:2px 0}
+nav.toc a{color:var(--accent);text-decoration:none}
+nav.toc a:hover{text-decoration:underline}
+code{font:13.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--code);padding:1px 5px;border-radius:4px}
+pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow-x:auto;
+  font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;margin:10px 0}
+pre code{background:none;padding:0}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14.5px}
+th,td{text-align:left;vertical-align:top;padding:8px 10px;border-bottom:1px solid var(--line)}
+th{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.scroll{overflow-x:auto}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 18px;margin:14px 0}
+.note{border-left:3px solid var(--accent);background:var(--accent-soft);padding:10px 14px;border-radius:0 8px 8px 0;margin:14px 0}
+.warn{border-left:3px solid var(--dec);background:var(--dec-soft);padding:10px 14px;border-radius:0 8px 8px 0;margin:14px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;margin:14px 0}
+.grid .card{margin:0}
+.card h3{margin-top:0}
+.tag{display:inline-block;font-size:11.5px;font-weight:600;letter-spacing:.04em;padding:1px 8px;border-radius:999px;margin-right:4px}
+.t-store{background:var(--sim-soft);color:var(--sim)}
+.t-llm{background:var(--dec-soft);color:var(--dec)}
+.t-rule{background:var(--accent-soft);color:var(--accent)}
+.t-ui{background:var(--app-soft);color:var(--app)}
+ol.steps{padding-left:22px}
+ol.steps li{margin:6px 0}
+figure{margin:18px 0}
+figcaption{font-size:13.5px;color:var(--muted);margin-top:6px}
+svg text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;color:var(--muted);margin-top:8px}
+footer{margin-top:56px;padding-top:16px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
+@media (max-width:640px){
+  h1{font-size:28px}
+  nav.toc ol{columns:1}
+}
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <div class="kicker">lil guy machine · milestone 5 in progress</div>
+  <h1>How the guy remembers</h1>
+  <p class="lede">A guide to the memory system as it stands on <code>main</code>: what gets recorded, what a
+  language model writes from it, and what reaches each decision prompt. Every number here is a default
+  you can find in the code; file paths are relative to the repo root.</p>
+</header>
+
+<nav class="toc">
+  <strong>Contents</strong>
+  <ol>
+    <li><a href="#glance">The picture in one diagram</a></li>
+    <li><a href="#kinds">Five kinds of remembering</a></li>
+    <li><a href="#loop">One decision, step by step</a></li>
+    <li><a href="#events">Level 0: the event stream</a></li>
+    <li><a href="#summarizer">Level 1: memories</a></li>
+    <li><a href="#recall">Recall: what reaches the prompt</a></li>
+    <li><a href="#journal">The journal</a></li>
+    <li><a href="#think">Thinking</a></li>
+    <li><a href="#prompt">What the model actually sees</a></li>
+    <li><a href="#storage">Storage and runs</a></li>
+    <li><a href="#config">Who writes what (config)</a></li>
+    <li><a href="#inspect">Where to look at it</a></li>
+    <li><a href="#limits">What it doesn't do yet</a></li>
+    <li><a href="#files">File map</a></li>
+  </ol>
+</nav>
+
+<!-- ================================================================ -->
+<h2 id="glance"><span class="n">1</span>The picture in one diagram</h2>
+<p>Three things happen as he lives: everything he is shown and does is logged (the event stream), a
+text model writes that log up in batches (memories), and at every decision a fixed rule picks a few
+memories and journal entries to put in the prompt. Beside that sit two things he writes himself: journal
+entries and thoughts.</p>
+
+<figure class="card" style="padding:12px">
+<div class="scroll">
+<svg viewBox="0 0 900 400" width="100%" style="min-width:640px" role="img" aria-label="Memory data flow: decisions feed the event stream, a summarizer writes memories, the journal writer and thinker write entries and thoughts, and recall assembles the decision prompt.">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+    </marker>
+  </defs>
+  <style>
+    .bx{stroke-width:1.5}
+    .trig{fill:var(--ext-soft);stroke:var(--ext)}
+    .store{fill:var(--sim-soft);stroke:var(--sim)}
+    .llm{fill:var(--dec-soft);stroke:var(--dec)}
+    .rule{fill:var(--accent-soft);stroke:var(--accent)}
+    .lbl{fill:var(--ink);font-size:13px;font-weight:600}
+    .sub{fill:var(--muted);font-size:11px}
+    .ar{stroke:var(--muted);stroke-width:1.5;fill:none;marker-end:url(#ah)}
+    .dash{stroke-dasharray:4 4}
+    .tiny{fill:var(--muted);font-size:10.5px}
+  </style>
+
+  <!-- row 1: events -> memories -->
+  <rect class="bx trig" x="10" y="30" width="130" height="54" rx="8"/>
+  <text class="lbl" x="75" y="53" text-anchor="middle">Decision point</text>
+  <text class="sub" x="75" y="70" text-anchor="middle">observed() + acted()</text>
+
+  <rect class="bx store" x="175" y="30" width="130" height="54" rx="8"/>
+  <text class="lbl" x="240" y="53" text-anchor="middle">Event stream</text>
+  <text class="sub" x="240" y="70" text-anchor="middle">level 0 · free text</text>
+
+  <rect class="bx llm" x="340" y="30" width="130" height="54" rx="8"/>
+  <text class="lbl" x="405" y="53" text-anchor="middle">Summarizer</text>
+  <text class="sub" x="405" y="70" text-anchor="middle">LLM · per 20 events</text>
+
+  <rect class="bx store" x="505" y="30" width="130" height="54" rx="8"/>
+  <text class="lbl" x="570" y="53" text-anchor="middle">Memories</text>
+  <text class="sub" x="570" y="70" text-anchor="middle">level 1 · 2–4 sentences</text>
+
+  <rect class="bx rule" x="665" y="30" width="100" height="54" rx="8"/>
+  <text class="lbl" x="715" y="53" text-anchor="middle">Recall</text>
+  <text class="sub" x="715" y="70" text-anchor="middle">3 + 3 · 1200 ch</text>
+
+  <path class="ar" d="M140,57 H173"/>
+  <path class="ar" d="M305,57 H338"/>
+  <path class="ar" d="M470,57 H503"/>
+  <path class="ar" d="M635,57 H663"/>
+
+  <!-- row 2: journal -->
+  <rect class="bx trig" x="10" y="170" width="130" height="54" rx="8"/>
+  <text class="lbl" x="75" y="193" text-anchor="middle">Chooses</text>
+  <text class="sub" x="75" y="210" text-anchor="middle">do(journal)</text>
+
+  <rect class="bx llm" x="175" y="170" width="130" height="54" rx="8"/>
+  <text class="lbl" x="240" y="193" text-anchor="middle">JournalWriter</text>
+  <text class="sub" x="240" y="210" text-anchor="middle">LLM · ≤3 searches</text>
+
+  <rect class="bx trig" x="340" y="170" width="130" height="54" rx="8"/>
+  <text class="lbl" x="405" y="193" text-anchor="middle">Activity done?</text>
+  <text class="sub" x="405" y="210" text-anchor="middle">keep, or throw away</text>
+
+  <rect class="bx store" x="505" y="170" width="130" height="54" rx="8"/>
+  <text class="lbl" x="570" y="193" text-anchor="middle">Journal entries</text>
+  <text class="sub" x="570" y="210" text-anchor="middle">entry + argued wants</text>
+
+  <rect class="bx rule" x="665" y="170" width="100" height="54" rx="8"/>
+  <text class="lbl" x="715" y="193" text-anchor="middle">Recall</text>
+  <text class="sub" x="715" y="210" text-anchor="middle">2 + 3 · 800 ch</text>
+
+  <path class="ar" d="M140,197 H173"/>
+  <path class="ar" d="M305,197 H338"/>
+  <path class="ar" d="M470,197 H503"/>
+  <path class="ar" d="M635,197 H663"/>
+
+  <!-- journal searches the past -->
+  <path class="ar dash" d="M240,170 V88"/>
+  <text class="tiny" x="248" y="125">searches events,</text>
+  <text class="tiny" x="248" y="138">memories, journal</text>
+  <path class="ar dash" d="M570,170 V88" />
+  <text class="tiny" x="578" y="131">searched too</text>
+
+  <!-- row 3: think -->
+  <rect class="bx trig" x="10" y="310" width="130" height="54" rx="8"/>
+  <text class="lbl" x="75" y="333" text-anchor="middle">Chooses think</text>
+  <text class="sub" x="75" y="350" text-anchor="middle">or forced every 4</text>
+
+  <rect class="bx llm" x="175" y="310" width="130" height="54" rx="8"/>
+  <text class="lbl" x="240" y="333" text-anchor="middle">Thinker</text>
+  <text class="sub" x="240" y="350" text-anchor="middle">LLM · one call</text>
+
+  <rect class="bx store" x="505" y="310" width="130" height="54" rx="8"/>
+  <text class="lbl" x="570" y="333" text-anchor="middle">Short-term</text>
+  <text class="sub" x="570" y="350" text-anchor="middle">last 8 intents + thought</text>
+
+  <path class="ar" d="M140,337 H173"/>
+  <path class="ar" d="M305,337 H503"/>
+  <text class="tiny" x="330" y="330">latest thought, recent actions</text>
+  <path class="ar" d="M635,337 H788"/>
+
+  <!-- thought also goes into the event stream -->
+  <path class="ar dash" d="M175,322 H158 V75 H173"/>
+  <text class="tiny" x="152" y="290" text-anchor="end">thought event</text>
+
+  <!-- prompt -->
+  <rect class="bx rule" x="790" y="30" width="100" height="334" rx="8"/>
+  <text class="lbl" x="840" y="180" text-anchor="middle">Decision</text>
+  <text class="lbl" x="840" y="197" text-anchor="middle">prompt</text>
+  <text class="sub" x="840" y="216" text-anchor="middle">user message</text>
+  <path class="ar" d="M765,57 H788"/>
+  <path class="ar" d="M765,197 H788"/>
+</svg>
+</div>
+<div class="legend">
+  <span><span class="tag t-store">store</span>recorded data</span>
+  <span><span class="tag t-llm">LLM</span>a text model writes</span>
+  <span><span class="tag t-rule">rule</span>plain code picks</span>
+  <span>dashed: side paths</span>
+</div>
+<figcaption>In the app the summarizer and the journal writer run in the background and never hold up a
+decision. The thinker always runs inline, so he stands still while it writes.</figcaption>
+</figure>
+
+<!-- ================================================================ -->
+<h2 id="kinds"><span class="n">2</span>Five kinds of remembering</h2>
+<p>"Memory" in this codebase means several different things. They differ in who writes them, how long they
+live, and how they reach the prompt.</p>
+
+<div class="scroll">
+<table>
+  <thead><tr><th>Kind</th><th>What it holds</th><th>Written by</th><th>In the prompt</th><th>Code</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Short-term</strong></td><td>The last 8 intents, how each ended, and the thought for a think</td><td>Agent loop, as it goes</td><td>Always, as "Your recent actions"</td><td><code>agent/.../Memory.kt</code></td></tr>
+    <tr><td><strong>Latest thought</strong></td><td>His most recent thought, stamped</td><td>Thinker (LLM)</td><td>Always, until the next thought replaces it</td><td><code>AgentRuntime.latestThought</code></td></tr>
+    <tr><td><strong>Event stream</strong> (level 0)</td><td>One text line per observation, action, thought, journal session and finished artwork</td><td>Code (<code>Describe</code>)</td><td>Never directly; it feeds the summarizer and journal searches</td><td><code>memory/MemoryStore.kt</code>, <code>Describe.kt</code></td></tr>
+    <tr><td><strong>Memories</strong> (level 1)</td><td>First-person summaries of 20 events each</td><td>Summarizer (LLM)</td><td>A selection, under "What you remember"</td><td><code>Summarizer.kt</code>, <code>Recall.kt</code></td></tr>
+    <tr><td><strong>Journal</strong></td><td>Entries he wrote, with wants and their justifications</td><td>JournalWriter (LLM)</td><td>A selection, under "What you wrote in your journal"</td><td><code>JournalWriter.kt</code></td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="note">The short-term memory and the latest thought live only in the agent loop's fields. The other
+three live in a <code>MemoryStore</code>, which is the "long-term memory" that <code>AgentMemory</code> wraps.</div>
+
+<!-- ================================================================ -->
+<h2 id="loop"><span class="n">3</span>One decision, step by step</h2>
+<p>This is the order of calls in <code>AgentRuntime.run()</code>, which loops once per decision point.</p>
+<ol class="steps">
+  <li><strong>Observe.</strong> Wait for the decision point, take the observation, and settle short-term memory
+  (fill in how the last intent ended).</li>
+  <li><strong><code>longTerm.observed(obs)</code></strong> appends an <em>Observation</em> event, then settles any
+  pending journal session: if the journal activity succeeded, the entry is stored; if not, it's discarded.</li>
+  <li><strong>Recall.</strong> <code>recall(obs)</code> picks memories and <code>recallJournal(obs)</code> picks
+  journal entries (<a href="#recall">rules below</a>).</li>
+  <li><strong>Build the prompt</strong> from the observation, recalled memories, recalled journal, latest thought
+  and recent actions.</li>
+  <li><strong>Decide.</strong> Call the decision model, unless 4 decisions have passed without a think, in which
+  case the intent is <code>think</code> and the model isn't asked.</li>
+  <li><strong><code>longTerm.acted(obs, intent, brief)</code></strong> appends an <em>Action</em> event, starts a
+  journal session if he chose <code>do(journal)</code>, lets the art studio react, and starts a summary if 20 or more
+  events are waiting.</li>
+  <li><strong>Think</strong>, if the intent is <code>think</code>: one more model call, inline. The thought becomes a
+  <em>Thought</em> event and the new latest thought.</li>
+  <li><strong>Record</strong> the intent (and thought) in short-term memory, log the decision record, and submit
+  the intent to the sim.</li>
+</ol>
+
+<!-- ================================================================ -->
+<h2 id="events"><span class="n">4</span>Level 0: the event stream</h2>
+<p>The only thing recorded as it happens. Each event is a row with <code>run</code>, <code>tick</code>,
+game <code>day</code> and <code>time</code>, a <code>kind</code> and free <code>text</code>. Ids only grow, which is
+what lets the summarizer track where it stopped.</p>
+
+<div class="scroll">
+<table>
+  <thead><tr><th>Kind</th><th>When</th><th>Text looks like</th></tr></thead>
+  <tbody>
+    <tr><td><code>observation</code></td><td>Every decision point</td><td><code>last action do activity=sketch: succeeded; money $42; energy 61, fullness 48, mood 55; owns bed, desk, journal; event: ...</code></td></tr>
+    <tr><td><code>action</code></td><td>Every decision</td><td><code>do activity=journal</code>, <code>buy item=canvas</code>, <code>think</code></td></tr>
+    <tr><td><code>thought</code></td><td>After a successful think</td><td>The thought, in his words</td></tr>
+    <tr><td><code>journal</code></td><td>When an entry is stored</td><td><code>wrote in my journal and wrote down 2 wants</code> (never the entry itself)</td></tr>
+    <tr><td><code>art</code></td><td>When a drawn piece is kept</td><td><code>made sketch piece 3, "Window at Dusk"</code> plus tags</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p><code>Describe.observation</code> deliberately leaves out the option lists (activities, shop), which are the
+same every time, and includes only the sim's <code>recentEvents</code> that weren't in the previous observation, so
+the stream isn't padded with repeats.</p>
+
+<div class="note">The journal entry's text is kept out of the stream on purpose. If it went in, the summarizer
+would paraphrase his entries back to him as memories, and the journal would echo through two channels.</div>
+
+<!-- ================================================================ -->
+<h2 id="summarizer"><span class="n">5</span>Level 1: memories</h2>
+<p>The <code>Summarizer</code> turns batches of events into memories. It's the only thing that writes to the
+<code>memories</code> table.</p>
+
+<div class="grid">
+  <div class="card">
+    <h3>When it runs</h3>
+    <p>After each action, if 20 or more events aren't yet covered (<code>batchSize = 20</code>). It works through full
+    batches (<code>catchUp</code>), and at the end of a run <code>flush()</code> also summarizes the short remainder.</p>
+  </div>
+  <div class="card">
+    <h3>Where it starts</h3>
+    <p><code>coveredThrough(run, 1)</code> is the highest event id any memory covers. The next batch starts after it,
+    so every event is summarized exactly once. A failed or timed-out call (60 s) stores nothing, and the same batch is
+    retried next time.</p>
+  </div>
+  <div class="card">
+    <h3>Background or inline</h3>
+    <p>With a coroutine scope (the app) it runs in the background and never holds up a decision. Without one (CLI
+    lockstep runs, tests) it runs inline, which keeps those runs deterministic.</p>
+  </div>
+</div>
+
+<h3>What the model is given</h3>
+<p>A fixed system prompt (write one first-person memory, two to four sentences, only what the log shows) and the
+batch as a log, at temperature 0.3:</p>
+<pre><code>Log:
+[d1 08:00] I saw: money $20; energy 80, fullness 60, mood 50; owns bed, desk, journal
+[d1 08:00] I did: do activity=sketch
+[d1 09:30] I saw: last action do activity=sketch: succeeded; money $26; ...
+[d1 09:30] I did: think
+[d1 09:30] I thought: I should buy food before I write tonight...
+
+Write the memory.</code></pre>
+<p>It replies <code>{"memory": "..."}</code>. The stored memory keeps the event-id range it covers
+(<code>from_id..to_id</code>) and the game-time span, shown as e.g. <code>Day 1 08:00-14:30</code>.</p>
+
+<div class="warn">The summarizer must be a model that writes text. A closed-choice model (TypeSafe's Jev, which only
+picks from options) is rejected in the constructor. The same goes for the journal writer and the thinker.</div>
+
+<!-- ================================================================ -->
+<h2 id="recall"><span class="n">6</span>Recall: what reaches the prompt</h2>
+<p>Recall is plain code in <code>Recall.kt</code>, not a model. It runs at every decision, with separate numbers for
+memories and the journal so neither can crowd the other out.</p>
+
+<div class="scroll">
+<table>
+  <thead><tr><th></th><th>Always included</th><th>Plus related</th><th>Character budget</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Memories</strong></td><td>The latest 3</td><td>Up to 3 older ones sharing words with the situation</td><td>1200</td></tr>
+    <tr><td><strong>Journal</strong></td><td>The latest 2</td><td>Up to 3 older ones sharing words with the situation (entry text and want text)</td><td>800</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3>How "related" is decided</h3>
+<p>The <strong>context</strong> is the observation's text plus the ids of the unlocked activities, the shop items and
+usable items, with underscores turned into spaces. <code>Keywords</code> takes the words of four letters or more,
+drops common ones (including <em>money</em>, <em>energy</em>, <em>mood</em>, which are in every observation), and
+scores each older memory by how many words it shares with the context. Highest score wins; on ties, newer wins;
+a score of 0 is never picked. There are no embeddings yet.</p>
+
+<h3>How the budget is applied</h3>
+<p>Candidates are taken in this order: latest first (newest to oldest), then the related ones. Each is added if it
+fits the remaining budget; the very first always fits, so the newest memory is always shown. The chosen ones are
+then <strong>sorted oldest first</strong> for the prompt. In practice, only the newest is guaranteed if memories
+are long.</p>
+
+<div class="note">The ids of what was recalled are kept in <code>AgentMemory.lastRecalled</code> and
+<code>lastRecalledJournal</code> (the dev view highlights them), and the text is in each
+<code>DecisionRecord.recalled</code> / <code>recalledJournal</code> in the decision log.</div>
+
+<!-- ================================================================ -->
+<h2 id="journal"><span class="n">7</span>The journal</h2>
+<p>The journal is a bedroom activity (<code>do(journal)</code>, an hour at the desk) plus a second LLM call that writes
+the entry. The sim doesn't know a model writes anything; <code>AgentMemory</code> connects the two.</p>
+
+<h3>Lifecycle of an entry</h3>
+<ol class="steps">
+  <li>He chooses <code>do(journal)</code>. If the activity is locked (too tired, too hungry), nothing happens.</li>
+  <li><code>startJournal</code> launches a <code>JournalWriter</code> session with his persona and his situation (the
+  decision prompt's user message, minus the closing ask). In the app it runs in the background.</li>
+  <li>The writer loops: each reply is one schema-constrained step, either
+  <code>search(source, query)</code> or <code>write(entry, wants)</code>. A search returns up to 5 keyword hits from
+  <em>memories</em>, <em>events</em> or <em>journal</em> as the next user message. After 3 searches the
+  <code>search</code> option is removed from the schema, which forces a write.</li>
+  <li>At the next decision point, <code>settleJournal</code> checks whether the activity succeeded. If it did, the entry
+  is stored and a <code>journal</code> event is appended. If it failed or was interrupted, the entry is discarded. If the
+  model is still writing when the activity ends successfully, it's stored when it finishes.</li>
+</ol>
+
+<h3>Wants</h3>
+<p>The entry (under 150 words, temperature 0.8) comes with a list of wants:
+<code>{kind, text, justification}</code>, where kind is one of <em>activity, item, place, sense, other</em>. A want with
+a blank justification fails validation, so the backend retries instead of storing it. The persona tells him the
+maker reads every entry and may grant argued wants. Nothing grants them automatically yet; tiers are unlocked
+by hand with <code>--grant</code>.</p>
+
+<h3>Session statuses</h3>
+<p><code>Written</code> (waiting for the activity), <code>Stored</code>, <code>Discarded</code> (activity didn't succeed),
+<code>Failed</code> (the model gave no entry). Every session, kept or not, goes to the decision log as a
+<code>"kind": "journal"</code> line.</p>
+
+<!-- ================================================================ -->
+<h2 id="think"><span class="n">8</span>Thinking</h2>
+<p><code>think</code> is an intent with no fields. The sim spends 10 game minutes and 2 extra energy
+(<code>think</code> in <code>bedroom.yaml</code>). The memory side is one call to the <code>Thinker</code>:</p>
+<ul>
+  <li>It sends the decision prompt's own system prompt and situation, plus instructions to stop and think, and asks
+  "What do you want to do next, and what do you want to achieve?". The reply is <code>{"thought"}</code>, under 80 words.</li>
+  <li>It runs <strong>inline</strong>, after the decision and before the intent is submitted, so he stands still
+  meanwhile, as he does while deciding.</li>
+  <li>The thought goes to three places: a <code>thought</code> event (the summarizer reads it as "I thought"), the
+  short-term entry for that think, and <code>latestThought</code>, which appears in every prompt until the next
+  thought, under "your plan for now".</li>
+  <li><strong>Forced thinking:</strong> <code>think.every: 4</code> in <code>bedroom.yaml</code> makes him think after 4
+  decisions without one, without asking the decision model. Remove the key to leave it to the model.</li>
+  <li>He can't think twice in a row: think is dropped from the schema and the choice set right after one.</li>
+  <li>Without a journal writer, think isn't offered at all.</li>
+</ul>
+
+<!-- ================================================================ -->
+<h2 id="prompt"><span class="n">9</span>What the model actually sees</h2>
+<p>The system prompt is fixed for the run. All memory goes into the user message, in this order
+(<code>PromptBuilder.build</code>). Sections that are empty are left out. Illustrative example:</p>
+<pre><code>Observation:
+{"tick": 2400, "clock": {"day": 2, "time": "14:00"}, "money": 31, "needs": {...}, ...}
+What you remember from earlier, oldest first:
+- Day 1 08:00-11:40: I sketched twice and sold both, then bought bread...
+- Day 2 06:00-09:20: I woke rested and wrote in my journal before work...
+What you wrote in your journal, oldest first:
+- Day 1 21:00: Today felt small but steady... Wants: an easel (because painting would ...)
+What you decided the last time you stopped to think (your plan for now):
+- d2 13:30: Eat first, then sketch until I have enough for the easel.
+Your recent actions, oldest first:
+d2 12:10: {"type":"do","activity":"sketch"} -> succeeded
+d2 13:30: {"type":"think"} -> succeeded; you thought: "Eat first, then ..."
+Choose your next action.</code></pre>
+
+<p><strong>Picking models</strong> (Jev) get the same content as fields of the choice set's state:
+<code>state.memories</code>, <code>state.journal</code> and <code>state.latest_thought</code>, with an instruction for each.
+The journal writer and the thinker are given this same situation text, so they see what the decision model saw.</p>
+
+<!-- ================================================================ -->
+<h2 id="storage"><span class="n">10</span>Storage and runs</h2>
+<p>Storage sits behind the <code>MemoryStore</code> interface in <code>:agent</code>, so <code>:agent</code> stays free of
+any database.</p>
+
+<div class="grid">
+  <div class="card">
+    <h3><span class="tag t-store">InMemoryStore</span></h3>
+    <p>Lists in memory. Used by the app (desktop and TV), by tests, and by the CLI when there's no
+    <code>--memory</code> file but a journal writer is configured. Gone when the run ends.</p>
+  </div>
+  <div class="card">
+    <h3><span class="tag t-store">SqliteMemoryStore</span></h3>
+    <p>One SQLite file, in <code>:memory-sqlite</code> (xerial JDBC, JVM only). Used by the CLI with
+    <code>--memory runs/mem.db</code>. Tables: <code>events</code>, <code>memories</code> (with a <code>level</code> column),
+    <code>journal</code> (wants as JSON). Search narrows with <code>LIKE</code> and ranks with <code>Keywords</code>, so both
+    stores return the same results.</p>
+  </div>
+</div>
+
+<p><strong>Everything is scoped to a run</strong> (one life). In the app the run id is <code>run-N</code> and each
+restart makes a new <code>InMemoryStore</code>. In the CLI it's <code>&lt;timestamp&gt;-N</code>; one SQLite file can hold many
+runs, but recall and search only read the current one. A fresh world never remembers another world's past.</p>
+
+<div class="warn">The TV keeps long-term memory only in RAM: the JDBC driver isn't packaged for its 32-bit ARM
+userspace. Android's built-in SQLite behind the same interface is the likely fix.</div>
+
+<!-- ================================================================ -->
+<h2 id="config"><span class="n">11</span>Who writes what (config)</h2>
+<p>Three LLM roles are separate from the decision model, all set on the first agent in
+<code>config/endpoints.yaml</code>:</p>
+
+<div class="scroll">
+<table>
+  <thead><tr><th>Role</th><th>Config</th><th>Override</th><th>When unset</th></tr></thead>
+  <tbody>
+    <tr><td>Summarizer (memories)</td><td><code>memory_endpoint</code></td><td><code>--memory-endpoint</code>, <code>MEMORY_ENDPOINT=</code></td><td>No memories are written; events are still logged</td></tr>
+    <tr><td>Journal writer, thinker, artist</td><td><code>journal_endpoint</code></td><td><code>--journal-endpoint</code>, <code>JOURNAL_ENDPOINT=</code></td><td>Falls back to <code>memory_endpoint</code>; <code>none</code> turns it off</td></tr>
+  </tbody>
+</table>
+</div>
+<p>With no journal writer, the prompt doesn't mention the journal or think, a picking model isn't offered them,
+and the 24-hour "no journal" mood slide is off. The sim still accepts <code>do(journal)</code>, so the scripted
+policy can test the economy. Every call is metered by <code>TokenLedger</code> under its own purpose
+(<em>decision, summary, journal, think, art</em>).</p>
+
+<!-- ================================================================ -->
+<h2 id="inspect"><span class="n">12</span>Where to look at it</h2>
+<div class="grid">
+  <div class="card">
+    <h3><span class="tag t-ui">Dev view</span></h3>
+    <p><strong>MEMORY</strong> page: short-term memory, long-term memories with the recalled ones marked, and the last
+    two thoughts. <strong>JOURNAL</strong> page: entries with wants (UP/DOWN to page). <strong>HISTORY</strong>: per decision,
+    what was recalled and the thought.</p>
+  </div>
+  <div class="card">
+    <h3><span class="tag t-ui">Memory viewer</span></h3>
+    <p><code>tools/memory-viewer.html</code> opens a CLI <code>.db</code> in the browser (sql.js) and shows memories beside the
+    events, highlighting the events each one covers.</p>
+  </div>
+  <div class="card">
+    <h3><span class="tag t-ui">Run logs</span></h3>
+    <p>Decision log JSONL in <code>runs/</code> (recalled text per decision, plus <code>journal</code> lines). CLI bedroom
+    runs also write <code>journal-NN.txt</code>, <code>tokens-NN.jsonl</code> and a <code>summary.json</code>.</p>
+  </div>
+</div>
+<pre><code>make cli ARGS="--scenario bedroom --days 3 --endpoint typesafe --memory runs/mem.db --memory-endpoint NAME"</code></pre>
+
+<!-- ================================================================ -->
+<h2 id="limits"><span class="n">13</span>What it doesn't do yet</h2>
+<ul>
+  <li><strong>No level 2.</strong> The schema has a <code>level</code> column for summaries of summaries, but nothing
+  writes them. Over a long run, only the latest 3 memories plus keyword matches surface; the middle of his life
+  fades unless it shares words with the present.</li>
+  <li><strong>No embeddings.</strong> Recall and search are keyword overlap. Synonyms don't match.</li>
+  <li><strong>No continuity across runs or restarts.</strong> That waits for saves.</li>
+  <li><strong>No persistent store on the TV or in the app.</strong> Both use <code>InMemoryStore</code>.</li>
+  <li><strong>Wants aren't answered.</strong> Someone has to read them and grant or decline.</li>
+  <li><strong>Personality</strong> (milestone 6) isn't part of memory yet; the persona is fixed text in
+  <code>Persona.kt</code>.</li>
+</ul>
+
+<!-- ================================================================ -->
+<h2 id="files"><span class="n">14</span>File map</h2>
+<div class="scroll">
+<table>
+  <thead><tr><th>File</th><th>What's in it</th></tr></thead>
+  <tbody>
+    <tr><td><code>agent/.../memory/MemoryStore.kt</code></td><td>The storage interface, events, memories, journal entries, wants, <code>InMemoryStore</code></td></tr>
+    <tr><td><code>agent/.../memory/AgentMemory.kt</code></td><td>What the agent loop talks to: <code>observed</code>, <code>acted</code>, <code>think</code>, <code>recall</code>, journal lifecycle</td></tr>
+    <tr><td><code>agent/.../memory/Describe.kt</code></td><td>Observation and intent → event text</td></tr>
+    <tr><td><code>agent/.../memory/Summarizer.kt</code></td><td>Events → level-1 memories</td></tr>
+    <tr><td><code>agent/.../memory/Recall.kt</code></td><td>Which memories and entries reach a prompt</td></tr>
+    <tr><td><code>agent/.../memory/Keywords.kt</code></td><td>Keyword scoring shared by recall and search</td></tr>
+    <tr><td><code>agent/.../memory/JournalWriter.kt</code></td><td>The journal's search-then-write loop</td></tr>
+    <tr><td><code>agent/.../memory/Thinker.kt</code></td><td>The think intent's one call</td></tr>
+    <tr><td><code>agent/.../Memory.kt</code></td><td>Short-term memory</td></tr>
+    <tr><td><code>agent/.../AgentRuntime.kt</code></td><td>The decision loop, forced thinks, latest thought</td></tr>
+    <tr><td><code>agent/.../PromptBuilder.kt</code></td><td>Where recalled text lands in the prompt</td></tr>
+    <tr><td><code>memory-sqlite/.../SqliteMemoryStore.kt</code></td><td>SQLite store (CLI)</td></tr>
+    <tr><td><code>app/.../SimSession.kt</code>, <code>cli/.../Main.kt</code></td><td>Wiring: which store, which models</td></tr>
+    <tr><td><code>agent/src/test/.../memory/</code></td><td><code>MemoryTest</code>, <code>JournalTest</code>, <code>ThinkTest</code></td></tr>
+  </tbody>
+</table>
+</div>
+<p>Decisions behind this: <code>docs/decisions/2026-10-29-memory-v0-is-a-three-layer-hierarchy-in-sqlite.md</code>,
+<code>…-the-journal-a-second-memory-aware-llm-call-that-records-what.md</code> and
+<code>…-think-intent-journal-on-by-default-memories-every-20-events.md</code>.</p>
+
+<footer>Written 2026-10-29 from the code on <code>main</code> (after the art-making merge). Defaults quoted here are
+constructor defaults and <code>bedroom.yaml</code> values; check the code if they've moved.</footer>
+</main>
+</body>
+</html>
