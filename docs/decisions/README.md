@@ -48,3 +48,4 @@ these hold the outcome. Skim this index before related changes.
 - 2026-10-29 [The journal: a second, memory-aware LLM call that records what he wants](2026-10-29-the-journal-a-second-memory-aware-llm-call-that-records-what.md)
 - 2026-10-29 [Think intent; journal on by default; memories every 20 events](2026-10-29-think-intent-journal-on-by-default-memories-every-20-events.md)
 - 2026-10-29 [The 3D room is libGDX g3d, built in code, as the app's first page](2026-10-29-the-3d-room-is-libgdx-g3d-built-in-code-as-the-first-page.md)
+- 2026-10-29 [Art is drawn as validated ops, and reaches the sim through annotate](2026-10-29-art-is-drawn-as-validated-ops-and-reaches-the-sim-through-annotate.md)

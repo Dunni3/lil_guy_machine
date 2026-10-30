@@ -2,6 +2,9 @@ package dev.lilguy.app
 
 import dev.lilguy.agent.AgentRuntime
 import dev.lilguy.agent.DecisionLog
+import dev.lilguy.agent.Scenario
+import dev.lilguy.agent.art.ArtStudio
+import dev.lilguy.agent.art.ArtWriter
 import dev.lilguy.agent.memory.AgentMemory
 import dev.lilguy.agent.memory.InMemoryStore
 import dev.lilguy.agent.memory.JournalSession
@@ -17,6 +20,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import java.io.File
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.math.min
 import kotlin.time.Duration
@@ -171,8 +175,11 @@ class SimSession(
             runCatching { runLog?.write(s) }
             if (run == thisRun && s.status == JournalSession.Status.Failed) journalError = s.error
         }
-        // The journal's model also writes his thoughts when he stops to think.
-        memory = AgentMemory(store, runId, summarizer, scope = rs, journal = jw?.let { JournalWriter(it, store, runId) }, onJournal = onJournal, thinker = jw?.let { Thinker(it) })
+        // The journal's model also writes his thoughts when he stops to think, and draws his art.
+        val studio = jw?.takeIf { setup.scenario == Scenario.Bedroom }?.let {
+            ArtStudio(ArtWriter(it), store, runId, rs, setup.logDir?.let { d -> File(d, "art-%03d".format(thisRun)) }) { drawing -> runCatching { runLog?.write(drawing) } }
+        }
+        memory = AgentMemory(store, runId, summarizer, scope = rs, journal = jw?.let { JournalWriter(it, store, runId) }, onJournal = onJournal, thinker = jw?.let { Thinker(it) }, studio = studio)
         val (gw, r) = setup.scenario.create(m, setup.timeout, setup.ticksPerMinute, longTerm = memory) {
             runCatching { runLog?.write(it) }
             runInbox.add(it)

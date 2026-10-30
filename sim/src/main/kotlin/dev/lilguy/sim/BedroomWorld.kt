@@ -1,9 +1,11 @@
 package dev.lilguy.sim
 
+import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.min
 import kotlin.math.sign
+import kotlin.random.Random
 
 /**
  * Milestone 4 world: a bedroom where the guy makes art, sells it, and spends the money on food,
@@ -13,6 +15,10 @@ import kotlin.math.sign
  *
  * do(activity) and buy(item) walk him to the right spot on their own; use(item, on) puts one
  * item on another (a record on the player). Decisions happen when an activity ends.
+ *
+ * Art is a count like any item, and each carried one is also a numbered piece, so it can be drawn,
+ * hung or sold on its own. A drawing model's title and tags arrive later through [annotate]; a
+ * daily commission ([CommissionRules]) pays extra for the first sold piece whose drawing matches it.
  */
 class BedroomWorld private constructor(
     map: TileMap,
@@ -21,6 +27,8 @@ class BedroomWorld private constructor(
     val clock: GameClock,
     /** Slot name to its tile. */
     private val slotCells: Map<String, Cell>,
+    /** Picks the commissions. */
+    private val seed: Long,
 ) : GridWorld(map, guy) {
     val ledger = Ledger(content.start.money, clock)
     val needs = Needs(content.start.needs, clock)
@@ -43,6 +51,26 @@ class BedroomWorld private constructor(
     private class Options(val key: List<Any>, val activities: List<ActivityOption>, val uses: List<UseOption>, val shop: List<ShopOption>)
 
     private class Doing(val activity: ActivitySpec, val startTick: Long, val endTick: Long)
+
+    private enum class PieceState { Held, Hung, Sold }
+
+    /** One piece of art. [commission]: the request open when it was finished, if any. */
+    private class Piece(val id: Int, val item: String, val commission: Int?) {
+        var state = PieceState.Held
+        var title: String? = null
+        var tags: List<String> = emptyList()
+    }
+
+    private class Commission(val id: Int, val adjective: String, val noun: String, val wants: String, val until: Long) {
+        var request: String? = null
+        var fulfilled = false
+    }
+
+    /** Every piece he has made, oldest first; the held ones match the counts of carried items. */
+    private val pieces = mutableListOf<Piece>()
+    private var commission: Commission? = null
+    private var commissions = 0
+    private val notes = ConcurrentLinkedQueue<ArtNote>()
     private class Music(val itemId: String, val spec: ActivitySpec.Background, val endTick: Long)
 
     init {
@@ -62,6 +90,7 @@ class BedroomWorld private constructor(
 
     private fun add(id: String, n: Int) {
         version++
+        if (item(id).carried) repeat(n) { pieces += Piece(pieces.size + 1, id, openCommission()?.id) }
         owned[id] = count(id) + n
         syncHolding()
     }
@@ -100,7 +129,7 @@ class BedroomWorld private constructor(
         spec.slot?.let { spec to slotCells.getValue(it) }
     }
 
-    private fun comfort(): Int = owned.entries.sumOf { (id, n) -> item(id).comfort * n }
+    private fun comfort(): Int = owned.entries.sumOf { (id, n) -> item(id).comfort * n } + hung().size * content.gallery.comfortEach
 
     private fun moodTarget(): Double = (content.needs.moodBaseline + comfort()).coerceAtMost(Needs.MAX)
 
@@ -118,6 +147,10 @@ class BedroomWorld private constructor(
                 val makers = content.activities.filter { m -> m.produces.keys.any { tag in item(it).allTags } }.map { it.id }
                 return "you have no $tag to sell" + if (makers.isEmpty()) "" else "; ${makers.joinToString(" or ")} makes some"
             }
+        }
+        a.hangs?.let { tag ->
+            if (countTag(tag) == 0) return "you have no $tag to hang"
+            if (hung().size >= content.gallery.max) return "your wall is full (${content.gallery.max} pieces)"
         }
         val blocks = a.block + if (a.work) content.needs.workFloor else emptyList()
         blocks.firstOrNull { it.blocks(needs[needOf(it.need)]) }?.let { return "${it.reason} (${it.need} ${needs.level(needOf(it.need))})" }
@@ -242,6 +275,7 @@ class BedroomWorld private constructor(
             parts += "$need ${signed(applied)}"
         }
         a.sells?.let { parts += sell(it) }
+        a.hangs?.let { parts += hang(it) }
         a.background?.let { bg ->
             music = Music(usedItem!!, bg, ticks + clock.ticks(bg.minutes))
             version++
@@ -254,11 +288,110 @@ class BedroomWorld private constructor(
     }
 
     private fun sell(tag: String): String {
+        val sale = saleOf(held(tag))
         val sold = take(tag, countTag(tag))
-        val total = sold.entries.sumOf { (id, n) -> (item(id).sellPrice ?: 0) * n }
+        sale.forEach { (p, _) -> p.state = PieceState.Sold }
+        val total = sale.sumOf { it.second }
         val what = sold.entries.joinToString(" and ") { (id, n) -> quantity(id, n) }
-        if (total > 0) ledger.credit(ticks, total, "sold $what")
-        return "sold $what for $$total (money $${ledger.balance})"
+        val winner = winner(sale.map { it.first })
+        val bonus = winner?.let {
+            commission!!.fulfilled = true
+            version++
+            " (${pieceName(it)} met the request for ${commission!!.wants}: +$${content.commissions!!.reward})"
+        }.orEmpty()
+        if (total > 0) ledger.credit(ticks, total, "sold $what" + if (winner != null) " (one for a commission)" else "")
+        return "sold $what for $$total$bonus (money $${ledger.balance})"
+    }
+
+    /** Hangs his newest held piece with [tag] on the wall. */
+    private fun hang(tag: String): String {
+        val p = held(tag).lastOrNull() ?: return "you no longer have any $tag to hang"
+        take(p.item, 1)
+        p.state = PieceState.Hung
+        return "hung ${pieceName(p)} on the wall; comfort ${comfort()}, so mood settles toward ${moodTarget().toInt()}"
+    }
+
+    // --- art -------------------------------------------------------------------------------------
+
+    /**
+     * Hands over what a drawing model made: applied at the start of the next tick. Safe from any
+     * thread; a note for a piece or commission that doesn't exist is dropped.
+     */
+    fun annotate(note: ArtNote) {
+        notes.add(note)
+    }
+
+    private fun applyNotes() {
+        while (true) {
+            when (val note = notes.poll() ?: return) {
+                is ArtNote.PieceDrawn -> pieces.getOrNull(note.piece - 1)?.let { p ->
+                    p.title = note.title
+                    p.tags = note.tags
+                    version++
+                    val c = commission?.takeIf { it.id == p.commission && !it.fulfilled }
+                    val verdict = when {
+                        c == null -> ""
+                        matches(p, c) -> ": it matches the request for ${c.wants}, so it earns $${content.commissions!!.reward} more when sold"
+                        else -> ": it doesn't match the request for ${c.wants}"
+                    }
+                    event("${item(p.item).name} ${p.id} is drawn, \"${note.title}\"$verdict")
+                }
+                is ArtNote.CommissionWorded -> commission?.takeIf { it.id == note.commission }?.let { it.request = note.request }
+            }
+        }
+    }
+
+    private fun held(tag: String): List<Piece> = pieces.filter { it.state == PieceState.Held && tag in item(it.item).allTags }
+
+    private fun hung(): List<Piece> = pieces.filter { it.state == PieceState.Hung }
+
+    private fun openCommission(): Commission? = commission?.takeIf { !it.fulfilled && ticks < it.until }
+
+    /** Its drawing names both words of the request it was made for. */
+    private fun matches(p: Piece, c: Commission): Boolean {
+        if (p.commission != c.id) return false
+        val text = ((p.title ?: "") + " " + p.tags.joinToString(" ")).lowercase()
+        return c.adjective.lowercase() in text && c.noun.lowercase() in text
+    }
+
+    /** The first of [selling] that meets the open request, if any: only one is paid for it. */
+    private fun winner(selling: List<Piece>): Piece? = openCommission()?.let { c -> selling.firstOrNull { matches(it, c) } }
+
+    /** Each piece with what it sells for, the request's reward included. */
+    private fun saleOf(selling: List<Piece>): List<Pair<Piece, Int>> {
+        val w = winner(selling)
+        return selling.map { p -> p to (item(p.item).sellPrice ?: 0) + if (p === w) content.commissions!!.reward else 0 }
+    }
+
+    /** "sketch 3" or "sketch 3, \"Sleepy lighthouse\"". */
+    private fun pieceName(p: Piece): String = "${item(p.item).name} ${p.id}" + (p.title?.let { ", \"$it\"" } ?: "")
+
+    private fun newCommission(rules: CommissionRules) {
+        openCommission()?.let { event("the request for ${it.wants} lapsed") }
+        val n = ++commissions
+        val random = Random(seed * 1_000_003 + n)
+        val adjective = rules.adjectives.random(random)
+        val noun = rules.nouns.random(random)
+        val c = Commission(n, adjective, noun, article(adjective) + " " + noun, ticks + clock.ticks(GameClock.MINUTES_PER_DAY))
+        commission = c
+        version++
+        event("a request came in: ${c.wants}. The first piece you finish from now that matches it earns $${rules.reward} more when sold, until ${stamp(c.until)}")
+    }
+
+    private fun commissionView(): CommissionView? = openCommission()?.let { CommissionView(it.id, it.wants, it.request, content.commissions!!.reward, stamp(it.until)) }
+
+    private fun artViews(): List<PieceView> {
+        val prices = saleOf(pieces.filter { it.state == PieceState.Held }).associate { (p, price) -> p.id to price }
+        val c = openCommission()
+        return pieces.filter { it.state != PieceState.Sold }.map { p ->
+            val note = when {
+                c == null || p.commission != c.id || p.state != PieceState.Held -> null
+                p.title == null -> "made for the request; not drawn yet"
+                matches(p, c) -> "matches the request: +$${content.commissions!!.reward} when sold"
+                else -> "doesn't match the request"
+            }
+            PieceView(p.id, p.item, p.title, p.state == PieceState.Hung, prices[p.id], note)
+        }
     }
 
     private fun purchase(spec: ItemSpec, price: Int): String? {
@@ -280,6 +413,7 @@ class BedroomWorld private constructor(
     // --- time and needs --------------------------------------------------------------------------
 
     override fun afterWork() {
+        applyNotes()
         music?.let {
             if (ticks >= it.endTick) {
                 music = null
@@ -291,6 +425,7 @@ class BedroomWorld private constructor(
         applyMinute()
         val minute = clock.minuteOfDay(ticks)
         if (minute % 60 == 0) needs.flush(ticks)
+        content.commissions?.let { if (minute == GameClock.parseHhmm(it.arrive)) newCommission(it) }
         if (minute == 0) event("day ${clock.day(ticks)} begins")
     }
 
@@ -351,9 +486,14 @@ class BedroomWorld private constructor(
             return parts.joinToString("; ")
         }
         a.sells?.let { tag ->
-            val held = owned.filter { (id, _) -> tag in item(id).allTags }
-            val total = held.entries.sumOf { (id, n) -> (item(id).sellPrice ?: 0) * n }
-            parts += "$$total for the ${held.entries.joinToString(" and ") { (id, n) -> quantity(id, n) }} you hold"
+            val counts = owned.filter { (id, _) -> tag in item(id).allTags }
+            val sale = saleOf(held(tag))
+            val bonus = if (winner(sale.map { it.first }) != null) ", $${content.commissions!!.reward} of it for the request" else ""
+            parts += "$${sale.sumOf { it.second }} for the ${counts.entries.joinToString(" and ") { (id, n) -> quantity(id, n) }} you hold$bonus"
+        }
+        a.hangs?.let { tag ->
+            held(tag).lastOrNull()?.let { parts += "hangs ${pieceName(it)}" }
+            parts += "comfort +${content.gallery.comfortEach}: mood settles ${content.gallery.comfortEach} higher (${hung().size} of ${content.gallery.max} on the wall)"
         }
         a.consumes.forEach { (tag, n) -> parts += "uses ${if (n == 1) "a" else "$n"} ${tag.replace('_', ' ')} (you have ${countTag(tag)})" }
         a.effects.forEach { (need, d) -> parts += "$need ${signed(d)}" }
@@ -414,6 +554,8 @@ class BedroomWorld private constructor(
             owns = ownsMap(),
             transactions = ledger.transactions.takeLast(SNAPSHOT_TRANSACTIONS),
             clockScale = clock,
+            commission = commissionView(),
+            art = artViews(),
         )
         val snapshot = WorldSnapshot(ticks, map, entities, listOf(agentSnapshot()), eventLog(), life = life)
         return Published(snapshot, observe(entities))
@@ -444,6 +586,8 @@ class BedroomWorld private constructor(
             uses = current.uses,
             shop = current.shop,
             neglect = neglectText(),
+            commission = content.commissions?.let { commissionView() },
+            art = if (pieces.isEmpty()) null else artViews(),
         )
     }
 
@@ -523,9 +667,11 @@ class BedroomWorld private constructor(
             ticksPerMinute: Int = GameClock.DEFAULT_TICKS_PER_MINUTE,
             characterId: String = "guy",
             granted: Set<String> = emptySet(),
-        ): BedroomWorld = build(content.unlocked(granted), ticksPerMinute, characterId)
+            /** Picks the commissions; the same seed gives the same requests. */
+            seed: Long = 0,
+        ): BedroomWorld = build(content.unlocked(granted), ticksPerMinute, characterId, seed)
 
-        private fun build(content: BedroomContent, ticksPerMinute: Int, characterId: String): BedroomWorld {
+        private fun build(content: BedroomContent, ticksPerMinute: Int, characterId: String, seed: Long): BedroomWorld {
             val rows = content.room.rows
             require(rows.isNotEmpty() && rows.all { it.length == rows[0].length }) { "room rows must all be the same length" }
             val height = rows.size
@@ -551,7 +697,7 @@ class BedroomWorld private constructor(
             val missing = content.room.slots.values.toSet() - slotCells.keys
             require(missing.isEmpty()) { "slots $missing aren't in the room" }
             val clock = GameClock(ticksPerMinute, GameClock.parseHhmm(content.start.time))
-            return BedroomWorld(TileMap(width, height, terrain), guy ?: error("room has no '@'"), content, clock, slotCells)
+            return BedroomWorld(TileMap(width, height, terrain), guy ?: error("room has no '@'"), content, clock, slotCells, seed)
         }
     }
 }

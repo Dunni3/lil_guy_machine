@@ -22,6 +22,7 @@ class LilGuyGame(private val setup: ModelSetup = ModelSetup.scripted()) : Applic
     private lateinit var session: SimSession
     private lateinit var view: DevView
     private lateinit var room: RoomView
+    private lateinit var art: ArtTextures
     private lateinit var profiler: GLProfiler
 
     // Perf log, every LOG_SECONDS: fps, worst frame, CPU time in update+draw (after the clear,
@@ -38,8 +39,9 @@ class LilGuyGame(private val setup: ModelSetup = ModelSetup.scripted()) : Applic
         setup.notice?.let { Gdx.app.error(TAG, it) }
         session = SimSession(scope, setup)
         Gdx.app.log(TAG, "model ${session.runtime.modelId}; memory ${session.memory.writer ?: "off"}; decision logs ${setup.logDir?.path ?: "off"}")
-        view = DevView()
-        room = RoomView()
+        art = ArtTextures()
+        view = DevView(art)
+        room = RoomView(art)
         profiler = GLProfiler(Gdx.graphics).apply { enable() }
         Gdx.input.setCatchKey(Input.Keys.BACK, true)
         Gdx.input.inputProcessor = RemoteInput({ session }, view)
@@ -82,6 +84,7 @@ class LilGuyGame(private val setup: ModelSetup = ModelSetup.scripted()) : Applic
         scope.cancel()
         view.dispose()
         room.dispose()
+        art.dispose()
         profiler.disable()
     }
 

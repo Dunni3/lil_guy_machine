@@ -26,6 +26,9 @@ data class BedroomContent(
     val activities: List<ActivitySpec>,
     val uses: List<ActivitySpec> = emptyList(),
     val think: ThinkRules = ThinkRules(),
+    /** A daily request for a piece; null for none. */
+    val commissions: CommissionRules? = null,
+    val gallery: GalleryRules = GalleryRules(),
 ) {
     @Transient private val byId = items.associateBy { it.id }
 
@@ -87,7 +90,7 @@ data class BedroomContent(
             val where = "activity ${a.id}"
             require(a.at.isNotEmpty()) { "$where needs at least one place in `at`" }
             a.at.forEach { require(byId[it]?.slot != null) { "$where happens at '$it', which isn't a slot item" } }
-            (a.requires + a.consumes.keys + listOfNotNull(a.sells, a.item)).forEach { require(it in tags) { "$where names '$it', which no item has as a tag" } }
+            (a.requires + a.consumes.keys + listOfNotNull(a.sells, a.hangs, a.item)).forEach { require(it in tags) { "$where names '$it', which no item has as a tag" } }
             a.produces.keys.forEach { require(it in ids) { "$where produces '$it', which isn't an item" } }
             a.on?.let { require(it in ids) { "$where is used on '$it', which isn't an item" } }
             require((a.minutes != null) != (a.until != null)) { "$where needs exactly one of `minutes` and `until`" }
@@ -101,6 +104,12 @@ data class BedroomContent(
             require(activities.any { it.id == n.activity }) { "neglect names activity '${n.activity}', which isn't in activities" }
             require(n.afterHours >= 1 && n.moodPerHour < 0) { "neglect of ${n.activity}: after_hours must be at least 1 and mood_per_hour negative" }
         }
+        items.forEach { item -> item.canvas?.let { require(item.carried && it.size in 4..64 && it.colors in 2..32 && it.ops >= 1) { "item ${item.id}: a canvas needs a carried item, size 4 to 64, 2 to 32 colors and at least 1 op" } } }
+        commissions?.let { c ->
+            GameClock.parseHhmm(c.arrive)
+            require(c.reward > 0 && c.adjectives.isNotEmpty() && c.nouns.isNotEmpty()) { "commissions need a positive reward and at least one adjective and noun" }
+        }
+        require(gallery.max >= 1 && gallery.comfortEach >= 0) { "gallery.max must be at least 1" }
         require(think.minutes >= 1) { "think needs at least 1 minute" }
         require(think.every == null || think.every >= 1) { "think.every must be at least 1" }
         GameClock.parseHhmm(start.time)
@@ -164,6 +173,27 @@ data class NeedBlock(
 data class ShopRules(val at: String, val minutes: Int)
 
 /**
+ * A request for a piece that arrives each day at [arrive] and stays open until the next one: an
+ * adjective and a noun picked from the lists. The first piece made while it's open, drawn to match,
+ * and sold earns [reward] on top of its price.
+ */
+@Serializable
+data class CommissionRules(
+    val arrive: String,
+    val reward: Int,
+    val adjectives: List<String>,
+    val nouns: List<String>,
+)
+
+/** Hung art: at most [max] pieces on the wall, each adding [comfortEach] to the room's comfort. */
+@Serializable
+data class GalleryRules(val max: Int = 3, @SerialName("comfort_each") val comfortEach: Int = 3)
+
+/** What a drawing model gets for a piece of this item: a [size] by [size] grid, up to [colors] colors and [ops] operations. */
+@Serializable
+data class CanvasSpec(val size: Int, val colors: Int, val ops: Int)
+
+/**
  * The think intent: he stands where he is for [minutes] and it costs [energy] on top of being
  * awake. [every]: the agent is made to think after this many decisions without one; null leaves it
  * to the model.
@@ -189,6 +219,8 @@ data class ItemSpec(
     val comfort: Int = 0,
     /** Above 0, it's gated until granted; see [BedroomContent.unlocked]. */
     val tier: Int = 0,
+    /** Art that is drawn: the canvas a drawing model gets. */
+    val canvas: CanvasSpec? = null,
 ) {
     val allTags: Set<String> get() = setOf(id) + tags
 }
@@ -205,6 +237,8 @@ data class ActivitySpec(
     val produces: Map<String, Int> = emptyMap(),
     /** Sells every carried item with this tag at its sell_price. */
     val sells: String? = null,
+    /** Hangs his newest carried item with this tag on the wall (see [GalleryRules]). */
+    val hangs: String? = null,
     val effects: Map<String, Double> = emptyMap(),
     val rates: Map<String, Double> = emptyMap(),
     /** Asleep: the awake energy loss doesn't apply. */

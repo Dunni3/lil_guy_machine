@@ -47,7 +47,19 @@ class RoomModels : Disposable {
     fun item(id: String, kind: String): Model = items.getOrPut("$kind/$id") { build { buildItem(id, kind) } }
 
     /** Items that hang in a wall rather than stand on the floor: their back is at z = 0. */
-    fun wallItem(id: String, kind: String): Boolean = id == "poster" || kind == "door" || id == "door"
+    fun wallItem(id: String, kind: String): Boolean = id in WALL_ITEMS || kind == "door"
+
+    /**
+     * An empty picture frame, pivot at its bottom centre, back at z = 0, [FRAME] square; the view
+     * puts a piece's texture on its mat ([FRAME_ART] square, [FRAME_ART_Z] out from the wall).
+     */
+    fun frame(): Model = items.getOrPut("frame") {
+        build {
+            box(WOOD_DARK, 0f, 0f, 0.015f, FRAME, FRAME, 0.03f)
+            box(PAPER, 0f, 0.03f, 0.03f, FRAME - 0.06f, FRAME - 0.06f, 0.01f)
+            box(KNOB, 0f, FRAME + 0.08f, 0.01f, 0.03f, 0.03f, 0.02f)
+        }
+    }
 
     private fun build(body: Shapes.() -> Unit): Model {
         builder.begin()
@@ -202,6 +214,19 @@ class RoomModels : Disposable {
                 cylinder(RUG_INNER, 0f, 0.01f, 0f, 1.5f, 0.015f, 0.95f, divisions = 32)
                 cylinder(RUG, 0f, 0.02f, 0f, 1.0f, 0.015f, 0.6f, divisions = 32)
             }
+            "mail_hatch" -> {
+                // A brass flap in the wall at hand height, with a little shelf under it for parcels.
+                box(TRIM, 0f, 0.62f, 0.02f, 0.62f, 0.5f, 0.04f)
+                box(WOOD_DARK, 0f, 0.66f, 0.04f, 0.54f, 0.42f, 0.02f)
+                box(KNOB, 0f, 0.74f, 0.06f, 0.46f, 0.28f, 0.03f)
+                box(WOOD_DARK, 0f, 0.94f, 0.08f, 0.34f, 0.03f, 0.02f)
+                box(WOOD_DARK, 0f, 0.8f, 0.08f, 0.14f, 0.03f, 0.03f)
+                box(WOOD, 0f, 0.5f, 0.12f, 0.7f, 0.04f, 0.24f)
+                box(WOOD_DARK, -0.28f, 0.36f, 0.04f, 0.04f, 0.14f, 0.08f)
+                box(WOOD_DARK, 0.28f, 0.36f, 0.04f, 0.04f, 0.14f, 0.08f)
+            }
+            // A rail along the wall, a little wider than its tile; the view hangs frames from it.
+            "picture_rail" -> box(WOOD_DARK, RAIL_X, RAIL_Y, 0.03f, RAIL_LENGTH, 0.04f, 0.06f)
             "poster" -> {
                 box(POSTER, 0f, 0.95f, 0.01f, 0.62f, 0.82f, 0.02f)
                 sphere(POSTER_SUN, 0.1f, 1.38f, 0.025f, 0.22f, 0.22f, 0.02f)
@@ -331,6 +356,16 @@ class RoomModels : Disposable {
         const val WINDOW_BOTTOM = 1.0f
         const val WINDOW_TOP = 1.8f
         const val CLOCK_Y = 1.32f
+        const val FRAME = 0.44f
+        const val FRAME_ART = 0.34f
+        const val FRAME_ART_Z = 0.04f
+        /** Where the picture rail runs, from its tile's centre, and the frames' centres along it. */
+        const val RAIL_X = 0f
+        const val RAIL_Y = 1.86f
+        const val RAIL_LENGTH = 1.5f
+        val FRAME_XS = floatArrayOf(-0.46f, 0f, 0.46f)
+        const val FRAME_BOTTOM = 1.2f
+        private val WALL_ITEMS = setOf("poster", "door", "mail_hatch", "picture_rail")
         private const val THICK = 0.14f
         private const val PLANKS = 4
         private const val GAP = 0.012f

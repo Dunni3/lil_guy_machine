@@ -61,16 +61,17 @@ class BedroomRunTest {
     /**
      * The economy's tuning target (research_notes/2026-10-29_1644_journal-and-scarcity-plan.md):
      * earning just enough food leaves a few spare waking hours a day and no savings. Day 1 is
-     * left out: he starts with food and money.
+     * left out: he starts with food and money. The target was 3 to 5 hours until selling art
+     * stopped taking an hour (Ian); that hour went to spare time.
      */
     @Test
-    fun `surviving takes most of the day and leaves 3 to 5 spare waking hours`() {
+    fun `surviving takes most of the day and leaves 3 to 6 spare waking hours`() {
         val lived = live(6, BedroomPolicy.Journaling.Never)
         val w = lived.world
         lived.hours.toSortedMap().forEach { (day, h) -> println("day $day: " + h.entries.sortedBy { it.key }.joinToString { "%s %.1f".format(it.key, it.value) }) }
         val spare = (2..6).map { lived.hours[it].orEmpty()["wait"] ?: 0.0 }
         val sketching = (2..6).map { lived.hours[it].orEmpty()["sketch"] ?: 0.0 }
-        assertTrue(spare.average() in 3.0..5.0, "spare waking hours a day: $spare")
+        assertTrue(spare.average() in 3.0..6.0, "spare waking hours a day: $spare")
         assertTrue(sketching.average() >= 6.0, "sketching hours a day: $sketching")
         val mealPrice = w.content.item("meal")!!.price!!
         val richest = w.ledger.transactions.maxOf { it.balance }
@@ -122,7 +123,7 @@ class BedroomRunTest {
         val (world, _) = bedroomScenario(BedroomPolicy())
         val system = BedroomPrompt.system(world.content, world.clock.ticksPerMinute)
         assertTrue(system.startsWith("You are intelligent, aspirational and creative"), system.take(80))
-        assertTrue("the only things you can do are eat, sketch, sell your art, write in your journal and sleep." in system)
+        assertTrue("the only things you can do are eat, sketch, sell your art, hang your art on the wall, write in your journal and sleep." in system)
         assertTrue(Persona.CREATOR in system)
         assertTrue("You live in this bedroom. You need money for food, as a means, not the goal." in system)
         assertTrue("a sketch sells for $3" in system)

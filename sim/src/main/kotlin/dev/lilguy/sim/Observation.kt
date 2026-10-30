@@ -39,6 +39,40 @@ data class Observation(
     @EncodeDefault(EncodeDefault.Mode.NEVER) val shop: List<ShopOption>? = null,
     /** How long since each activity his mood depends on, such as "last journal 20h ago; ...". */
     @EncodeDefault(EncodeDefault.Mode.NEVER) val neglect: String? = null,
+    /** Today's request for a piece, if one is open. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val commission: CommissionView? = null,
+    /** The art he has made and still has, held or hung, oldest first. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val art: List<PieceView>? = null,
+)
+
+/**
+ * A request for a piece: [wants] is the adjective and noun ("a sleepy lighthouse"), [request] the
+ * customer's words once a model has written them. Open until [until] ("d2 09:00").
+ */
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+data class CommissionView(
+    val id: Int,
+    val wants: String,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val request: String? = null,
+    val reward: Int,
+    val until: String,
+)
+
+/**
+ * A piece of art he made and hasn't sold: [hung] on the wall, or held to sell for [sellsFor].
+ * [title] is null until it has been drawn (or when drawing failed). [commission] says how it
+ * stands against the open request, if it was made for one.
+ */
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+data class PieceView(
+    val id: Int,
+    val item: String,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val title: String? = null,
+    val hung: Boolean = false,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val sellsFor: Int? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val commission: String? = null,
 )
 
 /** An activity for do(). Exactly one of [locked] and ([takes], [gives]) is set. */
@@ -133,6 +167,9 @@ data class LifeSnapshot(
     val transactions: List<Transaction>,
     /** The clock that turns this world's ticks into game time, for stamping events. */
     val clockScale: GameClock,
+    val commission: CommissionView? = null,
+    /** Held and hung art, oldest first. */
+    val art: List<PieceView> = emptyList(),
 )
 
 data class EntitySnapshot(
