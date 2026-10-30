@@ -22,6 +22,7 @@ make tv-connect IP=10.0.0.51   # wireless adb to the Streamer
 make tv-run      # build + install + launch debug APK (ENDPOINT=<name>, MEMORY_ENDPOINT=<name|none>, JOURNAL_ENDPOINT=,
                  # SCENARIO=key-door, MINUTE_TICKS=<n>, DAYS=<n>); runs wait for OK on the remote
 make tv-push-config  # push config/endpoints.yaml + the keys it names (dev only)
+make tv-pull-logs    # copy the TV's run logs into runs/tv/; never overwrites earlier pulls (tools/adb/pull-runs.sh)
 make tv-logs     # logcat, tag LilGuy
 make tv-profile  # release-like build (not debuggable) for measuring performance
 ```
