@@ -39,6 +39,8 @@ import kotlin.math.sin
  *   memories written so far, marking those recalled at the latest decision.
  * - [Page.Journal]: a reader for his journal: a list of entries, and the picked one in full with
  *   the wants he argued for. UP/DOWN steps through them; it follows the newest until you move.
+ * - [Page.Art]: his drawn pieces: a strip of them, and the picked one large with its title,
+ *   tags, the request it was made for, and whether it's held, hung or sold. UP/DOWN as in Journal.
  * - [Page.Tokens]: model tokens spent this run, by game day and by what they were for.
  * - [Page.History]: every decision this run; picking an older one puts the map back to the
  *   moment it was made.
@@ -51,8 +53,8 @@ import kotlin.math.sin
  * to fit. Fill rate stays low for the Streamer: one clear, then small shapes and text; no
  * full-screen layers.
  */
-class DevView : Disposable {
-    enum class Page(val title: String) { Room("ROOM"), Now("NOW"), Memory("MEMORY"), Journal("JOURNAL"), Tokens("TOKENS"), History("HISTORY"), Log("LOG"), Run("RUN") }
+class DevView(private val art: ArtTextures) : Disposable {
+    enum class Page(val title: String) { Room("ROOM"), Now("NOW"), Memory("MEMORY"), Journal("JOURNAL"), Art("ART"), Tokens("TOKENS"), History("HISTORY"), Log("LOG"), Run("RUN") }
 
     /** The Run page's rows. */
     private enum class RunRow(val label: String) {
@@ -80,6 +82,9 @@ class DevView : Disposable {
 
     /** Journal only: the entry shown, as an index into the entries oldest first; null follows the newest. */
     private var journalPick: Int? = null
+
+    /** Art only: the piece shown, as an index into the drawn pieces oldest first; null follows the newest. */
+    private var artPick: Int? = null
 
     /** Rows scrolled down from the top, per page. */
     private val scroll = IntArray(Page.entries.size)
@@ -115,6 +120,13 @@ class DevView : Disposable {
             if (last < 0) return
             val next = (journalPick ?: last) - by
             journalPick = if (next >= last) null else next.coerceAtLeast(0)
+            return
+        }
+        if (page == Page.Art) {
+            val last = session.memory.studio?.pieces()?.lastIndex ?: -1
+            if (last < 0) return
+            val next = (artPick ?: last) - by
+            artPick = if (next >= last) null else next.coerceAtLeast(0)
             return
         }
         if (page != Page.History) {
@@ -169,6 +181,7 @@ class DevView : Disposable {
         pinned = null
         journalPick = null
         replayPick = null
+        artPick = null
         scroll.fill(0)
         confirmRestart = false
         confirmAction = false
@@ -357,11 +370,15 @@ class DevView : Disposable {
                 shapes.color = RUG
                 shapes.rect(cx - t * 0.9f, cy - h * 0.8f, t * 1.8f, h * 1.6f)
             }
-            "door" -> {
+            "mail_hatch" -> {
                 shapes.color = WOOD
-                shapes.rect(cx - h + 4, cy - h + 2, t - 8, t - 4)
+                shapes.rect(cx - h * 0.6f, cy - h * 0.5f, h * 1.2f, h)
                 shapes.color = KEY
-                shapes.circle(cx - h * 0.4f, cy, t * 0.05f, 10)
+                shapes.rect(cx - h * 0.4f, cy - h * 0.1f, h * 0.8f, h * 0.2f)
+            }
+            "picture_rail" -> {
+                shapes.color = WOOD_DARK
+                shapes.rect(cx - t * 0.75f, cy - h * 0.15f, t * 1.5f, h * 0.3f)
             }
             else -> {
                 shapes.color = Color.MAGENTA
@@ -573,6 +590,7 @@ class DevView : Disposable {
             Page.Room, Page.Now -> drawNow(session, live)
             Page.Memory -> drawMemory(session, live)
             Page.Journal -> drawJournal(session)
+            Page.Art -> drawArt(session)
             Page.Tokens -> drawTokens(session)
             Page.History -> drawHistory(session)
             Page.Log -> drawLog(live)
@@ -590,7 +608,7 @@ class DevView : Disposable {
         }
         val upDown = when (page) {
             Page.Room, Page.Now -> ""
-            Page.History, Page.Journal -> "UP newer · DOWN older · "
+            Page.History, Page.Journal, Page.Art -> "UP newer · DOWN older · "
             Page.Run -> "DOWN settings · "
             else -> "UP/DOWN scroll · "
         }
@@ -779,6 +797,62 @@ class DevView : Disposable {
             line("wants [${w.kind}] ${w.text}", SMALL_SCALE * 0.95f, CODE, maxLines = 2, gapAfter = 0.05f)
             line("because ${w.because}", SMALL_SCALE * 0.9f, MUTED, maxLines = 4, gapAfter = 0.3f, indent = 16f)
         }
+    }
+
+    private fun drawArt(session: SimSession) {
+        val studio = session.memory.studio
+        val pieces = studio?.pieces().orEmpty()
+        val status = when {
+            studio == null -> "no artist configured (journal_endpoint, or memory_endpoint): his pieces aren't drawn"
+            studio.drawing -> "${studio.artist} is drawing..."
+            else -> "${pieces.size} drawn · by ${studio.artist}"
+        }
+        val sel = (artPick ?: pieces.lastIndex).coerceIn(0, max(0, pieces.lastIndex))
+        heading(if (pieces.isEmpty()) "ART" else if (artPick == null) "ART · ${pieces.size} · following the newest" else "ART · ${sel + 1} of ${pieces.size}")
+        line(status, SMALL_SCALE * 0.9f, MUTED, maxLines = 2)
+        studio?.lastError?.let { line("last drawing failed: $it", SMALL_SCALE * 0.9f, FAILED, maxLines = 2) }
+        session.current.life?.commission?.let { c ->
+            line("request: ${c.request ?: c.wants} (+$${c.reward} until ${c.until})", SMALL_SCALE * 0.9f, CODE, maxLines = 2)
+        }
+        if (pieces.isEmpty()) return line("(nothing drawn yet)", BODY_SCALE * 0.8f, MUTED)
+        art.sync(session)
+
+        // A strip of pieces, newest first, keeping the pick in view.
+        val perRow = ((PANEL_WIDTH + THUMB_GAP) / (THUMB + THUMB_GAP)).toInt()
+        val pos = pieces.lastIndex - sel
+        val first = (pos - perRow / 2).coerceIn(0, max(0, pieces.size - perRow))
+        cursor -= 8f
+        val top = cursor
+        for (k in first until min(pieces.size, first + perRow)) {
+            val i = pieces.lastIndex - k
+            val x = PANEL_X + (k - first) * (THUMB + THUMB_GAP)
+            art.of(pieces[i])?.let { batch.draw(it, x, top - THUMB, THUMB, THUMB) }
+            cursor = top - THUMB - 8f
+            cell((if (i == sel) "> " else "") + "#${pieces[i].piece}", x, THUMB, SMALL_SCALE * 0.85f, if (i == sel) ACCENT else MUTED, Align.center)
+        }
+        font.data.setScale(SMALL_SCALE * 0.85f)
+        cursor -= font.lineHeight + 12f
+
+        // The picked piece large, its details beside it.
+        val d = pieces[sel]
+        val big = min(ART_SIZE, cursor - contentFloor)
+        if (big < THUMB) return
+        val imageTop = cursor
+        art.of(d)?.let { batch.draw(it, PANEL_X, imageTop - big, big, big) }
+        val indent = big + 24f
+        val shown = session.current.life?.art?.firstOrNull { it.id == d.piece }
+        val where = when {
+            shown == null -> "sold"
+            shown.hung -> "on the wall"
+            else -> "held, sells for $${shown.sellsFor}"
+        }
+        line(d.title ?: "untitled", BODY_SCALE, TEXT, maxLines = 3, gapAfter = 0.2f, indent = indent)
+        line("${d.item} ${d.piece} · ${if (d.day != null) "day ${d.day} ${d.time}" else "t ${d.tick}"} · $where", SMALL_SCALE * 0.9f, MUTED, maxLines = 2, gapAfter = 0.3f, indent = indent)
+        shown?.commission?.let { line(it, SMALL_SCALE * 0.9f, CODE, maxLines = 2, gapAfter = 0.3f, indent = indent) }
+        if (d.tags.isNotEmpty()) line("tags: ${d.tags.joinToString()}", SMALL_SCALE * 0.9f, TEXT, maxLines = 3, gapAfter = 0.3f, indent = indent)
+        d.commission?.let { line("asked: $it", SMALL_SCALE * 0.85f, MUTED, maxLines = 4, gapAfter = 0.3f, indent = indent) }
+        line("${d.ops} ops${if (d.dropped > 0) " (${d.dropped} over the limit dropped)" else ""} · ${d.artist}", SMALL_SCALE * 0.85f, MUTED, maxLines = 2, indent = indent)
+        cursor = min(cursor, imageTop - big - 12f)
     }
 
     private fun drawHistory(session: SimSession) {
@@ -1005,9 +1079,12 @@ class DevView : Disposable {
         private const val THOUGHT_ROWS = 2
         private const val HISTORY_ROWS = 7
         private const val JOURNAL_ROWS = 5
+        private const val THUMB = 96f
+        private const val THUMB_GAP = 16f
+        private const val ART_SIZE = 320f
         private const val MONEY_ROWS = 5
         private const val RUN_ROWS = 6
-        private const val TAB_GAP = 18f
+        private const val TAB_GAP = 16f
         private const val LABEL_SCALE = 1.1f
         private const val BAR_X = PANEL_X + 130f
         private const val BAR_WIDTH = 440f
@@ -1018,7 +1095,7 @@ class DevView : Disposable {
 
         private const val TITLE_SCALE = 2.4f
         private const val CLOCK_SCALE = 1.9f
-        private const val TAB_SCALE = 1.45f
+        private const val TAB_SCALE = 1.3f
         private const val MEMORY_SCALE = 1.45f
         private const val HEADING_SCALE = 1.35f
         private const val BODY_SCALE = 1.75f

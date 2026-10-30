@@ -1,5 +1,6 @@
 package dev.lilguy.agent.memory
 
+import dev.lilguy.agent.art.ArtStudio
 import dev.lilguy.decision.Usage
 import dev.lilguy.sim.Intent
 import dev.lilguy.sim.IntentStatus
@@ -29,6 +30,8 @@ const val JOURNAL_ACTIVITY = "journal"
  *
  * Thinking: when he chooses the think intent, a [Thinker] (if there is one) writes one thought,
  * inline, and it goes into the event stream as he thought it.
+ *
+ * Art: an [ArtStudio], if there is one, draws each piece he makes, the same way as the journal.
  */
 class AgentMemory(
     private val store: MemoryStore,
@@ -40,6 +43,8 @@ class AgentMemory(
     /** Every finished journal session, kept or not; called from whichever coroutine finished it. */
     private val onJournal: (JournalSession) -> Unit = {},
     private val thinker: Thinker? = null,
+    /** Draws his art; the scenario connects it to the world. */
+    val studio: ArtStudio? = null,
 ) {
     /** What [acted] needs to write an entry: who he is, and his state in the decision prompt's words. */
     class JournalBrief(val persona: String, val situation: String)
@@ -110,6 +115,7 @@ class AgentMemory(
         lastEvents = obs.recentEvents.toSet()
         store.appendEvent(run, obs.tick, obs.clock?.day, obs.clock?.time, EventKind.Observation, Describe.observation(obs, fresh))
         settleJournal(obs)
+        studio?.observed(obs)
     }
 
     /**
@@ -119,6 +125,7 @@ class AgentMemory(
     suspend fun acted(obs: Observation, intent: Intent, brief: JournalBrief? = null) {
         store.appendEvent(run, obs.tick, obs.clock?.day, obs.clock?.time, EventKind.Action, Describe.intent(intent))
         startJournal(obs, intent, brief)
+        brief?.let { studio?.acted(obs, intent, it.persona, it.situation) }
         val s = summarizer ?: return
         if (s.pending() < s.batchSize) return
         if (scope == null) s.catchUp() else if (job?.isActive != true) job = scope.launch { s.catchUp() }
@@ -171,6 +178,7 @@ class AgentMemory(
     suspend fun flush() {
         job?.join()
         committing?.join()
+        studio?.flush()
         summarizer?.flush()
     }
 

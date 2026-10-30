@@ -1,5 +1,6 @@
 package dev.lilguy.agent
 
+import dev.lilguy.agent.art.Drawing
 import dev.lilguy.agent.memory.JournalSession
 import dev.lilguy.agent.memory.JournalStep
 import dev.lilguy.agent.memory.Want
@@ -106,6 +107,36 @@ data class JournalLogEntry(
     }
 }
 
+/** A piece he drew, logged like a journal session, marked `"kind": "art"`; the picture itself is a PNG beside the log. */
+@Serializable
+data class ArtLogEntry(
+    val kind: String = KIND,
+    val run: String,
+    val artist: String,
+    val tick: Long,
+    val day: Int?,
+    val time: String?,
+    val item: String,
+    val piece: Int?,
+    val commission: String?,
+    val title: String?,
+    val tags: List<String>,
+    val ops: Int,
+    val dropped: Int,
+    /** The picture as letters, one row a line (a is palette color 0). */
+    val letters: List<String>,
+    val palette: List<String>,
+    val raw: String?,
+    @SerialName("latency_ms") val latencyMs: Long,
+    @SerialName("prompt_tokens") val promptTokens: Int,
+    @SerialName("completion_tokens") val completionTokens: Int,
+    val error: String? = null,
+) {
+    companion object {
+        const val KIND = "art"
+    }
+}
+
 @Serializable
 data class LoggedJournalCall(
     val raw: String,
@@ -132,6 +163,20 @@ class DecisionLog(val file: File, private val run: String, private val model: St
 
     /** Journal sessions go in the same file, marked `"kind": "journal"`. */
     fun write(session: JournalSession) = append(json.encodeToString(JournalLogEntry.serializer(), journalEntryOf(run, session)))
+
+    /** Drawings go in the same file, marked `"kind": "art"`. */
+    fun write(d: Drawing) = append(
+        json.encodeToString(
+            ArtLogEntry.serializer(),
+            ArtLogEntry(
+                run = run, artist = d.artist, tick = d.tick, day = d.day, time = d.time, item = d.item, piece = d.piece,
+                commission = d.commission, title = d.title, tags = d.tags, ops = d.ops, dropped = d.dropped,
+                letters = d.artwork?.letters().orEmpty(), palette = d.artwork?.palette?.map { "#%06x".format(it) }.orEmpty(),
+                raw = d.raw, latencyMs = d.latency.inWholeMilliseconds, promptTokens = d.usage.promptTokens,
+                completionTokens = d.usage.completionTokens, error = d.error,
+            ),
+        ),
+    )
 
     private fun append(line: String) {
         synchronized(out) {
@@ -195,15 +240,16 @@ class DecisionLog(val file: File, private val run: String, private val model: St
             error = s.error,
         )
 
-        /** The decisions in a log, leaving out journal lines. */
-        fun read(file: File): List<DecisionLogEntry> = lines(file).filterNot(::isJournal).map { json.decodeFromString(DecisionLogEntry.serializer(), it) }
+        /** The decisions in a log, leaving out journal and art lines. */
+        fun read(file: File): List<DecisionLogEntry> = lines(file).filter { kindOf(it) == null }.map { json.decodeFromString(DecisionLogEntry.serializer(), it) }
 
         /** The journal sessions in a log. */
-        fun readJournal(file: File): List<JournalLogEntry> = lines(file).filter(::isJournal).map { json.decodeFromString(JournalLogEntry.serializer(), it) }
+        fun readJournal(file: File): List<JournalLogEntry> = lines(file).filter { kindOf(it) == JournalLogEntry.KIND }.map { json.decodeFromString(JournalLogEntry.serializer(), it) }
 
         private fun lines(file: File) = file.readLines().filter { it.isNotBlank() }
 
-        private fun isJournal(line: String) = json.parseToJsonElement(line).jsonObject["kind"] == JsonPrimitive(JournalLogEntry.KIND)
+        /** Null for a decision line, otherwise "journal" or "art". */
+        private fun kindOf(line: String) = (json.parseToJsonElement(line).jsonObject["kind"] as? JsonPrimitive)?.content
     }
 }
 

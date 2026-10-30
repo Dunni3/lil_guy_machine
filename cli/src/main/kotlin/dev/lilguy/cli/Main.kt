@@ -15,6 +15,9 @@ import dev.lilguy.agent.TokenReport
 import dev.lilguy.agent.TokenTotals
 import dev.lilguy.agent.memory.AgentMemory
 import dev.lilguy.agent.memory.InMemoryStore
+import dev.lilguy.agent.art.ArtStudio
+import dev.lilguy.agent.art.ArtWriter
+import dev.lilguy.agent.art.Drawing
 import dev.lilguy.agent.memory.JournalSession
 import dev.lilguy.agent.memory.JournalWriter
 import dev.lilguy.agent.memory.Thinker
@@ -65,7 +68,8 @@ private const val USAGE = """lil guy machine cli: lockstep runs of the key-and-d
   --journal-endpoint N bedroom: endpoint that writes his journal when he journals (must write text);
                       entries join every later prompt, and the run ends with them and his wants.
                       Kept in --memory FILE if given, otherwise in memory for the run. It also
-                      writes his thoughts when he thinks. Defaults to --memory-endpoint; "none" for off
+                      writes his thoughts when he thinks, and draws his art (a PNG per piece in art-NN/
+                      beside the log). Defaults to --memory-endpoint; "none" for off
   --grant IDS         bedroom: unlock gated content, comma-separated ids (e.g. paint,easel,canvas,painting)
   --quiet             one line per run instead of every decision and event
 
@@ -74,7 +78,7 @@ lived its days without hitting the decision cap. Bedroom runs also write hours-N
 and needs each game hour), money-NN.jsonl (every transaction) and needs-NN.jsonl (every need
 change) next to the decision log, tokens-NN.jsonl (every model call: sim tick, game day, purpose, tokens, cost when the endpoint has
 price_in/price_out) and journal-NN.txt when there is a journal. Journal sessions
-are logged in the decision log too, as lines with "kind": "journal"."""
+and drawings are logged in the decision log too, as lines with "kind": "journal" and "art"."""
 
 private class Args(argv: Array<String>) {
     private val values = mutableMapOf<String, String>()
@@ -226,8 +230,15 @@ fun main(argv: Array<String>) {
         val sessions = mutableListOf<JournalSession>()
         val memory = store?.let { st ->
             val run = "$stamp-$n"
+            val studio = journalModel?.takeIf { scenario == Scenario.Bedroom }?.let {
+                ArtStudio(ArtWriter(ledger.meter(it, TokenPurpose.Art, priceOf(journalEndpoint!!))), st, run, dir = logDir?.let { d -> File(d, "art-%02d".format(n)) }) { d ->
+                    log?.write(d)
+                    if (!quiet) printDrawing(d)
+                }
+            }
             AgentMemory(
                 st, run,
+                studio = studio,
                 summarizer = summaryModel?.let { Summarizer(ledger.meter(it, TokenPurpose.Summary, priceOf(summaryEndpoint!!)), st, run, onFailure = { e -> System.err.println("summary failed: ${e.message}") }) },
                 journal = journalModel?.let { JournalWriter(ledger.meter(it, TokenPurpose.Journal, priceOf(journalEndpoint!!)), st, run) },
                 thinker = journalModel?.let { Thinker(ledger.meter(it, TokenPurpose.Think, priceOf(journalEndpoint!!))) },
@@ -404,6 +415,13 @@ private fun printBedroom(life: BedroomResult) {
     life.journal?.let { j ->
         println("  journal: ${j.entries} entries, ${j.failed} failed, ${j.wants} wants, ${j.promptTokens}+${j.completionTokens} tokens")
     }
+}
+
+private fun printDrawing(d: Drawing) {
+    val stamp = if (d.day != null) "d%2d %s".format(d.day, d.time) else "t=%4d".format(d.tick)
+    val what = if (d.artwork == null) "FAILED: ${d.error}" else "${d.item} ${d.piece ?: "?"} \"${d.title}\" (${d.tags.joinToString()}; ${d.ops} ops${if (d.dropped > 0) ", ${d.dropped} dropped" else ""})"
+    println("%s  drew %s".format(stamp, what))
+    d.artwork?.letters()?.forEach { println("        $it") }
 }
 
 private fun printJournal(s: JournalSession) {

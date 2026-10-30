@@ -49,3 +49,4 @@ these hold the outcome. Skim this index before related changes.
 - 2026-10-29 [Think intent; journal on by default; memories every 20 events](2026-10-29-think-intent-journal-on-by-default-memories-every-20-events.md)
 - 2026-10-29 [The 3D room is libGDX g3d, built in code, as the app's first page](2026-10-29-the-3d-room-is-libgdx-g3d-built-in-code-as-the-first-page.md)
 - 2026-10-29 [Run speed is game minutes per second, and a slow decision holds the clock](2026-10-29-run-speed-is-game-minutes-per-second-and-a-slow-decision-hold.md)
+- 2026-10-29 [Art is drawn as validated ops, and reaches the sim through annotate](2026-10-29-art-is-drawn-as-validated-ops-and-reaches-the-sim-through-annotate.md)

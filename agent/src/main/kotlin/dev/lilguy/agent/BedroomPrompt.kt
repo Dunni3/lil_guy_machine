@@ -33,7 +33,7 @@ object BedroomPrompt {
     fun examples(content: BedroomContent, ticksPerMinute: Int, thinking: Boolean = false): List<Pair<Intent, String>> = buildList {
         val activity = content.activities.firstOrNull { it.work } ?: content.activities.first()
         add(Intent.Do(activity.id) to "do an activity from `activities` that isn't locked; the game walks you there")
-        content.items.firstOrNull { it.price != null }?.let { add(Intent.Buy(it.id) to "buy something from `shop` that you can afford; it arrives at the door") }
+        content.items.firstOrNull { it.price != null }?.let { add(Intent.Buy(it.id) to "buy something from `shop` that you can afford; it arrives at the ${content.item(content.shop.at)?.name ?: content.shop.at}") }
         content.uses.firstOrNull()?.let { u ->
             val item = content.withTag(u.item!!).first().id
             add(Intent.Use(item, on = u.on) to "use an item you own on another, as listed in `uses`")
@@ -72,6 +72,19 @@ object BedroomPrompt {
         return (effects + neglect + blocks).joinToString(" ").ifEmpty { null }
     }
 
+    /** The art line of the prompt: commissions and hanging, or null when the content has neither. */
+    private fun artHint(content: BedroomContent): String? {
+        val parts = buildList {
+            content.commissions?.let { c ->
+                add("A request for a piece comes in every day at ${c.arrive} (`commission`) and stays open until the next. The first piece you finish while it's open that is what it asks for earns $${c.reward} more when you sell it; it's yours to take or leave.")
+            }
+            content.activities.firstOrNull { it.hangs != null }?.let { h ->
+                add("${h.id} puts your newest piece on your wall instead of selling it: each one hung adds ${content.gallery.comfortEach} comfort, up to ${content.gallery.max}.")
+            }
+        }
+        return if (parts.isEmpty()) null else "- Art: everything you make is a picture you draw yourself, with a title. " + parts.joinToString(" ")
+    }
+
     /** The think line of the prompt. */
     private fun thinkHint(content: BedroomContent): String {
         val t = content.think
@@ -97,6 +110,7 @@ object BedroomPrompt {
         val work = content.activities.filter { it.work }.joinToString(", ") { it.id }
         val floor = r.workFloor.joinToString(" or ") { "${it.need} is below ${it.below?.toInt()}" }
         val sellAt = content.activities.firstOrNull { it.sells != null }
+        val hatch = content.item(content.shop.at)?.name ?: content.shop.at
         val decor = content.items.any { it.comfort > 0 }
         val forSale = content.items.filter { it.price != null }
         val wants = if (forSale.any { it.kind != "food" }) "for food and for anything you want to own" else "for food"
@@ -114,7 +128,8 @@ object BedroomPrompt {
         val life = listOfNotNull(
             "- Time: the clock shows the day and the time. Activities take game minutes or hours, and you choose again when one finishes.",
             "- Needs, each from 0 to 100. Energy falls ${-r.awakeEnergyPerHour.toInt()} an hour while you're awake and comes back while you sleep. Fullness falls ${-r.fullnessPerHour.toInt()} an hour; eating brings it back. $mood Below ${r.low.toInt()} energy or fullness, mood falls ${-r.lowMoodPerHour.toInt()} an hour instead.$sinking When $floor you can't work ($work).",
-            "- Money: ${makers.joinToString(" and ")} make${if (makers.size > 1) "" else "s"} art, and ${sellAt?.id ?: "selling"} sells everything you hold at the door: $art. The shop delivers to the door, and you pay when it arrives.",
+            "- Money: ${makers.joinToString(" and ")} make${if (makers.size > 1) "" else "s"} art, and ${sellAt?.id ?: "selling"} sells everything you hold through the $hatch: $art. The shop delivers through the $hatch, and you pay when it arrives.",
+            artHint(content),
             journalHint(content),
             if (thinking) thinkHint(content) else null,
             "- $lists",
@@ -136,6 +151,7 @@ object BedroomPrompt {
             |The observation is JSON:
             |- clock: day and time. money: dollars. needs: energy, fullness and mood, 0 to 100.
             |- holding: art you're carrying, to sell. owns: everything else you own, id to count.$music
+            |- art: the pieces you have made and still have, held to sell or hung on your wall, with their titles. commission: today's request for a piece, if one is open.
             |- $options: your options, as above.
             |- self and nearby: where you are and the furniture around you, with tile x and y. localMap: the room, one string per row, north at the top.
             |- lastIntent and lastResult: your previous action and how it ended (succeeded, failed with a reason, or interrupted).
@@ -221,6 +237,14 @@ object BedroomPrompt {
             putJsonArray("holding") { obs.holding.orEmpty().forEach { add(it) } }
             putJsonObject("owns") { obs.owns.orEmpty().forEach { (id, n) -> put(id, n) } }
             obs.music?.let { put("music", it) }
+            obs.commission?.let { c -> put("commission", "${c.request ?: "wants ${c.wants}"} ($${c.reward} more for the first piece that matches, until ${c.until})") }
+            obs.art?.takeIf { it.isNotEmpty() }?.let { art ->
+                putJsonArray("art") {
+                    art.forEach { p ->
+                        add("${p.item} ${p.id}" + (p.title?.let { " \"$it\"" } ?: "") + if (p.hung) ", on the wall" else ", held (sells for $${p.sellsFor})" + (p.commission?.let { "; $it" } ?: ""))
+                    }
+                }
+            }
             putJsonArray("activities") {
                 obs.activities.orEmpty().filter { journaling || it.id != JOURNAL_ACTIVITY }.forEach { a ->
                     add(buildJsonObject {

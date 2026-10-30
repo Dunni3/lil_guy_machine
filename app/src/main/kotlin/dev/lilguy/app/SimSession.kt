@@ -5,6 +5,8 @@ import dev.lilguy.agent.DecisionLog
 import dev.lilguy.agent.Scenario
 import dev.lilguy.agent.TokenLedger
 import dev.lilguy.agent.TokenPurpose
+import dev.lilguy.agent.art.ArtStudio
+import dev.lilguy.agent.art.ArtWriter
 import dev.lilguy.agent.memory.AgentMemory
 import dev.lilguy.agent.memory.InMemoryStore
 import dev.lilguy.agent.memory.JournalSession
@@ -238,8 +240,11 @@ class SimSession(
             runCatching { runLog?.write(s) }
             if (run == thisRun && s.status == JournalSession.Status.Failed) journalError = s.error
         }
-        // The journal's model also writes his thoughts when he stops to think.
-        memory = AgentMemory(store, runId, summarizer, scope = rs, journal = jw?.let { JournalWriter(ledger.meter(it, TokenPurpose.Journal, setup.prices.journal), store, runId) }, onJournal = onJournal, thinker = jw?.let { Thinker(ledger.meter(it, TokenPurpose.Think, setup.prices.journal)) })
+        // The journal's model also writes his thoughts when he stops to think, and draws his art.
+        val studio = jw?.takeIf { setup.scenario == Scenario.Bedroom }?.let {
+            ArtStudio(ArtWriter(ledger.meter(it, TokenPurpose.Art, setup.prices.journal)), store, runId, rs, setup.logDir?.let { d -> File(d, "art-%03d".format(thisRun)) }) { drawing -> runCatching { runLog?.write(drawing) } }
+        }
+        memory = AgentMemory(store, runId, summarizer, scope = rs, journal = jw?.let { JournalWriter(ledger.meter(it, TokenPurpose.Journal, setup.prices.journal), store, runId) }, onJournal = onJournal, thinker = jw?.let { Thinker(ledger.meter(it, TokenPurpose.Think, setup.prices.journal)) }, studio = studio)
         val (gw, r) = setup.scenario.create(m, setup.timeout, settings.ticksPerMinute, longTerm = memory) {
             runCatching { runLog?.write(it) }
             runInbox.add(it)

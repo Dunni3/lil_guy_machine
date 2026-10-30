@@ -43,7 +43,7 @@ class BedroomWorldTest {
         assertEquals(NeedLevels(80, 70, 60), obs.needs)
         assertEquals(mapOf("bed" to 1, "desk" to 1, "chair" to 1, "sketchbook" to 1, "journal" to 1, "meal" to 2), obs.owns)
         assertEquals(emptyList(), obs.holding)
-        assertEquals(setOf("door", "bed", "desk", "chair"), obs.nearby.map { it.id }.toSet())
+        assertEquals(setOf("mail_hatch", "picture_rail", "bed", "desk", "chair"), obs.nearby.map { it.id }.toSet())
         assertTrue(obs.localMap.any { 'b' in it } && obs.localMap.none { 'e' in it }, "the easel slot is empty until bought")
     }
 
@@ -51,7 +51,7 @@ class BedroomWorldTest {
     fun `tier 0 is the small world, and gated content comes in only when granted`() {
         val w = world(granted = emptySet())
         val obs = w.obs()
-        assertEquals(listOf("eat", "sketch", "sell_art", "journal", "sleep"), obs.activities!!.map { it.id })
+        assertEquals(listOf("eat", "sketch", "sell_art", "hang_art", "journal", "sleep"), obs.activities!!.map { it.id })
         assertEquals(listOf("meal"), obs.shop!!.map { it.id })
         assertEquals("you have no art to sell; sketch makes some", w.activity("sell_art").locked)
         assertTrue("no activity called 'paint'" in failure(w.run(Intent.Do("paint"))))
@@ -61,7 +61,7 @@ class BedroomWorldTest {
 
         // A grant has to bring what it needs with it, and only gated ids can be granted.
         val painting = setOf("paint", "easel", "canvas", "painting")
-        assertEquals(listOf("eat", "sketch", "paint", "sell_art", "journal", "sleep"), world(money = 500, granted = painting).obs().activities!!.map { it.id })
+        assertEquals(listOf("eat", "sketch", "paint", "sell_art", "hang_art", "journal", "sleep"), world(money = 500, granted = painting).obs().activities!!.map { it.id })
         assertTrue("canvas" in assertFailsWith<IllegalArgumentException> { content.unlocked(setOf("paint", "easel")) }.message!!)
         assertTrue("meal" in assertFailsWith<IllegalArgumentException> { content.unlocked(setOf("meal")) }.message!!)
     }

@@ -46,11 +46,14 @@ fun bedroomScenario(
     content: BedroomContent = BedroomContent.default(),
     longTerm: AgentMemory? = null,
     granted: Set<String> = emptySet(),
+    /** Picks the commissions. */
+    seed: Long = 0,
     onDecision: (AgentRuntime.DecisionRecord) -> Unit = {},
 ): Pair<BedroomWorld, AgentRuntime> {
     // Without a journal writer, journaling writes nothing, so going without it doesn't sink his mood.
     val rules = if (longTerm?.journaling == true) content else content.copy(needs = content.needs.copy(neglect = emptyList()))
-    val world = BedroomWorld.create(rules, ticksPerMinute, granted = granted)
+    val world = BedroomWorld.create(rules, ticksPerMinute, granted = granted, seed = seed)
+    longTerm?.studio?.connect(world)
     val journaling = longTerm?.journaling == true
     val thinking = longTerm?.thinking == true
     // What he's told about: without a journal writer the journal would cost an hour and write nothing, so the prompt doesn't

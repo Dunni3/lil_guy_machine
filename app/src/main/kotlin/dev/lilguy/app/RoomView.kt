@@ -14,15 +14,18 @@ import com.badlogic.gdx.graphics.g3d.Model
 import com.badlogic.gdx.graphics.g3d.ModelBatch
 import com.badlogic.gdx.graphics.g3d.ModelInstance
 import com.badlogic.gdx.graphics.g3d.attributes.ColorAttribute
+import com.badlogic.gdx.graphics.g3d.attributes.TextureAttribute
 import com.badlogic.gdx.graphics.g3d.environment.DirectionalLight
 import com.badlogic.gdx.graphics.g3d.utils.ModelBuilder
 import com.badlogic.gdx.graphics.VertexAttributes.Usage
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.math.MathUtils
+import com.badlogic.gdx.math.Matrix4
 import com.badlogic.gdx.math.Vector3
 import com.badlogic.gdx.utils.Align
 import com.badlogic.gdx.utils.Disposable
 import com.badlogic.gdx.utils.viewport.FitViewport
+import dev.lilguy.agent.art.Drawing
 import dev.lilguy.sim.EntitySnapshot
 import dev.lilguy.sim.Intent
 import dev.lilguy.sim.IntentStatus
@@ -37,14 +40,16 @@ import kotlin.math.tan
  * The room in 3D, the spike of `research_notes/2026-10-29_2053_3d-room-and-character-plan.md`: a
  * fixed-camera cutaway of the room (no front wall, no ceiling), code-built furniture placed where
  * the snapshot says ([RoomModels]), the guy as an animated [Blob], light and the window's sky
- * following the game clock, and a small HUD with a bubble over his head.
+ * following the game clock, and a small HUD with a bubble over his head. His art shows too: hung
+ * pieces in frames on the picture rail, and his newest unsold piece on the desk (a sketch) or the
+ * easel (a painting), each a small texture from [ArtTextures].
  *
  * Shown as the dev view's first page ([DevView.Page.Room]); the other pages are the 2D dev view.
  * Fill rate stays low for the Streamer: one clear, opaque near-flat-lit geometry, one directional
  * light plus ambient, no shadow maps or post-processing; the only blended things are the blob
  * shadow and the HUD's small rectangles.
  */
-class RoomView : Disposable {
+class RoomView(private val art: ArtTextures) : Disposable {
     private val viewport = FitViewport(DevView.WIDTH, DevView.HEIGHT)
     private val camera = PerspectiveCamera(FOV, DevView.WIDTH, DevView.HEIGHT).apply {
         near = 1f
@@ -69,6 +74,12 @@ class RoomView : Disposable {
     private var clockX = 0f
     private val instances = HashMap<String, ModelInstance>()
     private var room: ModelInstance? = null
+
+    /** Frames on the rail, one per wall place, and a textured quad per piece shown (by "piece/flat"), for [quadsRun]. */
+    private val frames = List(RoomModels.FRAME_XS.size) { ModelInstance(models.frame()) }
+    private val quads = HashMap<String, Pair<Model, ModelInstance>>()
+    private var quadsRun = -1
+    private val railAt = Matrix4()
     private var framed: TileMap? = null
 
     private val shapes = ShapeRenderer()
@@ -141,6 +152,7 @@ class RoomView : Disposable {
             if (e.kind == "door" && e.state == "open") continue
             modelBatch.render(placed(e, now.map), env)
         }
+        renderArt(session, now)
         blob.render(modelBatch, env, asleep)
         modelBatch.end()
         Gdx.gl.glDisable(GL20.GL_DEPTH_TEST)
@@ -189,6 +201,57 @@ class RoomView : Disposable {
             instance.transform.setToTranslation(e.x, 0f, e.y)
         }
         return instance
+    }
+
+    /**
+     * Hung pieces in frames along the picture rail, oldest at the left; then the newest unsold
+     * piece of each drawn item on its stand ([STANDS]). Pieces not drawn yet show as an empty frame or nothing.
+     */
+    private fun renderArt(session: SimSession, now: WorldSnapshot) {
+        val pieces = now.life?.art?.takeIf { it.isNotEmpty() } ?: return
+        art.sync(session)
+        if (quadsRun != art.run) {
+            quads.values.forEach { it.first.dispose() }
+            quads.clear()
+            quadsRun = art.run
+        }
+        val drawings = art.drawings(session)
+        val rail = instances["picture_rail"]
+        if (rail != null && now.entities.any { it.id.value == "picture_rail" }) {
+            pieces.filter { it.hung }.take(frames.size).forEachIndexed { i, p ->
+                railAt.set(rail.transform).translate(RoomModels.FRAME_XS[i], RoomModels.FRAME_BOTTOM, 0f)
+                frames[i].transform.set(railAt)
+                modelBatch.render(frames[i], env)
+                quad(drawings[p.id], RoomModels.FRAME_ART, flat = false)?.let { q ->
+                    q.transform.set(railAt).translate(0f, RoomModels.FRAME / 2, RoomModels.FRAME_ART_Z)
+                    modelBatch.render(q, env)
+                }
+            }
+        }
+        for ((item, stand) in STANDS) {
+            val p = pieces.lastOrNull { !it.hung && it.item == item } ?: continue
+            val e = now.entities.firstOrNull { it.id.value == stand.id } ?: continue
+            val q = quad(drawings[p.id], stand.size, stand.flat) ?: continue
+            q.transform.setToTranslation(e.x + stand.x, stand.y, e.y + stand.z)
+            modelBatch.render(q, env)
+        }
+    }
+
+    /** A square of the piece's picture, [size] wide, facing +Z, or lying face up when [flat]; null until it's drawn. */
+    private fun quad(drawing: Drawing?, size: Float, flat: Boolean): ModelInstance? {
+        val d = drawing ?: return null
+        val texture = art.of(d) ?: return null
+        return quads.getOrPut("${d.piece}/$flat") {
+            val material = Material(TextureAttribute.createDiffuse(texture))
+            val attributes = (Usage.Position or Usage.Normal or Usage.TextureCoordinates).toLong()
+            val h = size / 2
+            val model = if (flat) {
+                ModelBuilder().createRect(-h, 0f, h, h, 0f, h, h, 0f, -h, -h, 0f, -h, 0f, 1f, 0f, material, attributes)
+            } else {
+                ModelBuilder().createRect(-h, -h, 0f, h, -h, 0f, h, h, 0f, -h, h, 0f, 0f, 0f, 1f, material, attributes)
+            }
+            model to ModelInstance(model)
+        }.second
     }
 
     /** Ambient, sun, sky, background and the wall clock for the time of day; the bedroom's clock, or noon without one. */
@@ -329,6 +392,7 @@ class RoomView : Disposable {
     }
 
     override fun dispose() {
+        quads.values.forEach { it.first.dispose() }
         models.dispose()
         blob.dispose()
         glassModel.dispose()
@@ -386,6 +450,14 @@ class RoomView : Disposable {
         const val PITCH = 40f
         /** Room beyond the side walls, in tiles, so the walls don't touch the screen edge. */
         const val SIDE_MARGIN = 0.9f
+        /** Where an item's newest unsold piece shows: on which stand, offset from its tile centre, how big, and lying flat or upright. */
+        class Stand(val id: String, val x: Float, val y: Float, val z: Float, val size: Float, val flat: Boolean)
+
+        val STANDS = mapOf(
+            "sketch" to Stand("desk", -0.12f, 0.567f, 0.04f, 0.2f, flat = true),
+            "painting" to Stand("easel", 0f, 0.75f, 0.16f, 0.44f, flat = false),
+        )
+
         /** What he stands, sits or lies on, by item id, and how high its top is. */
         val SURFACES = mapOf("bed" to 0.3f, "chair" to 0.38f)
         val SUN_DIRECTION = Vector3(0.45f, -1f, -0.55f)

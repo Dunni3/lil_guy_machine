@@ -123,7 +123,7 @@ class BedroomRunTest {
         val (world, _) = bedroomScenario(BedroomPolicy())
         val system = BedroomPrompt.system(world.content, world.clock.ticksPerMinute)
         assertTrue(system.startsWith("You are intelligent, aspirational and creative"), system.take(80))
-        assertTrue("the only things you can do are eat, sketch, sell your art, write in your journal and sleep." in system)
+        assertTrue("the only things you can do are eat, sketch, sell your art, hang your art on the wall, write in your journal and sleep." in system)
         assertTrue(Persona.CREATOR in system)
         assertTrue("You live in this bedroom. You need money for food, as a means, not the goal." in system)
         assertTrue("a sketch sells for $3" in system)

@@ -13,24 +13,25 @@ room:
   # One string per row. '#' wall, '.' floor, '@' where he starts; other letters are slots
   # (below). A slot is empty until he owns the item that goes there.
   rows:
-    - "#####o######"
+    - "#####oF#####"
     - "#b.......s.#"
     - "#.........p#"
     - "#....r.....#"
-    - "#..........D"
+    - "#..........H"
     - "#e.........#"
     - "#.@....cd..#"
     - "############"
-  slots: { b: bed, d: desk, c: chair, e: easel, s: shelf, p: plant, o: poster, r: rug, D: door }
+  # H was a door (D), which kept suggesting he could leave; it's a mail hatch in the wall now.
+  slots: { b: bed, d: desk, c: chair, e: easel, s: shelf, p: plant, o: poster, r: rug, H: hatch, F: rail }
   # Slots in the wall rather than on the floor.
-  wall_slots: [poster, door]
+  wall_slots: [poster, hatch, rail]
 
 start:
   # Was 40: one day of slack at most.
   money: 20
   time: "08:00"
   needs: { energy: 80, fullness: 70, mood: 60 }
-  items: { door: 1, bed: 1, desk: 1, chair: 1, sketchbook: 1, journal: 1, meal: 2 }
+  items: { mail_hatch: 1, picture_rail: 1, bed: 1, desk: 1, chair: 1, sketchbook: 1, journal: 1, meal: 2 }
 
 needs:
   awake_energy_per_hour: -4
@@ -52,8 +53,8 @@ needs:
     - { activity: journal, after_hours: 24, mood_per_hour: -5, reason: "a day without writing in your journal" }
 
 shop:
-  # Orders are placed and delivered at the door.
-  at: door
+  # Orders are placed and delivered at the mail hatch.
+  at: mail_hatch
   minutes: 10
 
 think:
@@ -65,12 +66,30 @@ think:
   # asked); remove it to leave thinking to the model. His latest thought is in every prompt.
   every: 4
 
+# Art is drawn: when an activity that makes art finishes, a text model draws the piece (agent/.../art/).
+# A request for a piece comes through the hatch each day at `arrive`, replacing the day before's:
+# an adjective and a noun from these lists. A piece he finishes while it's open is drawn for it, and
+# the first one sold whose drawing matches (its title or tags name both words) earns `reward` on top
+# of its price (research_notes/2026-10-29_2148_art-making-plan.md).
+commissions:
+  arrive: "09:00"
+  reward: 12
+  adjectives: [sleepy, stormy, tiny, golden, lonely, cheerful, ancient, frozen, glowing, secret, upside-down, rainy, busy, quiet, wild, striped]
+  nouns: [lighthouse, cat, mountain, teapot, garden, whale, rocket, fox, castle, bicycle, moon, sailboat, owl, cactus, bridge, forest]
+
+# Hung art: hang_art puts his newest unsold piece on the picture rail, where it raises the room's
+# comfort (and so the mood he settles to) instead of being sold. At most `max` at once.
+gallery:
+  max: 3
+  comfort_each: 3
+
 # kind is for display and grouping: fixture, furniture, decor, tool, food, supply, record, book, art.
 # A `slot` item is placed in that slot when owned; `blocks` means he stands beside it, not on it.
 # `stackable` items are counted; the rest are one of a kind. `tags` let an activity ask for "a
 # record" instead of a particular one; an item's id is always one of its tags.
 items:
-  - { id: door, name: door, kind: fixture, slot: door, blocks: true }
+  - { id: mail_hatch, name: mail hatch, kind: fixture, slot: hatch, blocks: true }
+  - { id: picture_rail, name: picture rail, kind: fixture, slot: rail, blocks: true }
   - { id: bed, name: bed, kind: furniture, slot: bed }
   - { id: desk, name: desk, kind: furniture, slot: desk, blocks: true }
   - { id: chair, name: chair, kind: furniture, slot: chair }
@@ -91,9 +110,11 @@ items:
   - { id: plant, name: plant, kind: decor, slot: plant, blocks: true, price: 25, comfort: 4, tier: 1 }
   - { id: poster, name: poster, kind: decor, slot: poster, blocks: true, price: 15, comfort: 3, tier: 1 }
   - { id: rug, name: rug, kind: decor, slot: rug, price: 60, comfort: 6, tier: 1 }
-  # Art is carried until sold. Sketches were $12: now food takes most of his working hours.
-  - { id: sketch, name: sketch, kind: art, tags: [art], carried: true, stackable: true, sell_price: 3 }
-  - { id: painting, name: painting, kind: art, tags: [art], carried: true, stackable: true, sell_price: 70, tier: 1 }
+  # Art is carried until sold or hung. Sketches were $12: now food takes most of his working hours.
+  # `canvas` is what the drawing model gets: a square grid `size` wide, up to `colors` colors and
+  # `ops` drawing operations. Painting's bigger canvas is what the easel buys him.
+  - { id: sketch, name: sketch, kind: art, tags: [art], carried: true, stackable: true, sell_price: 3, canvas: { size: 16, colors: 4, ops: 40 } }
+  - { id: painting, name: painting, kind: art, tags: [art], carried: true, stackable: true, sell_price: 70, tier: 1, canvas: { size: 32, colors: 16, ops: 120 } }
 
 # do(activity). `at`: where it happens (an owned slot item; the nearest is used). `requires`:
 # tags he must own. `consumes`: tags used up when it finishes. `effects`: need changes when it
@@ -128,10 +149,15 @@ activities:
     block: [{ need: mood, below: 25, reason: "too low to make art" }]
   - id: sell_art
     phrase: sell your art
-    at: [door]
-    # Was 60: a sale is a hand-off at the door, not an hour of his day (Ian).
+    at: [mail_hatch]
+    # Was 60: a sale is a hand-off at the hatch, not an hour of his day (Ian).
     minutes: 1
     sells: art
+  - id: hang_art
+    phrase: hang your art on the wall
+    at: [picture_rail]
+    minutes: 15
+    hangs: art
   # The agent layer writes an entry when one succeeds (agent/.../memory/JournalWriter.kt). It is
   # work, so it needs him fed and rested, and costs more energy than sketching: writing about the
   # life he wants is budgeted against staying alive.

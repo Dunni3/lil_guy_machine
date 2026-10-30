@@ -23,6 +23,8 @@ enum class TokenPurpose {
     @SerialName("journal") Journal,
     /** A level-1 memory summary. */
     @SerialName("summary") Summary,
+    /** A drawing, or the day's commission. */
+    @SerialName("art") Art,
 }
 
 /** Dollars per million tokens, from an endpoint's `price_in` and `price_out`. */
