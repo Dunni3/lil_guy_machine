@@ -9,6 +9,7 @@ import com.badlogic.gdx.InputAdapter
  *
  * - OK (Enter, Space, play/pause): start a ready run, pause, resume.
  * - LEFT/RIGHT: flip pages. UP/DOWN: scroll, or step through decisions (History) and entries (Journal).
+ * - Run page: DOWN into the settings, LEFT/RIGHT change one, OK twice on Restart or Replay.
  * - BACK twice: throw the run away for a fresh one, which waits for OK. Any other key between
  *   the two presses cancels. R on a keyboard restarts at once. Back is caught by the launcher so
  *   it never leaves the app; Home leaves.
@@ -17,17 +18,19 @@ class RemoteInput(private val session: () -> SimSession, private val view: DevVi
     override fun keyDown(keycode: Int): Boolean {
         val s = session()
         val confirming = view.confirmRestart
+        val confirmingAction = view.confirmAction
         view.confirmRestart = false
+        view.confirmAction = false
         when (keycode) {
             Keys.BACK, Keys.ESCAPE, Keys.BACKSPACE, Keys.BUTTON_B -> if (confirming) restart(s) else view.confirmRestart = true
             Keys.R -> restart(s)
-            Keys.CENTER, Keys.ENTER, Keys.NUMPAD_ENTER, Keys.SPACE, Keys.BUTTON_A, Keys.MEDIA_PLAY_PAUSE -> if (!confirming) s.toggle()
-            Keys.LEFT -> view.flip(-1)
-            Keys.RIGHT -> view.flip(1)
+            Keys.CENTER, Keys.ENTER, Keys.NUMPAD_ENTER, Keys.SPACE, Keys.BUTTON_A, Keys.MEDIA_PLAY_PAUSE -> if (!confirming && !view.activate(s, confirmingAction)) s.toggle()
+            Keys.LEFT -> if (!view.adjust(-1, s)) view.flip(-1)
+            Keys.RIGHT -> if (!view.adjust(1, s)) view.flip(1)
             Keys.UP -> view.move(-1, s)
             Keys.DOWN -> view.move(1, s)
             Keys.PERIOD -> s.step(1)
-            else -> return confirming
+            else -> return confirming || confirmingAction
         }
         return true
     }

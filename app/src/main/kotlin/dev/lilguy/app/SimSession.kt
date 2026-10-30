@@ -2,6 +2,7 @@ package dev.lilguy.app
 
 import dev.lilguy.agent.AgentRuntime
 import dev.lilguy.agent.DecisionLog
+import dev.lilguy.agent.Scenario
 import dev.lilguy.agent.TokenLedger
 import dev.lilguy.agent.TokenPurpose
 import dev.lilguy.agent.memory.AgentMemory
@@ -12,8 +13,8 @@ import dev.lilguy.agent.memory.Thinker
 import dev.lilguy.agent.memory.Summarizer
 import dev.lilguy.decision.DecisionModel
 import dev.lilguy.sim.BedroomWorld
+import dev.lilguy.sim.GameClock
 import dev.lilguy.sim.GridWorld
-import dev.lilguy.sim.World
 import dev.lilguy.sim.WorldSnapshot
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -28,10 +29,13 @@ import kotlin.time.Duration
 /**
  * One run of [ModelSetup.scenario] at a time, under the viewer's control. A new run waits in
  * [RunState.Ready] until [start]; it can be paused and resumed; it ends on its own (the
- * key-and-door room solved, or the bedroom's [ModelSetup.days] lived) and then stays ended.
- * [restart] throws the run away and sets up a blank one, which again waits for [start].
+ * key-and-door room solved, or the bedroom's [RunSettings.days] lived) and then stays ended,
+ * unless [configure] gives it more days. [restart] throws the run away and sets up a blank one
+ * with the current [settings], which again waits for [start]; [replay] does the same with the
+ * settings an earlier run started with.
  *
- * Ticks at a fixed 20 Hz from the render thread (which makes the render thread the sim thread).
+ * Ticks from the render thread (which makes the render thread the sim thread), as fast as
+ * [settings] say, holding the clock while a slow decision is out ([RunSettings.decideCap]).
  * The agent and the memory and journal writers run in a per-run child of [scope], off that thread. Every
  * decision is kept with the world as it was when it was made ([history]), so the view can flip
  * back through the whole run.
@@ -50,6 +54,28 @@ class SimSession(
 
     /** Counts runs since the app started; the first is 1. */
     var run = 0
+        private set
+
+    /** The Run page's values: days, speed and the decision cap apply to this run as they change, the resolution from the next. */
+    var settings = setup.settings
+        private set
+
+    private val starts = mutableListOf<RunSettings>()
+
+    /** The settings each run since the app started began with, oldest first; this run's is last. */
+    val runStarts: List<RunSettings> get() = starts
+
+    /** This run's clock resolution, ticks per game minute. */
+    val ticksPerMinute: Int get() = starts.last().ticksPerMinute
+
+    /** The tick this run ends on, or null if it doesn't end on its own. */
+    val endTick: Long? get() = settings.days?.takeIf { setup.scenario == Scenario.Bedroom }?.let { it * ticksPerDay }
+
+    /** The fewest days this run can be set to: the days it has lived, plus the one under way unless it has ended. */
+    val minDays: Int get() = ((current.tick / ticksPerDay).toInt() + if (state == RunState.Ended) 0 else 1).coerceAtLeast(1)
+
+    /** True while the clock waits on the model: a decision has been out longer than [RunSettings.decideCap] allows. */
+    var holding = false
         private set
 
     lateinit var world: GridWorld
@@ -95,7 +121,7 @@ class SimSession(
     val thinkingFor: Duration? get() = runtime.decidingSince?.elapsedNow()
 
     /** How far the clock is between [previous] and [current], 0..1. */
-    val alpha: Float get() = if (state == RunState.Running) accumulator / TICK else 1f
+    val alpha: Float get() = if (state == RunState.Running) (accumulator / settings.tickSeconds(ticksPerMinute)).coerceAtMost(1f) else 1f
 
     private var runScope: CoroutineScope? = null
     private var agent: Job? = null
@@ -108,6 +134,11 @@ class SimSession(
     /** Recent ticks, to find the world a decision was made in once it arrives. */
     private val recent = ArrayDeque<WorldSnapshot>()
     private var accumulator = 0f
+    /** Ticks run while the agent has been deciding. */
+    private var waitTicks = 0L
+    /** The run ended because its days were up, so more days can reopen it. */
+    private var endedOnDays = false
+    private val ticksPerDay: Long get() = GameClock.MINUTES_PER_DAY.toLong() * ticksPerMinute
 
     init {
         setUp()
@@ -133,21 +164,46 @@ class SimSession(
     /** OK on the remote: start, pause or resume. Does nothing once the run has ended. */
     fun toggle() = if (state == RunState.Running) pause() else start()
 
-    /** Throws this run away and sets up a fresh one, which waits for [start]. */
+    /** Throws this run away and sets up a fresh one with [settings], which waits for [start]. */
     fun restart() {
         tearDown()
         setUp()
+    }
+
+    /** Throws this run away for a fresh one set up as run [n] (1-based) started. */
+    fun replay(n: Int) {
+        settings = starts[n - 1]
+        restart()
+    }
+
+    /**
+     * New Run page values. Days, speed and the decision cap take hold now; days are kept to at
+     * least [minDays]. More days for a run that ended on its days reopen it, paused.
+     */
+    fun configure(next: RunSettings) {
+        settings = next.days?.let { if (it < minDays) next.copy(days = minDays) else null } ?: next
+        val end = endTick
+        if (state == RunState.Ended && endedOnDays && (end == null || current.tick < end)) {
+            state = RunState.Paused
+            endedBecause = null
+            endedOnDays = false
+            val r = runtime
+            agent = runScope?.launch { r.run() }
+        }
     }
 
     /** Advances real time by [delta] seconds: files new decisions, and runs whole ticks while running. */
     fun update(delta: Float) {
         collectDecisions()
         if (state != RunState.Running) return
+        val tickSeconds = settings.tickSeconds(ticksPerMinute)
         accumulator += min(delta, MAX_FRAME)
-        while (accumulator >= TICK && state == RunState.Running) {
+        while (accumulator >= tickSeconds && state == RunState.Running && !mustHold()) {
             tick()
-            accumulator -= TICK
+            accumulator -= tickSeconds
         }
+        holding = state == RunState.Running && mustHold()
+        if (holding) accumulator = accumulator.coerceAtMost(tickSeconds)
     }
 
     /** Runs [ticks] ticks by hand; only while paused, so the clock can't run away. */
@@ -163,6 +219,7 @@ class SimSession(
 
     private fun setUp() {
         run++
+        starts += settings
         val thisRun = run
         val ledger = TokenLedger()
         val rawModel = setup.create()
@@ -183,7 +240,7 @@ class SimSession(
         }
         // The journal's model also writes his thoughts when he stops to think.
         memory = AgentMemory(store, runId, summarizer, scope = rs, journal = jw?.let { JournalWriter(ledger.meter(it, TokenPurpose.Journal, setup.prices.journal), store, runId) }, onJournal = onJournal, thinker = jw?.let { Thinker(ledger.meter(it, TokenPurpose.Think, setup.prices.journal)) })
-        val (gw, r) = setup.scenario.create(m, setup.timeout, setup.ticksPerMinute, longTerm = memory) {
+        val (gw, r) = setup.scenario.create(m, setup.timeout, settings.ticksPerMinute, longTerm = memory) {
             runCatching { runLog?.write(it) }
             runInbox.add(it)
         }
@@ -204,7 +261,10 @@ class SimSession(
         memoryError = null
         journalError = null
         endedBecause = null
+        endedOnDays = false
+        holding = false
         accumulator = 0f
+        waitTicks = 0
     }
 
     private fun tearDown() {
@@ -226,16 +286,30 @@ class SimSession(
     }
 
     private fun tick() {
+        if (world.awaitingDecision(world.agentId)) waitTicks++ else waitTicks = 0
         world.step()
         previous = current
         current = world.snapshot()
-        recent.addLast(current)
-        if (recent.size > MAX_RECENT) recent.removeFirst()
-        val endTick = setup.endTick
+        // Decisions are made only at decision points, so only those ticks are kept to file them against.
+        if (world.awaitingDecision(world.agentId)) {
+            recent.addLast(current)
+            if (recent.size > MAX_RECENT) recent.removeFirst()
+        }
+        val endTick = endTick
         when {
             current.completed -> end("walked out after ${current.tick} ticks")
-            endTick != null && current.tick >= endTick -> end("lived ${setup.days} day${if (setup.days == 1) "" else "s"}")
+            endTick != null && current.tick >= endTick -> {
+                val days = (endTick / ticksPerDay).toInt()
+                end("lived $days day${if (days == 1) "" else "s"}")
+                endedOnDays = true
+            }
         }
+    }
+
+    /** A decision has been out for as many game minutes as [RunSettings.decideCap] allows. */
+    private fun mustHold(): Boolean {
+        val cap = settings.decideCap ?: return false
+        return waitTicks >= cap.toLong() * ticksPerMinute && world.awaitingDecision(world.agentId)
     }
 
     /** Stops the agent and writes up whatever memory is left; the run stays on screen. */
@@ -257,11 +331,10 @@ class SimSession(
     }
 
     private companion object {
-        const val TICK = 1f / World.TICKS_PER_SECOND
         /** Don't try to catch up more than this after a stall (a GC, the app in the background). */
         const val MAX_FRAME = 0.25f
-        /** A minute of ticks: longer than any decision may take. */
-        const val MAX_RECENT = 60 * World.TICKS_PER_SECOND
+        /** Ticks at decision points: more than a slow decision spans at a fast speed with the clock running. */
+        const val MAX_RECENT = 5000
         const val MAX_MOMENTS = 5000
     }
 }
