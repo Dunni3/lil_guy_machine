@@ -52,6 +52,10 @@ data class EndpointConfig(
     @SerialName("max_retries") val maxRetries: Int = 2,
     /** `required` forces a tool call; some servers only accept `auto`. */
     @SerialName("tool_choice") val toolChoice: String = "required",
+    /** Dollars per million input tokens; with [priceOut] it turns the token report into a cost. */
+    @SerialName("price_in") val priceIn: Double? = null,
+    /** Dollars per million output tokens. */
+    @SerialName("price_out") val priceOut: Double? = null,
 ) {
     val timeout: Duration get() = (timeoutSeconds * 1000).toLong().milliseconds
 

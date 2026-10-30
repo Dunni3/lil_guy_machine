@@ -2,6 +2,7 @@ package dev.lilguy.app
 
 import dev.lilguy.agent.DecisionLog
 import dev.lilguy.agent.Scenario
+import dev.lilguy.agent.TokenPrice
 import dev.lilguy.decision.DecisionModel
 import dev.lilguy.decision.Endpoints
 import dev.lilguy.decision.EndpointsFile
@@ -36,12 +37,17 @@ class ModelSetup(
     val days: Int? = DEFAULT_DAYS,
     /** A fresh model for each run that writes his journal; null and journaling writes nothing. */
     val journalModel: (() -> DecisionModel)? = null,
+    /** What each of the three models costs, for the token report; null for free or unknown. */
+    val prices: Prices = Prices(),
 ) {
+    class Prices(val decision: TokenPrice? = null, val memory: TokenPrice? = null, val journal: TokenPrice? = null)
+
     fun copy(
         memoryModel: (() -> DecisionModel)? = this.memoryModel,
         notice: String? = this.notice,
         journalModel: (() -> DecisionModel)? = this.journalModel,
-    ) = ModelSetup(create, scenario, ticksPerMinute, timeout, logDir, notice, memoryModel, days, journalModel)
+        prices: Prices = this.prices,
+    ) = ModelSetup(create, scenario, ticksPerMinute, timeout, logDir, notice, memoryModel, days, journalModel, prices)
 
     /** The tick a bedroom run ends on, or null if it doesn't end on its own. */
     val endTick: Long? get() = days?.takeIf { scenario == Scenario.Bedroom }?.let { it.toLong() * GameClock.MINUTES_PER_DAY * ticksPerMinute }
@@ -96,6 +102,8 @@ class ModelSetup(
             val writer = textWriter(config, memoryEndpoint ?: config.defaultMemoryEndpoint, env, notices, "memory", "memories won't be written")
             val journal = textWriter(config, journalEndpoint ?: config.defaultJournalEndpoint, env, notices, "journal", "the journal won't be written")
             val base = scripted(null, logDir, scenario, ticksPerMinute, days)
+            fun priceOf(name: String?) = name?.let { config.endpoints[it] }?.let(TokenPrice::of)
+            var decisionPrice: TokenPrice? = null
             val agent = try {
                 val name = endpoint ?: config.defaultEndpoint ?: "scripted"
                 if (name == "scripted") {
@@ -103,13 +111,15 @@ class ModelSetup(
                 } else {
                     val spec = config.endpoints[name] ?: throw IllegalArgumentException("no endpoint '$name' in ${configFile.path}")
                     Endpoints.create(config, name, env).let { (it as? AutoCloseable)?.close() } // fail now on a missing key
+                    decisionPrice = priceOf(name)
                     ModelSetup({ Endpoints.create(config, name, env) }, scenario, ticksPerMinute, spec.decisionTimeout, logDir, days = days)
                 }
             } catch (e: Exception) {
                 notices.add(0, "${e.message}; using the scripted policy")
                 base
             }
-            return agent.copy(memoryModel = writer, journalModel = journal, notice = notices.joinToString("; ").ifEmpty { null })
+            val prices = Prices(decisionPrice, priceOf(memoryEndpoint ?: config.defaultMemoryEndpoint), priceOf(journalEndpoint ?: config.defaultJournalEndpoint))
+            return agent.copy(memoryModel = writer, journalModel = journal, notice = notices.joinToString("; ").ifEmpty { null }, prices = prices)
         }
 
         /**
