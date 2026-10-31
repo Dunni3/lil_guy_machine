@@ -294,10 +294,12 @@ class BedroomWorldTest {
         fun withItem(id: String, change: (ItemSpec) -> ItemSpec) = content.copy(items = content.items.map { if (it.id == id) change(it) else it })
         fun withActivity(id: String, change: (ActivitySpec) -> ActivitySpec) = content.copy(activities = content.activities.map { if (it.id == id) change(it) else it })
         assertTrue("isn't in vocabulary.qualities" in broken(withItem("rug") { it.copy(qualities = mapOf("shiny" to 1.0)) }))
-        assertTrue("isn't in vocabulary.affords" in broken(withItem("novel") { it.copy(affords = listOf("edible?")) }))
-        assertEquals("activity read: a generative verb needs produces", broken(withActivity("read") { it.copy(kind = VerbKind.Generative) }))
-        assertEquals("activity read: a consumptive verb needs an affordance in requires, consumes or item", broken(withActivity("read") { it.copy(requires = listOf("novel")) }))
-        assertEquals("activity sketch: no activity can be study yet: the engine has nothing for it to do", broken(withActivity("sketch") { it.copy(kind = VerbKind.Study) }))
+        assertTrue("isn't in vocabulary.affords" in broken(withItem("novel") { it.copy(affords = mapOf("edible?" to AffordanceParams())) }))
+        assertEquals("item sketch, sellable: needs price from 1 to 10000", broken(withItem("sketch") { it.copy(affords = it.affords + ("sellable" to AffordanceParams())) }))
+        assertEquals("activity read: a generative verb needs produce", broken(withActivity("read") { it.copy(kind = VerbKind.Generative) }))
+        assertEquals("activity read: a consumptive verb needs an affordance in requires, a consume or item", broken(withActivity("read") { it.copy(requires = listOf("novel")) }))
+        // Kinds list what they allow: an op no kind lists for it is refused.
+        assertEquals("activity journal: an expressive verb can't produce", broken(withActivity("journal") { it.copy(effects = it.effects + ProduceOp(mapOf("sketch" to 1))) }))
 
         val fond = content.withPersonality(Personality(content.personality.affinities + mapOf("cozy" to 2.0, "lively" to -1.0)))
         val w = BedroomWorld.create(fond.copy(start = fond.start.copy(money = 500)), granted = content.gated)

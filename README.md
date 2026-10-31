@@ -46,8 +46,9 @@ reshuffled), and [docs/decisions/](docs/decisions/README.md) records the design 
 ```
 
 The sim knows nothing about models or graphics; the agent layer joins them, and model calls never
-block the world. The world's numbers (prices, activities, items) live in one content file,
-[`bedroom.yaml`](sim/src/main/resources/content/bedroom.yaml).
+block the world. The world's numbers (prices, verbs, items) live in the content files in
+[`content/bedroom/`](sim/src/main/resources/content/bedroom/), with generated JSON Schemas for
+editors; `make content-docs` regenerates those and a grammar reference page.
 
 ## Quick start
 

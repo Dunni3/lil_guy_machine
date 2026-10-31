@@ -38,13 +38,17 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
 - World boundary: `sim/.../World.kt`; observations and snapshots: `sim/.../Observation.kt`.
   Intent lifecycle, walking, publishing: `sim/.../GridWorld.kt`. Key-and-door: `RoomWorld.kt`
   (map text in `TileMap.kt`, A* in `Pathfinder.kt`).
-- The bedroom: `sim/.../BedroomWorld.kt` (engine), `BedroomContent.kt` (schema of the content file),
+- The bedroom: `sim/.../BedroomWorld.kt` (engine), `BedroomContent.kt` (schema of the content files),
   `GameClock.kt` (clock scale knob), `Ledger.kt` (money ledger and needs). Content, which is where
-  numbers and new jobs, items and hobbies go: `sim/src/main/resources/content/bedroom.yaml`.
-  Anything with `tier` above 0 is gated until its id is granted (`BedroomContent.unlocked`).
-  Items use a closed `vocabulary` of affordances (what verbs ask for) and qualities (scored by his
-  `personality` affinities into comfort and mood); every activity has a `kind` whose contract is
-  in `VerbKind.kt`.
+  numbers and new jobs, items and hobbies go: `sim/src/main/resources/content/bedroom/*.yaml`
+  (`BedroomContent.FILES` says which keys each file holds). Anything with `tier` above 0 is gated
+  until its id is granted (`BedroomContent.unlocked`). Items use a closed `vocabulary` of
+  affordances (what verbs ask for; `sellable` and `drawable` take parameters) and qualities (scored
+  by his `personality` affinities into comfort and mood). What a verb does is its `effects`, a list
+  of ops (`Ops.kt`: each op owns its checks, lock reason, apply and prompt text); every verb has a
+  `kind` that lists the ops it may use (`VerbKind.kt`). `make content-docs` regenerates the content's
+  JSON Schemas (`content/bedroom/schema/`, checked by a test) and `build/grammar-reference.html`
+  (`agent/.../ContentDocs.kt`).
 - Scenario wiring, scripted policies, lockstep runner: `agent/.../Scenario.kt` (`Scenario` enum),
   `KeyDoorPolicy.kt`, `BedroomPolicy.kt`. Bedroom prompt, schema, choice set: `BedroomPrompt.kt`;
   who he is (shared with the journal): `Persona.kt`; run summaries and the journal report: `BedroomReport.kt`.

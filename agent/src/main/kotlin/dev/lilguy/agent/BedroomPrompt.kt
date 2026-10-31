@@ -4,12 +4,16 @@ import dev.lilguy.agent.memory.JOURNAL_ACTIVITY
 import dev.lilguy.decision.ActionSchema
 import dev.lilguy.decision.ChoiceSet
 import dev.lilguy.decision.SchemaHints
+import dev.lilguy.sim.BackgroundOp
 import dev.lilguy.sim.BedroomContent
 import dev.lilguy.sim.GameClock
 import dev.lilguy.sim.GridWorld
 import dev.lilguy.sim.Intent
 import dev.lilguy.sim.IntentStatus
 import dev.lilguy.sim.Observation
+import dev.lilguy.sim.ProduceOp
+import dev.lilguy.sim.SellOp
+import dev.lilguy.sim.SetStateOp
 import dev.lilguy.sim.Target
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.add
@@ -47,7 +51,7 @@ object BedroomPrompt {
     /** The journal line of the prompt, or null when the content has no journal activity. */
     private fun journalHint(content: BedroomContent): String? {
         val j = content.activity(JOURNAL_ACTIVITY) ?: return null
-        val energy = j.effects["energy"]?.let { if (it < 0) " and costs ${-it.toInt()} energy" else "" }.orEmpty()
+        val energy = j.needEffects["energy"]?.let { if (it < 0) " and costs ${-it.toInt()} energy" else "" }.orEmpty()
         val work = if (j.work) "; it's work, so you can only do it when you are fed and rested enough to work" else ""
         val minutes = j.minutes?.let { GameClock.duration(it) } ?: "a while"
         return "- Journal: writing in your journal takes $minutes$energy$work. It's where you say what you want and why."
@@ -65,8 +69,8 @@ object BedroomPrompt {
         val blocks = content.activities.flatMap { a -> a.block.filter { it.need == "mood" && it.below != null }.map { it to a.id } }
             .groupBy { it.first.below!! to it.first.reason }
             .map { (k, v) -> "Below ${k.first.toInt()} mood you can't ${v.joinToString(" or ") { it.second }}: ${k.second}." }
-        val lifts = content.activities.mapNotNull { a -> a.effects["mood"]?.takeIf { it > 0 }?.let { "${a.id} adds ${it.toInt()} mood" } }
-        val costs = content.activities.mapNotNull { a -> a.effects["mood"]?.takeIf { it < 0 }?.let { "${a.id} costs ${-it.toInt()} mood" } }
+        val lifts = content.activities.mapNotNull { a -> a.needEffects["mood"]?.takeIf { it > 0 }?.let { "${a.id} adds ${it.toInt()} mood" } }
+        val costs = content.activities.mapNotNull { a -> a.needEffects["mood"]?.takeIf { it < 0 }?.let { "${a.id} costs ${-it.toInt()} mood" } }
         val effects = if (lifts.isEmpty() && costs.isEmpty()) emptyList() else
             listOf("Each time you finish one, " + (costs + lifts).joinToString(" and ") + ".")
         return (effects + neglect + blocks).joinToString(" ").ifEmpty { null }
@@ -78,7 +82,7 @@ object BedroomPrompt {
             content.commissions?.let { c ->
                 add("A request for a piece comes in every day at ${c.arrive} (`commission`) and stays open until the next. The first piece you finish while it's open that is what it asks for earns $${c.reward} more when you sell it; it's yours to take or leave.")
             }
-            content.activities.firstOrNull { it.hangs != null }?.let { h ->
+            content.activities.firstOrNull { it.ops<SetStateOp>().isNotEmpty() }?.let { h ->
                 add("${h.id} puts your newest piece on your wall instead of selling it: each one hung adds ${content.gallery.comfortEach} comfort, up to ${content.gallery.max}.")
             }
         }
@@ -131,14 +135,14 @@ object BedroomPrompt {
             "- ${PromptBuilder.tag(intent)}: $what\n  ${PromptBuilder.exampleJson.encodeToString(Intent.serializer(), intent)}"
         }
         val art = content.items.filter { it.sellPrice != null }.joinToString(" and ") { "a ${it.name} sells for $${it.sellPrice}" }
-        val makers = content.activities.filter { it.produces.isNotEmpty() }.map { it.id }
+        val makers = content.activities.filter { it.ops<ProduceOp>().isNotEmpty() }.map { it.id }
         val work = content.activities.filter { it.work }.joinToString(", ") { it.id }
         val floor = r.workFloor.joinToString(" or ") { "${it.need} is below ${it.below?.toInt()}" }
-        val sellAt = content.activities.firstOrNull { it.sells != null }
+        val sellAt = content.activities.firstOrNull { it.ops<SellOp>().isNotEmpty() }
         val hatch = content.item(content.shop.at)?.name ?: content.shop.at
         val decor = content.items.any { it.slot != null && content.value(it) > 0 }
         val forSale = content.items.filter { it.price != null }
-        val wants = if (forSale.any { it.kind != "food" }) "for food and for anything you want to own" else "for food"
+        val wants = if (forSale.any { it.group != "food" }) "for food and for anything you want to own" else "for food"
         val means = if (content.activity(JOURNAL_ACTIVITY) != null) ", as a means, not the goal" else ""
         val bored = if (r.stimulationPerHour < 0 && r.boredMood > 0) ", less boredom" else ""
         val mood = if (decor) {
@@ -151,7 +155,7 @@ object BedroomPrompt {
             (if (decor) " Your room has empty places for furniture and decor, and the catalog is where they come from." else "") +
             if (content.uses.isNotEmpty()) " `uses` lists things you can use on other things." else ""
         val options = if (content.uses.isNotEmpty()) "activities, uses, shop" else "activities, shop"
-        val music = if (content.uses.any { it.background != null }) " music: what's playing, if anything." else ""
+        val music = if (content.uses.any { it.ops<BackgroundOp>().isNotEmpty() }) " music: what's playing, if anything." else ""
         val life = listOfNotNull(
             "- Time: the clock shows the day and the time. Activities take game minutes or hours, and you choose again when one finishes.",
             "- Needs, each from 0 to 100. Energy falls ${-r.awakeEnergyPerHour.toInt()} an hour while you're awake and comes back while you sleep. Fullness falls ${-r.fullnessPerHour.toInt()} an hour; eating brings it back.${stimulationRule(content)} $mood Below ${r.low.toInt()} energy or fullness, mood falls ${-r.lowMoodPerHour.toInt()} an hour instead.$sinking When $floor you can't work ($work).",

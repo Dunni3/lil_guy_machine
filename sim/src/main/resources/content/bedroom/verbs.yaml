@@ -1,0 +1,114 @@
+# yaml-language-server: $schema=schema/verbs.schema.json
+# What he can do. do(activity), or use(item, on) for a use. Listed in the order options are offered
+# to models.
+#
+# `kind`: what sort of verb it is, a contract on which ops `effects` may use (sim/.../VerbKind.kt).
+# `at`: where it happens (an owned slot item; the nearest is used). `requires`: items or
+# affordances he must own. `block`: refused when a need is above or below a level. It ends after
+# `minutes`, or for `until`, at a time of day or when a need reaches a level, whichever comes
+# first; `stop_below` ends it early when a need drops. `work`: refused below the work floor.
+# `phrase`: how the prompt says what he can do. `routine`: upkeep that neither wears thin nor
+# counts as new; economic and rest verbs always are.
+#
+# `effects`: what it does, a list of ops run in order (sim/.../Ops.kt): `need` (changes when it
+# finishes), `rate` (per hour while doing it), `consume` and `produce` (items, by id or
+# affordance), `sell` (everything carried with an affordance), `set_state` (hung: onto the
+# picture rail), `background` (keeps going while he does anything else), `sleep`, and `enjoy`
+# (the used item's value to him, as mood).
+
+activities:
+  - id: eat
+    kind: consumptive
+    at: [desk]
+    minutes: 30
+    routine: true
+    block: [{ need: fullness, above: 90, reason: "not hungry" }]
+    effects:
+      - consume: { edible: 1 }
+      - need: { fullness: 45 }
+  - id: sketch
+    kind: generative
+    at: [desk]
+    requires: [sketchbook]
+    minutes: 60
+    work: true
+    block: [{ need: mood, below: 25, reason: "too low to make art" }]
+    effects:
+      - produce: { sketch: 1 }
+      # Work wears his mood down; journaling is what lifts it. A little stimulation, which
+      # habituation soon wears away: sketching all day bores him.
+      - need: { energy: -6, mood: -4, stimulation: 3 }
+  - id: paint
+    kind: generative
+    at: [easel]
+    minutes: 180
+    work: true
+    block: [{ need: mood, below: 25, reason: "too low to make art" }]
+    effects:
+      - produce: { painting: 1 }
+      - consume: { canvas: 1 }
+      - need: { energy: -15, mood: -10, stimulation: 12 }
+  - id: sell_art
+    kind: economic
+    phrase: sell your art
+    at: [mail_hatch]
+    minutes: 1
+    effects:
+      - sell: sellable
+  - id: hang_art
+    kind: transformative
+    phrase: hang your art on the wall
+    at: [picture_rail]
+    minutes: 15
+    routine: true
+    effects:
+      - set_state: { target: hangable, state: hung }
+  # The agent layer writes an entry when one succeeds (agent/.../memory/JournalWriter.kt). It is
+  # work, so it needs him fed and rested, and costs more energy than sketching: writing about the
+  # life he wants is budgeted against staying alive.
+  - id: journal
+    kind: expressive
+    phrase: write in your journal
+    at: [desk]
+    requires: [journal]
+    minutes: 60
+    work: true
+    effects:
+      - need: { energy: -10, mood: 12, stimulation: 6 }
+  - id: read
+    kind: consumptive
+    at: [bed, chair]
+    requires: [readable]
+    minutes: 60
+    effects:
+      - need: { mood: 2, stimulation: 15 }
+  - id: listen
+    kind: consumptive
+    at: [chair]
+    requires: [record_player, playable]
+    minutes: 30
+    effects:
+      - need: { mood: 4, stimulation: 12 }
+  - id: sleep
+    kind: rest
+    at: [bed]
+    until: { time: "07:00", need: energy, reaches: 100 }
+    # He wakes up hungry rather than sleeping fullness down to 0.
+    stop_below: { fullness: 10 }
+    block: [{ need: energy, above: 94, reason: "not tired" }]
+    effects:
+      - sleep: {}
+      - rate: { energy: 12 }
+
+# use(itemId, on): an item on another. The same fields, plus the item (an id or an affordance) and
+# the target; `item` is also what its ops call the used item.
+uses:
+  - id: play_record
+    kind: consumptive
+    item: playable
+    on: record_player
+    at: [record_player]
+    minutes: 1
+    effects:
+      - enjoy: item
+      - background: { name: music, minutes: 45, rates: { mood: 2, stimulation: 6 } }

@@ -2,6 +2,7 @@ package dev.lilguy.cli
 
 import dev.lilguy.agent.AgentRuntime
 import dev.lilguy.agent.BedroomReport
+import dev.lilguy.agent.ContentDocs
 import dev.lilguy.agent.DaySummary
 import dev.lilguy.agent.DecisionLog
 import dev.lilguy.agent.HourSample
@@ -81,6 +82,8 @@ private const val USAGE = """lil guy machine cli: lockstep runs of the key-and-d
                       default (e.g. calm=2,loud=-1); weights -1 to 2
   --curiosity X       bedroom: scales how fast stimulation drains and how much a first time pays (default 1)
   --quiet             one line per run instead of every decision and event
+  --content-docs      write the bedroom content's JSON Schemas (sim/src/main/resources/content/bedroom/schema/)
+                      and its grammar reference page (build/grammar-reference.html), then exit
 
 Key-and-door exits non-zero unless every run solved the room; the bedroom, unless every run
 lived its days without hitting the decision cap. Bedroom runs also write hours-NN.jsonl (money
@@ -113,7 +116,7 @@ private class Args(argv: Array<String>) {
     fun flag(name: String) = name in flags
 
     companion object {
-        val FLAGS = setOf("--quiet", "--no-log", "--help")
+        val FLAGS = setOf("--quiet", "--no-log", "--help", "--content-docs")
         val KNOWN = FLAGS + setOf(
             "--scenario", "--endpoint", "--runs", "--days", "--minute-ticks", "--ticks", "--max-decisions", "--config", "--strategy", "--log-dir", "--replay", "--memory", "--memory-endpoint", "--journal-endpoint", "--grant",
             "--affinities", "--curiosity",
@@ -185,6 +188,12 @@ fun main(argv: Array<String>) {
     }
     if (args.flag("--help")) {
         println(USAGE)
+        return
+    }
+    if (args.flag("--content-docs")) {
+        val page = File("build/grammar-reference.html")
+        ContentDocs.write(BedroomContent.default(), File("sim/src/main/resources/content/bedroom/schema"), page)
+        println("wrote the content schemas and ${page.path}")
         return
     }
     val scenario = try {

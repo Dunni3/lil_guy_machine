@@ -9,7 +9,7 @@ kotlin { jvmToolchain(17) }
 dependencies {
     api(libs.kotlinx.serialization.json)
     api(libs.kotlinx.coroutines.core)
-    // The bedroom's content file (content/bedroom.yaml).
+    // The bedroom's content files (content/bedroom/*.yaml).
     implementation(libs.kaml)
     testImplementation(kotlin("test"))
 }

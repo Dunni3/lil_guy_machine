@@ -9,6 +9,7 @@ import dev.lilguy.sim.CanvasSpec
 import dev.lilguy.sim.Intent
 import dev.lilguy.sim.IntentStatus
 import dev.lilguy.sim.Observation
+import dev.lilguy.sim.ProduceOp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -17,7 +18,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * Where his art gets made, the way [dev.lilguy.agent.memory.AgentMemory] handles the journal: when
- * he starts an activity that makes a drawn item (one with a canvas), the [Painter] draws it, in
+ * he starts an activity that makes a drawable item, the [Painter] draws it, in
  * the background with a [scope] and inline without. At the next decision point, if the activity
  * succeeded, the drawing is matched to the sim's new piece, saved as a PNG in [dir], put in the
  * event stream, and handed to the world ([BedroomWorld.annotate]) so the sim knows its title and
@@ -103,7 +104,7 @@ class ArtStudio(
         val c = content ?: return
         val activity = (intent as? Intent.Do)?.let { c.activity(it.activity) } ?: return
         if (obs.activities.orEmpty().any { it.id == activity.id && it.locked != null }) return
-        val made = activity.produces.keys.mapNotNull { c.item(it) }.firstOrNull { it.canvas != null } ?: return
+        val made = activity.ops<ProduceOp>().flatMap { it.items.keys }.mapNotNull { c.item(it) }.firstOrNull { it.canvas != null } ?: return
         val canvas: CanvasSpec = made.canvas!!
         pending?.job?.cancel()
         val p = Pending(intent, made.id, obs.tick)
