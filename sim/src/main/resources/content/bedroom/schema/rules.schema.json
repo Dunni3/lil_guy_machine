@@ -190,7 +190,8 @@
             "verb",
             "every"
           ],
-          "additionalProperties": false
+          "additionalProperties": false,
+          "description": "A verb the agent loop makes him do every so often, without asking the decision model."
         },
         {
           "type": "null"
