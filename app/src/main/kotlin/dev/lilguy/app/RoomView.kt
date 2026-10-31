@@ -37,7 +37,8 @@ import kotlin.math.tan
  * Everything is drawn in the hand-drawn look by one [CrayonRenderer]: furniture and the guy with the
  * crayon shader and boiling ink outlines, the floor and walls as painted textures under the cheap
  * paper shader. Shown as the dev view's first page ([DevView.Page.Room]); the other pages are the 2D
- * dev view. Fill rate stays low for the Streamer: one clear, opaque geometry, the per-pixel crayon
+ * dev view. DOWN opens the shop's catalogue over the room (UP closes it), and it opens by itself
+ * while he's buying something, that item picked out. Fill rate stays low for the Streamer: one clear, opaque geometry, the per-pixel crayon
  * shader only on furniture and the guy, no shadow maps or post-processing; the only blended things
  * are the hatched shadows and the HUD's small rectangles.
  */
@@ -66,6 +67,11 @@ class RoomView(private val art: ArtTextures) : Disposable {
     /** A picture's quad, by "size/flat"; the piece's texture goes on at draw time. */
     private val quads = HashMap<String, Mesh>()
     private val railAt = Matrix4()
+    private val shelfAt = Matrix4()
+    private val guitarAt = Matrix4()
+    private var shelvedFrom: List<dev.lilguy.sim.CatalogEntry>? = null
+    private var shelf: CrayonModel? = null
+    private var guitar: CrayonModel? = null
     private val at = Matrix4()
     private val workAt = Vector3()
     private var framed: TileMap? = null
@@ -91,8 +97,8 @@ class RoomView(private val art: ArtTextures) : Disposable {
 
     fun resize(width: Int, height: Int) = viewport.update(width, height, true)
 
-    /** One frame of the live world; [banner] is the run-state line the dev view would show, if any. */
-    fun render(session: SimSession, banner: String?, delta: Float) {
+    /** One frame of the live world; [banner] is the run-state line the dev view would show, if any; [shopOpen] shows the catalogue. */
+    fun render(session: SimSession, banner: String?, delta: Float, shopOpen: Boolean = false) {
         val now = session.current
         val before = session.previous
         val life = now.life
@@ -141,6 +147,7 @@ class RoomView(private val art: ArtTextures) : Disposable {
             place(e, now.map)
         }
         renderArt(session, now)
+        renderShelf(life, now.map)
         blob.render(crayon, asleep)
         crayon.end()
         Gdx.gl.glDisable(GL20.GL_DEPTH_TEST)
@@ -153,7 +160,9 @@ class RoomView(private val art: ArtTextures) : Disposable {
             else -> null
         }
         camera.project(head.set(blob.headTop), 0f, 0f, DevView.WIDTH, DevView.HEIGHT)
-        drawHud(session, life, bubble, banner)
+        // While he's off to buy something, the catalogue opens by itself at that item.
+        val buying = (agent?.intent as? Intent.Buy)?.item?.takeIf { agent.status.let { it == IntentStatus.Executing || it == IntentStatus.Validated || it == IntentStatus.Submitted } }
+        drawHud(session, life, bubble, banner, if (shopOpen || buying != null) buying ?: "" else null)
     }
 
     // --- 3D --------------------------------------------------------------------------------------
@@ -237,6 +246,22 @@ class RoomView(private val art: ArtTextures) : Disposable {
         }
     }
 
+    /** His books and records on the wall shelf, and his guitar on the wall, once he owns any. */
+    private fun renderShelf(life: LifeSnapshot?, map: TileMap) {
+        val catalog = life?.catalog ?: return
+        // The world shares one catalog list until what he owns changes, so this runs a few times a run.
+        if (catalog !== shelvedFrom) {
+            shelvedFrom = catalog
+            val owned = catalog.filter { it.owned > 0 }
+            val books = owned.filter { it.group == "book" }.map { it.id }
+            val records = owned.filter { it.group == "record" }.map { it.id }
+            shelf = if (books.isEmpty() && records.isEmpty()) null else models.shelf(books, records)
+            guitar = if (owned.any { it.id == "guitar" }) models.guitar() else null
+        }
+        shelf?.let { crayon.model(it, shelfAt.setToTranslation(models.shelfX(map), 0f, 1f)) }
+        guitar?.let { crayon.model(it, guitarAt.setToTranslation(models.guitarX(map), 0f, 1f)) }
+    }
+
     /** Queues a square of a piece's picture, [size] wide, facing +Z or lying face up when [flat], at [transform]; nothing until it's drawn. */
     private fun picture(texture: Texture?, size: Float, flat: Boolean, transform: Matrix4) {
         texture ?: return
@@ -273,7 +298,9 @@ class RoomView(private val art: ArtTextures) : Disposable {
         if (thoughtAge > THOUGHT_SECONDS) thought = null
     }
 
-    private fun drawHud(session: SimSession, life: LifeSnapshot?, bubble: String?, banner: String?) {
+    /** [shop]: null with the catalogue closed, else the item he's buying ("" for none). */
+    private fun drawHud(session: SimSession, life: LifeSnapshot?, bubble: String?, banner: String?, shop: String?) {
+        val catalogue = shop?.let { life?.catalog?.takeIf { c -> c.isNotEmpty() } }
         shapes.projectionMatrix = viewport.camera.combined
         batch.projectionMatrix = viewport.camera.combined
         Gdx.gl.glEnable(GL20.GL_BLEND)
@@ -281,17 +308,20 @@ class RoomView(private val art: ArtTextures) : Disposable {
 
         shapes.begin(ShapeRenderer.ShapeType.Filled)
         life?.let { cardShape(it) }
+        catalogue?.let { catalogueShape(it, shop) }
         bubble?.let { bubbleShape(it) }
         banner?.let { bannerShape(it) }
         shapes.end()
 
         batch.begin()
         life?.let { cardText(session, it) }
+        catalogue?.let { catalogueText(it, life!!.money, shop) }
         bubble?.let { bubbleText(it) }
         banner?.let { bannerText(it) }
         font.data.setScale(HINT_SCALE)
         font.color = HINT
-        font.draw(batch, "ROOM · LEFT/RIGHT for the dev pages", DevView.WIDTH - MARGIN - 600f, DevView.HEIGHT - MARGIN, 600f, Align.right, false)
+        val hint = if (catalogue != null) "UP closes the catalogue · LEFT/RIGHT for the dev pages" else "DOWN for the shop · LEFT/RIGHT for the dev pages"
+        font.draw(batch, hint, DevView.WIDTH - MARGIN - 700f, DevView.HEIGHT - MARGIN, 700f, Align.right, false)
         batch.end()
     }
 
@@ -325,6 +355,123 @@ class RoomView(private val art: ArtTextures) : Disposable {
         val doing = life.doing?.let { d -> d.replace('_', ' ') + (life.progress?.let { " · ${(it * 100).toInt()}%" } ?: "") }
         font.draw(batch, doing ?: if (session.thinkingFor != null) "deciding..." else "idle", left, DevView.HEIGHT - MARGIN - CARD_HEIGHT + 40f)
     }
+
+    // --- the catalogue: the shop as a mail-order card ----------------------------------------------
+
+    /** What the shop sells, known things first; [rows] of them fit, and the rest are counted at the bottom. */
+    private fun shown(catalog: List<dev.lilguy.sim.CatalogEntry>) = catalog.sortedBy { it.taughtBy != null }.take(SHOP_ROWS)
+
+    private fun shopHeight(rows: Int) = SHOP_HEADER + rows * SHOP_PITCH + SHOP_FOOTER
+
+    private fun catalogueShape(catalog: List<dev.lilguy.sim.CatalogEntry>, buying: String) {
+        val items = shown(catalog)
+        val h = shopHeight(items.size)
+        val x = SHOP_X
+        val top = SHOP_TOP
+        // Paper with scalloped top and bottom edges, and a stitched line just inside.
+        shapes.color = PAPER_EDGE
+        roundRect(x - 4f, top - h - 4f, SHOP_WIDTH + 8f, h + 8f, 22f)
+        shapes.color = CARD
+        roundRect(x, top - h, SHOP_WIDTH, h, 18f)
+        var sx = x + 22f
+        while (sx < x + SHOP_WIDTH - 16f) {
+            shapes.circle(sx, top, 11f, 10)
+            shapes.circle(sx, top - h, 11f, 10)
+            sx += 26f
+        }
+        shapes.color = STITCH
+        var dx = x + 18f
+        while (dx < x + SHOP_WIDTH - 30f) {
+            shapes.rect(dx, top - 16f, 12f, 3f)
+            shapes.rect(dx, top - h + 13f, 12f, 3f)
+            dx += 22f
+        }
+        var dy = top - h + 28f
+        while (dy < top - 28f) {
+            shapes.rect(x + 14f, dy, 3f, 12f)
+            shapes.rect(x + SHOP_WIDTH - 17f, dy, 3f, 12f)
+            dy += 22f
+        }
+        // A ribbon across the top with notched ends.
+        val ry = top - 74f
+        shapes.color = RIBBON_DARK
+        shapes.rect(x + 34f, ry - 6f, 36f, 44f)
+        shapes.rect(x + SHOP_WIDTH - 70f, ry - 6f, 36f, 44f)
+        shapes.color = CARD
+        shapes.triangle(x + 34f, ry - 6f, x + 34f, ry + 38f, x + 50f, ry + 16f)
+        shapes.triangle(x + SHOP_WIDTH - 34f, ry - 6f, x + SHOP_WIDTH - 34f, ry + 38f, x + SHOP_WIDTH - 50f, ry + 16f)
+        shapes.color = RIBBON
+        roundRect(x + 56f, ry, SHOP_WIDTH - 112f, 50f, 8f)
+
+        items.forEachIndexed { i, e ->
+            val y = top - SHOP_HEADER - i * SHOP_PITCH
+            if (e.id == buying) {
+                shapes.color = PICKED
+                roundRect(x + 26f, y - SHOP_PITCH + 6f, SHOP_WIDTH - 52f, SHOP_PITCH - 4f, 12f)
+            }
+            val cy = y - SHOP_PITCH / 2 + 4f
+            shapes.color = if (e.taughtBy != null) BAR_BG else GROUP_COLORS[e.group] ?: BAR_BG
+            shapes.circle(x + 50f, cy, 12f, 14)
+            if (e.taughtBy != null) return@forEachIndexed
+            // A swing tag: string, card, hole.
+            val tx = x + SHOP_WIDTH - 270f
+            shapes.color = STRING
+            shapes.rectLine(tx - 18f, cy + 12f, tx + 4f, cy + 2f, 2f)
+            shapes.color = if (e.affordable || owned(e)) TAG else TAG_DEAR
+            roundRect(tx, cy - 16f, 104f, 32f, 9f)
+            shapes.color = CARD
+            shapes.circle(tx + 10f, cy, 4f, 8)
+            if (owned(e)) {
+                // A little tick beside the tag.
+                shapes.color = FULLNESS
+                val kx = tx + 128f
+                shapes.rectLine(kx, cy, kx + 9f, cy - 10f, 5f)
+                shapes.rectLine(kx + 9f, cy - 10f, kx + 26f, cy + 12f, 5f)
+            }
+        }
+    }
+
+    private fun catalogueText(catalog: List<dev.lilguy.sim.CatalogEntry>, money: Int, buying: String) {
+        val items = shown(catalog)
+        val h = shopHeight(items.size)
+        val x = SHOP_X
+        val top = SHOP_TOP
+        font.data.setScale(SHOP_TITLE_SCALE)
+        font.color = Color.WHITE
+        font.draw(batch, "The Mail-Order Catalogue", x + 56f, top - 34f, SHOP_WIDTH - 112f, Align.center, false)
+        items.forEachIndexed { i, e ->
+            val y = top - SHOP_HEADER - i * SHOP_PITCH
+            val cy = y - SHOP_PITCH / 2 + 4f
+            val hidden = e.taughtBy != null
+            font.data.setScale(SHOP_NAME_SCALE)
+            font.color = if (hidden) MUTED else INK
+            font.draw(batch, e.name, x + 74f, cy + 11f, SHOP_WIDTH - 360f, Align.left, false)
+            font.data.setScale(SHOP_SMALL_SCALE)
+            if (hidden) {
+                font.color = MUTED
+                font.draw(batch, "learn of it in " + e.taughtBy!!.substringBefore(','), x + SHOP_WIDTH - 310f, cy + 9f, 280f, Align.right, false)
+                return@forEachIndexed
+            }
+            val tx = x + SHOP_WIDTH - 270f
+            font.color = if (e.affordable || owned(e)) INK else Color.WHITE
+            font.draw(batch, if (e.pack > 1) "${e.pack} for $${e.price}" else "$${e.price}", tx + 16f, cy + 9f, 84f, Align.center, false)
+            font.color = MUTED
+            val note = when {
+                e.id == buying -> "on its way!"
+                owned(e) -> if (e.stackable) "${e.owned} at home" else ""
+                !e.affordable -> "saving up"
+                else -> ""
+            }
+            font.draw(batch, note, tx + 122f, cy + 9f, 120f, Align.left, false)
+        }
+        font.data.setScale(SHOP_SMALL_SCALE)
+        font.color = MUTED
+        val more = (catalog.size - items.size).takeIf { it > 0 }?.let { " · and $it more" }.orEmpty()
+        font.draw(batch, "in his purse: $$money$more", x, top - h + 40f, SHOP_WIDTH, Align.center, false)
+    }
+
+    /** Has one already, of something bought once (stackable things are bought again and again). */
+    private fun owned(e: dev.lilguy.sim.CatalogEntry) = e.owned > 0 && !e.stackable
 
     private fun bubbleLayout(text: String): GlyphLayout {
         font.data.setScale(BUBBLE_SCALE)
@@ -498,5 +645,30 @@ class RoomView(private val art: ArtTextures) : Disposable {
         val STIMULATION = Color.valueOf("c58ae0ff")
         val BUBBLE = Color.valueOf("fffdf6ff")
         val BANNER_BG = Color.valueOf("2a1e18ff")
+
+        const val SHOP_WIDTH = 640f
+        const val SHOP_X = DevView.WIDTH - MARGIN - SHOP_WIDTH
+        const val SHOP_TOP = DevView.HEIGHT - MARGIN - 44f
+        const val SHOP_HEADER = 104f
+        const val SHOP_PITCH = 46f
+        const val SHOP_FOOTER = 64f
+        const val SHOP_ROWS = 17
+        const val SHOP_TITLE_SCALE = 1.7f
+        const val SHOP_NAME_SCALE = 1.45f
+        const val SHOP_SMALL_SCALE = 1.15f
+        val PAPER_EDGE = Color.valueOf("e8cfb2ff")
+        val STITCH = Color.valueOf("e7a99bff")
+        val RIBBON = Color.valueOf("e07f74ff")
+        val RIBBON_DARK = Color.valueOf("b9605aff")
+        val PICKED = Color.valueOf("fde9c6ff")
+        val STRING = Color.valueOf("c0504aff")
+        val TAG = Color.valueOf("f6e3b8ff")
+        val TAG_DEAR = Color.valueOf("d98a7aff")
+        /** A swatch per kind of thing, in the room's pastels. */
+        val GROUP_COLORS = mapOf(
+            "food" to Color.valueOf("9fd49aff"), "supply" to Color.valueOf("ffe3a1ff"), "furniture" to Color.valueOf("dba77cff"),
+            "record" to Color.valueOf("f4a3adff"), "book" to Color.valueOf("8fb0ecff"), "instrument" to Color.valueOf("f0b46eff"),
+            "decor" to Color.valueOf("c2e6a8ff"),
+        )
     }
 }

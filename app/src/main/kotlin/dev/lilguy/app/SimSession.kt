@@ -262,7 +262,7 @@ class SimSession(
             thinker = jw?.let { Thinker(ledger.meter(it, TokenPurpose.Think, setup.prices.writer)) }, studio = studio,
             reader = jw?.takeIf { setup.scenario == Scenario.Bedroom }?.let { Reader(ledger.meter(it, TokenPurpose.Reading, setup.prices.writer)) },
         )
-        val (gw, r) = setup.scenario.create(m, setup.timeout, settings.ticksPerMinute, longTerm = memory) {
+        val (gw, r) = setup.scenario.create(m, setup.timeout, settings.ticksPerMinute, longTerm = memory, startItems = setup.startItems) {
             runCatching { runLog?.write(it) }
             runInbox.add(it)
         }

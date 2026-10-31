@@ -36,6 +36,10 @@ import kotlin.math.sin
  * not drawn here: it is the 3D room ([RoomView]), full screen.
  *
  * - [Page.Now]: needs, what he's doing, the latest decision, recent events.
+ * - [Page.Shop]: everything the shop sells: price, how many he owns, whether he can afford it and
+ *   what it's for; what a book has yet to teach him is hidden from him, shown with that book.
+ * - [Page.Verbs]: every verb, offered (what it takes and gives), locked (why) or not learned yet,
+ *   with how often he has done it this run and when first.
  * - [Page.Memory]: short-term memory (recent actions, in every prompt), his self-model and its
  *   last change, his thoughts, and the long-term memories (stretches and whole days) written so
  *   far, marking those recalled at the latest decision.
@@ -55,7 +59,7 @@ import kotlin.math.sin
  * full-screen layers.
  */
 class DevView(private val art: ArtTextures) : Disposable {
-    enum class Page(val title: String) { Room("ROOM"), Now("NOW"), Memory("MEMORY"), Art("ART"), Tokens("TOKENS"), History("HISTORY"), Log("LOG"), Run("RUN") }
+    enum class Page(val title: String) { Room("ROOM"), Now("NOW"), Shop("SHOP"), Verbs("VERBS"), Memory("MEMORY"), Art("ART"), Tokens("TOKENS"), History("HISTORY"), Log("LOG"), Run("RUN") }
 
     /** The Run page's rows. */
     private enum class RunRow(val label: String) {
@@ -79,6 +83,10 @@ class DevView(private val art: ArtTextures) : Disposable {
 
     /** History only: the decision shown, as an index into [SimSession.history]; null follows the newest and shows the live world. */
     var pinned: Int? = null
+        private set
+
+    /** Room only: the shop's catalogue card is open over the room; DOWN opens it, UP closes it. */
+    var shopOpen = false
         private set
 
     /** Art only: the piece shown, as an index into the drawn pieces oldest first; null follows the newest. */
@@ -105,8 +113,12 @@ class DevView(private val art: ArtTextures) : Disposable {
         pinned = null
     }
 
-    /** UP (-1) and DOWN (+1): in History a newer or older decision, in Art a newer or older piece, elsewhere scroll. */
+    /** UP (-1) and DOWN (+1): in the room the catalogue, in History a newer or older decision, in Art a newer or older piece, elsewhere scroll. */
     fun move(by: Int, session: SimSession) {
+        if (page == Page.Room) {
+            shopOpen = by > 0
+            return
+        }
         if (page == Page.Run) {
             val rows = RunRow.entries
             val next = (runRow?.ordinal ?: -1) + by
@@ -172,6 +184,7 @@ class DevView(private val art: ArtTextures) : Disposable {
         pinned = null
         replayPick = null
         artPick = null
+        shopOpen = false
         scroll.fill(0)
         confirmRestart = false
         confirmAction = false
@@ -578,6 +591,8 @@ class DevView(private val art: ArtTextures) : Disposable {
         drawTabs()
         when (page) {
             Page.Room, Page.Now -> drawNow(session, live)
+            Page.Shop -> drawShop(live)
+            Page.Verbs -> drawVerbs(live)
             Page.Memory -> drawMemory(session, live)
             Page.Art -> drawArt(session)
             Page.Tokens -> drawTokens(session)
@@ -687,6 +702,59 @@ class DevView(private val art: ArtTextures) : Disposable {
         if (s.events.isEmpty()) line("(none yet)", SMALL_SCALE, MUTED)
         s.events.asReversed().take(NOW_EVENT_ROWS).forEach {
             line("${stamp(it.tick, s)}  ${it.text}", SMALL_SCALE * 0.95f, TEXT, maxLines = 1, gapAfter = 0f)
+        }
+    }
+
+    /** Known items first, in file order, then the hidden ones; two lines each, scrolled by item. */
+    private fun drawShop(s: WorldSnapshot) {
+        val life = s.life ?: return line("(no shop in this room)", BODY_SCALE * 0.8f, MUTED)
+        val items = life.catalog.sortedBy { it.taughtBy != null }
+        val hidden = items.count { it.taughtBy != null }
+        val skip = scroll[Page.Shop.ordinal].coerceAtMost((items.size - 1).coerceAtLeast(0)).also { scroll[Page.Shop.ordinal] = it }
+        heading("SHOP · ${items.size - hidden} for sale · $hidden he hasn't learned about" + if (skip > 0) " · $skip above" else "")
+        if (items.isEmpty()) return line("(nothing for sale)", SMALL_SCALE, MUTED)
+        font.data.setScale(SMALL_SCALE)
+        val rowHeight = font.lineHeight
+        for (e in items.drop(skip)) {
+            if (clipped || cursor - rowHeight < contentFloor) return
+            val status = when {
+                e.taughtBy != null -> "hidden"
+                e.owned > 0 && !e.stackable -> "has it"
+                e.affordable -> "can afford"
+                else -> "can't afford"
+            }
+            val color = when (status) { "hidden", "has it" -> MUTED; "can't afford" -> INTERRUPTED; else -> TEXT }
+            cell(e.name, PANEL_X, 280f, SMALL_SCALE, if (e.taughtBy != null) MUTED else TEXT)
+            cell(if (e.pack > 1) "${e.pack} for $${e.price}" else "$${e.price}", PANEL_X + 290f, 150f, SMALL_SCALE, color)
+            cell(if (e.owned > 0) "owns ${e.owned}" else "", PANEL_X + 450f, 120f, SMALL_SCALE, TEXT)
+            cell(status, PANEL_X + PANEL_WIDTH - 160f, 160f, SMALL_SCALE, color, Align.right)
+            cursor -= rowHeight
+            val what = e.taughtBy?.let { "a book teaches it: $it" + if (e.gives.isEmpty()) "" else " · ${e.gives}" } ?: e.gives
+            line(what.ifEmpty { "-" }, SMALL_SCALE * 0.82f, MUTED, maxLines = 2, gapAfter = 0.35f, indent = 20f)
+        }
+    }
+
+    /** Offered verbs first, then locked, then not learned; file order within each. Scrolled by verb. */
+    private fun drawVerbs(s: WorldSnapshot) {
+        val life = s.life ?: return line("(no verbs in this room)", BODY_SCALE * 0.8f, MUTED)
+        fun rank(v: dev.lilguy.sim.VerbView) = when { v.taughtBy != null -> 2; v.locked != null -> 1; else -> 0 }
+        val verbs = life.verbs.sortedBy(::rank)
+        val counts = verbs.groupingBy(::rank).eachCount()
+        val skip = scroll[Page.Verbs.ordinal].coerceAtMost((verbs.size - 1).coerceAtLeast(0)).also { scroll[Page.Verbs.ordinal] = it }
+        val tried = life.done.size
+        heading("VERBS · ${counts[0] ?: 0} offered · ${counts[1] ?: 0} locked · ${counts[2] ?: 0} not learned · $tried done this run" + if (skip > 0) " · $skip above" else "")
+        font.data.setScale(SMALL_SCALE)
+        val rowHeight = font.lineHeight
+        for (v in verbs.drop(skip)) {
+            if (clipped || cursor - rowHeight < contentFloor) return
+            val rank = rank(v)
+            val tally = life.done[v.id]?.let { t -> (if (t.count == 1) "once" else "${t.count} times") + " · first ${stamp(t.firstTick, s)}" } ?: "not yet"
+            cell(v.id.replace('_', ' '), PANEL_X, 220f, SMALL_SCALE, if (rank == 0) TEXT else MUTED)
+            cell(if (rank == 0) "offered" else if (rank == 1) "locked" else "not learned", PANEL_X + 230f, 150f, SMALL_SCALE, if (rank == 0) SUCCEEDED else if (rank == 1) INTERRUPTED else MUTED)
+            cell(tally, PANEL_X + 380f, PANEL_WIDTH - 380f, SMALL_SCALE, if (life.done[v.id] != null) ACCENT else MUTED, Align.right)
+            cursor -= rowHeight
+            val what = v.taughtBy?.let { "a book teaches it: $it" } ?: v.locked ?: v.gives.orEmpty()
+            line(what.ifEmpty { "-" }, SMALL_SCALE * 0.82f, MUTED, maxLines = 2, gapAfter = 0.35f, indent = 20f)
         }
     }
 
