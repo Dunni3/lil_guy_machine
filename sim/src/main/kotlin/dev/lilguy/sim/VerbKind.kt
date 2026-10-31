@@ -12,7 +12,7 @@ import kotlinx.serialization.Serializable
  * [allowed]: op keys ([Op.key]) it may use. [required]: each set is "at least one of these".
  * [affordance]: it must ask for an item by affordance (in `requires`, `args` or a `consume`),
  * not only by id. [routine]: the kind is upkeep, so its rows neither wear thin nor count as new
- * whatever their `routine` flag says. Perceptual and study kinds come when their ops do.
+ * whatever their `routine` flag says. The perceptual kind comes when its ops do.
  */
 @Serializable
 enum class VerbKind(
@@ -23,11 +23,11 @@ enum class VerbKind(
     val affordance: Boolean = false,
     val routine: Boolean = false,
 ) {
-    /** Doing something with an item: eat, read, listen, play a record. */
+    /** Doing something with an item: eat, read, listen, play a record or the guitar. */
     @SerialName("consumptive")
     Consumptive(
         "consumptive", "does something with an item it asks for by affordance, and changes needs",
-        allowed = setOf("need", "rate", "consume", "background", "enjoy"),
+        allowed = setOf("need", "rate", "consume", "background", "enjoy", "progress", "practice", "write"),
         required = listOf(setOf("need", "rate", "background", "enjoy")),
         affordance = true,
     ),
@@ -36,8 +36,16 @@ enum class VerbKind(
     @SerialName("generative")
     Generative(
         "generative", "turns time (and maybe items it uses up) into a new item",
-        allowed = setOf("need", "rate", "consume", "produce", "draw"),
+        allowed = setOf("need", "rate", "consume", "produce", "draw", "practice"),
         required = listOf(setOf("produce")),
+    ),
+
+    /** Working through a book or practising: raises a skill, and may teach him things. */
+    @SerialName("study")
+    Study(
+        "study", "works through a book or practises, raising a skill",
+        allowed = setOf("need", "rate", "progress", "practice", "write"),
+        required = listOf(setOf("progress", "practice")),
     ),
 
     /** Changing the state of an item he has: hanging a piece. */

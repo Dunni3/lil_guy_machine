@@ -5,6 +5,8 @@
 needs:
   awake_energy_per_hour: -4
   fullness_per_hour: -5
+  # Asleep he burns less: a night costs about 18 fullness rather than 45.
+  asleep_fullness_per_hour: -2
   # Mood moves this much an hour toward the baseline plus the room's comfort.
   mood_drift_per_hour: 3
   mood_baseline: 50
@@ -18,7 +20,7 @@ needs:
   # Stimulation (low = bored) drains while he's awake. Hobbies, making things and anything new feed
   # it; repeating the same thing pays less and drains it (habituation, below). Mood is the summary:
   # below `bored`, each missing point lowers the mood he settles to by `bored_mood` (16 at 0).
-  stimulation_per_hour: -3
+  stimulation_per_hour: -5.5
   bored: 40
   bored_mood: 0.4
 
@@ -29,12 +31,32 @@ needs:
 # record is its own.
 habituation:
   per_repeat: 0.25
-  recover_per_hour: 0.04
+  recover_per_hour: 0.015
   stale_stimulation: -6
 
 # The first time he finishes a verb (with given items: a record, a book) pays this on top. Routine ones don't count.
 novelty:
-  effects: { stimulation: 15, mood: 4 }
+  effects: { stimulation: 8, mood: 3 }
+
+# Something failing (refused, or cut short because what it needed was gone) adds `per_failure`;
+# finishing anything that isn't routine adds `per_success`; it fades `per_hour`, and sleep eases it
+# faster (verbs.yaml). Above `above`, each point lowers the mood he settles to by `mood`.
+frustration:
+  per_failure: 10
+  per_success: -2
+  per_hour: -3
+  above: 20
+  mood: 0.3
+
+# Skills (vocabulary.yaml) have no cap. A verb's mood and stimulation gains grow `gain_per_level`
+# per level of the skills it practises. A piece whose `sellable` names a skill sells for
+# `price_per_level` more per level he had when he made it. A skill that `deepens` a quality adds
+# `affinity_per_level` per level to his affinity for it.
+skills:
+  gain_per_level: 0.1
+  price_per_level: 0.15
+  affinity_per_level: 0.25
+  deepens: { nature: natural, music: lively }
 
 shop:
   # Orders are placed and delivered at the mail hatch.

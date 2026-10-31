@@ -1,0 +1,52 @@
+# yaml-language-server: $schema=schema/library.schema.json
+# What the readable items are as books. `id` is the item (items.yaml has its price and qualities).
+# He reads a book a chapter a session, so it takes as many sessions as it has chapters; each
+# chapter is a sentence of what happens in it, which goes into what he remembers. Studying a
+# chapter raises each `skill` by its number. Finishing the last chapter teaches him `teaches`: verb
+# and item ids that aren't in his world until then (the shop doesn't list them, and he can't do them).
+
+books:
+  - id: drawing_book
+    title: Drawing What You See
+    blurb: a patient guide that takes you from a pencil line to a finished painting
+    skill: { art: 0.5 }
+    teaches: [paint, easel, canvas]
+    chapters:
+      - Look at the thing, not at the paper; the hand follows the eye if you let it.
+      - Every shape is a box, a ball or a cone if you squint, and light falls on all three the same way.
+      - Shadows are colours too; a grey shadow is a dead one.
+      - Paint on an easel, stand back often, and stop one stroke before you think you're done.
+  - id: field_guide
+    title: Wild Things Nearby
+    blurb: a pocket guide to the plants, birds and weather just outside any window
+    skill: { nature: 0.5 }
+    chapters:
+      - Moss grows where the light is low and the water stays, and it's older than the trees.
+      - A sparrow can tell you the weather an hour ahead by how low it flies.
+      - Houseplants lean toward the window because they're always chasing the sun.
+      - Clouds are named by their height, and the high thin ones mean rain tomorrow.
+  - id: music_book
+    title: Three Chords and the Truth
+    blurb: how to play the guitar badly at first, and then a bit less badly
+    skill: { music: 0.5 }
+    teaches: [play_guitar, guitar]
+    chapters:
+      - Hold the guitar like it's a friend, not a weapon, and tune it before every time you play.
+      - G, C and D will carry you through a thousand songs.
+      - Your fingertips will hurt for two weeks, and then they won't.
+  - id: novel
+    title: The Lighthouse at the End of the Map
+    blurb: a keeper alone on a rock writes letters to a ship that never comes
+    chapters:
+      - The keeper arrives on the rock with a trunk of books and a cat that won't stay indoors.
+      - Every night she lights the lamp and writes a letter to the ship on the horizon.
+      - A storm takes the cat, and the keeper stops writing for a week.
+      - The cat comes back on a fishing boat, and with it the first letter anyone ever wrote back.
+      - She leaves the rock in spring, and the lamp keeps burning without her.
+  - id: poetry_book
+    title: Small Hours
+    blurb: short poems about kitchens, rain and staying up too late
+    chapters:
+      - A poem about a kettle that sounds like someone arriving.
+      - Six poems about rain on different roofs, each one a different mood.
+      - The last poem says the night is only long if you're waiting for it to end.

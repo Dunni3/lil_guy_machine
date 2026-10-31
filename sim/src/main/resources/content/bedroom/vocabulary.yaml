@@ -8,3 +8,6 @@ vocabulary:
   affords: [readable, playable, edible, sellable, hangable, viewable, combinable, wearable, drawable]
   # What an item is like to him, each with a strength from 0 to 3, scored by his affinities.
   qualities: [cozy, calm, warm, soft, bright, pretty, natural, lively, strange, loud]
+  # What he can get better at, each a number from 0 with no cap: `practice` ops and studying a
+  # book raise them (rules.yaml `skills` says what they do).
+  skills: [art, music, nature]

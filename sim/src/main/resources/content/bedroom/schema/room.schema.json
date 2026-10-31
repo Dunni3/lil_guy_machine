@@ -71,6 +71,9 @@
             },
             "stimulation": {
               "type": "integer"
+            },
+            "frustration": {
+              "type": "integer"
             }
           },
           "required": [

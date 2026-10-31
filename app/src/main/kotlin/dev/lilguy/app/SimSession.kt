@@ -12,6 +12,7 @@ import dev.lilguy.agent.memory.AgentMemory
 import dev.lilguy.agent.memory.InMemoryStore
 import dev.lilguy.agent.memory.MemoryScorer
 import dev.lilguy.agent.memory.SelfModeler
+import dev.lilguy.agent.memory.Reader
 import dev.lilguy.agent.memory.Thinker
 import dev.lilguy.agent.memory.Summarizer
 import dev.lilguy.decision.DecisionModel
@@ -259,6 +260,7 @@ class SimSession(
             store, runId, summarizer, scope = rs, scorer = scorer, selfModeler = selfModeler,
             onSelf = { r -> if (run == thisRun && r.error != null) writerError = "self-model: ${r.error}" },
             thinker = jw?.let { Thinker(ledger.meter(it, TokenPurpose.Think, setup.prices.writer)) }, studio = studio,
+            reader = jw?.takeIf { setup.scenario == Scenario.Bedroom }?.let { Reader(ledger.meter(it, TokenPurpose.Reading, setup.prices.writer)) },
         )
         val (gw, r) = setup.scenario.create(m, setup.timeout, settings.ticksPerMinute, longTerm = memory) {
             runCatching { runLog?.write(it) }

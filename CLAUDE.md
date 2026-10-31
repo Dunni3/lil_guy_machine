@@ -47,7 +47,11 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   affordances (what verbs ask for; `sellable` and `drawable` take parameters) and qualities (scored
   by his `personality` affinities into comfort and mood). What a verb does is its `effects`, a list
   of ops (`Ops.kt`: each op owns its checks, lock reason, apply and prompt text); every verb has a
-  `kind` that lists the ops it may use (`VerbKind.kt`). `make content-docs` regenerates the content's
+  `kind` that lists the ops it may use (`VerbKind.kt`). Books are `library.yaml`: read or studied a
+  chapter a session (the `progress` op); finishing one teaches ids that aren't in his world until then
+  (`BedroomContent.taught`, `BedroomWorld.knownContent()`, which the prompt is built from). Skills
+  (`vocabulary.skills`, rules.yaml `skills`) rise with `practice` and study. Needs are energy,
+  fullness, mood, stimulation and frustration. `make content-docs` regenerates the content's
   JSON Schemas (`content/bedroom/schema/`, checked by a test) and `build/grammar-reference.html`
   (`agent/.../ContentDocs.kt`).
 - Scenario wiring, scripted policies, lockstep runner: `agent/.../Scenario.kt` (`Scenario` enum),
@@ -68,12 +72,14 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   day memories), `SelfModeler.kt` (the nightly self-model), `MemoryScorer.kt` (Jev Score questions for recall
   relevance and event significance, through `decision/.../Scorer.kt`), `Recall.kt` (candidates and the
   keyword or ranked rule), `Keywords.kt` (keyword scoring), `Thinker.kt` (the `think` verb's one LLM call),
-  `Handlers.kt` (the `thought` handler). The fixed core and the self-model seed are in `personality.yaml`.
+  `Handlers.kt` (the `thought` and `reading` handlers), `Reader.kt` (what stuck from a chapter). The fixed
+  core and the self-model seed are in `personality.yaml`.
 - Authored ops (a model writes the result of a `write` or `draw` op): `agent/.../authored/Authors.kt`, the
   handler registry and the one lifecycle they share (timing before or during the verb, kept only if it
   succeeds, the clock held while a call outlasts its verb, results back to the sim through
   `BedroomWorld.deliver`). The sim side is `sim/.../Authored.kt`. A verb whose `write` has no handler
-  isn't offered to models. Think is a verb; `reflection` in rules.yaml makes him think every few decisions.
+  isn't offered to models, unless the write is `optional`. Think is a verb; `reflection` in rules.yaml
+  makes him think every few decisions.
 - Art: `agent/.../art/`: `Painter.kt` (the deciding model draws each piece as a run of closed picks:
   subject, crayon box, then a stroke a call; `CommissionVoice` words each day's commission on a text
   model), `Strokes.kt` (the drawing spec as a menu of ~100 strokes), `Palettes.kt` (named crayon boxes),

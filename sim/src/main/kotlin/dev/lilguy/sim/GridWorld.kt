@@ -163,9 +163,15 @@ abstract class GridWorld protected constructor(
             running = null
             workEnded(handle)
         }
-        if (status is IntentStatus.Failed) outcome(handle, "${describe(handle.intent)} failed: ${status.reason}")
+        if (status is IntentStatus.Failed) {
+            outcome(handle, "${describe(handle.intent)} failed: ${status.reason}")
+            failed(handle.intent, status.reason)
+        }
         finishedThisTick = true
     }
+
+    /** [intent] was refused or failed partway, for [reason]. */
+    protected open fun failed(intent: Intent, reason: String) {}
 
     private fun advance(run: Running) {
         val handle = run.handle

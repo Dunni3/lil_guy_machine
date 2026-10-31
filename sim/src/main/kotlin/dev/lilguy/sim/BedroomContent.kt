@@ -45,12 +45,30 @@ data class BedroomContent(
     /** His default affinities and curiosity; a run can swap in another ([withPersonality]). */
     val personality: Personality = Personality(),
     @SerialName("quality_value") val qualityValue: QualityValue = QualityValue(),
+    /** Failure raises frustration and success lowers it; null turns it off. */
+    val frustration: FrustrationRules? = null,
+    /** How skills pay off; his skills themselves are named in [Vocabulary.skills]. */
+    val skills: SkillRules = SkillRules(),
+    /** What the readable items are: chapters, what studying them raises, what finishing one teaches. */
+    val books: List<BookSpec> = emptyList(),
 ) {
     @Transient private val byId = items.associateBy { it.id }
 
     fun item(id: String): ItemSpec? = byId[id]
 
     fun verb(id: String): VerbSpec? = verbs.find { it.id == id }
+
+    fun book(id: String): BookSpec? = books.find { it.id == id }
+
+    /** Ids a book teaches: unknown to him, so not in his world, until he finishes that book. */
+    val taught: Set<String> get() = books.flatMap { it.teaches }.toSet()
+
+    /** The content as he knows it: without what a book teaches that he hasn't learned ([known]). */
+    fun known(known: Set<String>): BedroomContent {
+        val hidden = taught - known
+        if (hidden.isEmpty()) return this
+        return copy(items = items.filter { it.id !in hidden }, verbs = verbs.filter { it.id !in hidden }, books = books.filter { it.id !in hidden })
+    }
 
     /** Items that answer to [name], an id or an affordance, in file order. */
     fun withName(name: String): List<ItemSpec> = items.filter { name in it.names }
@@ -75,9 +93,13 @@ data class BedroomContent(
         val unknown = granted - gated
         require(unknown.isEmpty()) { "can't grant $unknown: only gated ids (tier above 0) can be granted" }
         fun open(id: String, tier: Int) = tier == 0 || id in granted
+        val items = items.filter { open(it.id, it.tier) }
+        val verbs = verbs.filter { open(it.id, it.tier) }
+        val ids = (items.map { it.id } + verbs.map { it.id }).toSet()
         return copy(
-            items = items.filter { open(it.id, it.tier) },
-            verbs = verbs.filter { open(it.id, it.tier) },
+            items = items,
+            verbs = verbs,
+            books = books.filter { it.id in ids }.map { b -> b.copy(teaches = b.teaches.filter { it in ids }) },
         ).also { it.validate() }
     }
 
@@ -87,11 +109,12 @@ data class BedroomContent(
         /** The content's files, each with the top-level keys it holds. */
         val FILES: Map<String, List<String>> = linkedMapOf(
             "room" to listOf("room", "start"),
-            "rules" to listOf("needs", "habituation", "novelty", "shop", "reflection", "commissions", "gallery", "quality_value"),
+            "rules" to listOf("needs", "habituation", "novelty", "frustration", "skills", "shop", "reflection", "commissions", "gallery", "quality_value"),
             "vocabulary" to listOf("vocabulary"),
             "personality" to listOf("personality"),
             "items" to listOf("items"),
             "verbs" to listOf("verbs"),
+            "library" to listOf("books"),
         )
 
         /** Content from [files], file name (no extension) to its text. Each file may hold only its own keys ([FILES]). */
@@ -186,6 +209,28 @@ data class BedroomContent(
         }
         require(gallery.max >= 1 && gallery.comfortEach >= 0) { "gallery.max must be at least 1" }
         reflection?.let { r -> require(verbs.any { it.id == r.verb } && r.every >= 1) { "reflection: verb '${r.verb}' must be a verb and every at least 1" } }
+        val skillNames = vocabulary.skills.toSet()
+        items.forEach { item -> item.affords["sellable"]?.skill?.let { require(it in skillNames) { "item ${item.id}: sellable skill '$it' isn't in vocabulary.skills" } } }
+        (skills.deepens.keys - skillNames).forEach { throw IllegalArgumentException("skills.deepens names '$it', which isn't in vocabulary.skills") }
+        (skills.deepens.values.toSet() - qualities).forEach { throw IllegalArgumentException("skills.deepens names '$it', which isn't in vocabulary.qualities") }
+        require(skills.gainPerLevel >= 0 && skills.pricePerLevel >= 0 && skills.affinityPerLevel >= 0) { "skills: per-level numbers can't be negative" }
+        val bookIds = books.map { it.id }
+        require(bookIds.size == bookIds.toSet().size) { "each item can be one book at most: ${bookIds.groupBy { it }.filterValues { it.size > 1 }.keys}" }
+        books.forEach { b ->
+            val where = "book ${b.id}"
+            require(byId[b.id]?.affords?.containsKey("readable") == true) { "$where isn't a readable item" }
+            require(b.chapters.isNotEmpty()) { "$where needs at least one chapter" }
+            (b.skill.keys - skillNames).forEach { throw IllegalArgumentException("$where raises '$it', which isn't in vocabulary.skills") }
+            require(b.skill.values.all { it > 0 }) { "$where: skill gains must be positive" }
+            b.teaches.forEach { t ->
+                require(t in ids || t in verbIds) { "$where teaches '$t', which isn't an item or a verb" }
+                require(t !in start.items) { "$where teaches '$t', which he starts with" }
+                require(t != b.id) { "$where teaches itself" }
+            }
+        }
+        frustration?.let { f ->
+            require(f.perFailure >= 0 && f.perSuccess <= 0 && f.perHour <= 0 && f.mood >= 0) { "frustration: per_failure and mood not negative, per_success and per_hour not positive" }
+        }
         GameClock.parseHhmm(start.time)
         require(room.approach.keys.all { it in room.slots.values }) { "room.approach names a slot that isn't in room.slots" }
     }
@@ -224,6 +269,55 @@ data class NeedRules(
     /** Below [bored] stimulation, each point under it lowers the mood he settles to by [boredMood]. */
     val bored: Double = 0.0,
     @SerialName("bored_mood") val boredMood: Double = 0.0,
+    /** Fullness lost per hour while he sleeps; [fullnessPerHour] when null. */
+    @SerialName("asleep_fullness_per_hour") val asleepFullnessPerHour: Double? = null,
+)
+
+/**
+ * Frustration: each failed action adds [perFailure], each finished verb that isn't routine adds
+ * [perSuccess] (a negative number), and it fades [perHour]. Above [above], each point lowers the
+ * mood he settles to by [mood].
+ */
+@Serializable
+data class FrustrationRules(
+    @SerialName("per_failure") val perFailure: Double,
+    @SerialName("per_success") val perSuccess: Double,
+    @SerialName("per_hour") val perHour: Double,
+    val above: Double,
+    val mood: Double,
+)
+
+/**
+ * How skills pay off. A skill is a number from 0 up with no cap, raised by `practice` ops and by
+ * studying a book. A verb's mood and stimulation gains grow [gainPerLevel] per level of the skills
+ * it practises (the more he can do, the more he gets out of it). A piece whose `sellable` names a
+ * skill sells for [pricePerLevel] more per level he had when he made it. A skill that [deepens] a
+ * quality adds [affinityPerLevel] per level to his affinity for it: knowing about nature, he gets
+ * more out of natural things.
+ */
+@Serializable
+data class SkillRules(
+    @SerialName("gain_per_level") val gainPerLevel: Double = 0.0,
+    @SerialName("price_per_level") val pricePerLevel: Double = 0.0,
+    @SerialName("affinity_per_level") val affinityPerLevel: Double = 0.0,
+    val deepens: Map<String, String> = emptyMap(),
+)
+
+/**
+ * What a readable item is as a book. [id] is the item. He reads it a chapter at a time, so a book
+ * takes as many sessions as it has [chapters] (each one a sentence of what happens in it).
+ * Studying a chapter raises each skill in [skill] by its number. Finishing the last chapter teaches
+ * him [teaches]: verb and item ids that are not in his world until then (the shop doesn't list
+ * them and he can't do them).
+ */
+@Serializable
+data class BookSpec(
+    val id: String,
+    val title: String,
+    val blurb: String,
+    val chapters: List<String>,
+    val skill: Map<String, Double> = emptyMap(),
+    val teaches: List<String> = emptyList(),
 )
 
 /**
@@ -246,7 +340,7 @@ data class HabituationRules(
  * strength, scored by his affinities.
  */
 @Serializable
-data class Vocabulary(val affords: List<String> = emptyList(), val qualities: List<String> = emptyList())
+data class Vocabulary(val affords: List<String> = emptyList(), val qualities: List<String> = emptyList(), val skills: List<String> = emptyList())
 
 /**
  * Who he is, as numbers, and something a run can vary. [affinities]: how much he likes each quality,
@@ -345,8 +439,10 @@ data class AffordanceParams(
     val colors: Int? = null,
     /** drawable: at most this many strokes, each two of the deciding model's picks. */
     val strokes: Int? = null,
+    /** sellable, optional: the skill a piece's price grows with ([SkillRules.pricePerLevel]). */
+    val skill: String? = null,
 ) {
-    internal val set: Set<String> get() = listOfNotNull(price?.let { "price" }, size?.let { "size" }, colors?.let { "colors" }, strokes?.let { "strokes" }).toSet()
+    internal val set: Set<String> get() = listOfNotNull(price?.let { "price" }, size?.let { "size" }, colors?.let { "colors" }, strokes?.let { "strokes" }, skill?.let { "skill" }).toSet()
 }
 
 object Affordance {
@@ -356,10 +452,13 @@ object Affordance {
         "drawable" to mapOf("size" to 4..64, "colors" to 2..32, "strokes" to 1..100),
     )
 
+    /** Parameters an affordance may leave out, which aren't numbers. */
+    val OPTIONAL: Map<String, Set<String>> = mapOf("sellable" to setOf("skill"))
+
     internal fun problems(affordance: String, p: AffordanceParams): List<String> {
         val wants = PARAMS[affordance].orEmpty()
         val values = mapOf("price" to p.price, "size" to p.size, "colors" to p.colors, "strokes" to p.strokes)
-        return (p.set - wants.keys).map { "takes no '$it'" } +
+        return (p.set - wants.keys - OPTIONAL[affordance].orEmpty()).map { "takes no '$it'" } +
             wants.mapNotNull { (k, range) -> values[k].let { v -> if (v == null || v !in range) "needs $k from ${range.first} to ${range.last}" else null } }
     }
 }
@@ -395,8 +494,11 @@ data class ItemSpec(
     /** What an activity can ask for it by: its id and its affordances. */
     val names: Set<String> get() = setOf(id) + affords.keys
 
-    /** What one sells for, when it's `sellable`. */
+    /** What one sells for, when it's `sellable`, before any skill raises it. */
     val sellPrice: Int? get() = affords["sellable"]?.price
+
+    /** The skill its price grows with, if any. */
+    val sellSkill: String? get() = affords["sellable"]?.skill
 
     /** The canvas a drawing model gets, when it's `drawable`. */
     val canvas: CanvasSpec? get() = affords["drawable"]?.let { CanvasSpec(it.size!!, it.colors!!, it.strokes!!) }

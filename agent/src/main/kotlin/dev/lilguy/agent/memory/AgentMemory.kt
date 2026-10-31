@@ -45,7 +45,8 @@ import java.util.concurrent.CopyOnWriteArrayList
  * decision; without one it runs inline, which is what lockstep runs and tests want.
  *
  * Authored ops ([Authors]): the verbs whose result a model writes run through one lifecycle here,
- * each with its handler: a [Thinker] for `write: { with: thought }`, an [ArtStudio] for `draw`.
+ * each with its handler: a [Thinker] for `write: { with: thought }`, a [Reader] for
+ * `write: { with: reading }`, an [ArtStudio] for `draw`.
  * Whichever is null isn't configured, and a verb that needs it isn't offered ([offers]). His
  * latest kept thought is his [plan]; older ones are recall candidates.
  */
@@ -63,6 +64,8 @@ class AgentMemory(
     private val thinker: Thinker? = null,
     /** Draws his art; the scenario connects it to the world. */
     val studio: ArtStudio? = null,
+    /** Writes what stuck with him from each chapter; reading works without it. */
+    private val reader: Reader? = null,
 ) {
     /** What authored ops are written from: who he is, his state in the decision prompt's words, and that prompt's system message. */
     class Brief(val persona: String, val situation: String, val system: String)
@@ -100,6 +103,7 @@ class AgentMemory(
         val handlers = mutableListOf<AuthorHandler<*>>()
         if (thinker != null) handlers += ThoughtHandler(thinker, store, run, onThought = { t -> thoughtLog += t }, onPlan = { t -> plan = t }, onStored = { id, t -> keptThoughts += id to t })
         if (studio != null) handlers += studio
+        if (reader != null) handlers += ReadingHandler(reader, store, run)
         return Authors(handlers, scope)
     }
 

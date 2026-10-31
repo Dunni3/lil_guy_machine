@@ -30,6 +30,11 @@ import kotlin.random.Random
  *
  * What an item is worth to him comes from its qualities and his [Personality]: in its slot it adds
  * comfort, and an `enjoy` op adds it as mood ([QualityValue]).
+ *
+ * He has skills ([SkillRules]), raised by practice and by studying books a chapter at a time
+ * ([BookSpec]). What a book teaches isn't in his world until he finishes it: the shop doesn't list
+ * it and he can't do it ([knownContent] is the content as he knows it). Failures frustrate him and
+ * successes ease it ([FrustrationRules]).
  */
 class BedroomWorld private constructor(
     map: TileMap,
@@ -54,6 +59,16 @@ class BedroomWorld private constructor(
     /** Habits he has finished at least once, for the novelty bonus. */
     private val tried = mutableSetOf<String>()
 
+    /** Skill name to level, from 0 up. */
+    private val skills = LinkedHashMap<String, Double>()
+
+    /** Book id to how many chapters he has read. */
+    private val chapters = mutableMapOf<String, Int>()
+
+    /** What books have taught him ([BedroomContent.taught]); read from the agent's thread through [knownContent]. */
+    @Volatile private var known: Set<String> = emptySet()
+    @Volatile private var knownCache: Pair<Set<String>, BedroomContent>? = null
+
     private var music: Music? = null
 
     /** Bumped whenever what he owns or plays changes; with the minute and need levels it keys [options]. */
@@ -69,8 +84,8 @@ class BedroomWorld private constructor(
 
     private enum class PieceState { Held, Hung, Sold }
 
-    /** One piece of art. [commission]: the request open when it was finished, if any. */
-    private class Piece(val id: Int, val item: String, val commission: Int?) {
+    /** One piece of art. [commission]: the request open when it was finished, if any. [skill]: his level in the skill its price grows with, when he made it. */
+    private class Piece(val id: Int, val item: String, val commission: Int?, val skill: Double) {
         var state = PieceState.Held
         var title: String? = null
         var tags: List<String> = emptyList()
@@ -101,6 +116,13 @@ class BedroomWorld private constructor(
     private val ops = object : OpWorld {
         override val content get() = this@BedroomWorld.content
         override fun item(id: String) = this@BedroomWorld.item(id)
+        override fun value(item: ItemSpec) = this@BedroomWorld.value(item)
+        override fun priceOf(id: String) = price(item(id), item(id).sellSkill?.let(::skill) ?: 0.0)
+        override fun knows(id: String) = isKnown(id)
+        override fun chaptersRead(book: String) = chapters[book] ?: 0
+        override fun readChapter(book: String, study: Boolean) = this@BedroomWorld.readChapter(book, study)
+        override fun teaching(book: String) = content.book(book)?.teaches?.filter { it !in known }?.takeIf { it.isNotEmpty() }?.let(::taughtText)
+        override fun practise(skill: String, d: Double) = this@BedroomWorld.practise(skill, d)
         override fun count(tag: String, extra: String?) = countTag(tag, extra)
         override fun take(tag: String, n: Int) = this@BedroomWorld.take(tag, n)
         override fun add(id: String, n: Int) = this@BedroomWorld.add(id, n)
@@ -163,7 +185,7 @@ class BedroomWorld private constructor(
 
     private fun add(id: String, n: Int) {
         version++
-        if (item(id).carried) repeat(n) { pieces += Piece(pieces.size + 1, id, openCommission()?.id) }
+        if (item(id).carried) repeat(n) { pieces += Piece(pieces.size + 1, id, openCommission()?.id, item(id).sellSkill?.let(::skill) ?: 0.0) }
         owned[id] = count(id) + n
         syncHolding()
     }
@@ -203,7 +225,16 @@ class BedroomWorld private constructor(
     }
 
     /** What [spec] adds to comfort while it sits in its slot: its value to him, in view. Items without a slot are out of sight. */
-    private fun comfortOf(spec: ItemSpec): Int = if (spec.slot == null) 0 else (content.value(spec) * content.qualityValue.inView).roundToInt()
+    private fun comfortOf(spec: ItemSpec): Int = if (spec.slot == null) 0 else (value(spec) * content.qualityValue.inView).roundToInt()
+
+    /** [BedroomContent.value] with what his skills add: each skill that deepens a quality raises his affinity for it. */
+    private fun value(spec: ItemSpec): Double {
+        val r = content.skills
+        if (r.affinityPerLevel == 0.0 || r.deepens.isEmpty()) return content.value(spec)
+        return content.value(spec) + spec.qualities.entries.sumOf { (q, strength) ->
+            strength * r.affinityPerLevel * r.deepens.filterValues { it == q }.keys.sumOf(::skill)
+        }
+    }
 
     private fun comfort(): Int = placed().sumOf { (spec, _) -> comfortOf(spec) } + hung().size * content.gallery.comfortEach
 
@@ -216,7 +247,89 @@ class BedroomWorld private constructor(
     /** How far boredom lowers the mood he settles to. */
     private fun boredom(): Double = (content.needs.bored - needs[Need.Stimulation]).coerceAtLeast(0.0) * content.needs.boredMood
 
-    private fun moodTarget(): Double = (content.needs.moodBaseline + comfort() - boredom()).coerceIn(0.0, Needs.MAX)
+    /** How far frustration lowers the mood he settles to. */
+    private fun frustrated(): Double = content.frustration?.let { f -> (needs[Need.Frustration] - f.above).coerceAtLeast(0.0) * f.mood } ?: 0.0
+
+    private fun moodTarget(): Double = (content.needs.moodBaseline + comfort() - boredom() - frustrated()).coerceIn(0.0, Needs.MAX)
+
+    // --- skills and books ------------------------------------------------------------------------
+
+    fun skill(name: String): Double = skills[name] ?: 0.0
+
+    /** The content as he knows it: without what books teach that he hasn't learned yet. Safe from any thread. */
+    fun knownContent(): BedroomContent {
+        val k = known
+        knownCache?.let { if (it.first == k) return it.second }
+        return content.known(k).also { knownCache = k to it }
+    }
+
+    private fun isKnown(id: String): Boolean = id !in content.taught || id in known
+
+    /** How much more [a]'s gains pay for the skills it practises (its `practice` ops and a studied book's skills). */
+    private fun skilled(a: VerbSpec, args: Map<String, String>): Double {
+        val per = content.skills.gainPerLevel
+        if (per == 0.0) return 1.0
+        val used = a.ops<PracticeOp>().flatMap { it.gains.keys } +
+            a.ops<ProgressOp>().filter { it.study }.flatMap { p -> args[p.book]?.let { content.book(it)?.skill?.keys }.orEmpty() }
+        if (used.isEmpty()) return 1.0
+        return 1.0 + per * used.distinct().map(::skill).average()
+    }
+
+    private fun bound(a: VerbSpec, args: Map<String, String>) = Bound(a, args, freshness(a, args), skilled = skilled(a, args))
+
+    private fun practise(name: String, d: Double): String {
+        skills[name] = skill(name) + d
+        version++
+        return "$name skill ${oneDecimal(skill(name))} (${signed(d)})"
+    }
+
+    /** What one [spec] sells for, made at [level] in the skill its price grows with. */
+    private fun price(spec: ItemSpec, level: Double): Int? = spec.sellPrice?.let { (it * (1 + content.skills.pricePerLevel * level)).roundToInt() }
+
+    private fun piecePrice(p: Piece): Int = price(item(p.item), p.skill) ?: 0
+
+    private fun readChapter(id: String, study: Boolean): List<String> {
+        val book = content.book(id) ?: return emptyList()
+        val read = chapters[id] ?: 0
+        if (read >= book.chapters.size) return listOf("reread \"${book.title}\"")
+        chapters[id] = read + 1
+        version++
+        val parts = mutableListOf("chapter ${read + 1} of ${book.chapters.size} of \"${book.title}\": ${book.chapters[read]}")
+        if (study) book.skill.forEach { (s, d) -> parts += practise(s, d) }
+        if (read + 1 == book.chapters.size) {
+            parts += "finished \"${book.title}\""
+            val learned = book.teaches.filter { it !in known }
+            if (learned.isNotEmpty()) {
+                known = known + learned
+                parts += "you learned ${taughtText(learned)}"
+            }
+        }
+        return parts
+    }
+
+    /** "to paint, and about the easel and the canvas": [ids] as what he'd know. */
+    private fun taughtText(ids: List<String>): String {
+        val verbs = ids.mapNotNull(content::verb).map { "to " + (it.phrase ?: it.id).replace('_', ' ') }
+        val things = ids.mapNotNull(content::item).map { "the ${it.name}" }
+        val about = if (things.isEmpty()) null else "about " + things.joinToString(" and ")
+        return (verbs + listOfNotNull(about)).joinToString(", and ")
+    }
+
+    private fun bookViews(): List<BookView> = content.books.filter { count(it.id) > 0 }.map { b ->
+        val read = chapters[b.id] ?: 0
+        BookView(
+            b.id, b.title, read, b.chapters.size,
+            raises = b.skill.keys.toList().ifEmpty { null },
+            teaches = b.teaches.filter { it !in known }.takeIf { it.isNotEmpty() && read < b.chapters.size }?.let(::taughtText),
+            next = b.chapters.getOrNull(read),
+        )
+    }
+
+    private fun skillView(): Map<String, Double> = content.vocabulary.skills.associateWith { (skill(it) * 10).roundToInt() / 10.0 }
+
+    override fun failed(intent: Intent, reason: String) {
+        content.frustration?.let { needs.change(ticks, Need.Frustration, it.perFailure, "failed: ${intent::class.simpleName?.lowercase()}") }
+    }
 
     // --- habituation and novelty -----------------------------------------------------------------
 
@@ -269,6 +382,7 @@ class BedroomWorld private constructor(
      */
     fun lockReason(a: VerbSpec, args: Map<String, String>? = null, extra: String? = null): String? {
         val places = a.at.filter { it !in a.args && it != VerbSpec.HERE }
+        if (!isKnown(a.id)) return "you don't know how yet"
         if (places.isNotEmpty() && a.at.none { it == VerbSpec.HERE || it in a.args } && places.none { countTag(it, extra) > 0 }) return "needs ${wanted(places.first())}"
         a.requires.firstOrNull { countTag(it, extra) == 0 }?.let { return "needs ${wanted(it)}" }
         if (args == null) a.args.values.firstOrNull { countTag(it, extra) == 0 }?.let { return "needs ${wanted(it)}" }
@@ -352,7 +466,7 @@ class BedroomWorld private constructor(
     }
 
     private fun planDo(intent: Intent.Do): Work {
-        val a = content.verb(intent.activity) ?: reject("there's no activity called '${intent.activity}'; the activities are ${content.verbs.joinToString { it.id }}")
+        val a = content.verb(intent.activity)?.takeIf { isKnown(it.id) } ?: reject("there's no activity called '${intent.activity}'; the activities are ${content.verbs.filter { isKnown(it.id) }.joinToString { it.id }}")
         val given = mapOf("what" to intent.what, "on" to intent.on).filterValues { it != null }.mapValues { it.value!! }
         (given.keys - a.args.keys).firstOrNull()?.let { reject("${a.id} takes no `$it`" + if (a.args.isEmpty()) "" else "; it takes ${a.args.keys.joinToString(" and ")}") }
         lockReason(a)?.let { reject("can't ${a.id}: $it") }
@@ -377,7 +491,7 @@ class BedroomWorld private constructor(
         }
 
     private fun planBuy(id: String): Work {
-        val spec = content.item(id)
+        val spec = content.item(id)?.takeIf { isKnown(it.id) }
         val price = spec?.price ?: reject("'$id' isn't for sale; the shop has ${shopItems().joinToString { it.id }}")
         if (!spec.stackable && count(id) > 0) reject("you already have the ${spec.name}")
         if (!ledger.canAfford(price)) reject("the ${spec.name} costs $$price and you have $${ledger.balance}")
@@ -396,7 +510,7 @@ class BedroomWorld private constructor(
             start = {
                 if (at != guy.cell) guy.facing = Direction.of(at.x + 0.5f - guy.x, at.y + 0.5f - guy.y)
                 val length = if (until != null) clock.ticksUntil(ticks, GameClock.parseHhmm(until.time)) else clock.ticks(a.minutes!!).toLong()
-                doing = Doing(Bound(a, args, freshness(a, args)), ticks, ticks + length)
+                doing = Doing(bound(a, args), ticks, ticks + length)
             },
             done = {
                 val d = doing!!
@@ -412,12 +526,16 @@ class BedroomWorld private constructor(
     }
 
     private fun complete(a: VerbSpec, args: Map<String, String>): String? {
-        val b = Bound(a, args, freshness(a, args))
+        val b = bound(a, args)
         a.effects.firstNotNullOfOrNull { it.gone(ops, b) }?.let { return it }
         val fresh = b.fresh
         val parts = a.effects.flatMapTo(mutableListOf()) { it.finish(ops, b) }
         a.stopBelow.forEach { (need, level) -> if (needs[needOf(need)] < level) parts += "stopped early: $need ${needs.level(needOf(need))}" }
         habituate(a, args, fresh, parts)
+        content.frustration?.takeIf { !a.isRoutine }?.let { f ->
+            val eased = needs.change(ticks, Need.Frustration, f.perSuccess, "did ${a.id}")
+            if (eased != 0.0) parts += "frustration ${signed(eased.roundToInt().toDouble())}"
+        }
         outcome("finished ${a.id}" + if (parts.isEmpty()) "" else ": " + parts.joinToString(", "))
         return null
     }
@@ -512,7 +630,7 @@ class BedroomWorld private constructor(
     /** Each piece with what it sells for, the request's reward included. */
     private fun saleOf(selling: List<Piece>): List<Pair<Piece, Int>> {
         val w = winner(selling)
-        return selling.map { p -> p to (item(p.item).sellPrice ?: 0) + if (p === w) content.commissions!!.reward else 0 }
+        return selling.map { p -> p to piecePrice(p) + if (p === w) content.commissions!!.reward else 0 }
     }
 
     /** "sketch 3" or "sketch 3, \"Sleepy lighthouse\"". */
@@ -590,7 +708,9 @@ class BedroomWorld private constructor(
             rate(Need.Energy, r.awakeEnergyPerHour, "awake")
             rate(Need.Stimulation, r.stimulationPerHour * content.personality.curiosity, "awake")
         }
-        rate(Need.Fullness, r.fullnessPerHour, "hunger")
+        val asleep = d != null && d.activity.effects.any { !it.awake }
+        rate(Need.Fullness, if (asleep) r.asleepFullnessPerHour ?: r.fullnessPerHour else r.fullnessPerHour, "hunger")
+        content.frustration?.let { rate(Need.Frustration, it.perHour, "fading") }
         d?.activity?.effects?.forEach { it.minute(ops, d.bound) }
         music?.let { m -> m.spec.rates.forEach { (need, perHour) -> rate(needOf(need), paid(needOf(need), perHour, m.fresh), m.spec.name) } }
         // Low energy or fullness replaces the drift: mood just falls, at the steeper rate.
@@ -606,7 +726,7 @@ class BedroomWorld private constructor(
 
     override fun stamp(tick: Long): String = "d${clock.day(tick)} ${GameClock.hhmm(clock.minuteOfDay(tick))}"
 
-    private fun shopItems(): List<ItemSpec> = content.items.filter { it.price != null && (it.stackable || count(it.id) == 0) }
+    private fun shopItems(): List<ItemSpec> = content.items.filter { it.price != null && isKnown(it.id) && (it.stackable || count(it.id) == 0) }
 
     /** One option per way to bind [a]'s arguments that isn't locked, or one locked option saying why. */
     private fun activityOptions(a: VerbSpec): List<ActivityOption> {
@@ -630,7 +750,7 @@ class BedroomWorld private constructor(
 
     /** [forSale]: describing a verb he can't do yet, so leave out what he has now. [args]: what its arguments are bound to. */
     private fun gives(a: VerbSpec, forSale: Boolean = false, args: Map<String, String> = emptyMap()): String {
-        val b = Bound(a, args, freshness(a, args))
+        val b = bound(a, args)
         val parts = a.effects.flatMapTo(mutableListOf()) { it.describe(ops, b, forSale) }
         if (forSale) return parts.joinToString("; ")
         val fresh = b.fresh
@@ -645,14 +765,24 @@ class BedroomWorld private constructor(
     private fun shopOption(spec: ItemSpec): ShopOption {
         val parts = mutableListOf<String>()
         if (spec.pack > 1) parts += quantity(spec.id, spec.pack)
+        content.book(spec.id)?.let { b ->
+            parts += "\"${b.title}\": ${b.blurb}"
+            parts += "${b.chapters.size} chapters, one a session"
+            if (b.skill.isNotEmpty()) parts += "studying it raises " + b.skill.keys.joinToString(" and ")
+            ops.teaching(b.id)?.let { parts += "finishing it teaches you $it" }
+        }
         val unlocks = content.verbs.filter { a ->
-            spec.id in a.at || (a.requires + a.effects.flatMap { it.asksFor } + a.args.values).any { it in spec.names }
+            isKnown(a.id) && (spec.id in a.at || (a.requires + a.effects.flatMap { it.asksFor } + a.args.values).any { it in spec.names })
         }
         // What it's for. When it's what a locked activity is missing, say so and what that activity gives.
-        unlocks.forEach { a ->
+        // A verb this item fills every argument of, but which one of its ops refuses for it (studying a novel), isn't what it's for.
+        unlocks.filterNot { a ->
+            a.args.isNotEmpty() && a.args.values.all { it in spec.names } &&
+                a.effects.any { it.lockReason(ops, Bound(a, a.args.mapValues { spec.id }, 1.0, extra = spec.id)) != null }
+        }.forEach { a ->
             val locked = lockReason(a)
             val after = lockReason(a, extra = spec.id)
-            val what = "${takes(a)}: ${gives(a, forSale = true)}"
+            val what = takes(a) + gives(a, forSale = true).let { if (it.isEmpty()) "" else ": $it" }
             parts += when {
                 locked == null || locked == after -> "for ${a.id}"
                 after == null -> "unlocks ${a.id} ($what)"
@@ -684,6 +814,9 @@ class BedroomWorld private constructor(
             fullness = needs[Need.Fullness],
             mood = needs[Need.Mood],
             stimulation = needs[Need.Stimulation],
+            frustration = needs[Need.Frustration],
+            skills = skillView(),
+            books = bookViews(),
             moodTarget = moodTarget(),
             doing = d?.activity?.id,
             progress = d?.let { ((ticks - it.startTick).toFloat() / (it.endTick - it.startTick).coerceAtLeast(1)).coerceIn(0f, 1f) },
@@ -724,6 +857,8 @@ class BedroomWorld private constructor(
             shop = current.shop,
             commission = content.commissions?.let { commissionView() },
             art = if (pieces.isEmpty()) null else artViews(),
+            skills = content.vocabulary.skills.takeIf { it.isNotEmpty() }?.let { skillView() },
+            books = bookViews().ifEmpty { null },
             authored = authored.toList(),
             outcome = last?.outcome,
             news = news(),
@@ -739,7 +874,7 @@ class BedroomWorld private constructor(
         get() {
             val key = listOf(version, clock.minutes(ticks) / ESTIMATE_MINUTES, needs.levels(), last?.intent ?: Unit)
             options?.let { if (it.key == key) return it }
-            return Options(key, content.verbs.flatMap(::activityOptions), shopItems().map(::shopOption)).also { options = it }
+            return Options(key, content.verbs.filter { isKnown(it.id) }.flatMap(::activityOptions), shopItems().map(::shopOption)).also { options = it }
         }
 
     /** The whole room, one string per row, with owned furniture as its slot letter; legend in [mapLegend]. */
@@ -787,6 +922,8 @@ class BedroomWorld private constructor(
 
         /** "60%", to the nearest 10. */
         private fun percent(fresh: Double): String = "${(fresh * 10).roundToInt() * 10}%"
+
+        private fun oneDecimal(v: Double): String = "%.1f".format(v)
 
         /**
          * A world of [content] with only tier 0 and the [granted] ids in it; [BedroomWorld.content]

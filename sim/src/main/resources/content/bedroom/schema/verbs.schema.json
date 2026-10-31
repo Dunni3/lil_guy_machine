@@ -18,6 +18,7 @@
             "enum": [
               "consumptive",
               "generative",
+              "study",
               "transformative",
               "expressive",
               "economic",
@@ -107,7 +108,8 @@
                           "energy",
                           "fullness",
                           "mood",
-                          "stimulation"
+                          "stimulation",
+                          "frustration"
                         ]
                       },
                       "additionalProperties": {
@@ -129,7 +131,8 @@
                           "energy",
                           "fullness",
                           "mood",
-                          "stimulation"
+                          "stimulation",
+                          "frustration"
                         ]
                       },
                       "additionalProperties": {
@@ -250,11 +253,55 @@
                     "string",
                     "null"
                   ],
-                  "description": "Pays the bound item's value to him (qualities times affinities) as mood, scaled by freshness. (at the finish)",
+                  "description": "Pays the bound item's value to him (qualities times affinities, plus what his skills add) as mood, scaled by freshness. (at the finish)",
                   "enum": [
                     "what",
                     "on",
                     null
+                  ]
+                },
+                "progress": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "book": {
+                          "type": "string"
+                        },
+                        "study": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "book"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Reads the next chapter of the book bound to the argument (library.yaml). Finishing the last chapter teaches him what the book teaches. `study: true` also raises the book's skills, and is locked once the book is finished or when it has no skill; reading a finished book rereads it. (at the finish)"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "practice": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "propertyNames": {
+                        "enum": [
+                          "art",
+                          "music",
+                          "nature"
+                        ]
+                      },
+                      "additionalProperties": {
+                        "type": "number"
+                      },
+                      "description": "Raises skills (vocabulary.yaml). The verb's mood and stimulation gains grow with the skills it practises (rules.yaml `skills`). (at the finish)"
+                    },
+                    {
+                      "type": "null"
+                    }
                   ]
                 },
                 "write": {
@@ -283,6 +330,9 @@
                             "string",
                             "null"
                           ]
+                        },
+                        "optional": {
+                          "type": "boolean"
                         }
                       },
                       "required": [
@@ -290,7 +340,7 @@
                         "into"
                       ],
                       "additionalProperties": false,
-                      "description": "Authored: a model writes it (handler `thought`) into the named destinations, kept only if the verb succeeds. `shows_as: plan` makes a short-term result his plan in later prompts. Without a handler the verb isn't offered. (before or during; kept at the finish)"
+                      "description": "Authored: a model writes it (handler `thought`, or `reading` for what stuck from a chapter) into the named destinations, kept only if the verb succeeds. `shows_as: plan` makes a short-term result his plan in later prompts. Without a handler the verb isn't offered, unless the write is `optional: true`. (before or during; kept at the finish)"
                     },
                     {
                       "type": "null"
@@ -322,7 +372,8 @@
                     "energy",
                     "fullness",
                     "mood",
-                    "stimulation"
+                    "stimulation",
+                    "frustration"
                   ]
                 },
                 "below": {
@@ -355,7 +406,8 @@
                 "energy",
                 "fullness",
                 "mood",
-                "stimulation"
+                "stimulation",
+                "frustration"
               ]
             },
             "additionalProperties": {

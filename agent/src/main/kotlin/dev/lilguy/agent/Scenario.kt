@@ -56,15 +56,22 @@ fun bedroomScenario(
     fun offered(v: VerbSpec): Boolean = longTerm?.offers(v) ?: v.authored.none { it.essential }
     val world = BedroomWorld.create(content, ticksPerMinute, granted = granted, seed = seed)
     longTerm?.connect(world)
-    val shown = world.content.let { c -> c.copy(verbs = c.verbs.filter { offered(it) }) }
+    // What he's told about is what he knows: a book can teach him a verb mid-run, so it's rebuilt when that changes.
+    var lastKnown: Pair<BedroomContent, BedroomContent>? = null
+    fun shown(): BedroomContent {
+        val known = world.knownContent()
+        lastKnown?.let { if (it.first === known) return it.second }
+        return known.copy(verbs = known.verbs.filter { offered(it) }).also { lastKnown = known to it }
+    }
+    val start = shown()
     // Who he is opens the system prompt and changes with his self-model, once a night.
     val self = { longTerm?.selfText() }
     val prompts = PromptBuilder(
-        systemFor = { BedroomPrompt.system(shown, ticksPerMinute, self()) },
+        systemFor = { BedroomPrompt.system(shown(), ticksPerMinute, self()) },
         timeout = timeout,
-        choices = { obs, recent -> BedroomPrompt.choices(obs, recent, ticksPerMinute, shown) },
+        choices = { obs, recent -> BedroomPrompt.choices(obs, recent, ticksPerMinute, shown()) },
         stamp = BedroomPrompt.stamp(world.clock),
-        persona = { Persona.text(shown, self()) },
+        persona = { Persona.text(shown(), self()) },
         self = self,
     )
     val runtime = AgentRuntime(
@@ -72,7 +79,7 @@ fun bedroomScenario(
         schemaFor = { BedroomPrompt.replySchema(it, ticksPerMinute) },
         longTerm = longTerm,
         fallback = { Intent.Wait(BedroomPrompt.WAIT_TICKS) },
-        reflection = shown.reflection?.takeIf { shown.verb(it.verb) != null }?.let { it.verb to it.every },
+        reflection = start.reflection?.takeIf { start.verb(it.verb) != null }?.let { it.verb to it.every },
         onDecision = onDecision,
     )
     return world to runtime

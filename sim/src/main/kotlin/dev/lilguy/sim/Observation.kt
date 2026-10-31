@@ -43,6 +43,10 @@ data class Observation(
     @EncodeDefault(EncodeDefault.Mode.NEVER) val commission: CommissionView? = null,
     /** The art he has made and still has, held or hung, oldest first. */
     @EncodeDefault(EncodeDefault.Mode.NEVER) val art: List<PieceView>? = null,
+    /** His skills, name to level (0 up, one decimal). */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val skills: Map<String, Double>? = null,
+    /** The books he owns and how far he has read. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val books: List<BookView>? = null,
     /** Authored ops waiting for (or given) their results, for the agent layer; never shown to models. */
     @Transient val authored: List<AuthoredView> = emptyList(),
     /**
@@ -83,6 +87,23 @@ data class PieceView(
     val hung: Boolean = false,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val sellsFor: Int? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val commission: String? = null,
+)
+
+/**
+ * A book he owns: [read] of [chapters] chapters so far. [raises]: the skills studying it raises.
+ * [teaches]: what finishing it would teach him, while there's some left to learn. [next]: the
+ * next chapter's text, for the agent layer (what he reads next); never shown to models.
+ */
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+data class BookView(
+    val id: String,
+    val title: String,
+    val read: Int,
+    val chapters: Int,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val raises: List<String>? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val teaches: String? = null,
+    @Transient val next: String? = null,
 )
 
 /**
@@ -167,7 +188,13 @@ data class LifeSnapshot(
     val mood: Double,
     /** Low is bored. */
     val stimulation: Double,
-    /** The mood his mood drifts toward: the baseline plus the room's comfort, less boredom. */
+    /** High is frustrated. */
+    val frustration: Double = 0.0,
+    /** Skill name to level. */
+    val skills: Map<String, Double> = emptyMap(),
+    /** The books he owns and how far he has read. */
+    val books: List<BookView> = emptyList(),
+    /** The mood his mood drifts toward: the baseline plus the room's comfort, less boredom and frustration. */
     val moodTarget: Double,
     /** The activity under way (after any walk to it), and how far through it is, 0..1. */
     val doing: String?,

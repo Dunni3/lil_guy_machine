@@ -159,6 +159,7 @@ class Summarizer(
         EventKind.Snapshot -> "How things stood"
         EventKind.Thought -> "I thought"
         EventKind.Art -> "I made"
+        EventKind.Reading -> "I read"
     }
 
     companion object {
