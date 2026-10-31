@@ -3,6 +3,7 @@ package dev.lilguy.sim
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import kotlin.math.atan2
 import kotlin.math.roundToInt
 
@@ -31,10 +32,11 @@ data class Observation(
     @EncodeDefault(EncodeDefault.Mode.NEVER) val owns: Map<String, Int>? = null,
     /** What's playing in the background, such as "jazz_record, 32 min left". */
     @EncodeDefault(EncodeDefault.Mode.NEVER) val music: String? = null,
-    /** Every do() activity: available ones with what they take and give, locked ones with why. */
+    /**
+     * Every do() verb: available ones with what they take and give, one per way to fill their
+     * arguments (`what`, `on`) with things he owns; locked ones once, with why.
+     */
     @EncodeDefault(EncodeDefault.Mode.NEVER) val activities: List<ActivityOption>? = null,
-    /** Item-on-item uses that are possible now. */
-    @EncodeDefault(EncodeDefault.Mode.NEVER) val uses: List<UseOption>? = null,
     /** Everything for sale he doesn't already have. */
     @EncodeDefault(EncodeDefault.Mode.NEVER) val shop: List<ShopOption>? = null,
     /** How long since each activity his mood depends on, such as "last journal 20h ago; ...". */
@@ -43,6 +45,8 @@ data class Observation(
     @EncodeDefault(EncodeDefault.Mode.NEVER) val commission: CommissionView? = null,
     /** The art he has made and still has, held or hung, oldest first. */
     @EncodeDefault(EncodeDefault.Mode.NEVER) val art: List<PieceView>? = null,
+    /** Authored ops waiting for (or given) their results, for the agent layer; never shown to models. */
+    @Transient val authored: List<AuthoredView> = emptyList(),
 )
 
 /**
@@ -75,19 +79,21 @@ data class PieceView(
     @EncodeDefault(EncodeDefault.Mode.NEVER) val commission: String? = null,
 )
 
-/** An activity for do(). Exactly one of [locked] and ([takes], [gives]) is set. */
+/**
+ * A verb for do(), with the items its arguments are bound to ([what], [on]) when it has any.
+ * Exactly one of [locked] and ([takes], [gives]) is set.
+ */
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class ActivityOption(
     val id: String,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val what: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val on: String? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val takes: String? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val gives: String? = null,
     /** Why it can't be done now, such as "needs an easel ($120)". */
     @EncodeDefault(EncodeDefault.Mode.NEVER) val locked: String? = null,
 )
-
-@Serializable
-data class UseOption(val itemId: String, val on: String, val takes: String, val gives: String)
 
 @Serializable
 data class ShopOption(val id: String, val price: Int, val affordable: Boolean, val gives: String)
@@ -153,7 +159,9 @@ data class LifeSnapshot(
     val energy: Double,
     val fullness: Double,
     val mood: Double,
-    /** The mood his mood drifts toward: the baseline plus the room's comfort. */
+    /** Low is bored. */
+    val stimulation: Double,
+    /** The mood his mood drifts toward: the baseline plus the room's comfort, less boredom. */
     val moodTarget: Double,
     /** Why his mood is falling instead of drifting, when a neglect rule is in force. */
     val moodSinking: String? = null,

@@ -19,6 +19,7 @@ data class HourSample(
     val mood: Double,
     /** The activity under way, or the intent's type while walking, buying or waiting. */
     val doing: String?,
+    val stimulation: Double = 0.0,
 )
 
 /** One game day of a bedroom run, for summaries. */
@@ -47,6 +48,7 @@ object BedroomReport {
             fullness = round1(life.fullness),
             mood = round1(life.mood),
             doing = life.doing ?: intent?.let { world.describe(it).substringBefore(' ') },
+            stimulation = round1(life.stimulation),
         )
     }
 
@@ -72,6 +74,7 @@ object BedroomReport {
         Need.Energy to (hours.minOfOrNull { it.energy } ?: 0.0),
         Need.Fullness to (hours.minOfOrNull { it.fullness } ?: 0.0),
         Need.Mood to (hours.minOfOrNull { it.mood } ?: 0.0),
+        Need.Stimulation to (hours.minOfOrNull { it.stimulation } ?: 0.0),
     )
 
     /** A want and every entry it appeared in, by when it was first written. */

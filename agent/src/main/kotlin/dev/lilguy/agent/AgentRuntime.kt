@@ -40,10 +40,10 @@ class AgentRuntime(
     private val longTerm: AgentMemory? = null,
     private val fallback: (Throwable) -> Intent = { Intent.Wait(World.TICKS_PER_SECOND) },
     /**
-     * Forces a think after this many decisions without one, without asking [model]; null leaves
-     * thinking to the model. Only when [longTerm] has a thinker.
+     * Makes him do this verb after this many decisions without it, without asking [model], when it's
+     * on offer (not locked); null leaves it to the model. The bedroom's is think ([dev.lilguy.sim.Reflection]).
      */
-    private val thinkEvery: Int? = null,
+    private val reflection: Pair<String, Int>? = null,
     private val onDecision: (DecisionRecord) -> Unit = {},
 ) {
     /** One trip through the loop, for logs, replays and debug views. */
@@ -66,7 +66,7 @@ class AgentRuntime(
         val recalled: List<String> = emptyList(),
         /** The journal entries put into this decision's prompt. */
         val recalledJournal: List<String> = emptyList(),
-        /** When [intent] is think: what he thought, or why there's no thought. */
+        /** When [intent]'s verb writes a thought before it starts: what he thought, or why there's no thought. */
         val thought: Thought? = null,
     ) {
         val fellBack: Boolean get() = error != null
@@ -82,11 +82,8 @@ class AgentRuntime(
     @Volatile var recent: List<Memory.Entry> = emptyList()
         private set
 
-    /** Decisions since his last think. */
-    private var sinceThink = 0
-
-    /** His latest thought, as "stamp: text", shown in every prompt until the next one replaces it. */
-    private var latestThought: String? = null
+    /** Decisions since he last did the [reflection] verb. */
+    private var sinceReflection = 0
 
     /** When the in-flight decide() started, or null when the agent isn't waiting on the model. */
     @Volatile var decidingSince: TimeMark? = null
@@ -100,15 +97,17 @@ class AgentRuntime(
             longTerm?.observed(obs)
             val recalled = longTerm?.recall(obs).orEmpty()
             val journal = longTerm?.recallJournal(obs).orEmpty()
-            val request = prompts.build(obs, memory.recent(), closedChoice = model.capabilities.closedChoice, memories = recalled, journal = journal, thought = latestThought)
+            // His latest kept thought, shown in every prompt until the next one replaces it.
+            val plan = longTerm?.plan?.let { t -> t.text?.let { "${prompts.stampOf(t.tick)}: $it" } }
+            val request = prompts.build(obs, memory.recent(), closedChoice = model.capabilities.closedChoice, memories = recalled, journal = journal, thought = plan)
             val schema = schemaFor(obs)
             val started = TimeSource.Monotonic.markNow()
             decidingSince = started
             val base = DecisionRecord(obs.tick, Intent.Wait(0), null, null, Duration.ZERO, observation = obs, request = request, schema = schema.jsonSchema, recalled = recalled, recalledJournal = journal)
-            val forceThink = thinkEvery != null && longTerm?.thinking == true && sinceThink >= thinkEvery
-            val record = if (forceThink) {
+            val forced = reflection?.takeIf { (verb, every) -> sinceReflection >= every && obs.activities.orEmpty().any { it.id == verb && it.locked == null } }
+            val record = if (forced != null) {
                 decidingSince = null
-                base.copy(intent = Intent.Think, rationale = "Time to stop and think (every $thinkEvery decisions).")
+                base.copy(intent = Intent.Do(forced.first), rationale = "Time to ${forced.first} (every ${forced.second} decisions).")
             } else try {
                 val decision = withTimeout(request.timeout) { model.decide(request, schema) }
                 base.copy(
@@ -137,18 +136,18 @@ class AgentRuntime(
             } finally {
                 decidingSince = null
             }
-            longTerm?.acted(obs, record.intent, prompts.persona?.let { AgentMemory.JournalBrief(it, PromptBuilder.situationOf(request)) })
-            // A think is one more model call before the sim starts it; he stands still meanwhile, as he does while deciding.
-            val thought = if (record.intent == Intent.Think) {
+            val brief = prompts.persona?.let { AgentMemory.Brief(it, PromptBuilder.situationOf(request), request.system) }
+            // A verb's `before` authored ops (a thought) are more model calls before the sim starts it; he stands still meanwhile, as he does while deciding.
+            val thought = if (longTerm != null && brief != null) {
                 decidingSince = TimeSource.Monotonic.markNow()
                 try {
-                    longTerm?.think(obs, request.system, PromptBuilder.situationOf(request))
+                    longTerm.before(obs, record.intent, brief).filterIsInstance<Thought>().firstOrNull()
                 } finally {
                     decidingSince = null
                 }
             } else null
-            if (record.intent == Intent.Think) sinceThink = 0 else sinceThink++
-            thought?.text?.let { latestThought = "${prompts.stampOf(obs.tick)}: $it" }
+            longTerm?.acted(obs, record.intent, brief)
+            if (reflection != null && (record.intent as? Intent.Do)?.activity == reflection.first) sinceReflection = 0 else sinceReflection++
             memory.record(obs.tick, record.intent, thought?.text)
             recent = memory.recent()
             val done = record.copy(thought = thought)

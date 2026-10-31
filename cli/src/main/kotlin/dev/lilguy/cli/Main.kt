@@ -2,6 +2,7 @@ package dev.lilguy.cli
 
 import dev.lilguy.agent.AgentRuntime
 import dev.lilguy.agent.BedroomReport
+import dev.lilguy.agent.ContentDocs
 import dev.lilguy.agent.DaySummary
 import dev.lilguy.agent.DecisionLog
 import dev.lilguy.agent.HourSample
@@ -30,7 +31,9 @@ import dev.lilguy.agent.runLockstep
 import dev.lilguy.decision.DecisionModel
 import dev.lilguy.decision.Endpoints
 import dev.lilguy.decision.StructuredOutput
+import dev.lilguy.sim.BedroomContent
 import dev.lilguy.sim.BedroomWorld
+import dev.lilguy.sim.Personality
 import dev.lilguy.sim.GameClock
 import dev.lilguy.sim.Intent
 import dev.lilguy.sim.Need
@@ -75,7 +78,12 @@ private const val USAGE = """lil guy machine cli: lockstep runs of the key-and-d
                       typesafe draws too (a PNG per piece in art-NN/ beside the log); the scripted
                       policy and a replay don't draw
   --grant IDS         bedroom: unlock gated content, comma-separated ids (e.g. paint,easel,canvas,painting)
+  --affinities Q=W    bedroom: his personality for these runs, quality=weight pairs over the content's
+                      default (e.g. calm=2,loud=-1); weights -1 to 2
+  --curiosity X       bedroom: scales how fast stimulation drains and how much a first time pays (default 1)
   --quiet             one line per run instead of every decision and event
+  --content-docs      write the bedroom content's JSON Schemas (sim/src/main/resources/content/bedroom/schema/)
+                      and its grammar reference page (build/grammar-reference.html), then exit
 
 Key-and-door exits non-zero unless every run solved the room; the bedroom, unless every run
 lived its days without hitting the decision cap. Bedroom runs also write hours-NN.jsonl (money
@@ -108,9 +116,10 @@ private class Args(argv: Array<String>) {
     fun flag(name: String) = name in flags
 
     companion object {
-        val FLAGS = setOf("--quiet", "--no-log", "--help")
+        val FLAGS = setOf("--quiet", "--no-log", "--help", "--content-docs")
         val KNOWN = FLAGS + setOf(
             "--scenario", "--endpoint", "--runs", "--days", "--minute-ticks", "--ticks", "--max-decisions", "--config", "--strategy", "--log-dir", "--replay", "--memory", "--memory-endpoint", "--journal-endpoint", "--grant",
+            "--affinities", "--curiosity",
         )
     }
 }
@@ -150,7 +159,7 @@ private data class BedroomResult(
     val days: List<DaySummary>,
     /** Lowest level of each need over the run, checked every tick. */
     val lowest: Map<String, Double>,
-    /** Ticks with a need at 0. */
+    /** Ticks with energy, fullness or mood at 0 (stimulation at 0 is just bored). */
     @SerialName("ticks_at_zero") val ticksAtZero: Long,
     @SerialName("money_end") val moneyEnd: Int,
     val bought: List<String>,
@@ -181,6 +190,12 @@ fun main(argv: Array<String>) {
         println(USAGE)
         return
     }
+    if (args.flag("--content-docs")) {
+        val page = File("build/grammar-reference.html")
+        ContentDocs.write(BedroomContent.default(), File("sim/src/main/resources/content/bedroom/schema"), page)
+        println("wrote the content schemas and ${page.path}")
+        return
+    }
     val scenario = try {
         Scenario.parse(args.string("--scenario") ?: Scenario.KeyDoor.id)
     } catch (e: IllegalArgumentException) {
@@ -199,6 +214,7 @@ fun main(argv: Array<String>) {
     val maxDecisions = args.int("--max-decisions", if (scenario == Scenario.Bedroom) 60 * days else 60)
     val quiet = args.flag("--quiet")
     val granted = args.string("--grant")?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }?.toSet().orEmpty()
+    val personality = personalityOf(args)
 
     // Each run gets a fresh model, so nothing carries over between runs.
     val (label, timeout, newModel) = try {
@@ -257,7 +273,7 @@ fun main(argv: Array<String>) {
             )
         }
         try {
-            runOnce(n, scenario, model, timeout, minuteTicks, maxTicks, maxDecisions, quiet, log, logDir, ledger, memory, granted, sessions)
+            runOnce(n, scenario, model, timeout, minuteTicks, maxTicks, maxDecisions, quiet, log, logDir, ledger, memory, granted, personality, sessions)
         } finally {
             log?.close()
             store?.close()
@@ -271,11 +287,26 @@ fun main(argv: Array<String>) {
     if (results.any { !it.solved }) exitProcess(1)
 }
 
+/** --affinities and --curiosity over the content's default personality; null when neither is given. */
+private fun personalityOf(args: Args): Personality? {
+    val affinities = args.string("--affinities")
+    val curiosity = args.string("--curiosity")
+    if (affinities == null && curiosity == null) return null
+    val base = BedroomContent.default().personality
+    val changed = affinities.orEmpty().split(',').filter { it.isNotBlank() }.associate { pair ->
+        val parts = pair.split('=')
+        require(parts.size == 2) { "--affinities takes quality=weight pairs, like calm=2,loud=-1" }
+        parts[0].trim() to (parts[1].trim().toDoubleOrNull() ?: throw IllegalArgumentException("--affinities: '${parts[1]}' isn't a number"))
+    }
+    val c = curiosity?.let { it.toDoubleOrNull() ?: throw IllegalArgumentException("--curiosity takes a number") } ?: base.curiosity
+    return Personality(base.affinities + changed, c).also { BedroomContent.default().withPersonality(it) } // fail fast on an unknown quality
+}
+
 private fun modelSource(scenario: Scenario, endpoint: String, replay: File?, args: Args): Triple<String, Duration, () -> DecisionModel> {
     if (replay != null) {
         require(replay.isFile) { "no log at ${replay.path}" }
         val entries = DecisionLog.read(replay)
-        return Triple("replay", 20.seconds) { ReplayDecisionModel(entries, id = "replay:${entries.firstOrNull()?.model}") }
+        return Triple("replay", 20.seconds) { ReplayDecisionModel(entries, id = "replay:${entries.firstOrNull()?.model}", upgrade = scenario.upgrade()) }
     }
     if (endpoint == "scripted") return Triple("scripted", 20.seconds) { scenario.scriptedPolicy() }
     var config = Endpoints.load(File(args.string("--config") ?: Endpoints.DEFAULT_PATH))
@@ -305,11 +336,12 @@ private fun runOnce(
     ledger: TokenLedger,
     memory: AgentMemory? = null,
     granted: Set<String> = emptySet(),
+    personality: Personality? = null,
     sessions: List<JournalSession> = emptyList(),
 ): RunResult {
     val records = mutableListOf<AgentRuntime.DecisionRecord>()
     lateinit var stampOf: (Long) -> String
-    val (world, runtime) = scenario.create(model, timeout, minuteTicks, longTerm = memory, granted = granted) { d ->
+    val (world, runtime) = scenario.create(model, timeout, minuteTicks, longTerm = memory, granted = granted, personality = personality) { d ->
         records += d
         log?.write(d)
         if (!quiet) {
@@ -342,7 +374,7 @@ private fun runOnce(
             printed = world.tick
             if (bedroom != null) {
                 Need.entries.forEach { lowest[it] = minOf(lowest.getValue(it), bedroom.needs[it]) }
-                if (Need.entries.any { bedroom.needs[it] <= 0.0 }) ticksAtZero++
+                if (Need.entries.any { it != Need.Stimulation && bedroom.needs[it] <= 0.0 }) ticksAtZero++
                 if (bedroom.clock.isMinuteStart(world.tick) && bedroom.clock.minuteOfDay(world.tick) % 60 == 0) hours += BedroomReport.sample(bedroom)
             }
         }

@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=schema/personality.schema.json
+# Who he is, as numbers; a run can swap in another (--affinities, --curiosity).
+
+personality:
+  # From -1 (it puts him off) to 2; a quality left out counts 0.
+  affinities: { cozy: 1, calm: 1, warm: 1, soft: 1, bright: 1, pretty: 1, natural: 1, lively: 0.5, strange: 0.5, loud: -0.5 }
+  # Scales how fast stimulation drains and how much a first time pays.
+  curiosity: 1

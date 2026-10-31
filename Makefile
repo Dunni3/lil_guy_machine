@@ -33,6 +33,10 @@ desktop: ## Run the app in a desktop window (ENDPOINT=<name>, MEMORY_ENDPOINT=<n
 cli: ## Run the headless CLI (ARGS="--endpoint hosted --runs 10"; ARGS=--help for all)
 	$(GRADLE) -q :cli:run $(if $(ARGS),--args="$(ARGS)")
 
+.PHONY: content-docs
+content-docs: ## Regenerate the bedroom content's JSON Schemas and build/grammar-reference.html
+	$(GRADLE) -q :cli:run --args="--content-docs"
+
 .PHONY: test
 test: ## Run all JVM unit tests
 	$(GRADLE) test

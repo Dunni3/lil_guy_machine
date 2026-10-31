@@ -16,7 +16,8 @@ memory and personality (`research_notes/2026-10-29_0313_bedroom-proposal-and-roa
 make test        # JVM unit tests (all modules)
 make cli         # headless runner (ARGS="--scenario bedroom --days 3 --endpoint typesafe")
                  # add --memory runs/mem.db [--memory-endpoint NAME] for long-term memory,
-                 # --journal-endpoint NAME for the journal, --grant paint,easel,... to unlock tiers
+                 # --journal-endpoint NAME for the journal, --grant paint,easel,... to unlock tiers,
+                 # --affinities calm=2,loud=-1 / --curiosity 1.5 for another personality
 make desktop     # LWJGL3 window
 make tv-connect IP=10.0.0.51   # wireless adb to the Streamer
 make tv-run      # build + install + launch debug APK (ENDPOINT=<name>, MEMORY_ENDPOINT=<name|none>, JOURNAL_ENDPOINT=,
@@ -37,10 +38,17 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
 - World boundary: `sim/.../World.kt`; observations and snapshots: `sim/.../Observation.kt`.
   Intent lifecycle, walking, publishing: `sim/.../GridWorld.kt`. Key-and-door: `RoomWorld.kt`
   (map text in `TileMap.kt`, A* in `Pathfinder.kt`).
-- The bedroom: `sim/.../BedroomWorld.kt` (engine), `BedroomContent.kt` (schema of the content file),
+- The bedroom: `sim/.../BedroomWorld.kt` (engine), `BedroomContent.kt` (schema of the content files),
   `GameClock.kt` (clock scale knob), `Ledger.kt` (money ledger and needs). Content, which is where
-  numbers and new jobs, items and hobbies go: `sim/src/main/resources/content/bedroom.yaml`.
-  Anything with `tier` above 0 is gated until its id is granted (`BedroomContent.unlocked`).
+  numbers and new jobs, items and hobbies go: `sim/src/main/resources/content/bedroom/*.yaml`
+  (`BedroomContent.FILES` says which keys each file holds). Anything with `tier` above 0 is gated
+  until its id is granted (`BedroomContent.unlocked`). Items use a closed `vocabulary` of
+  affordances (what verbs ask for; `sellable` and `drawable` take parameters) and qualities (scored
+  by his `personality` affinities into comfort and mood). What a verb does is its `effects`, a list
+  of ops (`Ops.kt`: each op owns its checks, lock reason, apply and prompt text); every verb has a
+  `kind` that lists the ops it may use (`VerbKind.kt`). `make content-docs` regenerates the content's
+  JSON Schemas (`content/bedroom/schema/`, checked by a test) and `build/grammar-reference.html`
+  (`agent/.../ContentDocs.kt`).
 - Scenario wiring, scripted policies, lockstep runner: `agent/.../Scenario.kt` (`Scenario` enum),
   `KeyDoorPolicy.kt`, `BedroomPolicy.kt`. Bedroom prompt, schema, choice set: `BedroomPrompt.kt`;
   who he is (shared with the journal): `Persona.kt`; run summaries and the journal report: `BedroomReport.kt`.
@@ -55,14 +63,19 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   events and memories, `InMemoryStore`), `AgentMemory.kt` (what `AgentRuntime` talks to), `Describe.kt`
   (event text), `Summarizer.kt` (LLM writes level-1 memories), `Recall.kt` (which memories and journal
   entries reach a prompt), `Keywords.kt` (shared keyword scoring), `JournalWriter.kt` (the journal's
-  search-then-write LLM loop; `AgentMemory` keeps an entry only when the activity succeeds),
-  `Thinker.kt` (the `think` intent's one LLM call; the thought goes to events and short-term memory).
+  search-then-write LLM loop), `Thinker.kt` (the `think` verb's one LLM call), `Handlers.kt` (the
+  `journal` and `thought` handlers).
+- Authored ops (a model writes the result of a `write` or `draw` op): `agent/.../authored/Authors.kt`, the
+  handler registry and the one lifecycle they share (timing before or during the verb, kept only if it
+  succeeds, the clock held while a call outlasts its verb, results back to the sim through
+  `BedroomWorld.deliver`). The sim side is `sim/.../Authored.kt`. A verb whose `write` has no handler
+  isn't offered to models. Think is a verb; `reflection` in rules.yaml makes him think every few decisions.
 - Art: `agent/.../art/`: `Painter.kt` (the deciding model draws each piece as a run of closed picks:
   subject, crayon box, then a stroke a call; `CommissionVoice` words each day's commission on a text
   model), `Strokes.kt` (the drawing spec as a menu of ~100 strokes), `Palettes.kt` (named crayon boxes),
-  `Artwork.kt` (ops rasterized to a grid, and a PNG encoder with no ImageIO), `ArtStudio.kt` (draws when
-  an art activity starts, keeps it if it succeeds, saves `art-NN/piece-NNN.png`, hands title and tags to
-  the sim through `BedroomWorld.annotate`). `agent/.../Menu.kt` puts one pick to any model (a choice set
+  `Artwork.kt` (ops rasterized to a grid, and a PNG encoder with no ImageIO), `ArtStudio.kt` (the `draw`
+  handler: saves `art-NN/piece-NNN.png`, delivers title and tags to the piece; commission wording goes
+  through `BedroomWorld.annotate`). `agent/.../Menu.kt` puts one pick to any model (a choice set
   for Jev, a prompt plus enum schema for a text model). The sim's pieces, commissions and
   hanging are in `BedroomWorld.kt`. The app's textures for them are in `ArtTextures.kt`.
   SQLite store: `memory-sqlite/` (JVM only; not in the TV build yet).

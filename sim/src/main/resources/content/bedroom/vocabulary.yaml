@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=schema/vocabulary.schema.json
+# The closed lists items are described in; a word that isn't here is a content error.
+
+vocabulary:
+  # What can be done with an item. Verbs ask for these (a book is `readable`), so a new item with
+  # an affordance works with every verb that asks for it. sellable and drawable take parameters on
+  # the item (sim/.../BedroomContent.kt, Affordance).
+  affords: [readable, playable, edible, sellable, hangable, viewable, combinable, wearable, drawable]
+  # What an item is like to him, each with a strength from 0 to 3, scored by his affinities.
+  qualities: [cozy, calm, warm, soft, bright, pretty, natural, lively, strange, loud]

@@ -51,7 +51,8 @@ class BedroomRunTest {
         val w = lived.world
         printDays(w)
         assertEquals(15, w.clock.day(w.tick))
-        lived.lowest.forEach { (need, low) -> assertTrue(low > 0.0, "$need reached $low") }
+        // The baseline buys nothing to do, so it ends up bored; stimulation at 0 isn't harm.
+        lived.lowest.filterKeys { it != Need.Stimulation }.forEach { (need, low) -> assertTrue(low > 0.0, "$need reached $low") }
         assertTrue(lived.decisions.count { it.intent == Intent.Do("journal") } >= 14, "journaled less than once a day")
         assertTrue(lived.decisions.none { it.fellBack })
         val failed = w.snapshot().events.filter { "failed" in it.text }
@@ -76,7 +77,7 @@ class BedroomRunTest {
         val mealPrice = w.content.item("meal")!!.price!!
         val richest = w.ledger.transactions.maxOf { it.balance }
         assertTrue(richest < 2 * mealPrice, "saved up $richest")
-        lived.lowest.forEach { (need, low) -> assertTrue(low > 0.0, "$need reached $low") }
+        lived.lowest.filterKeys { it != Need.Stimulation }.forEach { (need, low) -> assertTrue(low > 0.0, "$need reached $low") }
     }
 
     @Test
@@ -100,8 +101,7 @@ class BedroomRunTest {
         )
         c.copy(
             items = c.items.map { if (it.id in tier1) it.copy(tier = 1) else it },
-            activities = c.activities.map { if (it.id in tier1) it.copy(tier = 1) else it },
-            uses = c.uses.map { if (it.id in tier1) it.copy(tier = 1) else it },
+            verbs = c.verbs.map { if (it.id in tier1) it.copy(tier = 1) else it },
         )
     }
 
@@ -114,21 +114,21 @@ class BedroomRunTest {
             .associateBy { it["properties"]!!.jsonObject["type"]!!.jsonObject["enum"]!!.jsonArray.single().jsonPrimitive.content }
         fun enumOf(variant: String, field: String) =
             variants.getValue(variant)["properties"]!!.jsonObject[field]!!.jsonObject["enum"]!!.jsonArray.map { it.jsonPrimitive.content }
-        // Tier 0: no uses, a shop of meals he can't afford yet ($20 for $24), nothing to pick up.
+        // Tier 0: a shop of meals he can't afford yet ($20 for $24), nothing to pick up, and use is for other rooms.
         assertEquals(setOf("do", "move_to", "say", "wait"), variants.keys)
-        assertEquals(listOf("eat", "sketch", "journal", "sleep"), enumOf("do", "activity"))
+        // The schema takes every verb the sim would (the scripted baseline journals with no writer); choices only offer what's shown.
+        assertEquals(listOf("eat", "sketch", "journal", "sleep", "think"), enumOf("do", "activity"))
         assertEquals(listOf("meal"), obs.shop.orEmpty().map { it.id })
-        assertEquals(emptyList(), obs.uses)
 
         val choices = BedroomPrompt.choices(obs, emptyList(), world.clock.ticksPerMinute, world.content)
         assertEquals(
-            listOf("do:eat", "do:sketch", "do:journal", "do:sleep", "wait:${BedroomPrompt.WAIT_TICKS}"),
+            listOf("do:eat", "do:sketch", "do:journal", "do:sleep", "do:think", "wait:${BedroomPrompt.WAIT_TICKS}"),
             choices.options.map { it.label },
         )
         // Every option's reply passes the same schema a writing model is held to.
         val decoder = ActionSchema("reply", AgentReply.serializer(), schema)
         choices.options.forEach { decoder.decode(it.reply.toString()) }
-        assertTrue("you have no art to sell; sketch makes some" in choices.state.toString())
+        assertTrue("you have no sketch to sell; sketch makes some" in choices.state.toString())
     }
 
     @Test
@@ -136,7 +136,7 @@ class BedroomRunTest {
         val (world, _) = bedroomScenario(BedroomPolicy(), content = smallWorld)
         val system = BedroomPrompt.system(world.content, world.clock.ticksPerMinute)
         assertTrue(system.startsWith("You are intelligent, aspirational and creative"), system.take(80))
-        assertTrue("the only things you can do are eat, sketch, sell your art, hang your art on the wall, write in your journal and sleep." in system)
+        assertTrue("the only things you can do are eat, sketch, sell your art, hang your art on the wall, write in your journal, sleep and stop and think." in system)
         assertTrue(Persona.CREATOR in system)
         assertTrue("You live in this bedroom. You need money for food, as a means, not the goal." in system)
         assertTrue("a sketch sells for $3" in system)

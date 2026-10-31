@@ -1,0 +1,77 @@
+# yaml-language-server: $schema=schema/rules.schema.json
+# How his needs move, and the rules around what he does: variety, the shop, thinking, commissions
+# and the gallery. Rates are per game hour, times are game minutes, money is whole dollars.
+
+needs:
+  awake_energy_per_hour: -4
+  fullness_per_hour: -5
+  # Mood moves this much an hour toward the baseline plus the room's comfort.
+  mood_drift_per_hour: 3
+  mood_baseline: 50
+  # Below `low` energy or fullness, mood falls `low_mood_per_hour` instead of drifting.
+  low: 15
+  low_mood_per_hour: -5
+  # Activities marked `work` are refused below these.
+  work_floor:
+    - { need: energy, below: 5, reason: "too tired to work" }
+    - { need: fullness, below: 5, reason: "too hungry to work" }
+  # He needs to express himself: a day without finishing a journal entry (counted from the start of
+  # the run) and his mood falls instead of drifting, until he writes. Low mood stops him making
+  # art (sketch and paint block below 25), so it ends up costing him his income too.
+  neglect:
+    - { verb: journal, after_hours: 24, mood_per_hour: -5, reason: "a day without writing in your journal" }
+  # Stimulation (low = bored) drains while he's awake. Hobbies, making things and anything new feed
+  # it; repeating the same thing pays less and drains it (habituation, below). Mood is the summary:
+  # below `bored`, each missing point lowers the mood he settles to by `bored_mood` (16 at 0).
+  stimulation_per_hour: -3
+  bored: 40
+  bored_mood: 0.4
+
+# Repetition wears an activity thin: each time he finishes one, its wear rises `per_repeat` (wear
+# runs 0 to 1) and fades `recover_per_hour`. Its mood and stimulation gains are paid at 1 - wear, and
+# finishing one that was already worn costs `stale_stimulation` times the wear. Routine verbs
+# (eating, sleeping, selling, hanging) don't wear. A verb with arguments wears per item, so each
+# record is its own.
+habituation:
+  per_repeat: 0.25
+  recover_per_hour: 0.04
+  stale_stimulation: -6
+
+# The first time he finishes a verb (with given items: a record, a book) pays this on top. Routine ones don't count.
+novelty:
+  effects: { stimulation: 15, mood: 4 }
+
+shop:
+  # Orders are placed and delivered at the mail hatch.
+  at: mail_hatch
+  minutes: 10
+
+# A decision-loop policy: after `every` decisions without `verb`, he's made to do it (the decision
+# model isn't asked), when something writes its result. Remove it to leave thinking to the model.
+reflection:
+  verb: think
+  every: 4
+
+# Art is drawn: a verb with a `draw` op has a text model draw the piece it makes (agent/.../art/). A request for a piece comes through the hatch each day at `arrive`, replacing
+# the day before's: an adjective and a noun from these lists. A piece he finishes while it's open
+# is drawn for it, and the first one sold whose drawing matches (its title or tags name both words)
+# earns `reward` on top of its price.
+commissions:
+  arrive: "09:00"
+  reward: 12
+  adjectives: [sleepy, stormy, tiny, golden, lonely, cheerful, ancient, frozen, glowing, secret, upside-down, rainy, busy, quiet, wild, striped]
+  nouns: [lighthouse, cat, mountain, teapot, garden, whale, rocket, fox, castle, bicycle, moon, sailboat, owl, cactus, bridge, forest]
+
+# Hung art: a hung piece raises the room's comfort (and so the mood he settles to) instead of
+# being sold. At most `max` at once.
+gallery:
+  max: 3
+  comfort_each: 3
+
+# An item's value to him is each quality's strength times his affinity for it, summed. Mostly it's
+# paid when he does something with it: an `enjoy` op (a record on the player) adds `in_use` mood
+# per point when it finishes. A little is passive: an item in its slot adds `in_view` comfort per
+# point, which raises the mood he settles to.
+quality_value:
+  in_view: 1
+  in_use: 1

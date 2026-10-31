@@ -4,6 +4,7 @@ import dev.lilguy.sim.Intent
 import dev.lilguy.sim.IntentStatus
 import dev.lilguy.sim.Observation
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -12,11 +13,11 @@ import kotlinx.serialization.json.jsonPrimitive
 object Describe {
     private val json = Json { encodeDefaults = true }
 
-    /** "do activity=sketch", "buy item=canvas", "move_to target=door". */
+    /** "do activity=sketch", "do activity=read what=novel", "buy item=canvas", "move_to target=door". */
     fun intent(intent: Intent): String {
         val fields = json.encodeToJsonElement(Intent.serializer(), intent).jsonObject
         val type = fields.getValue("type").jsonPrimitive.content
-        val args = fields.filterKeys { it != "type" }.entries.joinToString(" ") { (k, v) ->
+        val args = fields.filter { (k, v) -> k != "type" && v !is JsonNull }.entries.joinToString(" ") { (k, v) ->
             k + "=" + ((v as? JsonPrimitive)?.content ?: v.toString())
         }
         return if (args.isEmpty()) type else "$type $args"
@@ -36,7 +37,7 @@ object Describe {
     fun observation(obs: Observation, newEvents: List<String>): String = buildList {
         obs.lastIntent?.let { add("last action ${intent(it)}: ${result(obs.lastResult)}") }
         obs.money?.let { add("money $$it") }
-        obs.needs?.let { add("energy ${it.energy}, fullness ${it.fullness}, mood ${it.mood}") }
+        obs.needs?.let { add("energy ${it.energy}, fullness ${it.fullness}, mood ${it.mood}, stimulation ${it.stimulation}") }
         obs.holding?.takeIf { it.isNotEmpty() }?.let { add("holding ${it.joinToString()}") }
         obs.owns?.takeIf { it.isNotEmpty() }?.let { o -> add("owns " + o.entries.joinToString { (k, v) -> if (v > 1) "$k x$v" else k }) }
         obs.music?.let { add("playing $it") }

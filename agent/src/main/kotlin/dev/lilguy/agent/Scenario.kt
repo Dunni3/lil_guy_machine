@@ -1,13 +1,14 @@
 package dev.lilguy.agent
 
 import dev.lilguy.agent.memory.AgentMemory
-import dev.lilguy.agent.memory.JOURNAL_ACTIVITY
 import dev.lilguy.decision.DecisionModel
 import dev.lilguy.sim.BedroomContent
 import dev.lilguy.sim.BedroomWorld
+import dev.lilguy.sim.Personality
 import dev.lilguy.sim.GameClock
 import dev.lilguy.sim.GridWorld
 import dev.lilguy.sim.RoomWorld
+import dev.lilguy.sim.VerbSpec
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -50,28 +51,26 @@ fun bedroomScenario(
     seed: Long = 0,
     onDecision: (AgentRuntime.DecisionRecord) -> Unit = {},
 ): Pair<BedroomWorld, AgentRuntime> {
-    // Without a journal writer, journaling writes nothing, so going without it doesn't sink his mood.
-    val rules = if (longTerm?.journaling == true) content else content.copy(needs = content.needs.copy(neglect = emptyList()))
+    // A verb whose result nothing writes (no journal writer, no thinker) isn't offered to models, and going without it doesn't
+    // sink his mood. The sim still has it, and the reply schema still takes it: the scripted baseline journals with no writer.
+    fun offered(v: VerbSpec): Boolean = longTerm?.offers(v) ?: v.authored.none { it.essential }
+    val rules = content.copy(needs = content.needs.copy(neglect = content.needs.neglect.filter { n -> content.verb(n.verb)?.let { offered(it) } == true }))
     val world = BedroomWorld.create(rules, ticksPerMinute, granted = granted, seed = seed)
-    longTerm?.studio?.connect(world)
-    val journaling = longTerm?.journaling == true
-    val thinking = longTerm?.thinking == true
-    // What he's told about: without a journal writer the journal would cost an hour and write nothing, so the prompt doesn't
-    // mention it and a picking model isn't offered it. The reply schema still takes it, as the sim does (the scripted baseline journals).
-    val shown = world.content.let { c -> if (journaling) c else c.copy(activities = c.activities.filter { it.id != JOURNAL_ACTIVITY }) }
+    longTerm?.connect(world)
+    val shown = world.content.let { c -> c.copy(verbs = c.verbs.filter { offered(it) }) }
     val prompts = PromptBuilder(
-        system = BedroomPrompt.system(shown, ticksPerMinute, thinking),
+        system = BedroomPrompt.system(shown, ticksPerMinute),
         timeout = timeout,
-        choices = { obs, recent -> BedroomPrompt.choices(obs, recent, ticksPerMinute, shown, journaling, thinking) },
+        choices = { obs, recent -> BedroomPrompt.choices(obs, recent, ticksPerMinute, shown) },
         stamp = BedroomPrompt.stamp(world.clock),
         persona = Persona.text(shown),
     )
     val runtime = AgentRuntime(
         world, world.agentId, model, prompts,
-        schemaFor = { BedroomPrompt.replySchema(it, ticksPerMinute, thinking) },
+        schemaFor = { BedroomPrompt.replySchema(it, ticksPerMinute) },
         longTerm = longTerm,
         fallback = { Intent.Wait(BedroomPrompt.WAIT_TICKS) },
-        thinkEvery = if (thinking) shown.think.every else null,
+        reflection = shown.reflection?.takeIf { shown.verb(it.verb) != null }?.let { it.verb to it.every },
         onDecision = onDecision,
     )
     return world to runtime
@@ -95,10 +94,32 @@ enum class Scenario(val id: String) {
         longTerm: AgentMemory? = null,
         /** Bedroom: gated content to unlock, by id. */
         granted: Set<String> = emptySet(),
+        /** Bedroom: his personality, in place of the content's default. */
+        personality: Personality? = null,
         onDecision: (AgentRuntime.DecisionRecord) -> Unit = {},
     ): Pair<GridWorld, AgentRuntime> = when (this) {
         KeyDoor -> keyDoorScenario(model, timeout, longTerm, onDecision)
-        Bedroom -> bedroomScenario(model, timeout, ticksPerMinute, longTerm = longTerm, granted = granted, onDecision = onDecision)
+        Bedroom -> {
+            val content = BedroomContent.default().let { c -> personality?.let(c::withPersonality) ?: c }
+            bedroomScenario(model, timeout, ticksPerMinute, content, longTerm = longTerm, granted = granted, onDecision = onDecision)
+        }
+    }
+
+    /**
+     * Maps an intent from a decision log written before verbs took arguments onto today's action
+     * space: in the bedroom, use(item, on) is the verb whose `what` and `on` those items fill, and
+     * think is the reflection verb (do(think)).
+     */
+    fun upgrade(content: BedroomContent = BedroomContent.default()): (Intent) -> Intent = { intent ->
+        when {
+            this == Bedroom && intent == Intent.Think -> content.reflection?.let { Intent.Do(it.verb) } ?: intent
+            this == Bedroom && intent is Intent.Use -> content.verbs.firstOrNull { v ->
+                val what = v.args["what"] ?: return@firstOrNull false
+                val on = v.args["on"] ?: return@firstOrNull false
+                content.item(intent.itemId)?.names?.contains(what) == true && intent.on != null && content.item(intent.on!!)?.names?.contains(on) == true
+            }?.let { Intent.Do(it.id, intent.itemId, intent.on) } ?: intent
+            else -> intent
+        }
     }
 
     companion object {

@@ -1,17 +1,16 @@
 package dev.lilguy.agent.memory
 
 import dev.lilguy.agent.art.ArtStudio
-import dev.lilguy.decision.Usage
+import dev.lilguy.agent.art.Drawing
+import dev.lilguy.agent.authored.AuthorHandler
+import dev.lilguy.agent.authored.Authors
+import dev.lilguy.sim.BedroomWorld
 import dev.lilguy.sim.Intent
-import dev.lilguy.sim.IntentStatus
 import dev.lilguy.sim.Observation
+import dev.lilguy.sim.VerbSpec
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlin.time.Duration
-
-/** The id of the activity that writes a journal entry. */
-const val JOURNAL_ACTIVITY = "journal"
 
 /**
  * One character's long-term memory, as the agent loop sees it: the three layers behind one
@@ -23,15 +22,11 @@ const val JOURNAL_ACTIVITY = "journal"
  *    one it runs inline, which is what lockstep runs and tests want.
  * 3. [recall] picks the memories to show at a decision point, by [recall]'s rule.
  *
- * The journal: when he starts the journal activity, a [JournalWriter] (if there is one) writes an
- * entry, in the background with a [scope] as above. The entry is kept only once the activity
- * succeeds; if it fails or is interrupted the entry is thrown away. [recallJournal] picks entries
- * for each decision, with their own budget.
- *
- * Thinking: when he chooses the think intent, a [Thinker] (if there is one) writes one thought,
- * inline, and it goes into the event stream as he thought it.
- *
- * Art: an [ArtStudio], if there is one, draws each piece he makes, the same way as the journal.
+ * Authored ops ([Authors]): the verbs whose result a model writes run through one lifecycle
+ * here, each with its handler: a [JournalWriter] for `write: { with: journal }`, a [Thinker] for
+ * `write: { with: thought }`, an [ArtStudio] for `draw`. Whichever is null isn't configured, and
+ * a verb that needs it isn't offered ([offers]). [recallJournal] picks journal entries for each
+ * decision, with their own budget; his latest kept thought is his [plan].
  */
 class AgentMemory(
     private val store: MemoryStore,
@@ -46,19 +41,26 @@ class AgentMemory(
     /** Draws his art; the scenario connects it to the world. */
     val studio: ArtStudio? = null,
 ) {
-    /** What [acted] needs to write an entry: who he is, and his state in the decision prompt's words. */
-    class JournalBrief(val persona: String, val situation: String)
-
-    /** A journal session under way: started when he chose the activity, kept when it succeeds. */
-    private class Pending(val intent: Intent, val tick: Long, val day: Int?, val time: String?) {
-        @Volatile var result: JournalSession? = null
-        var job: Job? = null
-    }
+    /** What authored ops are written from: who he is, his state in the decision prompt's words, and that prompt's system message. */
+    class Brief(val persona: String, val situation: String, val system: String)
 
     private var lastEvents: Set<String> = emptySet()
     @Volatile private var job: Job? = null
-    @Volatile private var pending: Pending? = null
-    @Volatile private var committing: Job? = null
+    private val thoughtLog = java.util.concurrent.CopyOnWriteArrayList<Thought>()
+
+    /** His latest kept thought shown as his plan (`shows_as: plan`), or null. */
+    @Volatile var plan: Thought? = null
+        private set
+
+    private val authors: Authors = authors()
+
+    private fun authors(): Authors {
+        val handlers = mutableListOf<AuthorHandler<*>>()
+        if (journal != null) handlers += JournalHandler(journal, store, run) { s: JournalSession -> lastJournal = s; onJournal(s) }
+        if (thinker != null) handlers += ThoughtHandler(thinker, store, run, onThought = { t: Thought -> thoughtLog += t }, onPlan = { t: Thought -> plan = t })
+        if (studio != null) handlers += studio
+        return Authors(handlers, scope)
+    }
 
     /** Ids of the memories the latest [recall] picked. Readable from any thread. */
     @Volatile var lastRecalled: Set<Long> = emptySet()
@@ -78,13 +80,31 @@ class AgentMemory(
     /** The model that writes the journal, or null when journaling writes nothing. */
     val journalWriter: String? get() = journal?.writer
 
-    /** True when the journal activity produces an entry. */
-    val journaling: Boolean get() = journal != null
+    /** True when something writes journal entries. */
+    val journaling: Boolean get() = authors.has("journal")
 
-    /** True when the think intent produces a thought. */
-    val thinking: Boolean get() = thinker != null
+    /** True when something writes his thoughts. */
+    val thinking: Boolean get() = authors.has("thought")
 
-    private val thoughtLog = java.util.concurrent.CopyOnWriteArrayList<Thought>()
+    /** True when every essential authored op of [verb] has a handler, so models are offered it. */
+    fun offers(verb: VerbSpec): Boolean = authors.offers(verb)
+
+    /** True while a `during` call has outlasted its verb: the clock waits for it ([holdingFor] says which). */
+    val holding: Boolean get() = authors.holding
+
+    val holdingFor: List<String> get() = authors.holdingFor
+
+    /** True while a piece is being drawn or waiting to be kept. */
+    val drawing: Boolean get() = authors.busy("draw")
+
+    /** The drawing for the verb under way, once the model has sent it; not kept yet. Readable from any thread. */
+    fun drawingInProgress(): Drawing? = authors.inProgress("draw") as? Drawing
+
+    /** Runs authored ops for [world]. Call before the run starts. */
+    fun connect(world: BedroomWorld) {
+        authors.connect(world)
+        studio?.connect(world)
+    }
 
     /** Every thought so far, failed ones included, oldest first. Readable from any thread. */
     fun thoughts(): List<Thought> = thoughtLog.toList()
@@ -96,7 +116,7 @@ class AgentMemory(
     val summarizing: Boolean get() = job?.isActive == true
 
     /** True while a journal entry is being written or waiting to be stored. */
-    val writingJournal: Boolean get() = pending?.job?.isActive == true || committing?.isActive == true
+    val writingJournal: Boolean get() = authors.busy("journal")
 
     /** Level-1 memories so far, oldest first. */
     fun memories(): List<StoredMemory> = store.memories(run, 1)
@@ -109,38 +129,31 @@ class AgentMemory(
     /** Events not yet covered by a memory. */
     fun pending(): Int = summarizer?.pending() ?: eventCount()
 
-    /** Records the state he was shown, and settles a journal session whose activity has ended. */
+    /** Records the state he was shown, and keeps or throws away authored results whose verb has ended. */
     fun observed(obs: Observation) {
         val fresh = obs.recentEvents.filter { it !in lastEvents }
         lastEvents = obs.recentEvents.toSet()
         store.appendEvent(run, obs.tick, obs.clock?.day, obs.clock?.time, EventKind.Observation, Describe.observation(obs, fresh))
-        settleJournal(obs)
-        studio?.observed(obs)
+        authors.observed(obs)
     }
 
     /**
-     * Records what he chose, then starts a summary if enough events have piled up, and a journal
-     * entry if he chose to write and can. [brief] is what the entry is written from.
+     * He chose [intent] at [obs]: runs its verb's `before` authored ops now (a thought) and returns
+     * their results. Call before submitting the intent; he stands still meanwhile.
      */
-    suspend fun acted(obs: Observation, intent: Intent, brief: JournalBrief? = null) {
+    suspend fun before(obs: Observation, intent: Intent, brief: Brief): List<Any> = authors.before(obs, intent, brief.persona, brief.situation, brief.system)
+
+    /**
+     * Records what he chose, then starts its verb's `during` authored ops (with [brief] to write
+     * from), words a new commission, and starts a summary if enough events have piled up.
+     */
+    suspend fun acted(obs: Observation, intent: Intent, brief: Brief? = null) {
         store.appendEvent(run, obs.tick, obs.clock?.day, obs.clock?.time, EventKind.Action, Describe.intent(intent))
-        startJournal(obs, intent, brief)
-        brief?.let { studio?.acted(obs, intent, it.persona, it.situation) }
+        brief?.let { authors.acted(obs, intent, it.persona, it.situation, it.system) }
+        studio?.word(obs)
         val s = summarizer ?: return
         if (s.pending() < s.batchSize) return
         if (scope == null) s.catchUp() else if (job?.isActive != true) job = scope.launch { s.catchUp() }
-    }
-
-    /**
-     * He chose to think at [obs]: one call to the thinker with the decision prompt's [system] and
-     * [situation], and the thought goes into the event stream. Null when nothing thinks.
-     */
-    suspend fun think(obs: Observation, system: String, situation: String): Thought? {
-        val t = thinker ?: return null
-        val thought = t.think(system, situation, obs.tick, obs.clock?.day, obs.clock?.time)
-        thought.text?.let { store.appendEvent(run, obs.tick, obs.clock?.day, obs.clock?.time, EventKind.Thought, it) }
-        thoughtLog += thought
-        return thought
     }
 
     /** The memories to show for [obs], as text lines, oldest first. */
@@ -171,64 +184,12 @@ class AgentMemory(
         add(Describe.observation(obs, emptyList()))
         obs.activities.orEmpty().filter { it.locked == null }.forEach { add(it.id) }
         obs.shop.orEmpty().forEach { add(it.id) }
-        obs.uses.orEmpty().forEach { add(it.itemId) }
     }.joinToString(" ").replace('_', ' ')
 
-    /** Waits for a running summary and a journal entry being stored, then summarizes whatever is left. Call at the end of a run. */
+    /** Waits for a running summary and authored results being kept, then summarizes whatever is left. Call at the end of a run. */
     suspend fun flush() {
         job?.join()
-        committing?.join()
-        studio?.flush()
+        authors.flush()
         summarizer?.flush()
-    }
-
-    // --- journal ---------------------------------------------------------------------------------
-
-    private suspend fun startJournal(obs: Observation, intent: Intent, brief: JournalBrief?) {
-        val writer = journal ?: return
-        if (intent != Intent.Do(JOURNAL_ACTIVITY) || brief == null) return
-        // Refused at once (too tired, too hungry): nothing to write about.
-        if (obs.activities.orEmpty().any { it.id == JOURNAL_ACTIVITY && it.locked != null }) return
-        pending?.job?.cancel()
-        val p = Pending(intent, obs.tick, obs.clock?.day, obs.clock?.time)
-        pending = p
-        val write = suspend { p.result = writer.write(brief.persona, brief.situation, p.tick, p.day, p.time) }
-        if (scope == null) write() else p.job = scope.launch { write() }
-    }
-
-    /** At the next decision point after he chose to write: keep the entry if the activity succeeded. */
-    private fun settleJournal(obs: Observation) {
-        val p = pending ?: return
-        if (obs.tick <= p.tick) return
-        pending = null
-        val succeeded = obs.lastIntent == p.intent && obs.lastResult == IntentStatus.Succeeded
-        val done = p.result
-        when {
-            !succeeded && done != null -> finish(done.discarded())
-            !succeeded -> {
-                p.job?.cancel()
-                finish(JournalSession(p.tick, p.day, p.time, journal!!.writer, emptyList(), null, emptyList(), Usage(), Duration.ZERO, "the activity ended before the entry was written", JournalSession.Status.Discarded))
-            }
-            done != null -> commit(done, obs)
-            else -> committing = scope?.launch {
-                p.job?.join()
-                p.result?.let { commit(it, obs) }
-            }
-        }
-    }
-
-    private fun JournalSession.discarded() = if (status == JournalSession.Status.Written) copy(status = JournalSession.Status.Discarded) else this
-
-    private fun commit(session: JournalSession, ended: Observation) {
-        val entry = session.entry ?: return finish(session)
-        store.addJournal(run, session.tick, session.day, session.time, entry, session.wants, session.writer)
-        val wants = if (session.wants.isEmpty()) "" else " and wrote down ${session.wants.size} want${if (session.wants.size == 1) "" else "s"}"
-        store.appendEvent(run, ended.tick, ended.clock?.day, ended.clock?.time, EventKind.Journal, "wrote in my journal$wants")
-        finish(session.copy(status = JournalSession.Status.Stored))
-    }
-
-    private fun finish(session: JournalSession) {
-        lastJournal = session
-        onJournal(session)
     }
 }

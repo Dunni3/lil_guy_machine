@@ -39,7 +39,7 @@ import kotlin.time.Duration
  *
  * Ticks from the render thread (which makes the render thread the sim thread), as fast as
  * [settings] say, holding the clock while a slow decision is out ([RunSettings.decideCap]) and
- * while a drawing is still out after its activity has ended ([waitingOnArt]).
+ * while an authored op's call (a drawing, a journal entry) is still out after its verb has ended ([waitingOnAuthor]).
  * The agent and the memory and journal writers run in a per-run child of [scope], off that thread. Every
  * decision is kept with the world as it was when it was made ([history]), so the view can flip
  * back through the whole run.
@@ -314,13 +314,14 @@ class SimSession(
         }
     }
 
-    /** A decision has been out for as many game minutes as [RunSettings.decideCap] allows. */
-    /** True while a drawing has outlasted its activity ([ArtStudio.finishing]); the clock holds for it. */
-    val waitingOnArt: Boolean get() = memory.studio?.finishing == true
+    /** What the clock is held for: handlers whose call has outlasted its verb ([AgentMemory.holding]), such as "draw". */
+    val waitingOnAuthor: List<String> get() = memory.holdingFor
 
+    /** A decision has been out for as many game minutes as [RunSettings.decideCap] allows. */
     private fun mustHold(): Boolean {
-        // Until the drawing lands the piece has no title or tags, so selling it couldn't meet a request.
-        if (waitingOnArt) return true
+        // Until a drawing lands its piece has no title or tags, so selling it couldn't meet a request; a journal entry
+        // landing late would be recalled late. Every authored call holds the clock the same way.
+        if (memory.holding) return true
         val cap = settings.decideCap ?: return false
         return waitTicks >= cap.toLong() * ticksPerMinute && world.awaitingDecision(world.agentId)
     }

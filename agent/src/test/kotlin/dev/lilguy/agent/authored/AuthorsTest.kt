@@ -1,0 +1,75 @@
+package dev.lilguy.agent.authored
+
+import dev.lilguy.sim.AuthoredResult
+import dev.lilguy.sim.AuthoredView
+import dev.lilguy.sim.BedroomWorld
+import dev.lilguy.sim.Intent
+import dev.lilguy.sim.IntentStatus
+import dev.lilguy.sim.Observation
+import kotlinx.coroutines.runBlocking
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+/** Writes "<name> at <tick>"; a drawing comes back titled "Sleepy fox". */
+private class FakeHandler(override val name: String) : AuthorHandler<String> {
+    val kept = mutableListOf<Pair<String, AuthoredView?>>()
+    val discarded = mutableListOf<String?>()
+    override val writer = "fake"
+
+    override suspend fun author(call: AuthorCall) = "$name at ${call.obs.tick}"
+
+    override fun keep(result: String, call: AuthorCall, ended: Observation, view: AuthoredView?, deliver: (AuthoredResult) -> Unit) {
+        kept += result to view
+        deliver(if (name == "draw") AuthoredResult.Drawn("Sleepy fox", listOf("sleepy", "fox")) else AuthoredResult.Written(result))
+    }
+
+    override fun discard(result: String?, call: AuthorCall) {
+        discarded += result
+    }
+}
+
+class AuthorsTest {
+    private fun BedroomWorld.finish(intent: Intent): Observation {
+        submit(agentId, intent)
+        do step() while (!awaitingDecision(agentId))
+        return observe(agentId)
+    }
+
+    @Test
+    fun `an authored result is kept only when its verb succeeds, and reaches the sim through deliver`() {
+        val world = BedroomWorld.create()
+        val journal = FakeHandler("journal")
+        val draw = FakeHandler("draw")
+        val authors = Authors(listOf(journal, draw))
+        authors.connect(world)
+        fun act(obs: Observation, intent: Intent) = runBlocking { authors.acted(obs, intent, "persona", "situation", "system") }
+
+        // Sketching makes a piece and draws it: the drawing is kept and titles that piece.
+        val sketch = Intent.Do("sketch")
+        act(world.observe(world.agentId), sketch)
+        val sketched = world.finish(sketch)
+        authors.observed(sketched)
+        val view = draw.kept.single().second!!
+        assertEquals("sketch" to 1, view.verb to view.piece)
+        world.step()
+        assertEquals("Sleepy fox", world.observe(world.agentId).art!!.single().title)
+        assertTrue(world.observe(world.agentId).authored.single { it.id == view.id }.delivered)
+
+        // Journaling succeeds: the entry is kept and the sim marks it delivered.
+        val write = Intent.Do("journal")
+        act(sketched, write)
+        val written = world.finish(write)
+        authors.observed(written)
+        assertEquals(listOf("journal at ${sketched.tick}"), journal.kept.map { it.first })
+
+        // The same verb, but it didn't succeed: the result is thrown away and nothing is delivered.
+        act(written, write)
+        authors.observed(written.copy(tick = written.tick + 1, lastResult = IntentStatus.Interrupted))
+        assertEquals(listOf<String?>("journal at ${written.tick}"), journal.discarded)
+        assertEquals(1, journal.kept.size)
+        // A verb whose essential op has no handler isn't offered; a missing artist doesn't hide sketching.
+        val noWriter = Authors(listOf(draw))
+        assertTrue(!noWriter.offers(world.content.verb("journal")!!) && noWriter.offers(world.content.verb("sketch")!!) && Authors(emptyList()).offers(world.content.verb("sketch")!!))
+    }
+}

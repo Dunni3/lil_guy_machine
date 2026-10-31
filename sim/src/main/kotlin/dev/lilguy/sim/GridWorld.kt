@@ -122,7 +122,7 @@ abstract class GridWorld protected constructor(
         is Intent.Use -> "use ${intent.itemId}" + (intent.on?.let { " on $it" } ?: "")
         is Intent.Say -> "say"
         is Intent.Wait -> "wait ${intent.ticks}"
-        is Intent.Do -> "do ${intent.activity}"
+        is Intent.Do -> "do ${intent.activity}" + listOfNotNull(intent.what, intent.on?.let { "on $it" }).joinToString("") { " $it" }
         is Intent.Buy -> "buy ${intent.item}"
         Intent.Think -> "think"
     }

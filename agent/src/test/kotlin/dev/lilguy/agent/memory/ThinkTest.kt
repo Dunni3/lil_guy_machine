@@ -15,16 +15,16 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 
-/** Thinks whenever the schema offers it, otherwise waits. Records whether think was offered. */
+/** Thinks whenever the observation offers it, otherwise waits. Records whether think was offered. */
 private class ThinkingDecider : DecisionModel {
     val offered = mutableListOf<Boolean>()
     override val id = "thinking-decider"
     override val capabilities = Capabilities()
 
     override suspend fun <A> decide(request: DecisionRequest, schema: ActionSchema<A>): Decision<A> {
-        val canThink = schema.tools!!.any { it.name == "think" }
+        val canThink = dev.lilguy.agent.PromptBuilder.observationOf(request)!!.activities.orEmpty().any { it.id == "think" && it.locked == null }
         offered += canThink
-        val raw = if (canThink) """{"thought":"","intent":{"type":"think"}}""" else """{"thought":"","intent":{"type":"wait","ticks":150}}"""
+        val raw = if (canThink) """{"thought":"","intent":{"type":"do","activity":"think","what":null,"on":null}}""" else """{"thought":"","intent":{"type":"wait","ticks":150}}"""
         return Decision(schema.decode(raw), null, Usage(), Duration.ZERO, raw)
     }
 }
@@ -83,9 +83,9 @@ class ThinkTest {
         assertTrue(store.eventsAfter("r", 0, 1000).any { it.kind == EventKind.Thought && it.text == "I'll sketch until I can afford an easel." })
         assertTrue("you thought: \"I'll sketch until I can afford an easel.\"" in prompts[1], prompts[1])
         // Ten minutes awake (4 an hour) plus the think's 2.
-        assertTrue(world.snapshot().events.any { it.text == "finished thinking: energy -2" })
+        assertTrue(world.snapshot().events.any { it.text == "finished think: energy -2" })
         assertTrue(world.needs[dev.lilguy.sim.Need.Energy] < energyBefore - 2)
-        assertEquals(Intent.Think, runtime.recent.first().intent)
+        assertEquals(Intent.Do("think"), runtime.recent.first().intent)
     }
 
     @Test
@@ -98,7 +98,7 @@ class ThinkTest {
         runBlocking { runLockstep(world, runtime, maxTicks = 72000, shouldStop = { records.size >= 10 }) }
 
         val intents = records.take(10).map { it.intent }
-        assertEquals(listOf(4, 9), intents.withIndex().filter { it.value == Intent.Think }.map { it.index })
+        assertEquals(listOf(4, 9), intents.withIndex().filter { it.value == Intent.Do("think") }.map { it.index })
         assertEquals(8, decider.calls) // the forced thinks didn't ask the decision model
         val after = records[5].request!!.messages.last().content
         assertTrue(dev.lilguy.agent.PromptBuilder.THOUGHT_HEADER in after && "I'll sketch until I can afford an easel." in after, after)

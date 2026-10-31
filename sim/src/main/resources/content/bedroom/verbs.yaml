@@ -1,0 +1,136 @@
+# yaml-language-server: $schema=schema/verbs.schema.json
+# What he can do: do(verb, what, on). Listed in the order options are offered to models.
+#
+# `kind`: what sort of verb it is, a contract on which ops `effects` may use (sim/.../VerbKind.kt).
+# `args`: its argument slots (`what`, `on`), each filled by an item he owns that answers to the
+# id or affordance given; do() names the items or the first owned match is used, and options are
+# listed once per way to fill them. `at`: where it happens: owned slot items (the nearest is
+# used), an argument naming one (`on`), or `here`. `requires`: items or affordances he must own. `block`: refused when a need is above or below a level. It ends after
+# `minutes`, or for `until`, at a time of day or when a need reaches a level, whichever comes
+# first; `stop_below` ends it early when a need drops. `work`: refused below the work floor.
+# `phrase`: how the prompt says what he can do. `routine`: upkeep that neither wears thin nor
+# counts as new; economic and rest verbs always are.
+#
+# `effects`: what it does, a list of ops run in order (sim/.../Ops.kt): `need` (changes when it
+# finishes), `rate` (per hour while doing it), `consume` and `produce` (items, by id or
+# affordance), `sell` (everything carried with an affordance), `set_state` (hung: onto the
+# picture rail), `background` (keeps going while he does anything else), `sleep`, and `enjoy`
+# (an argument's value to him, as mood). Where an op names an item it can name an argument instead.
+#
+# Two ops are authored: a model writes their result, and a handler in the agent layer runs it
+# (agent/.../authored/). `write: { with, into, timing, shows_as }` (with: journal or thought; into:
+# events, short_term, journal; timing: before the verb starts, or during it) and `draw: item` (the
+# drawing model draws a piece the verb produced). Results are kept only if the verb succeeds. A
+# verb whose `write` has no handler configured isn't offered to models; the sim still runs it.
+# `no_repeat`: locked right after he did it.
+
+verbs:
+  - id: eat
+    kind: consumptive
+    at: [desk]
+    minutes: 30
+    routine: true
+    block: [{ need: fullness, above: 90, reason: "not hungry" }]
+    effects:
+      - consume: { edible: 1 }
+      - need: { fullness: 45 }
+  - id: sketch
+    kind: generative
+    at: [desk]
+    requires: [sketchbook]
+    minutes: 60
+    work: true
+    block: [{ need: mood, below: 25, reason: "too low to make art" }]
+    effects:
+      - produce: { sketch: 1 }
+      - draw: sketch
+      # Work wears his mood down; journaling is what lifts it. A little stimulation, which
+      # habituation soon wears away: sketching all day bores him.
+      - need: { energy: -6, mood: -4, stimulation: 3 }
+  - id: paint
+    kind: generative
+    at: [easel]
+    minutes: 180
+    work: true
+    block: [{ need: mood, below: 25, reason: "too low to make art" }]
+    effects:
+      - produce: { painting: 1 }
+      - draw: painting
+      - consume: { canvas: 1 }
+      - need: { energy: -15, mood: -10, stimulation: 12 }
+  - id: sell_art
+    kind: economic
+    phrase: sell your art
+    at: [mail_hatch]
+    minutes: 1
+    effects:
+      - sell: sellable
+  - id: hang_art
+    kind: transformative
+    phrase: hang your art on the wall
+    args: { what: hangable }
+    at: [picture_rail]
+    minutes: 15
+    routine: true
+    effects:
+      - set_state: { target: what, state: hung }
+  # It is work, so it needs him fed and rested, and costs more energy than sketching: writing
+  # about the life he wants is budgeted against staying alive.
+  - id: journal
+    kind: expressive
+    phrase: write in your journal
+    at: [desk]
+    requires: [journal]
+    minutes: 60
+    work: true
+    effects:
+      - need: { energy: -10, mood: 12, stimulation: 6 }
+      - write: { with: journal, into: [journal, events], timing: during }
+  - id: read
+    kind: consumptive
+    args: { what: readable }
+    at: [bed, chair]
+    minutes: 60
+    effects:
+      - need: { mood: 2, stimulation: 15 }
+      - enjoy: what
+  - id: listen
+    kind: consumptive
+    args: { what: playable }
+    at: [chair]
+    requires: [record_player]
+    minutes: 30
+    effects:
+      - need: { mood: 4, stimulation: 12 }
+      - enjoy: what
+  - id: sleep
+    kind: rest
+    at: [bed]
+    until: { time: "07:00", need: energy, reaches: 100 }
+    # He wakes up hungry rather than sleeping fullness down to 0.
+    stop_below: { fullness: 10 }
+    block: [{ need: energy, above: 94, reason: "not tired" }]
+    effects:
+      - sleep: {}
+      - rate: { energy: 12 }
+  - id: play_record
+    kind: consumptive
+    phrase: put a record on
+    args: { what: playable, on: record_player }
+    at: [on]
+    minutes: 1
+    effects:
+      - enjoy: what
+      - background: { name: music, minutes: 45, rates: { mood: 2, stimulation: 6 } }
+  # He stops where he is and works out what he wants; the thought is written before he starts, and
+  # his latest one shows in every later prompt as his plan.
+  - id: think
+    kind: expressive
+    phrase: stop and think
+    at: [here]
+    minutes: 10
+    routine: true
+    no_repeat: true
+    effects:
+      - need: { energy: -2 }
+      - write: { with: thought, into: [events, short_term], timing: before, shows_as: plan }

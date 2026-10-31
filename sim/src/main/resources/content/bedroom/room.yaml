@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=schema/room.schema.json
+# The room and how a run starts. Times are game minutes, money is whole dollars.
+
+room:
+  # One string per row. '#' wall, '.' floor, '@' where he starts; other letters are slots
+  # (below). A slot is empty until he owns the item that goes there.
+  rows:
+    - "#####oF#####"
+    - "#b.......s.#"
+    - "#.........p#"
+    - "#....r.....#"
+    - "#..........H"
+    - "#e.........#"
+    - "#.@....cd..#"
+    - "############"
+  # H is the mail hatch in the wall, where the shop delivers and art is sold.
+  slots: { b: bed, d: desk, c: chair, e: easel, s: shelf, p: plant, o: poster, r: rug, H: hatch, F: rail }
+  # Slots in the wall rather than on the floor.
+  wall_slots: [poster, hatch, rail]
+  # The side he works a slot from when it's free: at the desk he sits on the chair, and he paints
+  # from beside the easel so he isn't standing between the camera and the canvas.
+  approach: { desk: W, easel: E }
+
+start:
+  money: 20
+  time: "08:00"
+  needs: { energy: 80, fullness: 70, mood: 60, stimulation: 60 }
+  items: { mail_hatch: 1, picture_rail: 1, bed: 1, desk: 1, chair: 1, sketchbook: 1, journal: 1, meal: 2 }
