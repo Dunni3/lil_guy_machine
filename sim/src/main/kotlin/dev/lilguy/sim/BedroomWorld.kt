@@ -75,7 +75,10 @@ class BedroomWorld private constructor(
     private var version = 0
     private var options: Options? = null
 
-    private class Options(val key: List<Any>, val activities: List<ActivityOption>, val shop: List<ShopOption>)
+    private class Options(val key: List<Any>, val activities: List<ActivityOption>, val shop: List<ShopOption>, val catalog: List<CatalogEntry>, val verbs: List<VerbView>)
+
+    /** Verb id to how often he has finished it; replaced rather than changed, so snapshots can share it. */
+    private var done: Map<String, VerbTally> = emptyMap()
 
     /** [bound]: the verb, its bound arguments, and how fresh it was when it started, which scales its rates. */
     private class Doing(val bound: Bound, val startTick: Long, val endTick: Long) {
@@ -537,6 +540,7 @@ class BedroomWorld private constructor(
             if (eased != 0.0) parts += "frustration ${signed(eased.roundToInt().toDouble())}"
         }
         outcome("finished ${a.id}" + if (parts.isEmpty()) "" else ": " + parts.joinToString(", "))
+        done = done + (a.id to (done[a.id]?.let { it.copy(count = it.count + 1) } ?: VerbTally(1, ticks)))
         return null
     }
 
@@ -827,6 +831,9 @@ class BedroomWorld private constructor(
             clockScale = clock,
             commission = commissionView(),
             art = artViews(),
+            catalog = current.catalog,
+            verbs = current.verbs,
+            done = done,
         )
         val snapshot = WorldSnapshot(ticks, map, entities, listOf(agentSnapshot()), eventLog(), life = life)
         return Published(snapshot, observe(entities))
@@ -874,8 +881,37 @@ class BedroomWorld private constructor(
         get() {
             val key = listOf(version, clock.minutes(ticks) / ESTIMATE_MINUTES, needs.levels(), last?.intent ?: Unit)
             options?.let { if (it.key == key) return it }
-            return Options(key, content.verbs.filter { isKnown(it.id) }.flatMap(::activityOptions), shopItems().map(::shopOption)).also { options = it }
+            val activities = content.verbs.filter { isKnown(it.id) }.flatMap(::activityOptions)
+            val shop = shopItems().map(::shopOption)
+            return Options(key, activities, shop, catalog(shop), verbViews(activities)).also { options = it }
         }
+
+    /** The book that teaches [id], while he doesn't know it: "the drawing book, \"Drawing What You See\"". */
+    private fun taughtBy(id: String): String? = if (isKnown(id)) null else
+        content.books.firstOrNull { id in it.teaches }?.let { "the ${item(it.id).name}, \"${it.title}\"" }
+
+    /** Every priced item for screens, reusing [shop]'s wording for what the shop offers. */
+    private fun catalog(shop: List<ShopOption>): List<CatalogEntry> {
+        val offered = shop.associateBy { it.id }
+        return content.items.filter { it.price != null }.map { spec ->
+            val o = offered[spec.id] ?: shopOption(spec)
+            CatalogEntry(spec.id, spec.name, spec.group, spec.price!!, spec.pack, spec.stackable, count(spec.id), o.affordable, o.gives, taughtBy(spec.id))
+        }
+    }
+
+    /** Every verb for screens: its first open option from [activities], or why it's locked. */
+    private fun verbViews(activities: List<ActivityOption>): List<VerbView> {
+        val byVerb = activities.groupBy { it.id }
+        return content.verbs.map { a ->
+            val taught = taughtBy(a.id)
+            val o = byVerb[a.id]?.firstOrNull { it.locked == null } ?: byVerb[a.id]?.firstOrNull()
+            when {
+                taught != null -> VerbView(a.id, a.phrase, "a book has to teach it first", null, taught)
+                o == null -> VerbView(a.id, a.phrase, lockReason(a) ?: "not offered", null)
+                else -> VerbView(a.id, a.phrase, o.locked, if (o.locked != null) null else listOfNotNull(o.takes, o.gives?.ifEmpty { null }).joinToString(": "))
+            }
+        }
+    }
 
     /** The whole room, one string per row, with owned furniture as its slot letter; legend in [mapLegend]. */
     private var mapCache: Pair<Pair<Int, Cell>, List<String>>? = null

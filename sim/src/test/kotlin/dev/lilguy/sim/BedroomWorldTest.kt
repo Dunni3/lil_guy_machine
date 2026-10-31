@@ -303,11 +303,16 @@ class BedroomWorldTest {
         assertTrue("isn't for sale" in failure(w.run(Intent.Buy("easel"))))
         assertEquals(10, w.obs().needs!!.frustration, "a failure frustrates him")
         assertTrue("finishing it teaches you to paint, and about the easel and the canvas" in w.obs().shop!!.first { it.id == "drawing_book" }.gives)
+        // Screens see the whole catalog and every verb, hidden ones with the book that teaches them.
+        val life = w.snapshot().life!!
+        assertEquals("the drawing book, \"Drawing What You See\"", life.catalog.first { it.id == "easel" }.taughtBy)
+        assertEquals("the drawing book, \"Drawing What You See\"", life.verbs.first { it.id == "paint" }.taughtBy)
 
         w.run(Intent.Buy("drawing_book"))
         assertTrue("chapter 1 of 4 of \"Drawing What You See\"; art skill +0.5" in w.activity("study").gives!!, w.activity("study").gives)
         repeat(3) { assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("study", what = "drawing_book")).status) }
         assertEquals(1.5, w.obs().skills!!["art"])
+        assertEquals(3, w.snapshot().life!!.done["study"]?.count)
         assertEquals(BookView("drawing_book", "Drawing What You See", 3, 4, listOf("art"), "to paint, and about the easel and the canvas", shipped.book("drawing_book")!!.chapters[3]), w.obs().books!!.single())
         w.run(Intent.Do("read", what = "drawing_book"))
         val done = w.obs().recentEvents.last()
@@ -320,6 +325,7 @@ class BedroomWorldTest {
         assertEquals("needs an easel ($17)", w.activity("paint").locked)
         assertEquals("for paint (3h: 1 painting, sells for $37; uses a canvas), which also needs a canvas ($15)", w.obs().shop!!.first { it.id == "easel" }.gives)
         assertTrue(w.knownContent().verb("paint") != null && shipped.known(emptySet()).verb("paint") == null)
+        assertEquals(null, w.snapshot().life!!.catalog.first { it.id == "easel" }.taughtBy)
     }
 
     @Test

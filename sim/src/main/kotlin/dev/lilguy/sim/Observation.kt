@@ -125,6 +125,34 @@ data class ActivityOption(
 @Serializable
 data class ShopOption(val id: String, val price: Int, val affordable: Boolean, val gives: String)
 
+/**
+ * One item the shop sells, for screens rather than models: everything priced, owned or not, with
+ * [gives] in the shop's words. [taughtBy] names the book that teaches it while he doesn't know it
+ * yet ("the drawing book, \"Drawing What You See\""); the shop doesn't offer it until then.
+ */
+data class CatalogEntry(
+    val id: String,
+    val name: String,
+    val group: String,
+    val price: Int,
+    val pack: Int,
+    /** Bought again and again (meals, canvas) rather than once. */
+    val stackable: Boolean,
+    val owned: Int,
+    val affordable: Boolean,
+    val gives: String,
+    val taughtBy: String? = null,
+)
+
+/**
+ * One verb, for screens: [locked] says why it can't be done now (or that a book has yet to teach
+ * it, [taughtBy]); otherwise [gives] is what its first open option takes and gives.
+ */
+data class VerbView(val id: String, val phrase: String?, val locked: String?, val gives: String?, val taughtBy: String? = null)
+
+/** How often he has finished a verb this run, and when he first did. */
+data class VerbTally(val count: Int, val firstTick: Long)
+
 @Serializable
 data class SelfState(
     val id: EntityId,
@@ -209,6 +237,12 @@ data class LifeSnapshot(
     val commission: CommissionView? = null,
     /** Held and hung art, oldest first. */
     val art: List<PieceView> = emptyList(),
+    /** Everything the shop sells, in file order, including what a book has yet to teach. */
+    val catalog: List<CatalogEntry> = emptyList(),
+    /** Every verb in the content, in file order. */
+    val verbs: List<VerbView> = emptyList(),
+    /** Verb id to how often he has finished it this run. */
+    val done: Map<String, VerbTally> = emptyMap(),
 )
 
 data class EntitySnapshot(

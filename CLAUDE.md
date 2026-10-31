@@ -95,17 +95,20 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   tokens per game day and the 30-day projection. The CLI and the app (`SimSession`, the TOKENS page) wire it and
   write `tokens-NN.jsonl`; `price_in`/`price_out` on an endpoint add cost.
 - Renderer: `app/.../LilGuyGame.kt`. The first page is the 3D room, `RoomView.kt` (camera, light by
-  game hour, HUD, bubble), with furniture as part lists keyed by item id in `RoomModels.kt` (1 unit = 1 tile,
+  game hour, HUD, bubble, the shop's catalogue card on DOWN), his books, records and guitar on a wall shelf
+  (`RoomModels.shelf`, from `LifeSnapshot.catalog`), with furniture as part lists keyed by item id in `RoomModels.kt` (1 unit = 1 tile,
   pivot bottom centre, front +Z) and the guy in `Blob.kt` (face textures per expression, animation in
   code from needs and activity). All of it is drawn in the hand-drawn look by `CrayonRenderer.kt`:
   `CrayonModel.kt` holds the part-list format (`Part`, `PartList`) and merged meshes, `Crayon.kt` the
   shape builders and shaders, and `RoomPaint.kt` the floor, wall and item textures painted once with `CrayonCanvas.kt`. Then the 2D dev view in
-  `DevView.kt`: map plus Now/Memory/Art/Tokens/History/Log/Run pages; run control, decision history and the app's memory in `SimSession.kt`;
+  `DevView.kt`: map plus Now/Shop/Verbs/Memory/Art/Tokens/History/Log/Run pages (Shop and Verbs read `LifeSnapshot.catalog`,
+  `verbs` and `done`, built with the world's cached option lists); run control, decision history and the app's memory in `SimSession.kt`;
   the Run page's knobs (days, speed, how long the clock waits on the model, resolution) in `RunSettings.kt`; remote keys in
   `RemoteInput.kt`: OK start/pause, LEFT/RIGHT pages, UP/DOWN scroll or pick, BACK twice restarts). Launchers: `desktop/`, `android/`.
   `LILGUY_SCREENSHOT=out.png LILGUY_SCREENSHOT_AT=<s> make desktop` saves one frame and quits
   (add `LILGUY_CONFIG=/nonexistent` for the scripted policy, no API calls; `MINUTE_TICKS=1` for a faster clock)
-  (`LILGUY_SCREENSHOT_KEYS="Enter,@60,Right"` presses keys first).
+  (`LILGUY_SCREENSHOT_KEYS="Enter,@60,Right"` presses keys first; `LILGUY_START_ITEMS=novel,folk_record,guitar` adds to
+  what he starts with).
 - Endpoint config example: `config/endpoints.example.yaml` (real one is gitignored). The app's
   model choice: `app/.../ModelSetup.kt`. Run logs go in `runs/` (gitignored).
 - ADB helpers: `tools/adb/`.

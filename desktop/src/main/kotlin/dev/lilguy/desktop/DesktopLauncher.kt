@@ -29,6 +29,7 @@ fun main() {
     // "none" for off); LILGUY_WRITER_ENDPOINT the writer of his thoughts and self-model, the same way
     // with the config's writer_endpoint (LILGUY_JOURNAL_ENDPOINT is its old name); LILGUY_RECALL_ENDPOINT
     // the typesafe endpoint that scores recall ("none" for keywords); LILGUY_DAYS the bedroom run length (0 for no end).
+    // LILGUY_START_ITEMS adds to what he starts with, for screenshots: "novel,folk_record,guitar" or "meal=4".
     val setup = ModelSetup.fromConfig(
         configFile = File(System.getenv("LILGUY_CONFIG") ?: "config/endpoints.yaml"),
         endpoint = System.getenv("LILGUY_ENDPOINT")?.takeIf { it.isNotBlank() },
@@ -40,7 +41,11 @@ fun main() {
         writerEndpoint = (System.getenv("LILGUY_WRITER_ENDPOINT") ?: System.getenv("LILGUY_JOURNAL_ENDPOINT"))?.takeIf { it.isNotBlank() },
         recallEndpoint = System.getenv("LILGUY_RECALL_ENDPOINT")?.takeIf { it.isNotBlank() },
         days = System.getenv("LILGUY_DAYS")?.toIntOrNull().let { if (it == null) ModelSetup.DEFAULT_DAYS else it.takeIf { d -> d > 0 } },
-    )
+    ).let { s ->
+        val extra = System.getenv("LILGUY_START_ITEMS").orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
+            .associate { it.substringBefore('=') to (it.substringAfter('=', "1").toIntOrNull() ?: 1) }
+        if (extra.isEmpty()) s else s.copy(startItems = extra)
+    }
     val game = LilGuyGame(setup)
     val shotPath = System.getenv("LILGUY_SCREENSHOT")
     val listener = if (shotPath == null) game else Screenshot(game, shotPath, System.getenv("LILGUY_SCREENSHOT_AT")?.toFloatOrNull() ?: 5f, System.getenv("LILGUY_SCREENSHOT_KEYS").orEmpty())

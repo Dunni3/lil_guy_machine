@@ -92,6 +92,54 @@ class RoomModels : Disposable {
         }.mesh()
     }
 
+    /**
+     * A wall shelf of what he owns to read and play, back at z = 0 like [wallItem]s: [books] as
+     * spines on the top board and [records] as sleeves leaning on the bottom one, each item id its
+     * own colour. Built once per set of contents.
+     */
+    fun shelf(books: List<String>, records: List<String>): CrayonModel = items.getOrPut("shelf/${books.joinToString(",")}/${records.joinToString(",")}") {
+        model {
+            for (y in listOf(SHELF_LOW, SHELF_HIGH)) {
+                box(WOOD, 0f, y, SHELF_DEPTH / 2, SHELF_WIDTH, 0.035f, SHELF_DEPTH, round = 0.012f)
+                for (side in listOf(-1f, 1f)) box(WOOD_DARK, side * (SHELF_WIDTH / 2 - 0.1f), y - 0.1f, 0.05f, 0.035f, 0.1f, 0.1f, round = 0.012f)
+            }
+            lump = 0.002f
+            var x = -SHELF_WIDTH / 2 + 0.06f
+            for (id in books.take(SHELF_BOOKS)) {
+                val k = id.hashCode().mod(SPINES.size)
+                val w = 0.055f + 0.012f * (k % 3)
+                val h = 0.2f + 0.025f * (k % 4)
+                box(SPINES[k], x + w / 2, SHELF_HIGH + 0.035f, 0.1f, w, h, 0.15f, round = 0.008f)
+                box(PAPER, x + w / 2, SHELF_HIGH + 0.035f + h * 0.62f, 0.176f, w * 0.7f, 0.022f, 0.004f, round = 0.002f, outline = 0f)
+                x += w + 0.006f
+            }
+            records.take(SHELF_RECORDS).forEachIndexed { i, id ->
+                val k = id.hashCode().mod(SLEEVES.size)
+                val sx = -SHELF_WIDTH / 2 + 0.2f + i * 0.27f
+                box(SLEEVES[k], sx, SHELF_LOW + 0.035f, 0.09f + i * 0.012f, SLEEVE, SLEEVE, 0.014f, rotX = -9f, round = 0.006f)
+                cylinder(SPINES[(k + 2) % SPINES.size], sx, SHELF_LOW + 0.035f + SLEEVE * 0.32f, 0.105f + i * 0.012f, 0.12f, 0.004f, 0.12f, rotX = 81f, round = 0.002f, outline = 0.005f)
+            }
+        }
+    }
+
+    /** His guitar, hanging on a peg; back at z = 0 like the [shelf]. */
+    fun guitar(): CrayonModel = items.getOrPut("guitar") {
+        model {
+            lump = 0.002f
+            sphere(GUITAR, 0f, 0.82f, 0.06f, 0.4f, 0.36f, 0.09f)
+            sphere(GUITAR, 0f, 1.08f, 0.06f, 0.3f, 0.27f, 0.09f)
+            cylinder(VINYL, 0f, 1.05f, 0.1f, 0.1f, 0.01f, 0.1f, rotX = 90f, round = 0.002f, outline = 0.004f)
+            box(WOOD_DARK, 0f, 0.86f, 0.106f, 0.12f, 0.025f, 0.012f, round = 0.004f, outline = 0.004f)
+            box(WOOD_DARK, 0f, 1.2f, 0.07f, 0.055f, 0.42f, 0.035f, round = 0.01f)
+            box(WOOD_DARK, 0f, 1.6f, 0.07f, 0.085f, 0.12f, 0.03f, round = 0.012f)
+            capsule(KNOB, 0f, 1.62f, 0.02f, 0.035f, 0.05f, 0.035f, rotX = 90f, outline = 0.005f)
+        }
+    }
+
+    /** Centre x of the back-wall shelf, right of the window above the record player's place, and of the guitar, between the clock and the poster. */
+    fun shelfX(map: TileMap): Float = map.width * 0.85f
+    fun guitarX(map: TileMap): Float = map.width * 0.37f
+
     /** Centre x of the back-wall clock, left of centre. */
     fun clockX(map: TileMap): Float = map.width * 0.27f
 
@@ -441,6 +489,14 @@ class RoomModels : Disposable {
         const val RAIL_Y = 1.86f
         const val RAIL_LENGTH = 1.5f
         val FRAME_XS = floatArrayOf(-0.46f, 0f, 0.46f)
+        /** The shelf's boards, in metres up from the floor, and how much fits on them. */
+        const val SHELF_LOW = 1.0f
+        const val SHELF_HIGH = 1.4f
+        private const val SHELF_WIDTH = 1.1f
+        private const val SHELF_DEPTH = 0.2f
+        private const val SLEEVE = 0.3f
+        private const val SHELF_BOOKS = 12
+        private const val SHELF_RECORDS = 3
         const val FRAME_BOTTOM = 1.2f
         /** The bands of the painted wall, in metres up from the floor. */
         const val BASEBOARD = 0.1f
@@ -489,5 +545,8 @@ class RoomModels : Disposable {
         private const val CURTAIN_TIE = "#fde9c6"
         private const val HAND = "#4a3a4f"
         private const val UNKNOWN = "#d6aee6"
+        private const val GUITAR = "#f0b46e"
+        private val SPINES = listOf("#8fb0ec", "#f2928a", "#9fd49a", "#ffd86a", "#d6aee6", "#f6b2b7", "#9fd3d9")
+        private val SLEEVES = listOf("#f4a3ad", "#9fc1ef", "#c2e6a8", "#ffe3a1", "#c9b2ec")
     }
 }

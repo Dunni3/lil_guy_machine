@@ -44,6 +44,8 @@ class ModelSetup(
     val paints: Boolean = false,
     /** A fresh scorer for each run that ranks recall and scores significance (typesafe); null for keywords. */
     val recallScorer: (() -> Scorer)? = null,
+    /** Bedroom: items he starts with on top of the content's, id to count; a dev aid for screenshots (LILGUY_START_ITEMS). */
+    val startItems: Map<String, Int> = emptyMap(),
 ) {
     class Prices(val decision: TokenPrice? = null, val memory: TokenPrice? = null, val writer: TokenPrice? = null, val recall: TokenPrice? = null)
 
@@ -53,7 +55,8 @@ class ModelSetup(
         writerModel: (() -> DecisionModel)? = this.writerModel,
         prices: Prices = this.prices,
         recallScorer: (() -> Scorer)? = this.recallScorer,
-    ) = ModelSetup(create, scenario, ticksPerMinute, timeout, logDir, notice, memoryModel, days, writerModel, prices, paints, recallScorer)
+        startItems: Map<String, Int> = this.startItems,
+    ) = ModelSetup(create, scenario, ticksPerMinute, timeout, logDir, notice, memoryModel, days, writerModel, prices, paints, recallScorer, startItems)
 
     /** The Run page's starting values; the viewer changes them from there. */
     val settings: RunSettings get() = RunSettings(days, ticksPerMinute = ticksPerMinute)
