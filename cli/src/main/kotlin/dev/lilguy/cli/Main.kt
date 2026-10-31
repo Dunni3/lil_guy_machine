@@ -30,7 +30,9 @@ import dev.lilguy.agent.runLockstep
 import dev.lilguy.decision.DecisionModel
 import dev.lilguy.decision.Endpoints
 import dev.lilguy.decision.StructuredOutput
+import dev.lilguy.sim.BedroomContent
 import dev.lilguy.sim.BedroomWorld
+import dev.lilguy.sim.Personality
 import dev.lilguy.sim.GameClock
 import dev.lilguy.sim.Intent
 import dev.lilguy.sim.Need
@@ -75,6 +77,9 @@ private const val USAGE = """lil guy machine cli: lockstep runs of the key-and-d
                       typesafe draws too (a PNG per piece in art-NN/ beside the log); the scripted
                       policy and a replay don't draw
   --grant IDS         bedroom: unlock gated content, comma-separated ids (e.g. paint,easel,canvas,painting)
+  --affinities Q=W    bedroom: his personality for these runs, quality=weight pairs over the content's
+                      default (e.g. calm=2,loud=-1); weights -1 to 2
+  --curiosity X       bedroom: scales how fast stimulation drains and how much a first time pays (default 1)
   --quiet             one line per run instead of every decision and event
 
 Key-and-door exits non-zero unless every run solved the room; the bedroom, unless every run
@@ -111,6 +116,7 @@ private class Args(argv: Array<String>) {
         val FLAGS = setOf("--quiet", "--no-log", "--help")
         val KNOWN = FLAGS + setOf(
             "--scenario", "--endpoint", "--runs", "--days", "--minute-ticks", "--ticks", "--max-decisions", "--config", "--strategy", "--log-dir", "--replay", "--memory", "--memory-endpoint", "--journal-endpoint", "--grant",
+            "--affinities", "--curiosity",
         )
     }
 }
@@ -199,6 +205,7 @@ fun main(argv: Array<String>) {
     val maxDecisions = args.int("--max-decisions", if (scenario == Scenario.Bedroom) 60 * days else 60)
     val quiet = args.flag("--quiet")
     val granted = args.string("--grant")?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }?.toSet().orEmpty()
+    val personality = personalityOf(args)
 
     // Each run gets a fresh model, so nothing carries over between runs.
     val (label, timeout, newModel) = try {
@@ -257,7 +264,7 @@ fun main(argv: Array<String>) {
             )
         }
         try {
-            runOnce(n, scenario, model, timeout, minuteTicks, maxTicks, maxDecisions, quiet, log, logDir, ledger, memory, granted, sessions)
+            runOnce(n, scenario, model, timeout, minuteTicks, maxTicks, maxDecisions, quiet, log, logDir, ledger, memory, granted, personality, sessions)
         } finally {
             log?.close()
             store?.close()
@@ -269,6 +276,21 @@ fun main(argv: Array<String>) {
 
     summarize(results, logDir)
     if (results.any { !it.solved }) exitProcess(1)
+}
+
+/** --affinities and --curiosity over the content's default personality; null when neither is given. */
+private fun personalityOf(args: Args): Personality? {
+    val affinities = args.string("--affinities")
+    val curiosity = args.string("--curiosity")
+    if (affinities == null && curiosity == null) return null
+    val base = BedroomContent.default().personality
+    val changed = affinities.orEmpty().split(',').filter { it.isNotBlank() }.associate { pair ->
+        val parts = pair.split('=')
+        require(parts.size == 2) { "--affinities takes quality=weight pairs, like calm=2,loud=-1" }
+        parts[0].trim() to (parts[1].trim().toDoubleOrNull() ?: throw IllegalArgumentException("--affinities: '${parts[1]}' isn't a number"))
+    }
+    val c = curiosity?.let { it.toDoubleOrNull() ?: throw IllegalArgumentException("--curiosity takes a number") } ?: base.curiosity
+    return Personality(base.affinities + changed, c).also { BedroomContent.default().withPersonality(it) } // fail fast on an unknown quality
 }
 
 private fun modelSource(scenario: Scenario, endpoint: String, replay: File?, args: Args): Triple<String, Duration, () -> DecisionModel> {
@@ -305,11 +327,12 @@ private fun runOnce(
     ledger: TokenLedger,
     memory: AgentMemory? = null,
     granted: Set<String> = emptySet(),
+    personality: Personality? = null,
     sessions: List<JournalSession> = emptyList(),
 ): RunResult {
     val records = mutableListOf<AgentRuntime.DecisionRecord>()
     lateinit var stampOf: (Long) -> String
-    val (world, runtime) = scenario.create(model, timeout, minuteTicks, longTerm = memory, granted = granted) { d ->
+    val (world, runtime) = scenario.create(model, timeout, minuteTicks, longTerm = memory, granted = granted, personality = personality) { d ->
         records += d
         log?.write(d)
         if (!quiet) {

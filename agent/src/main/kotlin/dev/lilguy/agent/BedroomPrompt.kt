@@ -35,7 +35,7 @@ object BedroomPrompt {
         add(Intent.Do(activity.id) to "do an activity from `activities` that isn't locked; the game walks you there")
         content.items.firstOrNull { it.price != null }?.let { add(Intent.Buy(it.id) to "buy something from `shop` that you can afford; it arrives at the ${content.item(content.shop.at)?.name ?: content.shop.at}") }
         content.uses.firstOrNull()?.let { u ->
-            val item = content.withTag(u.item!!).first().id
+            val item = content.withName(u.item!!).first().id
             add(Intent.Use(item, on = u.on) to "use an item you own on another, as listed in `uses`")
         }
         add(Intent.MoveTo(Target.Entity("bed")) to "walk to something in the room")
@@ -103,7 +103,7 @@ object BedroomPrompt {
             content.habituation?.let { h ->
                 val stale = if (h.staleStimulation < 0) ", and doing something you've worn thin costs stimulation" else ""
                 add("Doing the same thing again gives less: each time you finish it, its mood and stimulation gains drop ${(h.perRepeat * 100).toInt()}%, coming back ${(h.recoverPerHour * 100).toInt()}% an hour$stale.")
-                val routine = content.activities.filter { it.routine }.map { it.phrase ?: it.id }
+                val routine = content.activities.filter { it.isRoutine }.map { it.phrase ?: it.id }
                 if (routine.isNotEmpty()) add("Routine things (${routine.joinToString(", ")}) don't wear thin.")
             }
         }
@@ -136,13 +136,13 @@ object BedroomPrompt {
         val floor = r.workFloor.joinToString(" or ") { "${it.need} is below ${it.below?.toInt()}" }
         val sellAt = content.activities.firstOrNull { it.sells != null }
         val hatch = content.item(content.shop.at)?.name ?: content.shop.at
-        val decor = content.items.any { it.comfort > 0 }
+        val decor = content.items.any { it.slot != null && content.value(it) > 0 }
         val forSale = content.items.filter { it.price != null }
         val wants = if (forSale.any { it.kind != "food" }) "for food and for anything you want to own" else "for food"
         val means = if (content.activity(JOURNAL_ACTIVITY) != null) ", as a means, not the goal" else ""
         val bored = if (r.stimulationPerHour < 0 && r.boredMood > 0) ", less boredom" else ""
         val mood = if (decor) {
-            "Mood drifts ${r.moodDriftPerHour.toInt()} an hour toward ${r.moodBaseline.toInt()} plus your room's comfort$bored; nice things raise it for a while, and decor raises comfort."
+            "Mood drifts ${r.moodDriftPerHour.toInt()} an hour toward ${r.moodBaseline.toInt()} plus your room's comfort$bored; nice things raise it for a while, and decor raises comfort by as much as you like it."
         } else {
             "Mood drifts ${r.moodDriftPerHour.toInt()} an hour toward ${r.moodBaseline.toInt()}$bored; some activities raise it for a while."
         }

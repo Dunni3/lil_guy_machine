@@ -25,6 +25,9 @@ import kotlin.random.Random
  *
  * Doing the same thing again pays less ([HabituationRules]) and the first time pays more
  * ([NoveltyRules]); both feed stimulation, and low stimulation lowers the mood he settles to.
+ *
+ * What an item is worth to him comes from its qualities and his [Personality]: in its slot it adds
+ * comfort, and a consumptive use of it adds mood ([QualityValue]).
  */
 class BedroomWorld private constructor(
     map: TileMap,
@@ -97,9 +100,9 @@ class BedroomWorld private constructor(
 
     private fun item(id: String): ItemSpec = content.item(id) ?: error("no item '$id'")
 
-    /** How many owned items carry [tag], plus one more [extra] if given (for "what if he bought it"). */
+    /** How many owned items answer to [tag] (an id or an affordance), plus one more [extra] if given (for "what if he bought it"). */
     private fun countTag(tag: String, extra: String? = null): Int =
-        owned.entries.sumOf { (id, n) -> if (tag in item(id).allTags) n else 0 } + if (extra != null && tag in item(extra).allTags) 1 else 0
+        owned.entries.sumOf { (id, n) -> if (tag in item(id).names) n else 0 } + if (extra != null && tag in item(extra).names) 1 else 0
 
     private fun add(id: String, n: Int) {
         version++
@@ -115,7 +118,7 @@ class BedroomWorld private constructor(
         var left = n
         for (id in owned.keys.toList()) {
             if (left == 0) break
-            if (tag !in item(id).allTags) continue
+            if (tag !in item(id).names) continue
             val k = min(left, count(id))
             owned[id] = count(id) - k
             if (owned[id] == 0) owned.remove(id)
@@ -142,7 +145,20 @@ class BedroomWorld private constructor(
         spec.slot?.let { spec to slotCells.getValue(it) }
     }
 
-    private fun comfort(): Int = owned.entries.sumOf { (id, n) -> item(id).comfort * n } + hung().size * content.gallery.comfortEach
+    /** What [spec] adds to comfort while it sits in its slot: its value to him, in view. Items without a slot are out of sight. */
+    private fun comfortOf(spec: ItemSpec): Int = if (spec.slot == null) 0 else (content.value(spec) * content.qualityValue.inView).roundToInt()
+
+    private fun comfort(): Int = placed().sumOf { (spec, _) -> comfortOf(spec) } + hung().size * content.gallery.comfortEach
+
+    /** Mood for doing [a] with [usedItem]: its value to him, in use. Only consumptive verbs with a known item pay it. */
+    private fun liking(a: ActivitySpec, usedItem: String?): Double =
+        if (a.kind != VerbKind.Consumptive || usedItem == null) 0.0 else content.value(item(usedItem)) * content.qualityValue.inUse
+
+    /** How to say [name] in a sentence: an item's name, or for an affordance, the kind its items share ("book"). */
+    private fun noun(name: String): String {
+        val options = content.withName(name)
+        return options.singleOrNull()?.name ?: options.map { it.kind }.distinct().singleOrNull() ?: name.replace('_', ' ')
+    }
 
     /** How far boredom lowers the mood he settles to. */
     private fun boredom(): Double = (content.needs.bored - needs[Need.Stimulation]).coerceAtLeast(0.0) * content.needs.boredMood
@@ -157,13 +173,16 @@ class BedroomWorld private constructor(
     /** 1 when fresh, down to 0 when worn out; always 1 for routine activities or without habituation. */
     private fun freshness(a: ActivitySpec, usedItem: String? = null): Double {
         val h = content.habituation ?: return 1.0
-        if (a.routine) return 1.0
+        if (a.isRoutine) return 1.0
         val (level, since) = wear[habit(a, usedItem)] ?: return 1.0
         val hours = (ticks - since).toDouble() / clock.ticks(60)
         return 1.0 - (level - h.recoverPerHour * hours).coerceIn(0.0, 1.0)
     }
 
-    private fun isNew(a: ActivitySpec, usedItem: String? = null): Boolean = content.novelty != null && !a.routine && habit(a, usedItem) !in tried
+    private fun isNew(a: ActivitySpec, usedItem: String? = null): Boolean = content.novelty != null && !a.isRoutine && habit(a, usedItem) !in tried
+
+    /** The first-time bonus, scaled by his curiosity. */
+    private fun novelty(): Map<String, Double> = content.novelty!!.effects.mapValues { it.value * content.personality.curiosity }
 
     /** [d] as paid at [fresh]: gains in mood and stimulation shrink with wear; costs and other needs don't. */
     private fun paid(need: Need, d: Double, fresh: Double): Double = if (d > 0 && (need == Need.Mood || need == Need.Stimulation)) d * fresh else d
@@ -171,7 +190,7 @@ class BedroomWorld private constructor(
     /** Wears the habit, charges stimulation if it was already worn, and pays the novelty bonus the first time. */
     private fun habituate(a: ActivitySpec, usedItem: String?, fresh: Double, parts: MutableList<String>) {
         val key = habit(a, usedItem)
-        content.habituation?.takeIf { !a.routine }?.let { h ->
+        content.habituation?.takeIf { !a.isRoutine }?.let { h ->
             val worn = 1.0 - fresh
             if (worn > 0) {
                 val stale = if (h.staleStimulation < 0) ", stimulation ${signed(needs.change(ticks, Need.Stimulation, h.staleStimulation * worn, "${a.id} again"))}" else ""
@@ -183,7 +202,7 @@ class BedroomWorld private constructor(
         if (isNew(a, usedItem)) {
             tried += key
             version++
-            parts += "new to you: " + content.novelty!!.effects.entries.joinToString { (need, d) -> "$need ${signed(needs.change(ticks, needOf(need), d, "new: $key"))}" }
+            parts += "new to you: " + novelty().entries.joinToString { (need, d) -> "$need ${signed(needs.change(ticks, needOf(need), d, "new: $key"))}" }
         }
     }
 
@@ -198,12 +217,12 @@ class BedroomWorld private constructor(
         a.consumes.entries.firstOrNull { (tag, n) -> countTag(tag, extra) < n }?.let { return "needs ${wanted(it.key)}" }
         a.sells?.let { tag ->
             if (countTag(tag) == 0) {
-                val makers = content.activities.filter { m -> m.produces.keys.any { tag in item(it).allTags } }.map { it.id }
-                return "you have no $tag to sell" + if (makers.isEmpty()) "" else "; ${makers.joinToString(" or ")} makes some"
+                val makers = content.activities.filter { m -> m.produces.keys.any { tag in item(it).names } }.map { it.id }
+                return "you have no ${noun(tag)} to sell" + if (makers.isEmpty()) "" else "; ${makers.joinToString(" or ")} makes some"
             }
         }
         a.hangs?.let { tag ->
-            if (countTag(tag) == 0) return "you have no $tag to hang"
+            if (countTag(tag) == 0) return "you have no ${noun(tag)} to hang"
             if (hung().size >= content.gallery.max) return "your wall is full (${content.gallery.max} pieces)"
         }
         val blocks = a.block + if (a.work) content.needs.workFloor else emptyList()
@@ -213,10 +232,10 @@ class BedroomWorld private constructor(
 
     /** "an easel ($120)", "a meal (3 for $18)", "a sketchbook". The cheapest item with [tag] for sale, if any. */
     private fun wanted(tag: String): String {
-        val options = content.withTag(tag)
+        val options = content.withName(tag)
         val spec = options.filter { it.price != null }.minByOrNull { it.price!! } ?: options.first()
-        val price = spec.price ?: return article(if (options.size > 1) tag else spec.name)
-        val name = if (options.size > 1 && tag != spec.id) tag.replace('_', ' ') else spec.name
+        val price = spec.price ?: return article(if (options.size > 1) noun(tag) else spec.name)
+        val name = if (options.size > 1 && tag != spec.id) noun(tag) else spec.name
         return article(name) + if (spec.pack > 1) " (${spec.pack} for $$price)" else " ($$price)"
     }
 
@@ -267,7 +286,7 @@ class BedroomWorld private constructor(
 
     private fun planDo(id: String): Work {
         val a = content.activity(id)
-            ?: reject("there's no activity called '$id'" + (content.uses.find { it.id == id }?.let { "; it's done with use(${it.item}, on ${it.on})" } ?: "; the activities are ${content.activities.joinToString { it.id }}"))
+            ?: reject("there's no activity called '$id'" + (content.uses.find { it.id == id }?.let { "; it's done with use(a ${noun(it.item!!)}, on ${it.on})" } ?: "; the activities are ${content.activities.joinToString { it.id }}"))
         lockReason(a)?.let { reject("can't ${a.id}: $it") }
         val (walk, at) = walkToNearest(a.at)
         return Work.Steps(walk, activity(a, at) { complete(a) })
@@ -276,7 +295,7 @@ class BedroomWorld private constructor(
     private fun planUse(intent: Intent.Use): Work {
         val spec = content.item(intent.itemId)
         if (spec == null || count(spec.id) == 0) reject("you don't have '${intent.itemId}'")
-        val rules = content.uses.filter { it.item in spec.allTags }
+        val rules = content.uses.filter { it.item in spec.names }
         if (rules.isEmpty()) reject("the ${spec.name} can't be used on anything")
         val on = intent.on ?: reject("use the ${spec.name} on something: ${rules.joinToString(" or ") { it.on!! }}")
         val rule = rules.find { it.on == on } ?: reject("using the ${spec.name} on $on does nothing; try ${rules.joinToString(" or ") { it.on!! }}")
@@ -345,6 +364,9 @@ class BedroomWorld private constructor(
             val applied = needs.change(ticks, needOf(need), paid(needOf(need), d, fresh), a.id)
             parts += "$need ${signed(applied)}"
         }
+        liking(a, usedItem).takeIf { it != 0.0 }?.let { d ->
+            parts += "${if (d > 0) "you like" else "you don't like"} the ${item(usedItem!!).name}: mood ${signed(needs.change(ticks, Need.Mood, paid(Need.Mood, d, fresh), "liking $usedItem"))}"
+        }
         a.sells?.let { parts += sell(it) }
         a.hangs?.let { parts += hang(it) }
         a.background?.let { bg ->
@@ -377,7 +399,7 @@ class BedroomWorld private constructor(
 
     /** Hangs his newest held piece with [tag] on the wall. */
     private fun hang(tag: String): String {
-        val p = held(tag).lastOrNull() ?: return "you no longer have any $tag to hang"
+        val p = held(tag).lastOrNull() ?: return "you no longer have any ${noun(tag)} to hang"
         take(p.item, 1)
         p.state = PieceState.Hung
         return "hung ${pieceName(p)} on the wall; comfort ${comfort()}, so mood settles toward ${moodTarget().toInt()}"
@@ -413,7 +435,7 @@ class BedroomWorld private constructor(
         }
     }
 
-    private fun held(tag: String): List<Piece> = pieces.filter { it.state == PieceState.Held && tag in item(it.item).allTags }
+    private fun held(tag: String): List<Piece> = pieces.filter { it.state == PieceState.Held && tag in item(it.item).names }
 
     private fun hung(): List<Piece> = pieces.filter { it.state == PieceState.Hung }
 
@@ -472,7 +494,7 @@ class BedroomWorld private constructor(
         val what = quantity(spec.id, spec.pack)
         ledger.debit(ticks, price, "bought $what")
         add(spec.id, spec.pack)
-        val comfortNote = if (spec.comfort > 0) "; comfort ${comfort()}, so mood settles toward ${moodTarget().toInt()}" else ""
+        val comfortNote = if (comfortOf(spec) != 0) "; comfort ${comfort()}, so mood settles toward ${moodTarget().toInt()}" else ""
         event("bought $what for $$price (money $${ledger.balance})$comfortNote")
         return null
     }
@@ -510,7 +532,7 @@ class BedroomWorld private constructor(
         }
         if (activity?.asleep != true) {
             rate(Need.Energy, r.awakeEnergyPerHour, "awake")
-            rate(Need.Stimulation, r.stimulationPerHour, "awake")
+            rate(Need.Stimulation, r.stimulationPerHour * content.personality.curiosity, "awake")
         }
         rate(Need.Fullness, r.fullnessPerHour, "hunger")
         activity?.rates?.forEach { (need, perHour) -> rate(needOf(need), paid(needOf(need), perHour, doing!!.fresh), activity.id) }
@@ -557,11 +579,11 @@ class BedroomWorld private constructor(
         val parts = mutableListOf<String>()
         a.produces.forEach { (id, n) -> parts += quantity(id, n) + (item(id).sellPrice?.let { ", sells for $$it" } ?: "") }
         if (forSale) {
-            a.consumes.forEach { (tag, n) -> parts += "uses ${if (n == 1) "a" else "$n"} ${tag.replace('_', ' ')}" }
+            a.consumes.forEach { (tag, n) -> parts += "uses ${if (n == 1) "a" else "$n"} ${noun(tag)}" }
             return parts.joinToString("; ")
         }
         a.sells?.let { tag ->
-            val counts = owned.filter { (id, _) -> tag in item(id).allTags }
+            val counts = owned.filter { (id, _) -> tag in item(id).names }
             val sale = saleOf(held(tag))
             val bonus = if (winner(sale.map { it.first }) != null) ", $${content.commissions!!.reward} of it for the request" else ""
             parts += "$${sale.sumOf { it.second }} for the ${counts.entries.joinToString(" and ") { (id, n) -> quantity(id, n) }} you hold$bonus"
@@ -570,30 +592,33 @@ class BedroomWorld private constructor(
             held(tag).lastOrNull()?.let { parts += "hangs ${pieceName(it)}" }
             parts += "comfort +${content.gallery.comfortEach}: mood settles ${content.gallery.comfortEach} higher (${hung().size} of ${content.gallery.max} on the wall)"
         }
-        a.consumes.forEach { (tag, n) -> parts += "uses ${if (n == 1) "a" else "$n"} ${tag.replace('_', ' ')} (you have ${countTag(tag)})" }
+        a.consumes.forEach { (tag, n) -> parts += "uses ${if (n == 1) "a" else "$n"} ${noun(tag)} (you have ${countTag(tag)})" }
         val fresh = freshness(a, usedItem)
         fun shown(need: String, d: Double) = "$need ${signed(paid(needOf(need), d, fresh).roundToInt().toDouble())}"
         a.effects.forEach { (need, d) -> parts += shown(need, d) }
         a.rates.forEach { (need, d) -> parts += shown(need, d) + "/h" }
+        liking(a, usedItem).roundToInt().takeIf { it != 0 }?.let { d ->
+            parts += (if (d > 0) "you like it: " else "you don't like it: ") + shown("mood", d.toDouble())
+        }
         a.background?.let { bg -> parts += "${bg.name} for ${GameClock.duration(bg.minutes)}: " + bg.rates.entries.joinToString { (need, d) -> shown(need, d) + "/h" } }
         content.habituation?.takeIf { fresh < 1 }?.let { h ->
             val stale = (h.staleStimulation * (1 - fresh)).roundToInt()
             parts += "done a lot lately: gains at ${percent(fresh)}" + if (stale < 0) ", and stimulation $stale" else ""
         }
-        if (isNew(a, usedItem)) parts += "new to you: " + content.novelty!!.effects.entries.joinToString { (need, d) -> "$need ${signed(d)}" }
+        if (isNew(a, usedItem)) parts += "new to you: " + novelty().entries.joinToString { (need, d) -> "$need ${signed(d.roundToInt().toDouble())}" }
         return parts.joinToString("; ")
     }
 
     private fun useOptions(): List<UseOption> = content.uses.flatMap { rule ->
         if (lockReason(rule) != null) emptyList()
-        else owned.keys.filter { rule.item!! in item(it).allTags }.map { UseOption(it, rule.on!!, takes(rule), gives(rule, usedItem = it)) }
+        else owned.keys.filter { rule.item!! in item(it).names }.map { UseOption(it, rule.on!!, takes(rule), gives(rule, usedItem = it)) }
     }
 
     private fun shopOption(spec: ItemSpec): ShopOption {
         val parts = mutableListOf<String>()
         if (spec.pack > 1) parts += quantity(spec.id, spec.pack)
         val unlocks = (content.activities + content.uses).filter { a ->
-            spec.id in a.at || a.requires.any { it in spec.allTags } || a.consumes.keys.any { it in spec.allTags } || a.item in spec.allTags
+            spec.id in a.at || a.requires.any { it in spec.names } || a.consumes.keys.any { it in spec.names } || a.item in spec.names
         }
         // What it's for. When it's what a locked activity is missing, say so and what that activity gives.
         unlocks.forEach { a ->
@@ -606,7 +631,10 @@ class BedroomWorld private constructor(
                 else -> "for ${a.id} ($what), which also $after"
             }
         }
-        if (spec.comfort > 0) parts += "comfort +${spec.comfort}: mood settles ${spec.comfort} higher"
+        val comfort = comfortOf(spec)
+        if (comfort > 0) parts += "comfort +$comfort: mood settles $comfort higher"
+        if (comfort < 0) parts += "comfort $comfort: you don't like it, so mood settles ${-comfort} lower"
+        if (spec.qualities.isNotEmpty()) parts += spec.qualities.keys.joinToString(", ")
         return ShopOption(spec.id, spec.price!!, ledger.canAfford(spec.price), parts.joinToString("; "))
     }
 

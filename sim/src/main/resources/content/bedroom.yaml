@@ -108,10 +108,34 @@ gallery:
   max: 3
   comfort_each: 3
 
+# The closed lists items are described in (research_notes/2026-10-30_1951_world-grammar-consolidated-plan.md,
+# step 2); a word that isn't here is a content error.
+vocabulary:
+  # What can be done with an item. Activities ask for these (a book is `readable`), so a new item
+  # with an affordance works with every activity that asks for it.
+  affords: [readable, playable, edible, sellable, hangable, viewable, combinable, wearable]
+  # What an item is like to him, each with a strength from 0 to 3, scored by his affinities.
+  qualities: [cozy, calm, warm, soft, bright, pretty, natural, lively, strange, loud]
+
+# Who he is, as numbers; a run can swap in another. Affinities run from -1 (it puts him off) to 2,
+# and a quality left out counts 0. Curiosity scales how fast stimulation drains and how much a first
+# time pays. These defaults keep the decor's comfort where it was (plant 4, poster 3, rug 6).
+personality:
+  affinities: { cozy: 1, calm: 1, warm: 1, soft: 1, bright: 1, pretty: 1, natural: 1, lively: 0.5, strange: 0.5, loud: -0.5 }
+  curiosity: 1
+
+# An item's value to him is each quality's strength times his affinity for it, summed. Mostly it's
+# paid when he does something with it: a consumptive use (a record on the player) adds `in_use`
+# mood per point when it finishes. A little is passive: an item in its slot adds `in_view` comfort
+# per point, which raises the mood he settles to.
+quality_value:
+  in_view: 1
+  in_use: 1
+
 # kind is for display and grouping: fixture, furniture, decor, tool, food, supply, record, book, art.
 # A `slot` item is placed in that slot when owned; `blocks` means he stands beside it, not on it.
-# `stackable` items are counted; the rest are one of a kind. `tags` let an activity ask for "a
-# record" instead of a particular one; an item's id is always one of its tags.
+# `stackable` items are counted; the rest are one of a kind. `affords` and `qualities` use the
+# vocabulary above; an activity can ask for an item by id or by affordance.
 items:
   - { id: mail_hatch, name: mail hatch, kind: fixture, slot: hatch, blocks: true }
   - { id: picture_rail, name: picture rail, kind: fixture, slot: rail, blocks: true }
@@ -121,44 +145,51 @@ items:
   - { id: sketchbook, name: sketchbook, kind: tool }
   - { id: journal, name: journal, kind: tool }
   # Was 18 a pack: food is now about $21 a day.
-  - { id: meal, name: meal, kind: food, price: 24, pack: 3, stackable: true }
+  - { id: meal, name: meal, kind: food, affords: [edible], price: 24, pack: 3, stackable: true }
   - { id: canvas, name: canvas, kind: supply, price: 15, stackable: true }
   # Was 120: at $3 a sketch he could not save that. $17 is a few hours of sketching, to see how the climb to painting plays out.
   - { id: easel, name: easel, kind: furniture, slot: easel, blocks: true, price: 17 }
   - { id: record_player, name: record player, kind: furniture, slot: shelf, blocks: true, price: 150 }
-  - { id: jazz_record, name: jazz record, kind: record, tags: [record], price: 20 }
-  - { id: ambient_record, name: ambient record, kind: record, tags: [record], price: 20 }
-  - { id: folk_record, name: folk record, kind: record, tags: [record], price: 20 }
-  - { id: novel, name: novel, kind: book, tags: [book], price: 12 }
-  - { id: poetry_book, name: poetry book, kind: book, tags: [book], price: 12 }
-  - { id: field_guide, name: field guide, kind: book, tags: [book], price: 12 }
-  # Comfort raises the mood his mood drifts back to.
-  - { id: plant, name: plant, kind: decor, slot: plant, blocks: true, price: 25, comfort: 4 }
-  - { id: poster, name: poster, kind: decor, slot: poster, blocks: true, price: 15, comfort: 3 }
-  - { id: rug, name: rug, kind: decor, slot: rug, price: 60, comfort: 6 }
+  - { id: jazz_record, name: jazz record, kind: record, affords: [playable], qualities: { lively: 2, warm: 1 }, price: 20 }
+  - { id: ambient_record, name: ambient record, kind: record, affords: [playable], qualities: { calm: 2, strange: 1 }, price: 20 }
+  - { id: folk_record, name: folk record, kind: record, affords: [playable], qualities: { warm: 2, natural: 1 }, price: 20 }
+  # Books carry qualities for when he reads a particular one (the library, step 3); `read` doesn't know which yet.
+  - { id: novel, name: novel, kind: book, affords: [readable], qualities: { strange: 2, warm: 1 }, price: 12 }
+  - { id: poetry_book, name: poetry book, kind: book, affords: [readable], qualities: { pretty: 2, calm: 1 }, price: 12 }
+  - { id: field_guide, name: field guide, kind: book, affords: [readable], qualities: { natural: 2, bright: 1 }, price: 12 }
+  # Decor: in view, its qualities raise comfort. Was a fixed `comfort` (4, 3, 6), which the default personality keeps.
+  - { id: plant, name: plant, kind: decor, slot: plant, blocks: true, price: 25, affords: [viewable], qualities: { natural: 2, calm: 2 } }
+  - { id: poster, name: poster, kind: decor, slot: poster, blocks: true, price: 15, affords: [viewable], qualities: { bright: 2, pretty: 1 } }
+  - { id: rug, name: rug, kind: decor, slot: rug, price: 60, affords: [viewable], qualities: { cozy: 3, soft: 2, warm: 1 } }
   # Art is carried until sold or hung. Sketches were $12: now food takes most of his working hours.
   # `canvas` is what a piece is drawn on: a square grid `size` wide, up to `colors` crayons and
   # `strokes` strokes, each two picks (which stroke, then which crayon) by the model that decides
-  # for him, so strokes is what a piece costs in calls. Painting's bigger canvas is what the easel buys him.
-  - { id: sketch, name: sketch, kind: art, tags: [art], carried: true, stackable: true, sell_price: 3, canvas: { size: 16, colors: 4, strokes: 6 } }
-  - { id: painting, name: painting, kind: art, tags: [art], carried: true, stackable: true, sell_price: 70, canvas: { size: 32, colors: 16, strokes: 12 } }
+  # for him, so strokes is what a piece costs in calls. Painting's bigger canvas is what the easel
+  # buys him. Hung art's comfort is the gallery's, since what a piece is like is whatever he drew.
+  - { id: sketch, name: sketch, kind: art, affords: [sellable, hangable, viewable], carried: true, stackable: true, sell_price: 3, canvas: { size: 16, colors: 4, strokes: 6 } }
+  - { id: painting, name: painting, kind: art, affords: [sellable, hangable, viewable], carried: true, stackable: true, sell_price: 70, canvas: { size: 32, colors: 16, strokes: 12 } }
 
-# do(activity). `at`: where it happens (an owned slot item; the nearest is used). `requires`:
-# tags he must own. `consumes`: tags used up when it finishes. `effects`: need changes when it
-# finishes. `rates`: need changes per hour while doing it. `block`: refused when a need is above
-# or below a level. Activities end after `minutes`, or for `until`, at a time of day or when a
-# need reaches a level, whichever comes first; `stop_below` ends one early when a need drops.
-# `phrase` is how the prompt says what he can do. `routine`: upkeep that neither wears thin nor
-# counts as new (see habituation). Listed in the order options are offered to models.
+# do(activity). `kind`: what sort of verb it is (consumptive, generative, transformative,
+# expressive, economic, rest; perceptual and study come later), and each kind is a contract on the
+# fields below (sim/.../VerbKind.kt). `at`: where it happens (an owned slot item; the nearest is
+# used). `requires`: items or affordances he must own. `consumes`: items or affordances used up
+# when it finishes. `effects`: need changes when it finishes. `rates`: need changes per hour while
+# doing it. `block`: refused when a need is above or below a level. Activities end after `minutes`,
+# or for `until`, at a time of day or when a need reaches a level, whichever comes first;
+# `stop_below` ends one early when a need drops. `phrase` is how the prompt says what he can do.
+# `routine`: upkeep that neither wears thin nor counts as new (see habituation); economic and rest
+# verbs always are. Listed in the order options are offered to models.
 activities:
   - id: eat
+    kind: consumptive
     at: [desk]
     minutes: 30
     routine: true
-    consumes: { meal: 1 }
+    consumes: { edible: 1 }
     effects: { fullness: 45 }
     block: [{ need: fullness, above: 90, reason: "not hungry" }]
   - id: sketch
+    kind: generative
     at: [desk]
     requires: [sketchbook]
     minutes: 60
@@ -169,6 +200,7 @@ activities:
     effects: { energy: -6, mood: -4, stimulation: 3 }
     block: [{ need: mood, below: 25, reason: "too low to make art" }]
   - id: paint
+    kind: generative
     at: [easel]
     minutes: 180
     work: true
@@ -177,22 +209,24 @@ activities:
     effects: { energy: -15, mood: -10, stimulation: 12 }
     block: [{ need: mood, below: 25, reason: "too low to make art" }]
   - id: sell_art
+    kind: economic
     phrase: sell your art
     at: [mail_hatch]
     # Was 60: a sale is a hand-off at the hatch, not an hour of his day (Ian).
     minutes: 1
-    routine: true
-    sells: art
+    sells: sellable
   - id: hang_art
+    kind: transformative
     phrase: hang your art on the wall
     at: [picture_rail]
     minutes: 15
     routine: true
-    hangs: art
+    hangs: hangable
   # The agent layer writes an entry when one succeeds (agent/.../memory/JournalWriter.kt). It is
   # work, so it needs him fed and rested, and costs more energy than sketching: writing about the
   # life he wants is budgeted against staying alive.
   - id: journal
+    kind: expressive
     phrase: write in your journal
     at: [desk]
     requires: [journal]
@@ -203,30 +237,33 @@ activities:
   # Hobbies were mood +6 and +10. Mood is now mostly the summary of the other needs, so most of
   # what they gave moved to stimulation.
   - id: read
+    kind: consumptive
     at: [bed, chair]
-    requires: [book]
+    requires: [readable]
     minutes: 60
     effects: { mood: 2, stimulation: 15 }
   - id: listen
+    kind: consumptive
     at: [chair]
-    requires: [record_player, record]
+    requires: [record_player, playable]
     minutes: 30
     effects: { mood: 4, stimulation: 12 }
   - id: sleep
+    kind: rest
     at: [bed]
     until: { time: "07:00", need: energy, reaches: 100 }
     asleep: true
-    routine: true
     rates: { energy: 12 }
     # Added in tuning: he wakes up hungry rather than sleeping fullness down to 0.
     stop_below: { fullness: 10 }
     block: [{ need: energy, above: 94, reason: "not tired" }]
 
-# use(itemId, on): an item on another. Same fields as activities, plus the item's tag, the
-# target, and `background`: an effect that keeps going while he does anything else.
+# use(itemId, on): an item on another. Same fields as activities, plus the item (an id or an
+# affordance), the target, and `background`: an effect that keeps going while he does anything else.
 uses:
   - id: play_record
-    item: record
+    kind: consumptive
+    item: playable
     on: record_player
     at: [record_player]
     minutes: 1

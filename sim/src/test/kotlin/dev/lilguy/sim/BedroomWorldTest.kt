@@ -64,7 +64,7 @@ class BedroomWorldTest {
         val obs = w.obs()
         assertEquals(listOf("eat", "sketch", "sell_art", "hang_art", "journal", "sleep"), obs.activities!!.map { it.id })
         assertEquals(listOf("meal"), obs.shop!!.map { it.id })
-        assertEquals("you have no art to sell; sketch makes some", w.activity("sell_art").locked)
+        assertEquals("you have no sketch to sell; sketch makes some", w.activity("sell_art").locked)
         assertTrue("no activity called 'paint'" in failure(w.run(Intent.Do("paint"))))
         assertTrue("'easel' isn't for sale" in failure(w.run(Intent.Buy("easel"))))
         assertTrue("e easel" in w.mapLegend, "an empty slot still has its name")
@@ -137,7 +137,7 @@ class BedroomWorldTest {
         val shop = w.obs().shop!!.associateBy { it.id }
         assertEquals(ShopOption("meal", 24, false, "3 meals; for eat"), shop["meal"])
         assertEquals(ShopOption("easel", 17, false, "for paint (3h: 1 painting, sells for $70; uses a canvas), which also needs a canvas ($15)"), shop["easel"])
-        assertEquals("comfort +4: mood settles 4 higher", shop.getValue("plant").gives)
+        assertEquals("comfort +4: mood settles 4 higher; natural, calm", shop.getValue("plant").gives)
         assertEquals("the easel costs $17 and you have $10", failure(w.run(Intent.Buy("easel"))))
         assertTrue("isn't for sale" in failure(w.run(Intent.Buy("bed"))))
 
@@ -242,7 +242,7 @@ class BedroomWorldTest {
         w.run(Intent.Buy("record_player"))
         assertEquals("needs a record ($20)", w.activity("listen").locked)
         w.run(Intent.Buy("jazz_record"))
-        assertEquals(listOf(UseOption("jazz_record", "record_player", "1 min", "music for 45 min: mood +2/h, stimulation +6/h; new to you: stimulation +15, mood +4")), w.obs().uses)
+        assertEquals(listOf(UseOption("jazz_record", "record_player", "1 min", "you like it: mood +2; music for 45 min: mood +2/h, stimulation +6/h; new to you: stimulation +15, mood +4")), w.obs().uses)
         assertTrue("use the jazz record on something" in failure(w.run(Intent.Use("jazz_record"))))
         assertTrue("does nothing" in failure(w.run(Intent.Use("jazz_record", on = "bed"))))
         assertIs<IntentStatus.Succeeded>(w.run(Intent.Use("jazz_record", on = "record_player")).status)
@@ -286,6 +286,25 @@ class BedroomWorldTest {
         assertTrue(w.obs().recentEvents.last().let { "finished eat: used 1 meal, fullness +" in it && "new" !in it && "lately" !in it }, w.obs().recentEvents.last())
 
         assertEquals(34.0, world(needs = NeedLevels(80, 70, 50, stimulation = 0)).snapshot().life!!.moodTarget)
+    }
+
+    @Test
+    fun `content keeps to the vocabulary and each verb's contract, and his affinities set what things are worth`() {
+        fun broken(c: BedroomContent) = assertFailsWith<IllegalArgumentException> { c.unlocked(c.gated) }.message!!
+        fun withItem(id: String, change: (ItemSpec) -> ItemSpec) = content.copy(items = content.items.map { if (it.id == id) change(it) else it })
+        fun withActivity(id: String, change: (ActivitySpec) -> ActivitySpec) = content.copy(activities = content.activities.map { if (it.id == id) change(it) else it })
+        assertTrue("isn't in vocabulary.qualities" in broken(withItem("rug") { it.copy(qualities = mapOf("shiny" to 1.0)) }))
+        assertTrue("isn't in vocabulary.affords" in broken(withItem("novel") { it.copy(affords = listOf("edible?")) }))
+        assertEquals("activity read: a generative verb needs produces", broken(withActivity("read") { it.copy(kind = VerbKind.Generative) }))
+        assertEquals("activity read: a consumptive verb needs an affordance in requires, consumes or item", broken(withActivity("read") { it.copy(requires = listOf("novel")) }))
+        assertEquals("activity sketch: no activity can be study yet: the engine has nothing for it to do", broken(withActivity("sketch") { it.copy(kind = VerbKind.Study) }))
+
+        val fond = content.withPersonality(Personality(content.personality.affinities + mapOf("cozy" to 2.0, "lively" to -1.0)))
+        val w = BedroomWorld.create(fond.copy(start = fond.start.copy(money = 500)), granted = content.gated)
+        assertEquals("comfort +9: mood settles 9 higher; cozy, soft, warm", w.obs().shop!!.first { it.id == "rug" }.gives)
+        w.run(Intent.Buy("record_player"))
+        w.run(Intent.Buy("jazz_record"))
+        assertTrue(w.obs().uses!!.single().gives.startsWith("you don't like it: mood -1;"), w.obs().uses!!.single().gives)
     }
 
     @Test

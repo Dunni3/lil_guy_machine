@@ -5,6 +5,7 @@ import dev.lilguy.agent.memory.JOURNAL_ACTIVITY
 import dev.lilguy.decision.DecisionModel
 import dev.lilguy.sim.BedroomContent
 import dev.lilguy.sim.BedroomWorld
+import dev.lilguy.sim.Personality
 import dev.lilguy.sim.GameClock
 import dev.lilguy.sim.GridWorld
 import dev.lilguy.sim.RoomWorld
@@ -95,10 +96,15 @@ enum class Scenario(val id: String) {
         longTerm: AgentMemory? = null,
         /** Bedroom: gated content to unlock, by id. */
         granted: Set<String> = emptySet(),
+        /** Bedroom: his personality, in place of the content's default. */
+        personality: Personality? = null,
         onDecision: (AgentRuntime.DecisionRecord) -> Unit = {},
     ): Pair<GridWorld, AgentRuntime> = when (this) {
         KeyDoor -> keyDoorScenario(model, timeout, longTerm, onDecision)
-        Bedroom -> bedroomScenario(model, timeout, ticksPerMinute, longTerm = longTerm, granted = granted, onDecision = onDecision)
+        Bedroom -> {
+            val content = BedroomContent.default().let { c -> personality?.let(c::withPersonality) ?: c }
+            bedroomScenario(model, timeout, ticksPerMinute, content, longTerm = longTerm, granted = granted, onDecision = onDecision)
+        }
     }
 
     companion object {
