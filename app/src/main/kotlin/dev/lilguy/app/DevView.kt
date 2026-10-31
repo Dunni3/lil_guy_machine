@@ -647,7 +647,7 @@ class DevView(private val art: ArtTextures) : Disposable {
         if (life != null) {
             heading("NEEDS")
             barsTop = cursor + 6f
-            val levels = listOf("energy" to life.energy, "fullness" to life.fullness, "mood" to life.mood)
+            val levels = listOf("energy" to life.energy, "fullness" to life.fullness, "mood" to life.mood, "stimulation" to life.stimulation)
             levels.forEachIndexed { i, (name, value) ->
                 font.data.setScale(SMALL_SCALE)
                 font.color = if (value < LOW) FAILED else TEXT
@@ -655,7 +655,7 @@ class DevView(private val art: ArtTextures) : Disposable {
                 font.draw(batch, name, PANEL_X, y - 2)
                 font.draw(batch, value.toInt().toString(), BAR_X + BAR_WIDTH + 16f, y - 2)
             }
-            cursor = barsTop - 3 * BAR_PITCH - 6f
+            cursor = barsTop - levels.size * BAR_PITCH - 6f
             life.moodSinking?.let { line(it, SMALL_SCALE * 0.9f, FAILED, maxLines = 2) }
                 ?: line("mood settles toward ${life.moodTarget.toInt()}", SMALL_SCALE * 0.9f, MUTED, maxLines = 1)
 
@@ -1014,7 +1014,7 @@ class DevView(private val art: ArtTextures) : Disposable {
     private fun seconds(s: Float): String = if (s < 10) "%.1f".format(s) else s.toInt().toString()
 
     private fun drawNeedBars(life: LifeSnapshot) {
-        val needs = listOf(life.energy to ENERGY, life.fullness to FULLNESS, life.mood to MOOD)
+        val needs = listOf(life.energy to ENERGY, life.fullness to FULLNESS, life.mood to MOOD, life.stimulation to STIMULATION)
         needs.forEachIndexed { i, (value, color) ->
             val y = barsTop - i * BAR_PITCH - BAR_HEIGHT
             shapes.color = BAR_BG
@@ -1139,6 +1139,7 @@ class DevView(private val art: ArtTextures) : Disposable {
         private val ENERGY = Color.valueOf("f5c542ff")
         private val FULLNESS = Color.valueOf("4cd18aff")
         private val MOOD = Color.valueOf("5fd3e8ff")
+        private val STIMULATION = Color.valueOf("c58ae0ff")
 
         private val TEXT = Color.valueOf("eef0f4ff")
         private val MUTED = Color.valueOf("8d95a5ff")

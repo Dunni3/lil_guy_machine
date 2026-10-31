@@ -146,7 +146,7 @@ private data class BedroomResult(
     val days: List<DaySummary>,
     /** Lowest level of each need over the run, checked every tick. */
     val lowest: Map<String, Double>,
-    /** Ticks with a need at 0. */
+    /** Ticks with energy, fullness or mood at 0 (stimulation at 0 is just bored). */
     @SerialName("ticks_at_zero") val ticksAtZero: Long,
     @SerialName("money_end") val moneyEnd: Int,
     val bought: List<String>,
@@ -335,7 +335,7 @@ private fun runOnce(
             printed = world.tick
             if (bedroom != null) {
                 Need.entries.forEach { lowest[it] = minOf(lowest.getValue(it), bedroom.needs[it]) }
-                if (Need.entries.any { bedroom.needs[it] <= 0.0 }) ticksAtZero++
+                if (Need.entries.any { it != Need.Stimulation && bedroom.needs[it] <= 0.0 }) ticksAtZero++
                 if (bedroom.clock.isMinuteStart(world.tick) && bedroom.clock.minuteOfDay(world.tick) % 60 == 0) hours += BedroomReport.sample(bedroom)
             }
         }

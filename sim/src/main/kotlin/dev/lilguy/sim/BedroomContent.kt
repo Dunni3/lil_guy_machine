@@ -29,6 +29,10 @@ data class BedroomContent(
     /** A daily request for a piece; null for none. */
     val commissions: CommissionRules? = null,
     val gallery: GalleryRules = GalleryRules(),
+    /** Repeating an activity pays less; null turns it off. */
+    val habituation: HabituationRules? = null,
+    /** The first time with an activity pays a bonus; null turns it off. */
+    val novelty: NoveltyRules? = null,
 ) {
     @Transient private val byId = items.associateBy { it.id }
 
@@ -100,6 +104,11 @@ data class BedroomContent(
         uses.forEach { require(it.item != null && it.on != null) { "use ${it.id} needs `item` and `on`" } }
         activities.forEach { require(it.item == null && it.on == null) { "activity ${it.id}: `item` and `on` are only for uses" } }
         needs.workFloor.forEach { needOf(it.need) }
+        require(needs.stimulationPerHour <= 0 && needs.boredMood >= 0) { "stimulation_per_hour can't be positive or bored_mood negative" }
+        habituation?.let { h ->
+            require(h.perRepeat in 0.0..1.0 && h.recoverPerHour > 0 && h.staleStimulation <= 0) { "habituation: per_repeat 0 to 1, recover_per_hour positive, stale_stimulation not positive" }
+        }
+        novelty?.effects?.keys?.forEach { needOf(it) }
         needs.neglect.forEach { n ->
             require(activities.any { it.id == n.activity }) { "neglect names activity '${n.activity}', which isn't in activities" }
             require(n.afterHours >= 1 && n.moodPerHour < 0) { "neglect of ${n.activity}: after_hours must be at least 1 and mood_per_hour negative" }
@@ -144,7 +153,29 @@ data class NeedRules(
     @SerialName("work_floor") val workFloor: List<NeedBlock>,
     /** Mood falls instead of drifting while an activity has gone undone too long. */
     val neglect: List<Neglect> = emptyList(),
+    /** Stimulation lost per waking hour. */
+    @SerialName("stimulation_per_hour") val stimulationPerHour: Double = 0.0,
+    /** Below [bored] stimulation, each point under it lowers the mood he settles to by [boredMood]. */
+    val bored: Double = 0.0,
+    @SerialName("bored_mood") val boredMood: Double = 0.0,
 )
+
+/**
+ * Repetition wears an activity thin. Each finish adds [perRepeat] to its wear (0 to 1), which
+ * fades [recoverPerHour] an hour. Its positive mood and stimulation effects are paid at
+ * 1 - wear, and finishing one that was already worn costs [staleStimulation] times the wear.
+ * Activities marked `routine` don't wear. A use wears per item (each record on its own).
+ */
+@Serializable
+data class HabituationRules(
+    @SerialName("per_repeat") val perRepeat: Double,
+    @SerialName("recover_per_hour") val recoverPerHour: Double,
+    @SerialName("stale_stimulation") val staleStimulation: Double = 0.0,
+)
+
+/** The first time he finishes an activity (or a use with a given item) adds [effects]; routine ones don't count. */
+@Serializable
+data class NoveltyRules(val effects: Map<String, Double>)
 
 /**
  * Once [activity] hasn't finished for [afterHours] (counting from the start of the run), mood
@@ -254,6 +285,8 @@ data class ActivitySpec(
     val tier: Int = 0,
     /** What he does, for the prompt's "the only things you can do are ..."; the id when null. */
     val phrase: String? = null,
+    /** Upkeep (eating, sleeping, selling): it neither wears thin with repetition nor counts as new. */
+    val routine: Boolean = false,
 ) {
     @Serializable
     data class Until(val time: String, val need: String? = null, val reaches: Double? = null)
@@ -263,4 +296,4 @@ data class ActivitySpec(
 }
 
 /** "energy" to [Need.Energy]; anything else is a content error. */
-fun needOf(id: String): Need = Need.entries.firstOrNull { it.id == id } ?: throw IllegalArgumentException("'$id' isn't a need; use energy, fullness or mood")
+fun needOf(id: String): Need = Need.entries.firstOrNull { it.id == id } ?: throw IllegalArgumentException("'$id' isn't a need; use ${Need.entries.joinToString { it.id }}")

@@ -51,3 +51,4 @@ these hold the outcome. Skim this index before related changes.
 - 2026-10-29 [Run speed is game minutes per second, and a slow decision holds the clock](2026-10-29-run-speed-is-game-minutes-per-second-and-a-slow-decision-hold.md)
 - 2026-10-29 [Art is drawn as validated ops, and reaches the sim through annotate](2026-10-29-art-is-drawn-as-validated-ops-and-reaches-the-sim-through-annotate.md)
 - 2026-10-29 [The whole catalog is visible from day one, and the easel costs $17](2026-10-29-the-whole-catalog-is-visible-from-day-one-and-the-easel-costs-17.md)
+- 2026-10-31 [Stimulation, habituation and novelty; mood is the summary](2026-10-31-stimulation-habituation-and-novelty-mood-is-the-summary.md)

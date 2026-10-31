@@ -4,6 +4,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sign
 import kotlin.random.Random
 
@@ -19,6 +20,9 @@ import kotlin.random.Random
  * Art is a count like any item, and each carried one is also a numbered piece, so it can be drawn,
  * hung or sold on its own. A drawing model's title and tags arrive later through [annotate]; a
  * daily commission ([CommissionRules]) pays extra for the first sold piece whose drawing matches it.
+ *
+ * Doing the same thing again pays less ([HabituationRules]) and the first time pays more
+ * ([NoveltyRules]); both feed stimulation, and low stimulation lowers the mood he settles to.
  */
 class BedroomWorld private constructor(
     map: TileMap,
@@ -40,6 +44,12 @@ class BedroomWorld private constructor(
     /** The tick each activity last finished, for the neglect rules; the run start counts as done. */
     private val lastDone = mutableMapOf<String, Long>()
 
+    /** Wear per habit ([habit]): its level and the tick it was set; it fades from there. */
+    private val wear = mutableMapOf<String, Pair<Double, Long>>()
+
+    /** Habits he has finished at least once, for the novelty bonus. */
+    private val tried = mutableSetOf<String>()
+
     /** The neglect rule in force, if any. */
     private var neglected: Neglect? = null
     private var music: Music? = null
@@ -50,7 +60,8 @@ class BedroomWorld private constructor(
 
     private class Options(val key: List<Any>, val activities: List<ActivityOption>, val uses: List<UseOption>, val shop: List<ShopOption>)
 
-    private class Doing(val activity: ActivitySpec, val startTick: Long, val endTick: Long)
+    /** [fresh]: how fresh the activity was when it started, which scales its rates. */
+    private class Doing(val activity: ActivitySpec, val startTick: Long, val endTick: Long, val fresh: Double)
 
     private enum class PieceState { Held, Hung, Sold }
 
@@ -71,7 +82,7 @@ class BedroomWorld private constructor(
     private var commission: Commission? = null
     private var commissions = 0
     private val notes = ConcurrentLinkedQueue<ArtNote>()
-    private class Music(val itemId: String, val spec: ActivitySpec.Background, val endTick: Long)
+    private class Music(val itemId: String, val spec: ActivitySpec.Background, val endTick: Long, val fresh: Double)
 
     init {
         content.start.items.forEach { (id, n) -> add(id, n) }
@@ -131,7 +142,48 @@ class BedroomWorld private constructor(
 
     private fun comfort(): Int = owned.entries.sumOf { (id, n) -> item(id).comfort * n } + hung().size * content.gallery.comfortEach
 
-    private fun moodTarget(): Double = (content.needs.moodBaseline + comfort()).coerceAtMost(Needs.MAX)
+    /** How far boredom lowers the mood he settles to. */
+    private fun boredom(): Double = (content.needs.bored - needs[Need.Stimulation]).coerceAtLeast(0.0) * content.needs.boredMood
+
+    private fun moodTarget(): Double = (content.needs.moodBaseline + comfort() - boredom()).coerceIn(0.0, Needs.MAX)
+
+    // --- habituation and novelty -----------------------------------------------------------------
+
+    /** What wears and what counts as new: the activity, or for a use, the use and the item used. */
+    private fun habit(a: ActivitySpec, usedItem: String?): String = if (usedItem == null) a.id else "${a.id}:$usedItem"
+
+    /** 1 when fresh, down to 0 when worn out; always 1 for routine activities or without habituation. */
+    private fun freshness(a: ActivitySpec, usedItem: String? = null): Double {
+        val h = content.habituation ?: return 1.0
+        if (a.routine) return 1.0
+        val (level, since) = wear[habit(a, usedItem)] ?: return 1.0
+        val hours = (ticks - since).toDouble() / clock.ticks(60)
+        return 1.0 - (level - h.recoverPerHour * hours).coerceIn(0.0, 1.0)
+    }
+
+    private fun isNew(a: ActivitySpec, usedItem: String? = null): Boolean = content.novelty != null && !a.routine && habit(a, usedItem) !in tried
+
+    /** [d] as paid at [fresh]: gains in mood and stimulation shrink with wear; costs and other needs don't. */
+    private fun paid(need: Need, d: Double, fresh: Double): Double = if (d > 0 && (need == Need.Mood || need == Need.Stimulation)) d * fresh else d
+
+    /** Wears the habit, charges stimulation if it was already worn, and pays the novelty bonus the first time. */
+    private fun habituate(a: ActivitySpec, usedItem: String?, fresh: Double, parts: MutableList<String>) {
+        val key = habit(a, usedItem)
+        content.habituation?.takeIf { !a.routine }?.let { h ->
+            val worn = 1.0 - fresh
+            if (worn > 0) {
+                val stale = if (h.staleStimulation < 0) ", stimulation ${signed(needs.change(ticks, Need.Stimulation, h.staleStimulation * worn, "${a.id} again"))}" else ""
+                parts += "done a lot lately, so it paid ${percent(fresh)}$stale"
+            }
+            wear[key] = (worn + h.perRepeat).coerceAtMost(1.0) to ticks
+            version++
+        }
+        if (isNew(a, usedItem)) {
+            tried += key
+            version++
+            parts += "new to you: " + content.novelty!!.effects.entries.joinToString { (need, d) -> "$need ${signed(needs.change(ticks, needOf(need), d, "new: $key"))}" }
+        }
+    }
 
     override fun passable(x: Int, y: Int): Boolean = map.isFloor(x, y) && placed().none { (spec, cell) -> spec.blocks && cell.x == x && cell.y == y }
 
@@ -216,7 +268,7 @@ class BedroomWorld private constructor(
         val on = intent.on ?: reject("use the ${spec.name} on something: ${rules.joinToString(" or ") { it.on!! }}")
         val rule = rules.find { it.on == on } ?: reject("using the ${spec.name} on $on does nothing; try ${rules.joinToString(" or ") { it.on!! }}")
         lockReason(rule)?.let { reject("can't use the ${spec.name} on $on: $it") }
-        return Work.Steps(walkToNearest(rule.at), activity(rule) { complete(rule, usedItem = spec.id) })
+        return Work.Steps(walkToNearest(rule.at), activity(rule, spec.id) { complete(rule, usedItem = spec.id) })
     }
 
     private fun planBuy(id: String): Work {
@@ -238,14 +290,14 @@ class BedroomWorld private constructor(
     }
 
     /** The timed part of an activity: sets [doing] when it starts and ends by duration or `until`. */
-    private fun activity(a: ActivitySpec, finish: () -> String?): Work.Until {
+    private fun activity(a: ActivitySpec, usedItem: String? = null, finish: () -> String?): Work.Until {
         val until = a.until
         val untilNeed = until?.need?.let(::needOf)
         val stops = a.stopBelow.mapKeys { needOf(it.key) }
         return Work.Until(
             start = {
                 val length = if (until != null) clock.ticksUntil(ticks, GameClock.parseHhmm(until.time)) else clock.ticks(a.minutes!!).toLong()
-                doing = Doing(a, ticks, ticks + length)
+                doing = Doing(a, ticks, ticks + length, freshness(a, usedItem))
             },
             done = {
                 val d = doing!!
@@ -264,6 +316,7 @@ class BedroomWorld private constructor(
         a.consumes.forEach { (tag, n) -> if (countTag(tag) < n) return "you no longer have ${wanted(tag)}" }
         lastDone[a.id] = ticks
         if (neglected?.activity == a.id) neglected = null
+        val fresh = freshness(a, usedItem)
         val parts = mutableListOf<String>()
         a.consumes.forEach { (tag, n) -> take(tag, n).forEach { (id, k) -> parts += "used ${quantity(id, k)}" } }
         a.produces.forEach { (id, n) ->
@@ -271,18 +324,19 @@ class BedroomWorld private constructor(
             parts += "+${quantity(id, n)}"
         }
         a.effects.forEach { (need, d) ->
-            val applied = needs.change(ticks, needOf(need), d, a.id)
+            val applied = needs.change(ticks, needOf(need), paid(needOf(need), d, fresh), a.id)
             parts += "$need ${signed(applied)}"
         }
         a.sells?.let { parts += sell(it) }
         a.hangs?.let { parts += hang(it) }
         a.background?.let { bg ->
-            music = Music(usedItem!!, bg, ticks + clock.ticks(bg.minutes))
+            music = Music(usedItem!!, bg, ticks + clock.ticks(bg.minutes), fresh)
             version++
             parts += "${item(usedItem).name} playing for ${GameClock.duration(bg.minutes)}"
         }
         if (a.rates.isNotEmpty()) parts += a.rates.keys.joinToString { "$it ${needs.level(needOf(it))}" }
         a.stopBelow.forEach { (need, level) -> if (needs[needOf(need)] < level) parts += "stopped early: $need ${needs.level(needOf(need))}" }
+        habituate(a, usedItem, fresh, parts)
         event("finished ${a.id}" + if (parts.isEmpty()) "" else ": " + parts.joinToString(", "))
         return null
     }
@@ -436,10 +490,13 @@ class BedroomWorld private constructor(
         fun rate(need: Need, perHour: Double, reason: String) {
             if (perHour != 0.0) needs.change(ticks, need, perHour / 60, reason, rate = true)
         }
-        if (activity?.asleep != true) rate(Need.Energy, r.awakeEnergyPerHour, "awake")
+        if (activity?.asleep != true) {
+            rate(Need.Energy, r.awakeEnergyPerHour, "awake")
+            rate(Need.Stimulation, r.stimulationPerHour, "awake")
+        }
         rate(Need.Fullness, r.fullnessPerHour, "hunger")
-        activity?.rates?.forEach { (need, perHour) -> rate(needOf(need), perHour, activity.id) }
-        music?.spec?.rates?.forEach { (need, perHour) -> rate(needOf(need), perHour, music!!.spec.name) }
+        activity?.rates?.forEach { (need, perHour) -> rate(needOf(need), paid(needOf(need), perHour, doing!!.fresh), activity.id) }
+        music?.let { m -> m.spec.rates.forEach { (need, perHour) -> rate(needOf(need), paid(needOf(need), perHour, m.fresh), m.spec.name) } }
         val now = r.neglect.firstOrNull { ticks - (lastDone[it.activity] ?: 0L) >= clock.ticks(it.afterHours * 60) }
         if (now != null && neglected == null) event("${now.reason}: mood falls ${-now.moodPerHour.toInt()} an hour until you ${now.activity}")
         neglected = now
@@ -477,8 +534,8 @@ class BedroomWorld private constructor(
         return "until ${until.time}" + (need?.let { " or ${it.id} ${until.reaches!!.toInt()}" } ?: "") + stops + ", about $about"
     }
 
-    /** [forSale]: describing an activity he can't do yet, so leave out what he has now. */
-    private fun gives(a: ActivitySpec, forSale: Boolean = false): String {
+    /** [forSale]: describing an activity he can't do yet, so leave out what he has now. [usedItem]: for a use, the item. */
+    private fun gives(a: ActivitySpec, forSale: Boolean = false, usedItem: String? = null): String {
         val parts = mutableListOf<String>()
         a.produces.forEach { (id, n) -> parts += quantity(id, n) + (item(id).sellPrice?.let { ", sells for $$it" } ?: "") }
         if (forSale) {
@@ -496,15 +553,22 @@ class BedroomWorld private constructor(
             parts += "comfort +${content.gallery.comfortEach}: mood settles ${content.gallery.comfortEach} higher (${hung().size} of ${content.gallery.max} on the wall)"
         }
         a.consumes.forEach { (tag, n) -> parts += "uses ${if (n == 1) "a" else "$n"} ${tag.replace('_', ' ')} (you have ${countTag(tag)})" }
-        a.effects.forEach { (need, d) -> parts += "$need ${signed(d)}" }
-        a.rates.forEach { (need, d) -> parts += "$need ${signed(d)}/h" }
-        a.background?.let { bg -> parts += "${bg.name} for ${GameClock.duration(bg.minutes)}: " + bg.rates.entries.joinToString { (need, d) -> "$need ${signed(d)}/h" } }
+        val fresh = freshness(a, usedItem)
+        fun shown(need: String, d: Double) = "$need ${signed(paid(needOf(need), d, fresh).roundToInt().toDouble())}"
+        a.effects.forEach { (need, d) -> parts += shown(need, d) }
+        a.rates.forEach { (need, d) -> parts += shown(need, d) + "/h" }
+        a.background?.let { bg -> parts += "${bg.name} for ${GameClock.duration(bg.minutes)}: " + bg.rates.entries.joinToString { (need, d) -> shown(need, d) + "/h" } }
+        content.habituation?.takeIf { fresh < 1 }?.let { h ->
+            val stale = (h.staleStimulation * (1 - fresh)).roundToInt()
+            parts += "done a lot lately: gains at ${percent(fresh)}" + if (stale < 0) ", and stimulation $stale" else ""
+        }
+        if (isNew(a, usedItem)) parts += "new to you: " + content.novelty!!.effects.entries.joinToString { (need, d) -> "$need ${signed(d)}" }
         return parts.joinToString("; ")
     }
 
     private fun useOptions(): List<UseOption> = content.uses.flatMap { rule ->
         if (lockReason(rule) != null) emptyList()
-        else owned.keys.filter { rule.item!! in item(it).allTags }.map { UseOption(it, rule.on!!, takes(rule), gives(rule)) }
+        else owned.keys.filter { rule.item!! in item(it).allTags }.map { UseOption(it, rule.on!!, takes(rule), gives(rule, usedItem = it)) }
     }
 
     private fun shopOption(spec: ItemSpec): ShopOption {
@@ -545,6 +609,7 @@ class BedroomWorld private constructor(
             energy = needs[Need.Energy],
             fullness = needs[Need.Fullness],
             mood = needs[Need.Mood],
+            stimulation = needs[Need.Stimulation],
             moodTarget = moodTarget(),
             moodSinking = neglected?.let { "${it.reason}: mood falls ${-it.moodPerHour.toInt()} an hour until the next ${it.activity}" },
             doing = d?.activity?.id,
@@ -652,6 +717,9 @@ class BedroomWorld private constructor(
         private const val SNAPSHOT_TRANSACTIONS = 8
         /** Duration estimates are rounded to this many minutes, so the option lists change less often. */
         private const val ESTIMATE_MINUTES = 10
+
+        /** "60%", to the nearest 10. */
+        private fun percent(fresh: Double): String = "${(fresh * 10).roundToInt() * 10}%"
 
         private fun signed(v: Double): String {
             val text = if (v == v.toLong().toDouble()) v.toLong().toString() else "%.1f".format(v)

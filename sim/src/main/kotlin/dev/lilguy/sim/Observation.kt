@@ -153,7 +153,9 @@ data class LifeSnapshot(
     val energy: Double,
     val fullness: Double,
     val mood: Double,
-    /** The mood his mood drifts toward: the baseline plus the room's comfort. */
+    /** Low is bored. */
+    val stimulation: Double,
+    /** The mood his mood drifts toward: the baseline plus the room's comfort, less boredom. */
     val moodTarget: Double,
     /** Why his mood is falling instead of drifting, when a neglect rule is in force. */
     val moodSinking: String? = null,
