@@ -1,7 +1,7 @@
 ---
 title: "The journal: a second, memory-aware LLM call that records what he wants"
 date: 2026-10-29
-status: active
+status: superseded
 ---
 
 # The journal: a second, memory-aware LLM call that records what he wants

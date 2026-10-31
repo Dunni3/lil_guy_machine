@@ -57,3 +57,4 @@ these hold the outcome. Skim this index before related changes.
 - 2026-10-31 [Stimulation, habituation and novelty; mood is the summary](2026-10-31-stimulation-habituation-and-novelty-mood-is-the-summary.md)
 - 2026-10-31 [Affordances, qualities and affinities; every verb has a kind with a contract](2026-10-31-affordances-qualities-affinities-and-verb-kinds.md)
 - 2026-10-31 [Verbs are ops with arguments; authored ops share one lifecycle; think is a verb](2026-10-31-verbs-are-ops-with-arguments-authored-ops-and-think-is-a-verb.md)
+- 2026-10-31 [Memory redesign: no journal or wants; outcome events, day memories, a self-model, Jev-scored recall](2026-10-31-memory-redesign-outcomes-days-self-model-scored-recall.md)

@@ -62,33 +62,6 @@
             "additionalProperties": false
           }
         },
-        "neglect": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "verb": {
-                "type": "string"
-              },
-              "after_hours": {
-                "type": "integer"
-              },
-              "mood_per_hour": {
-                "type": "number"
-              },
-              "reason": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "verb",
-              "after_hours",
-              "mood_per_hour",
-              "reason"
-            ],
-            "additionalProperties": false
-          }
-        },
         "stimulation_per_hour": {
           "type": "number"
         },

@@ -14,6 +14,7 @@ import com.badlogic.gdx.utils.Disposable
 import com.badlogic.gdx.utils.viewport.FitViewport
 import dev.lilguy.agent.TokenReport
 import dev.lilguy.agent.memory.Describe
+import dev.lilguy.agent.memory.StoredMemory
 import dev.lilguy.app.SimSession.RunState
 import dev.lilguy.sim.EntitySnapshot
 import dev.lilguy.sim.GameClock
@@ -35,12 +36,12 @@ import kotlin.math.sin
  * not drawn here: it is the 3D room ([RoomView]), full screen.
  *
  * - [Page.Now]: needs, what he's doing, the latest decision, recent events.
- * - [Page.Memory]: short-term memory (recent actions, in every prompt) and the long-term
- *   memories written so far, marking those recalled at the latest decision.
- * - [Page.Journal]: a reader for his journal: a list of entries, and the picked one in full with
- *   the wants he argued for. UP/DOWN steps through them; it follows the newest until you move.
+ * - [Page.Memory]: short-term memory (recent actions, in every prompt), his self-model and its
+ *   last change, his thoughts, and the long-term memories (stretches and whole days) written so
+ *   far, marking those recalled at the latest decision.
  * - [Page.Art]: his drawn pieces: a strip of them, and the picked one large with its title,
- *   tags, the request it was made for, and whether it's held, hung or sold. UP/DOWN as in Journal.
+ *   tags, the request it was made for, and whether it's held, hung or sold. UP/DOWN steps through
+ *   them; it follows the newest until you move.
  * - [Page.Tokens]: model tokens spent this run, by game day and by what they were for.
  * - [Page.History]: every decision this run; picking an older one puts the map back to the
  *   moment it was made.
@@ -54,7 +55,7 @@ import kotlin.math.sin
  * full-screen layers.
  */
 class DevView(private val art: ArtTextures) : Disposable {
-    enum class Page(val title: String) { Room("ROOM"), Now("NOW"), Memory("MEMORY"), Journal("JOURNAL"), Art("ART"), Tokens("TOKENS"), History("HISTORY"), Log("LOG"), Run("RUN") }
+    enum class Page(val title: String) { Room("ROOM"), Now("NOW"), Memory("MEMORY"), Art("ART"), Tokens("TOKENS"), History("HISTORY"), Log("LOG"), Run("RUN") }
 
     /** The Run page's rows. */
     private enum class RunRow(val label: String) {
@@ -80,9 +81,6 @@ class DevView(private val art: ArtTextures) : Disposable {
     var pinned: Int? = null
         private set
 
-    /** Journal only: the entry shown, as an index into the entries oldest first; null follows the newest. */
-    private var journalPick: Int? = null
-
     /** Art only: the piece shown, as an index into the drawn pieces oldest first; null follows the newest. */
     private var artPick: Int? = null
 
@@ -107,19 +105,12 @@ class DevView(private val art: ArtTextures) : Disposable {
         pinned = null
     }
 
-    /** UP (-1) and DOWN (+1): in History a newer or older decision, in Journal a newer or older entry, elsewhere scroll. */
+    /** UP (-1) and DOWN (+1): in History a newer or older decision, in Art a newer or older piece, elsewhere scroll. */
     fun move(by: Int, session: SimSession) {
         if (page == Page.Run) {
             val rows = RunRow.entries
             val next = (runRow?.ordinal ?: -1) + by
             runRow = if (next < 0) null else rows[next.coerceAtMost(rows.lastIndex)]
-            return
-        }
-        if (page == Page.Journal) {
-            val last = session.memory.journalEntries().lastIndex
-            if (last < 0) return
-            val next = (journalPick ?: last) - by
-            journalPick = if (next >= last) null else next.coerceAtLeast(0)
             return
         }
         if (page == Page.Art) {
@@ -179,7 +170,6 @@ class DevView(private val art: ArtTextures) : Disposable {
     /** After a restart: the live world, every page scrolled to the top. */
     fun reset() {
         pinned = null
-        journalPick = null
         replayPick = null
         artPick = null
         scroll.fill(0)
@@ -577,7 +567,7 @@ class DevView(private val art: ArtTextures) : Disposable {
         font.color = stateColor(session.state)
         font.draw(batch, "run ${session.run} · ${session.state.name.uppercase()}${if (session.holding) " · HELD" else ""}", PANEL_X, cursor - 6, PANEL_WIDTH, Align.right, false)
         cursor -= titleHeight
-        line("${session.runtime.modelId} · memory ${session.memory.writer ?: "off"} · journal ${session.memory.journalWriter ?: "off"} · $fps fps", SMALL_SCALE, MUTED, maxLines = 1)
+        line("${session.runtime.modelId} · memory ${session.memory.writer ?: "off"} · writer ${session.memory.thoughtWriter ?: "off"} · recall ${session.memory.scorerId ?: "keywords"} · $fps fps", SMALL_SCALE, MUTED, maxLines = 1)
         session.setup.notice?.let { line(it, SMALL_SCALE, FAILED, maxLines = 2) }
 
         val life = live.life
@@ -589,7 +579,6 @@ class DevView(private val art: ArtTextures) : Disposable {
         when (page) {
             Page.Room, Page.Now -> drawNow(session, live)
             Page.Memory -> drawMemory(session, live)
-            Page.Journal -> drawJournal(session)
             Page.Art -> drawArt(session)
             Page.Tokens -> drawTokens(session)
             Page.History -> drawHistory(session)
@@ -608,7 +597,7 @@ class DevView(private val art: ArtTextures) : Disposable {
         }
         val upDown = when (page) {
             Page.Room, Page.Now -> ""
-            Page.History, Page.Journal, Page.Art -> "UP newer · DOWN older · "
+            Page.History, Page.Art -> "UP newer · DOWN older · "
             Page.Run -> "DOWN settings · "
             else -> "UP/DOWN scroll · "
         }
@@ -656,8 +645,7 @@ class DevView(private val art: ArtTextures) : Disposable {
                 font.draw(batch, value.toInt().toString(), BAR_X + BAR_WIDTH + 16f, y - 2)
             }
             cursor = barsTop - levels.size * BAR_PITCH - 6f
-            life.moodSinking?.let { line(it, SMALL_SCALE * 0.9f, FAILED, maxLines = 2) }
-                ?: line("mood settles toward ${life.moodTarget.toInt()}", SMALL_SCALE * 0.9f, MUTED, maxLines = 1)
+            line("mood settles toward ${life.moodTarget.toInt()}", SMALL_SCALE * 0.9f, MUTED, maxLines = 1)
 
             heading("DOING")
             val doing = life.doing
@@ -689,8 +677,7 @@ class DevView(private val art: ArtTextures) : Disposable {
         } else {
             line(decision.rationale ?: "fallback: ${decision.error}", BODY_SCALE * 0.9f, if (decision.fellBack) FAILED else TEXT, maxLines = 3)
             decision.thought?.let { line("thought: " + (it.text ?: "none (${it.error})"), BODY_SCALE * 0.85f, if (it.text == null) FAILED else ACCENT, maxLines = 4) }
-            val recalled = (if (decision.recalled.isNotEmpty()) " · ${decision.recalled.size} memories recalled" else "") +
-                if (decision.recalledJournal.isNotEmpty()) " · ${decision.recalledJournal.size} journal entries" else ""
+            val recalled = if (decision.recalled.isNotEmpty()) " · ${decision.recalled.size} recalled" else ""
             line("${Describe.intent(decision.intent)} · ${decision.latency.inWholeMilliseconds} ms$recalled", SMALL_SCALE * 0.9f, CODE, maxLines = 1)
         }
 
@@ -709,6 +696,20 @@ class DevView(private val art: ArtTextures) : Disposable {
         recent.asReversed().forEach { e ->
             val result = e.result?.let { statusText(it) } ?: "in progress"
             line("${stamp(e.tick, s)}  ${Describe.intent(e.intent)}  ·  $result", SMALL_SCALE * 0.9f, statusColor(e.result).takeIf { e.result is IntentStatus.Failed } ?: TEXT, maxLines = 1, gapAfter = 0f)
+        }
+
+        mem.selfText()?.let { self ->
+            val rev = mem.lastRevision
+            val version = mem.selfModel()
+            heading("SELF-MODEL · his own words, revised each night, in every prompt")
+            line(self, MEMORY_SCALE * 0.9f, TEXT, maxLines = 8, gapAfter = 0.2f)
+            val note = when {
+                rev?.error != null -> "last night's revision failed: ${rev.error}"
+                rev != null && !rev.changed -> "unchanged last night: ${rev.note}"
+                version != null -> "last change: ${version.note}"
+                else -> "not revised yet: the first night revises it"
+            }
+            line(note, SMALL_SCALE * 0.85f, if (rev?.error != null) FAILED else MUTED, maxLines = 3, gapAfter = 0.3f)
         }
 
         val thoughts = mem.thoughts()
@@ -730,72 +731,32 @@ class DevView(private val art: ArtTextures) : Disposable {
             writer == null || batchSize == null -> "no memory writer configured: $events events recorded, none written up"
             mem.summarizing -> "$writer is writing a memory..."
             session.state == RunState.Ended && mem.pending() == 0 -> "$events events recorded, all written up · by $writer"
-            else -> "$events events recorded · next memory after ${(batchSize - mem.pending()).coerceAtLeast(0)} more · by $writer"
+            else -> "$events events recorded · " + (mem.pendingSignificance()?.let { (sum, of) -> "significance %.1f of %.1f toward the next memory".format(sum, of) }
+                ?: "next memory after ${(batchSize - mem.pending()).coerceAtLeast(0)} more") + " · by $writer"
         }
         line(status, SMALL_SCALE * 0.9f, MUTED, maxLines = 2)
         session.memoryError?.let { line("last write failed: $it", SMALL_SCALE * 0.9f, FAILED, maxLines = 2) }
+        session.writerError?.let { line("last failure: $it", SMALL_SCALE * 0.9f, FAILED, maxLines = 2) }
+        if (mem.lastRecalledThoughts.isNotEmpty()) {
+            line("${mem.lastRecalledThoughts.size} earlier thought${if (mem.lastRecalledThoughts.size == 1) "" else "s"} recalled at the latest decision", SMALL_SCALE * 0.9f, ACCENT, maxLines = 1)
+        }
 
-        val all = mem.memories().asReversed()
+        // Stretches and whole days together, newest first by when they end.
+        fun end(m: StoredMemory) = (m.span.toDay ?: 0) * GameClock.MINUTES_PER_DAY + (m.span.toTime?.let(GameClock::parseHhmm) ?: 0) + m.level
+        val all = (mem.memories() + mem.days()).sortedWith(compareByDescending<StoredMemory> { end(it) }.thenByDescending { it.id })
         if (all.isEmpty()) return line("(no memories yet)", BODY_SCALE * 0.8f, MUTED)
         val recalled = mem.lastRecalled
         val skip = scroll[Page.Memory.ordinal].coerceAtMost(all.lastIndex).also { scroll[Page.Memory.ordinal] = it }
-        val count = if (all.size == 1) "1 memory" else "${all.size} memories, newest first"
+        val days = all.count { it.level == 2 }
+        val count = "${all.size - days} memories and $days day${if (days == 1) "" else "s"}, newest first"
         line(if (skip > 0) "$count · $skip newer above" else count, SMALL_SCALE * 0.9f, MUTED, maxLines = 1, gapAfter = 0.5f)
         all.drop(skip).forEach { m ->
             val isRecalled = m.id in recalled
-            val label = m.span.label.ifEmpty { "events ${m.fromId}-${m.toId}" } + if (isRecalled) "  · recalled at the latest decision" else ""
+            val what = if (m.level == 2) "THE WHOLE DAY · ${m.span.label}" else m.span.label.ifEmpty { "events ${m.fromId}-${m.toId}" }
+            val importance = m.importance?.let { " · importance %.2f".format(it) }.orEmpty()
+            val label = what + importance + if (isRecalled) "  · recalled at the latest decision" else ""
             line(label, SMALL_SCALE * 0.9f, if (isRecalled) ACCENT else MUTED, maxLines = 1, gapAfter = 0.05f)
             line(m.text, MEMORY_SCALE, TEXT, maxLines = 6, gapAfter = 0.6f)
-        }
-    }
-
-    private fun drawJournal(session: SimSession) {
-        val mem = session.memory
-        val writer = mem.journalWriter
-        val entries = mem.journalEntries()
-        val status = when {
-            writer == null -> "no journal writer configured (journal_endpoint, or memory_endpoint): he isn't offered the journal or think"
-            mem.writingJournal -> "$writer is writing an entry..."
-            else -> "${entries.sumOf { it.wants.size }} wants so far · by $writer"
-        }
-        if (entries.isEmpty()) {
-            heading("JOURNAL")
-            line(status, SMALL_SCALE * 0.9f, MUTED, maxLines = 2)
-            session.journalError?.let { line("last entry failed: $it", SMALL_SCALE * 0.9f, FAILED, maxLines = 2) }
-            return line("(no entries yet)", BODY_SCALE * 0.8f, MUTED)
-        }
-        val sel = (journalPick ?: entries.lastIndex).coerceIn(0, entries.lastIndex)
-        heading(if (journalPick == null) "JOURNAL · ${entries.size} · following the newest" else "JOURNAL · ${sel + 1} of ${entries.size}")
-        line(status, SMALL_SCALE * 0.9f, MUTED, maxLines = 1)
-        session.journalError?.let { line("last entry failed: $it", SMALL_SCALE * 0.9f, FAILED, maxLines = 1) }
-
-        // Newest first, a window of rows that keeps the pick in view.
-        val pos = entries.lastIndex - sel
-        val first = (pos - JOURNAL_ROWS / 2).coerceIn(0, max(0, entries.size - JOURNAL_ROWS))
-        val scale = SMALL_SCALE * 0.95f
-        font.data.setScale(scale)
-        val rowHeight = font.lineHeight
-        for (k in first until min(entries.size, first + JOURNAL_ROWS)) {
-            val i = entries.lastIndex - k
-            val e = entries[i]
-            val selected = i == sel
-            val color = if (selected) TEXT else MUTED
-            cell(if (selected) ">" else "", PANEL_X, 20f, scale, ACCENT)
-            cell(e.label, PANEL_X + 24f, 170f, scale, color)
-            cell(e.text, PANEL_X + 200f, PANEL_WIDTH - 340f, scale, color)
-            val wants = if (e.wants.size == 1) "1 want" else "${e.wants.size} wants"
-            cell(wants, PANEL_X + PANEL_WIDTH - 130f, 130f, scale, if (selected) CODE else MUTED, Align.right)
-            cursor -= rowHeight
-        }
-
-        // The picked entry in full.
-        val e = entries[sel]
-        val shown = if (e.id in mem.lastRecalledJournal) " · shown at the latest decision" else ""
-        heading("${e.label.uppercase()}$shown")
-        line(e.text, MEMORY_SCALE, TEXT, maxLines = 16, gapAfter = 0.4f)
-        e.wants.forEach { w ->
-            line("wants [${w.kind}] ${w.text}", SMALL_SCALE * 0.95f, CODE, maxLines = 2, gapAfter = 0.05f)
-            line("because ${w.because}", SMALL_SCALE * 0.9f, MUTED, maxLines = 4, gapAfter = 0.3f, indent = 16f)
         }
     }
 
@@ -893,14 +854,10 @@ class DevView(private val art: ArtTextures) : Disposable {
         d.thought?.let { line("thought: " + (it.text ?: "none (${it.error})"), BODY_SCALE * 0.8f, if (it.text == null) FAILED else ACCENT, maxLines = 5) }
         val outcome = outcomeOf(session, sel)
         line("result: ${outcome?.let { statusText(it) } ?: "still going"}", SMALL_SCALE * 0.9f, statusColor(outcome), maxLines = 2)
-        d.observation?.let { line("saw: " + Describe.observation(it, emptyList()), SMALL_SCALE * 0.85f, MUTED, maxLines = 3) }
+        d.observation?.let { line("saw: " + Describe.state(it), SMALL_SCALE * 0.85f, MUTED, maxLines = 3) }
         if (d.recalled.isNotEmpty()) {
-            line("recalled ${d.recalled.size} memor${if (d.recalled.size == 1) "y" else "ies"}:", SMALL_SCALE * 0.9f, ACCENT, maxLines = 1, gapAfter = 0.05f)
+            line("recalled ${d.recalled.size}:", SMALL_SCALE * 0.9f, ACCENT, maxLines = 1, gapAfter = 0.05f)
             d.recalled.asReversed().forEach { line(it, SMALL_SCALE * 0.85f, MUTED, maxLines = 2, gapAfter = 0.15f, indent = 16f) }
-        }
-        if (d.recalledJournal.isNotEmpty()) {
-            line("journal shown (${d.recalledJournal.size}):", SMALL_SCALE * 0.9f, ACCENT, maxLines = 1, gapAfter = 0.05f)
-            d.recalledJournal.asReversed().forEach { line(it, SMALL_SCALE * 0.85f, MUTED, maxLines = 2, gapAfter = 0.15f, indent = 16f) }
         }
         if (d.fellBack) line("raw: ${d.raw ?: "(none)"}", SMALL_SCALE * 0.85f, FAILED, maxLines = 2)
     }
@@ -1079,7 +1036,6 @@ class DevView(private val art: ArtTextures) : Disposable {
         private const val NOW_EVENT_ROWS = 5
         private const val THOUGHT_ROWS = 2
         private const val HISTORY_ROWS = 7
-        private const val JOURNAL_ROWS = 5
         private const val THUMB = 96f
         private const val THUMB_GAP = 16f
         private const val ART_SIZE = 320f

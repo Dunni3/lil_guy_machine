@@ -21,7 +21,7 @@ import java.util.concurrent.CopyOnWriteArrayList
  * lifecycle around it, the same for every handler.
  */
 interface AuthorHandler<R : Any> {
-    /** The name content uses: `journal`, `thought`, `draw`. */
+    /** The name content uses: `thought`, `draw`. */
     val name: String
 
     /** The model that writes it. */

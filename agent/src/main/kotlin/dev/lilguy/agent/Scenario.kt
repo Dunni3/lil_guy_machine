@@ -51,19 +51,21 @@ fun bedroomScenario(
     seed: Long = 0,
     onDecision: (AgentRuntime.DecisionRecord) -> Unit = {},
 ): Pair<BedroomWorld, AgentRuntime> {
-    // A verb whose result nothing writes (no journal writer, no thinker) isn't offered to models, and going without it doesn't
-    // sink his mood. The sim still has it, and the reply schema still takes it: the scripted baseline journals with no writer.
+    // A verb whose result nothing writes (no thinker) isn't offered to models. The sim still has it, and the reply schema
+    // still takes it.
     fun offered(v: VerbSpec): Boolean = longTerm?.offers(v) ?: v.authored.none { it.essential }
-    val rules = content.copy(needs = content.needs.copy(neglect = content.needs.neglect.filter { n -> content.verb(n.verb)?.let { offered(it) } == true }))
-    val world = BedroomWorld.create(rules, ticksPerMinute, granted = granted, seed = seed)
+    val world = BedroomWorld.create(content, ticksPerMinute, granted = granted, seed = seed)
     longTerm?.connect(world)
     val shown = world.content.let { c -> c.copy(verbs = c.verbs.filter { offered(it) }) }
+    // Who he is opens the system prompt and changes with his self-model, once a night.
+    val self = { longTerm?.selfText() }
     val prompts = PromptBuilder(
-        system = BedroomPrompt.system(shown, ticksPerMinute),
+        systemFor = { BedroomPrompt.system(shown, ticksPerMinute, self()) },
         timeout = timeout,
         choices = { obs, recent -> BedroomPrompt.choices(obs, recent, ticksPerMinute, shown) },
         stamp = BedroomPrompt.stamp(world.clock),
-        persona = Persona.text(shown),
+        persona = { Persona.text(shown, self()) },
+        self = self,
     )
     val runtime = AgentRuntime(
         world, world.agentId, model, prompts,

@@ -29,6 +29,21 @@
         },
         "curiosity": {
           "type": "number"
+        },
+        "core": {
+          "type": "object",
+          "properties": {
+            "you": {
+              "type": "string"
+            },
+            "he": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "self_seed": {
+          "type": "string"
         }
       },
       "additionalProperties": false

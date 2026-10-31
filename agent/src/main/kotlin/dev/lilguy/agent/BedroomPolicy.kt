@@ -15,30 +15,17 @@ import kotlin.time.Duration
 import kotlin.time.TimeSource
 
 /**
- * The bedroom's baseline: earn just enough for food, eat, sleep, and spend the spare hours as
- * [journaling] says. Like [KeyDoorPolicy] it reads the observation out of the prompt and replies
- * through the schema, so it knows only what a model would. It buys nothing but food; that's the
- * point of a baseline.
+ * The bedroom's baseline: earn just enough for food, eat, sleep, and wait out the spare hours,
+ * whose waiting is the economy's slack. Like [KeyDoorPolicy] it reads the observation out of the
+ * prompt and replies through the schema, so it knows only what a model would. It buys nothing but
+ * food; that's the point of a baseline.
  *
  * [thinkTime] fakes model latency for watched runs; tests and the CLI use zero.
  */
 class BedroomPolicy(
     private val thinkTime: Duration = Duration.ZERO,
     override val id: String = "scripted:bedroom",
-    private val journaling: Journaling = Journaling.Spare,
 ) : DecisionModel {
-    /** What the policy does with time it doesn't need for food and sleep. */
-    enum class Journaling {
-        /** Waits: the survive-only baseline, whose waiting is the economy's slack. */
-        Never,
-
-        /** Journals when rested enough, otherwise waits. */
-        Spare,
-
-        /** Journals whenever it can, ahead of earning: writes as much as it likes. */
-        Always,
-    }
-
     override val capabilities = Capabilities(jsonSchema = true)
 
     override suspend fun <A> decide(request: DecisionRequest, schema: ActionSchema<A>): Decision<A> {
@@ -68,7 +55,6 @@ class BedroomPolicy(
         val hour = obs.clock?.time?.let { GameClock.parseHhmm(it) / 60 } ?: 12
         val night = hour >= BEDTIME || hour < WAKE
         val sleepy = "sleep" in can && (needs.energy < TIRED || (night && needs.energy < NIGHT_SLEEP))
-        val journal = "journal" in can && needs.energy >= JOURNAL_ENERGY && needs.fullness >= JOURNAL_FULLNESS
         return when {
             obs.lastIntent == null ->
                 Intent.Say("New day. Let's see what I can make of it.") to "First thing: say hello, then get going."
@@ -87,12 +73,8 @@ class BedroomPolicy(
                 Intent.Do("sell_art") to "Low on food; sell what I hold so I can buy more."
             "sell_art" in can && !earning && holding.isNotEmpty() ->
                 Intent.Do("sell_art") to "That's enough art for the next pack of meals; sell it."
-            journaling == Journaling.Always && journal ->
-                Intent.Do("journal") to "Write in my journal while I still can."
             earning && "sketch" in can && needs.energy >= SKETCH_ENERGY ->
                 Intent.Do("sketch") to "Sketch: $$money and $$held in art, short of the next pack of meals ($$mealPrice)."
-            journaling == Journaling.Spare && journal ->
-                Intent.Do("journal") to "Food is covered for now; write in my journal."
             "sell_art" in can && meals == 0 ->
                 Intent.Do("sell_art") to "No food and too tired to sketch; sell what I hold."
             else ->
@@ -109,8 +91,6 @@ class BedroomPolicy(
         const val BEFORE_BED = 60
         const val MEAL_STOCK = 2
         const val SKETCH_ENERGY = 22
-        const val JOURNAL_ENERGY = 30
-        const val JOURNAL_FULLNESS = 25
         /** How many packs of meals' worth of cash and art to earn before stopping. */
         const val RESERVE_PACKS = 1
         val DOLLARS = Regex("""\$(\d+) for""")

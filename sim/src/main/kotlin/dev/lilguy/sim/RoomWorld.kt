@@ -53,7 +53,7 @@ class RoomWorld private constructor(
                 } else {
                     item.cell = null
                     guy.inventory += item.id
-                    event("${guy.id.value} picked up the ${item.kind}")
+                    outcome("${guy.id.value} picked up the ${item.kind}")
                     null
                 }
             }
@@ -67,7 +67,7 @@ class RoomWorld private constructor(
                 if (item.kind != "apple") reject("${item.id} does nothing on its own; use it on something")
                 Work.Timed(USE_TICKS) {
                     guy.inventory -= item.id
-                    event("${guy.id.value} ate the apple")
+                    outcome("${guy.id.value} ate the apple")
                     null
                 }
             } else {
@@ -79,7 +79,7 @@ class RoomWorld private constructor(
                 if (!door.locked) reject("the ${door.id} is already unlocked")
                 Work.Timed(USE_TICKS) {
                     door.locked = false
-                    event("${guy.id.value} unlocked the ${door.id} with the ${item.kind}")
+                    outcome("${guy.id.value} unlocked the ${door.id} with the ${item.kind}")
                     null
                 }
             }
@@ -153,6 +153,8 @@ class RoomWorld private constructor(
             lastIntent = last?.intent,
             lastResult = last?.status,
             recentEvents = recentEvents(),
+            outcome = last?.outcome,
+            news = news(),
         )
     }
 

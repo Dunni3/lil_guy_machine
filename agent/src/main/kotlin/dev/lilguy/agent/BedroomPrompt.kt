@@ -25,8 +25,9 @@ import kotlinx.serialization.json.putJsonObject
 
 /**
  * How the bedroom is put to a model: the system prompt, the action examples, the per-request
- * reply schema and the closed choice set. The prompt opens with who he is ([Persona]) and then
- * describes his situation rather than giving him an objective; needs and wants do the rest.
+ * reply schema and the closed choice set. The prompt opens with who he is ([Persona]: the fixed
+ * core and his self-model) and then describes his situation rather than giving him an objective;
+ * what he aims for is his own.
  * Everything else comes from the unlocked content, so the prompt can't drift from the rules or
  * mention things that are still gated.
  */
@@ -47,24 +48,11 @@ object BedroomPrompt {
         add(Intent.Wait(WAIT_TICKS) to "do nothing for N ticks, at most ${GridWorld.MAX_WAIT} ($ticksPerMinute ticks = 1 game minute)")
     }
 
-    /** The journal line of the prompt, or null when no verb writes into his journal. */
-    private fun journalHint(content: BedroomContent): String? {
-        val j = Persona.journalVerb(content) ?: return null
-        val energy = j.needEffects["energy"]?.let { if (it < 0) " and costs ${-it.toInt()} energy" else "" }.orEmpty()
-        val work = if (j.work) "; it's work, so you can only do it when you are fed and rested enough to work" else ""
-        val minutes = j.minutes?.let { GameClock.duration(it) } ?: "a while"
-        return "- Journal: writing in your journal takes $minutes$energy$work. It's where you say what you want and why."
-    }
-
     /**
-     * "Each time you finish one, sketch costs 4 mood and journal adds 12 mood. After a day without writing in
-     * your journal (24 hours, counted from the start), mood falls 5 an hour instead, until you do it
-     * again. Below 25 mood you can't sketch: too low to make art.", or null when no rule applies.
+     * "Each time you finish one, sketch costs 4 mood and read adds 2 mood. Below 25 mood you can't
+     * sketch: too low to make art.", or null when no rule applies.
      */
     private fun moodRules(content: BedroomContent): String? {
-        val neglect = content.needs.neglect.filter { content.verb(it.verb) != null }.map { n ->
-            "After ${n.reason} (${n.afterHours} hours, counted from the start), mood falls ${-n.moodPerHour.toInt()} an hour instead, until you do it again."
-        }
         val blocks = content.verbs.flatMap { a -> a.block.filter { it.need == "mood" && it.below != null }.map { it to a.id } }
             .groupBy { it.first.below!! to it.first.reason }
             .map { (k, v) -> "Below ${k.first.toInt()} mood you can't ${v.joinToString(" or ") { it.second }}: ${k.second}." }
@@ -72,7 +60,7 @@ object BedroomPrompt {
         val costs = content.verbs.mapNotNull { a -> a.needEffects["mood"]?.takeIf { it < 0 }?.let { "${a.id} costs ${-it.toInt()} mood" } }
         val effects = if (lifts.isEmpty() && costs.isEmpty()) emptyList() else
             listOf("Each time you finish one, " + (costs + lifts).joinToString(" and ") + ".")
-        return (effects + neglect + blocks).joinToString(" ").ifEmpty { null }
+        return (effects + blocks).joinToString(" ").ifEmpty { null }
     }
 
     /** The art line of the prompt: commissions and hanging, or null when the content has neither. */
@@ -128,9 +116,10 @@ object BedroomPrompt {
 
     /**
      * [content] is what he's told about: only the verbs he's offered (a verb whose result nothing
-     * writes is left out).
+     * writes is left out). [self] is his self-model as the prompt shows it, or null when nothing
+     * revises it ([Persona.text]).
      */
-    fun system(content: BedroomContent, ticksPerMinute: Int): String {
+    fun system(content: BedroomContent, ticksPerMinute: Int, self: String? = null): String {
         val r = content.needs
         val actions = examples(content, ticksPerMinute).joinToString("\n") { (intent, what) ->
             "- ${PromptBuilder.tag(intent)}: $what\n  ${PromptBuilder.exampleJson.encodeToString(Intent.serializer(), intent)}"
@@ -144,7 +133,6 @@ object BedroomPrompt {
         val decor = content.items.any { it.slot != null && content.value(it) > 0 }
         val forSale = content.items.filter { it.price != null }
         val wants = if (forSale.any { it.group != "food" }) "for food and for anything you want to own" else "for food"
-        val means = if (Persona.journalVerb(content) != null) ", as a means, not the goal" else ""
         val bored = if (r.stimulationPerHour < 0 && r.boredMood > 0) ", less boredom" else ""
         val mood = if (decor) {
             "Mood drifts ${r.moodDriftPerHour.toInt()} an hour toward ${r.moodBaseline.toInt()} plus your room's comfort$bored; nice things raise it for a while, and decor raises comfort by as much as you like it."
@@ -152,7 +140,7 @@ object BedroomPrompt {
             "Mood drifts ${r.moodDriftPerHour.toInt()} an hour toward ${r.moodBaseline.toInt()}$bored; some activities raise it for a while."
         }
         val sinking = moodRules(content)?.let { " $it" }.orEmpty()
-        val lists = "`activities` lists everything you can do, with how long it takes and what it gives, or why it's locked." +
+        val lists = "What you can do: ${Persona.abilities(content)}. `activities` lists all of it, with how long it takes and what it gives, or why it's locked." +
             (if (content.verbs.any { it.args.isNotEmpty() }) " One done with something you own is listed once for each thing you could use, with `what` (and `on`) naming it." else "") +
             " `shop` is the catalog: everything for sale, its price, whether you can afford it, and what it's for." +
             if (decor) " Your room has empty places for furniture and decor, and the catalog is where they come from." else ""
@@ -164,15 +152,14 @@ object BedroomPrompt {
             "- Money: ${makers.joinToString(" and ")} make${if (makers.size > 1) "" else "s"} art, and ${sellAt?.id ?: "selling"} sells everything you hold through the $hatch: $art. The shop delivers through the $hatch, and you pay when it arrives.",
             varietyHint(content),
             artHint(content),
-            journalHint(content),
             reflectionHint(content),
             "- $lists",
             "- Nothing ends the game. An action that can't be done fails at once, and lastResult says why. Read it and choose something else rather than repeating it.",
         ).joinToString("\n")
         return """
-            |${Persona.text(content)}
+            |${Persona.text(content, self)}
             |
-            |You live in this bedroom. You need money $wants$means. Each turn you choose what to do next; the game carries it out, then shows you how things stand.
+            |You live in this bedroom. You need money $wants. Each turn you choose what to do next; the game carries it out, then shows you how things stand.
             |
             |How your life works:
             |$life
@@ -189,9 +176,9 @@ object BedroomPrompt {
             |- $options: your options, as above.
             |- self and nearby: where you are and the furniture around you, with tile x and y. localMap: the room, one string per row, north at the top.
             |- lastIntent and lastResult: your previous action and how it ended (succeeded, failed with a reason, or interrupted).
-            |- recentEvents: the last few things that happened, stamped with day and time.${if (content.needs.neglect.any { content.verb(it.verb) != null }) "\n            |- neglect: how long since your last journal, and whether your mood is falling for it." else ""}
+            |- recentEvents: the last few things that happened, stamped with day and time.
             |
-            |Below the observation you may see what you remember from earlier, what you wrote in your journal, and what you decided the last time you stopped to think. The journal and that thought are your own words: let the plans in them shape what you do with your hours.
+            |Below the observation you may see what you remember from earlier (memories, and thoughts you had), and what you decided the last time you stopped to think. Those thoughts are your own words: let the plans in them shape what you do with your hours.
         """.trimMargin()
     }
 
@@ -233,7 +220,7 @@ object BedroomPrompt {
     /**
      * The decision as a closed set: each activity that isn't locked (once per thing he could do it
      * with), each purchase he can afford, and waiting half an hour. Only verbs in [content] are offered: with no model writing
-     * entries the journal is left out, so a picking model doesn't spend hours on nothing visible. Walking and talking are left out; the
+     * thoughts, think is left out, so a picking model doesn't spend time on nothing visible. Walking and talking are left out; the
      * activities walk him where he needs to be. The state is the life part of the observation
      * (no map or coordinates), plus his recent actions.
      *
@@ -241,7 +228,6 @@ object BedroomPrompt {
      * earlier options, so doing comes before spending and waiting is last.
      */
     fun choices(obs: Observation, recent: List<Memory.Entry>, ticksPerMinute: Int, content: BedroomContent): ChoiceSet {
-        val journaling = Persona.journalVerb(content) != null
         val thinking = content.reflection?.let { content.verb(it.verb) } != null
         val offered = obs.activities.orEmpty().filter { content.verb(it.id) != null }
         val options = buildList {
@@ -304,15 +290,10 @@ object BedroomPrompt {
                 putJsonArray("recent_actions") { recent.forEach { add(describe(it.intent) + ": " + result(it.result) + (it.thought?.let { t -> "; he thought: \"$t\"" } ?: "")) } }
             }
             if (obs.recentEvents.isNotEmpty()) putJsonArray("recent_events") { obs.recentEvents.forEach { add(it) } }
-            obs.neglect?.let { put("neglect", it) }
         }
         return ChoiceSet(
             instructions = "What should the character in `state` do next? He lives here for the long run and looks after himself: his `needs` fall over time, " +
                 "and he needs money for food. Choose what serves him best over the coming days, not just the next hour. " +
-                (if (journaling) "His goal is to express himself in his journal, where he plans how to make his life better; earning is only how he keeps himself fed. " +
-                    "Keep him fed and rested enough, and put the hours that leaves toward his journal: it takes an hour and energy that earning his food also needs. " +
-                    (if (content.needs.neglect.isNotEmpty()) "He needs it, too: a day without journaling and his mood sinks (`state.neglect` says how long it's been), and when his mood is low he can't make art, so he can't earn. " else "")
-                else "") +
                 (if (content.habituation != null) "Doing the same thing over and over bores him: its gains shrink and his stimulation falls, which drags his mood down; new things and hobbies lift it. " else "") +
                 (if (thinking) "Thinking lets him work out what he wants and plan; he also stops to think on his own every few decisions. " else "") +
                 "Read `state.last_action` and `state.recent_actions`: don't repeat an action that just failed.",

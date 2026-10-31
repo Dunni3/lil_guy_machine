@@ -51,7 +51,7 @@ class BedroomWorldTest {
         assertEquals(ClockReading(1, "08:00"), obs.clock)
         assertEquals(20, obs.money)
         assertEquals(NeedLevels(80, 70, 60), obs.needs)
-        assertEquals(mapOf("bed" to 1, "desk" to 1, "chair" to 1, "sketchbook" to 1, "journal" to 1, "meal" to 2), obs.owns)
+        assertEquals(mapOf("bed" to 1, "desk" to 1, "chair" to 1, "sketchbook" to 1, "meal" to 2), obs.owns)
         assertEquals(emptyList(), obs.holding)
         assertEquals(setOf("mail_hatch", "picture_rail", "bed", "desk", "chair"), obs.nearby.map { it.id }.toSet())
         assertTrue(obs.localMap.any { 'b' in it } && obs.localMap.none { 'e' in it }, "the easel slot is empty until bought")
@@ -61,7 +61,7 @@ class BedroomWorldTest {
     fun `tier 0 is the small world, and gated content comes in only when granted`() {
         val w = world(granted = emptySet())
         val obs = w.obs()
-        assertEquals(listOf("eat", "sketch", "sell_art", "hang_art", "journal", "sleep", "think"), obs.activities!!.map { it.id })
+        assertEquals(listOf("eat", "sketch", "sell_art", "hang_art", "sleep", "think"), obs.activities!!.map { it.id })
         assertEquals(listOf("meal"), obs.shop!!.map { it.id })
         assertEquals("you have no sketch to sell; sketch makes some", w.activity("sell_art").locked)
         assertTrue("no activity called 'paint'" in failure(w.run(Intent.Do("paint"))))
@@ -71,7 +71,7 @@ class BedroomWorldTest {
 
         // A grant has to bring what it needs with it, and only gated ids can be granted.
         val painting = setOf("paint", "easel", "canvas", "painting")
-        assertEquals(listOf("eat", "sketch", "paint", "sell_art", "hang_art", "journal", "sleep", "think"), world(money = 500, granted = painting).obs().activities!!.map { it.id })
+        assertEquals(listOf("eat", "sketch", "paint", "sell_art", "hang_art", "sleep", "think"), world(money = 500, granted = painting).obs().activities!!.map { it.id })
         assertTrue("canvas" in assertFailsWith<IllegalArgumentException> { content.unlocked(setOf("paint", "easel")) }.message!!)
         assertTrue("meal" in assertFailsWith<IllegalArgumentException> { content.unlocked(setOf("meal")) }.message!!)
     }
@@ -185,25 +185,6 @@ class BedroomWorldTest {
     }
 
     @Test
-    fun `going without journaling sinks his mood until he can't make art, and journaling ends it`() {
-        val rules = content.needs.copy(neglect = listOf(Neglect("journal", 2, -5.0, "two hours without writing")))
-        val w = BedroomWorld.create(content.copy(needs = rules, start = content.start.copy(needs = NeedLevels(energy = 80, fullness = 70, mood = 30))), granted = content.gated)
-        assertTrue(w.obs().neglect!!.startsWith("no journal yet, 0h since the start; after 2h without one"), w.obs().neglect)
-        repeat(w.clock.ticks(5 * 60)) { w.step() }
-        // Two hours drifting up from 30, then three falling 5 an hour.
-        assertTrue(w.snapshot().events.any { it.text == "two hours without writing: mood falls 5 an hour until you journal" })
-        assertTrue(w.obs().needs!!.mood in 20..22, "mood ${w.obs().needs!!.mood}")
-        assertTrue(w.activity("sketch").locked!!.startsWith("too low to make art (mood "), w.activity("sketch").locked)
-        assertTrue("mood falls 5 an hour until your next journal" in w.obs().neglect!!)
-
-        w.run(Intent.Do("journal"))
-        assertTrue(w.obs().neglect!!.startsWith("last journal 0h ago;"), w.obs().neglect)
-        val after = w.obs().needs!!.mood
-        repeat(w.clock.ticks(60)) { w.step() }
-        assertTrue(w.obs().needs!!.mood > after, "mood should drift back up after journaling")
-    }
-
-    @Test
     fun `sleep lasts until 07 00 or full energy`() {
         val w = world(needs = NeedLevels(energy = 30, fullness = 90, mood = 50))
         assertNull(w.activity("sleep").locked)
@@ -301,9 +282,9 @@ class BedroomWorldTest {
         assertEquals("verb read: a generative verb needs produce; a generative verb can't enjoy", broken(withActivity("read") { it.copy(kind = VerbKind.Generative) }))
         assertEquals("verb listen: a consumptive verb needs an affordance in requires, args or a consume", broken(withActivity("listen") { it.copy(args = mapOf("what" to "jazz_record"), effects = it.effects.take(1)) }))
         // Kinds list what they allow: an op no kind lists for it is refused.
-        assertEquals("verb journal: an expressive verb can't produce", broken(withActivity("journal") { it.copy(effects = it.effects + ProduceOp(mapOf("sketch" to 1))) }))
+        assertEquals("verb think: an expressive verb can't produce", broken(withActivity("think") { it.copy(effects = it.effects + ProduceOp(mapOf("sketch" to 1))) }))
 
-        val fond = content.withPersonality(Personality(content.personality.affinities + mapOf("cozy" to 2.0, "lively" to -1.0)))
+        val fond = content.withPersonality(content.personality.copy(affinities = content.personality.affinities + mapOf("cozy" to 2.0, "lively" to -1.0)))
         val w = BedroomWorld.create(fond.copy(start = fond.start.copy(money = 500)), granted = content.gated)
         assertEquals("comfort +9: mood settles 9 higher; cozy, soft, warm", w.obs().shop!!.first { it.id == "rug" }.gives)
         w.run(Intent.Buy("record_player"))

@@ -16,11 +16,12 @@ memory and personality (`research_notes/2026-10-29_0313_bedroom-proposal-and-roa
 make test        # JVM unit tests (all modules)
 make cli         # headless runner (ARGS="--scenario bedroom --days 3 --endpoint typesafe")
                  # add --memory runs/mem.db [--memory-endpoint NAME] for long-term memory,
-                 # --journal-endpoint NAME for the journal, --grant paint,easel,... to unlock tiers,
+                 # --writer-endpoint NAME for thoughts and the self-model, --recall-endpoint NAME (typesafe)
+                 # for scored recall, --grant paint,easel,... to unlock tiers,
                  # --affinities calm=2,loud=-1 / --curiosity 1.5 for another personality
 make desktop     # LWJGL3 window
 make tv-connect IP=10.0.0.51   # wireless adb to the Streamer
-make tv-run      # build + install + launch debug APK (ENDPOINT=<name>, MEMORY_ENDPOINT=<name|none>, JOURNAL_ENDPOINT=,
+make tv-run      # build + install + launch debug APK (ENDPOINT=<name>, MEMORY_ENDPOINT=<name|none>, WRITER_ENDPOINT=, RECALL_ENDPOINT=,
                  # SCENARIO=key-door, MINUTE_TICKS=<n>, DAYS=<n>); runs wait for OK on the remote
 make tv-push-config  # push config/endpoints.yaml + the keys it names (dev only)
 make tv-pull-logs    # copy the TV's run logs into runs/tv/; never overwrites earlier pulls (tools/adb/pull-runs.sh)
@@ -51,7 +52,7 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   (`agent/.../ContentDocs.kt`).
 - Scenario wiring, scripted policies, lockstep runner: `agent/.../Scenario.kt` (`Scenario` enum),
   `KeyDoorPolicy.kt`, `BedroomPolicy.kt`. Bedroom prompt, schema, choice set: `BedroomPrompt.kt`;
-  who he is (shared with the journal): `Persona.kt`; run summaries and the journal report: `BedroomReport.kt`.
+  who he is (core and taste from content, plus his self-model): `Persona.kt`; run summaries and the self-model report: `BedroomReport.kt`.
 - Decision layer: `decision/.../DecisionModel.kt`, `ActionSchema.kt` (schema + reply parser),
   `JsonSchemaGenerator.kt`, `SchemaValidator.kt`, `OpenAiCompatBackend.kt`, `TypesafeBackend.kt`
   (System One, picks from `DecisionRequest.choices`), `Endpoints.kt` (config loader and factory).
@@ -59,12 +60,15 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   space), `AgentReply.kt` (reply envelope, `ActionExamples`, per-observation `replySchema`),
   `ActionChoices.kt` (the closed set for picking models), `Memory.kt`, `DecisionLog.kt` (JSONL
   log + `ReplayDecisionModel`).
-- Long-term memory (milestone 5, in progress): `agent/.../memory/`: `MemoryStore.kt` (storage interface,
-  events and memories, `InMemoryStore`), `AgentMemory.kt` (what `AgentRuntime` talks to), `Describe.kt`
-  (event text), `Summarizer.kt` (LLM writes level-1 memories), `Recall.kt` (which memories and journal
-  entries reach a prompt), `Keywords.kt` (shared keyword scoring), `JournalWriter.kt` (the journal's
-  search-then-write LLM loop), `Thinker.kt` (the `think` verb's one LLM call), `Handlers.kt` (the
-  `journal` and `thought` handlers).
+- Long-term memory (milestone 5, in progress; `docs/decisions/2026-10-31-memory-redesign-*`): `agent/.../memory/`:
+  `MemoryStore.kt` (storage interface; events are outcomes, world events, a daily snapshot, thoughts and art;
+  memories are level 1 stretches, level 2 days, level 3 the self-model; `InMemoryStore`), `AgentMemory.kt`
+  (what `AgentRuntime` talks to: records outcomes, scores and ranks in the background, writes the day and the
+  self-model at bedtime), `Describe.kt` (event text), `Summarizer.kt` (level-1 memories by significance,
+  day memories), `SelfModeler.kt` (the nightly self-model), `MemoryScorer.kt` (Jev Score questions for recall
+  relevance and event significance, through `decision/.../Scorer.kt`), `Recall.kt` (candidates and the
+  keyword or ranked rule), `Keywords.kt` (keyword scoring), `Thinker.kt` (the `think` verb's one LLM call),
+  `Handlers.kt` (the `thought` handler). The fixed core and the self-model seed are in `personality.yaml`.
 - Authored ops (a model writes the result of a `write` or `draw` op): `agent/.../authored/Authors.kt`, the
   handler registry and the one lifecycle they share (timing before or during the verb, kept only if it
   succeeds, the clock held while a call outlasts its verb, results back to the sim through
@@ -80,7 +84,7 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   hanging are in `BedroomWorld.kt`. The app's textures for them are in `ArtTextures.kt`.
   SQLite store: `memory-sqlite/` (JVM only; not in the TV build yet).
 - Token accounting: `agent/.../TokenLedger.kt`. `ledger.meter(model, purpose)` wraps a model so every call
-  (decision, think, journal, summary) is recorded with its sim tick and game day; `TokenReport` prints
+  (decision, think, summary, self, recall, significance, art) is recorded with its sim tick and game day; `TokenReport` prints
   tokens per game day and the 30-day projection. The CLI and the app (`SimSession`, the TOKENS page) wire it and
   write `tokens-NN.jsonl`; `price_in`/`price_out` on an endpoint add cost.
 - Renderer: `app/.../LilGuyGame.kt`. The first page is the 3D room, `RoomView.kt` (camera, light by
@@ -89,7 +93,7 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   code from needs and activity). All of it is drawn in the hand-drawn look by `CrayonRenderer.kt`:
   `CrayonModel.kt` holds the part-list format (`Part`, `PartList`) and merged meshes, `Crayon.kt` the
   shape builders and shaders, and `RoomPaint.kt` the floor, wall and item textures painted once with `CrayonCanvas.kt`. Then the 2D dev view in
-  `DevView.kt`: map plus Now/Memory/Journal/History/Log/Run pages; run control, decision history and the app's memory in `SimSession.kt`;
+  `DevView.kt`: map plus Now/Memory/Art/Tokens/History/Log/Run pages; run control, decision history and the app's memory in `SimSession.kt`;
   the Run page's knobs (days, speed, how long the clock waits on the model, resolution) in `RunSettings.kt`; remote keys in
   `RemoteInput.kt`: OK start/pause, LEFT/RIGHT pages, UP/DOWN scroll or pick, BACK twice restarts). Launchers: `desktop/`, `android/`.
   `LILGUY_SCREENSHOT=out.png LILGUY_SCREENSHOT_AT=<s> make desktop` saves one frame and quits

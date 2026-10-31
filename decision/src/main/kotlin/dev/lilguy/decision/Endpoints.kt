@@ -23,8 +23,11 @@ data class EndpointsFile(
     /** The endpoint that writes the first character's memories, if any. */
     val defaultMemoryEndpoint: String? get() = agents.firstOrNull()?.memoryEndpoint
 
-    /** The endpoint that writes the first character's journal and thoughts: `journal_endpoint`, else `memory_endpoint`. */
-    val defaultJournalEndpoint: String? get() = agents.firstOrNull()?.let { it.journalEndpoint ?: it.memoryEndpoint }
+    /** The endpoint that writes the first character's thoughts, self-model and commissions: `writer_endpoint`, else `memory_endpoint`. */
+    val defaultWriterEndpoint: String? get() = agents.firstOrNull()?.let { it.writer ?: it.memoryEndpoint }
+
+    /** The endpoint that scores the first character's recall and event significance, if any. */
+    val defaultRecallEndpoint: String? get() = agents.firstOrNull()?.recallEndpoint
 }
 
 @Serializable
@@ -81,11 +84,21 @@ data class AgentConfig(
     /** Writes long-term memories from the event stream; must write text, so not a closed-choice model. */
     @SerialName("memory_endpoint") val memoryEndpoint: String? = null,
     /**
-     * Writes his journal entries and his thoughts (the think intent); must write text. Defaults to
-     * [memoryEndpoint]; "none" turns both off, and then he isn't offered either.
+     * Writes his thoughts (the think verb), his self-model each night and the words of each day's
+     * commission; must write text. Defaults to [memoryEndpoint]; "none" turns them off, and then
+     * he isn't offered think.
      */
+    @SerialName("writer_endpoint") val writerEndpoint: String? = null,
+    /** The old name of [writerEndpoint], from when it also wrote his journal; still read. */
     @SerialName("journal_endpoint") val journalEndpoint: String? = null,
-)
+    /**
+     * Scores which memories and thoughts reach each prompt, and how significant each event is
+     * (TypeSafe System One). Unset or "none": recall goes by keywords and summaries by event count.
+     */
+    @SerialName("recall_endpoint") val recallEndpoint: String? = null,
+) {
+    val writer: String? get() = writerEndpoint ?: journalEndpoint
+}
 
 object Endpoints {
     const val DEFAULT_PATH = "config/endpoints.yaml"
@@ -103,6 +116,15 @@ object Endpoints {
      * The backend for endpoint [name]. [env] looks up environment variables; it is the only place
      * a key comes from.
      */
+    /** The scorer for endpoint [name], or an error when its backend can't score (only `typesafe` can). */
+    fun scorer(config: EndpointsFile, name: String, env: (String) -> String? = System::getenv): Scorer {
+        val model = create(config, name, env)
+        return model as? Scorer ?: run {
+            (model as? AutoCloseable)?.close()
+            throw IllegalArgumentException("endpoint '$name' can't score; recall scoring needs a typesafe endpoint")
+        }
+    }
+
     fun create(config: EndpointsFile, name: String, env: (String) -> String? = System::getenv): DecisionModel {
         val endpoint = config.endpoints[name]
             ?: throw IllegalArgumentException("no endpoint '$name' in the config; have ${config.endpoints.keys.sorted()}")

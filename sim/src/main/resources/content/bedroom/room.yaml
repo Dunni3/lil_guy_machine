@@ -25,4 +25,4 @@ start:
   money: 20
   time: "08:00"
   needs: { energy: 80, fullness: 70, mood: 60, stimulation: 60 }
-  items: { mail_hatch: 1, picture_rail: 1, bed: 1, desk: 1, chair: 1, sketchbook: 1, journal: 1, meal: 2 }
+  items: { mail_hatch: 1, picture_rail: 1, bed: 1, desk: 1, chair: 1, sketchbook: 1, meal: 2 }

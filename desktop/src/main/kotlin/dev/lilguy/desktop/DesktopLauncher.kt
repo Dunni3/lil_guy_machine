@@ -26,8 +26,9 @@ fun main() {
     // without a config the scripted policy. Keys come from this process's environment.
     // LILGUY_SCENARIO is bedroom (default) or key-door; LILGUY_MINUTE_TICKS the clock scale.
     // LILGUY_MEMORY_ENDPOINT names the memory writer (default: the config's memory_endpoint;
-    // "none" for off); LILGUY_JOURNAL_ENDPOINT the journal writer, the same way with the config's
-    // journal_endpoint; LILGUY_DAYS the bedroom run length (0 for no end).
+    // "none" for off); LILGUY_WRITER_ENDPOINT the writer of his thoughts and self-model, the same way
+    // with the config's writer_endpoint (LILGUY_JOURNAL_ENDPOINT is its old name); LILGUY_RECALL_ENDPOINT
+    // the typesafe endpoint that scores recall ("none" for keywords); LILGUY_DAYS the bedroom run length (0 for no end).
     val setup = ModelSetup.fromConfig(
         configFile = File(System.getenv("LILGUY_CONFIG") ?: "config/endpoints.yaml"),
         endpoint = System.getenv("LILGUY_ENDPOINT")?.takeIf { it.isNotBlank() },
@@ -36,7 +37,8 @@ fun main() {
         scenario = System.getenv("LILGUY_SCENARIO")?.takeIf { it.isNotBlank() }?.let(Scenario::parse) ?: Scenario.Bedroom,
         ticksPerMinute = System.getenv("LILGUY_MINUTE_TICKS")?.toIntOrNull() ?: GameClock.DEFAULT_TICKS_PER_MINUTE,
         memoryEndpoint = System.getenv("LILGUY_MEMORY_ENDPOINT")?.takeIf { it.isNotBlank() },
-        journalEndpoint = System.getenv("LILGUY_JOURNAL_ENDPOINT")?.takeIf { it.isNotBlank() },
+        writerEndpoint = (System.getenv("LILGUY_WRITER_ENDPOINT") ?: System.getenv("LILGUY_JOURNAL_ENDPOINT"))?.takeIf { it.isNotBlank() },
+        recallEndpoint = System.getenv("LILGUY_RECALL_ENDPOINT")?.takeIf { it.isNotBlank() },
         days = System.getenv("LILGUY_DAYS")?.toIntOrNull().let { if (it == null) ModelSetup.DEFAULT_DAYS else it.takeIf { d -> d > 0 } },
     )
     val game = LilGuyGame(setup)

@@ -35,7 +35,7 @@ data class Thought(
 
 /**
  * The think intent's model call: when he chooses to think, a text model gets the decision prompt
- * he was just shown (who he is, how his life works, his state, what he remembers and wrote, what
+ * he was just shown (who he is, how his life works, his state, what he remembers and thought, what
  * he did lately) and writes one short first-person thought: what he wants to do next and what he
  * wants to achieve. One call, one reply. [AgentMemory] puts it in the event stream; the agent loop
  * puts it in his short-term memory, so the next decisions see it.
@@ -95,7 +95,7 @@ class Thinker(
         const val ASK = "What do you want to do next, and what do you want to achieve?"
 
         val INSTRUCTIONS = """
-            |Right now you are not choosing an action: you have stopped to think. Look at your situation: your needs and money, what you remember, what you wrote in your journal and what you have done lately. Think about what you want to do next and what you want to achieve, and say it plainly: what you will do next, and what you are working toward. Keep your goal in view, not only what keeps you fed: money and food are means, not ends. Write in the first person, as yourself, under $WORD_CAP words.
+            |Right now you are not choosing an action: you have stopped to think. Look at your situation: your needs and money, what you remember and thought before, and what you have done lately. Think about what you want to do next and what you want to achieve, and say it plainly: what you will do next, and what you are working toward. Keep in view what you are working toward, not only what keeps you fed: money and food are means, not ends. Write in the first person, as yourself, under $WORD_CAP words.
             |
             |For this reply only, ignore the reply format above: reply with a JSON object {"thought": ...} and nothing else.
         """.trimMargin()

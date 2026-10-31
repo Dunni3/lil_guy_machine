@@ -1,9 +1,6 @@
 package dev.lilguy.agent
 
 import dev.lilguy.agent.art.Drawing
-import dev.lilguy.agent.memory.JournalSession
-import dev.lilguy.agent.memory.JournalStep
-import dev.lilguy.agent.memory.Want
 import dev.lilguy.decision.ActionSchema
 import dev.lilguy.decision.Capabilities
 import dev.lilguy.decision.Decision
@@ -80,34 +77,7 @@ data class LoggedChoices(
 @Serializable
 data class LoggedMessage(val role: String, val content: String)
 
-/**
- * A journal session, logged between the decisions: every model call (a search with what it found,
- * or the final write), the entry and wants, and whether it was kept. `kind` tells these lines from
- * decision lines, which [DecisionLog.read] keeps to itself.
- */
-@Serializable
-data class JournalLogEntry(
-    val kind: String = KIND,
-    val run: String,
-    val writer: String,
-    val tick: Long,
-    val day: Int?,
-    val time: String?,
-    val status: String,
-    val calls: List<LoggedJournalCall>,
-    val entry: String?,
-    val wants: List<Want>,
-    @SerialName("latency_ms") val latencyMs: Long,
-    @SerialName("prompt_tokens") val promptTokens: Int,
-    @SerialName("completion_tokens") val completionTokens: Int,
-    val error: String? = null,
-) {
-    companion object {
-        const val KIND = "journal"
-    }
-}
-
-/** A piece he drew, logged like a journal session, marked `"kind": "art"`; the picture itself is a PNG beside the log. */
+/** A piece he drew, logged between the decisions, marked `"kind": "art"`; the picture itself is a PNG beside the log. */
 @Serializable
 data class ArtLogEntry(
     val kind: String = KIND,
@@ -139,17 +109,6 @@ data class ArtLogEntry(
 }
 
 @Serializable
-data class LoggedJournalCall(
-    val raw: String,
-    /** "search" or "write". */
-    val step: String,
-    val source: String? = null,
-    val query: String? = null,
-    /** For a search: each hit as "stamp: text". */
-    val results: List<String> = emptyList(),
-)
-
-@Serializable
 data class LoggedAttempt(val raw: String, val error: String? = null)
 
 /**
@@ -161,9 +120,6 @@ class DecisionLog(val file: File, private val run: String, private val model: St
     private val out = file.also { it.parentFile?.mkdirs() }.bufferedWriter()
 
     fun write(record: AgentRuntime.DecisionRecord) = append(json.encodeToString(DecisionLogEntry.serializer(), entryOf(run, model, record)))
-
-    /** Journal sessions go in the same file, marked `"kind": "journal"`. */
-    fun write(session: JournalSession) = append(json.encodeToString(JournalLogEntry.serializer(), journalEntryOf(run, session)))
 
     /** Drawings go in the same file, marked `"kind": "art"`. */
     fun write(d: Drawing) = append(
@@ -220,36 +176,12 @@ class DecisionLog(val file: File, private val run: String, private val model: St
             },
         )
 
-        fun journalEntryOf(run: String, s: JournalSession) = JournalLogEntry(
-            run = run,
-            writer = s.writer,
-            tick = s.tick,
-            day = s.day,
-            time = s.time,
-            status = s.status.name.lowercase(),
-            calls = s.calls.map { c ->
-                when (val step = c.step) {
-                    is JournalStep.Search -> LoggedJournalCall(c.raw, "search", step.source.id, step.query, c.results.map { "${it.stamp}: ${it.text}" })
-                    is JournalStep.Write -> LoggedJournalCall(c.raw, "write")
-                }
-            },
-            entry = s.entry,
-            wants = s.wants,
-            latencyMs = s.latency.inWholeMilliseconds,
-            promptTokens = s.usage.promptTokens,
-            completionTokens = s.usage.completionTokens,
-            error = s.error,
-        )
-
-        /** The decisions in a log, leaving out journal and art lines. */
+        /** The decisions in a log, leaving out art lines (and journal lines from older logs). */
         fun read(file: File): List<DecisionLogEntry> = lines(file).filter { kindOf(it) == null }.map { json.decodeFromString(DecisionLogEntry.serializer(), it) }
-
-        /** The journal sessions in a log. */
-        fun readJournal(file: File): List<JournalLogEntry> = lines(file).filter { kindOf(it) == JournalLogEntry.KIND }.map { json.decodeFromString(JournalLogEntry.serializer(), it) }
 
         private fun lines(file: File) = file.readLines().filter { it.isNotBlank() }
 
-        /** Null for a decision line, otherwise "journal" or "art". */
+        /** Null for a decision line, otherwise "art" (or "journal", in older logs). */
         private fun kindOf(line: String) = (json.parseToJsonElement(line).jsonObject["kind"] as? JsonPrimitive)?.content
     }
 }

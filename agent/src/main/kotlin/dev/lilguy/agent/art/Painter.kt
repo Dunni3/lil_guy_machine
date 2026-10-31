@@ -220,7 +220,7 @@ class Painter(
         private fun article(word: String) = if (word.firstOrNull()?.lowercaseChar() in "aeiou".toSet()) "an" else "a"
 
         val SUBJECT_INSTRUCTIONS = "The character in `state.who` is sitting down to make `state.making`. `state.situation` is his life right now: what he sees, " +
-            "what he remembers, what he wrote in his journal and what he planned the last time he stopped to think. Which subject should the picture be? " +
+            "what he remembers, the thoughts he had and what he planned the last time he stopped to think. Which subject should the picture be? " +
             "The customer's request earns him money he may need; a subject of his own should fit what's on his mind."
 
         val PALETTE_INSTRUCTIONS = "The character is about to draw `state.subject`. Which box of crayons suits it best?"

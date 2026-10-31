@@ -15,11 +15,6 @@ needs:
   work_floor:
     - { need: energy, below: 5, reason: "too tired to work" }
     - { need: fullness, below: 5, reason: "too hungry to work" }
-  # He needs to express himself: a day without finishing a journal entry (counted from the start of
-  # the run) and his mood falls instead of drifting, until he writes. Low mood stops him making
-  # art (sketch and paint block below 25), so it ends up costing him his income too.
-  neglect:
-    - { verb: journal, after_hours: 24, mood_per_hour: -5, reason: "a day without writing in your journal" }
   # Stimulation (low = bored) drains while he's awake. Hobbies, making things and anything new feed
   # it; repeating the same thing pays less and drains it (habituation, below). Mood is the summary:
   # below `bored`, each missing point lowers the mood he settles to by `bored_mood` (16 at 0).

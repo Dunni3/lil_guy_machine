@@ -20,8 +20,9 @@ import dev.lilguy.agent.art.ArtStudio
 import dev.lilguy.agent.art.CommissionVoice
 import dev.lilguy.agent.art.Drawing
 import dev.lilguy.agent.art.Painter
-import dev.lilguy.agent.memory.JournalSession
-import dev.lilguy.agent.memory.JournalWriter
+import dev.lilguy.agent.memory.MemoryScorer
+import dev.lilguy.agent.memory.SelfModeler
+import dev.lilguy.agent.memory.SelfRevision
 import dev.lilguy.agent.memory.Thinker
 import dev.lilguy.agent.memory.MemoryStore
 import dev.lilguy.agent.memory.Summarizer
@@ -30,6 +31,7 @@ import dev.lilguy.agent.Scenario
 import dev.lilguy.agent.runLockstep
 import dev.lilguy.decision.DecisionModel
 import dev.lilguy.decision.Endpoints
+import dev.lilguy.decision.Scorer
 import dev.lilguy.decision.StructuredOutput
 import dev.lilguy.sim.BedroomContent
 import dev.lilguy.sim.BedroomWorld
@@ -66,14 +68,19 @@ private const val USAGE = """lil guy machine cli: lockstep runs of the key-and-d
   --strategy S        override the endpoint's structured_output: json_schema, tools or text
   --log-dir DIR       where run logs go (default runs/); --no-log to skip
   --replay FILE       play back a decision log instead of calling a model
-  --memory FILE       keep long-term memory in this SQLite file: every observation and action, plus
-                      summaries when --memory-endpoint is set; recalled memories join each prompt
-  --memory-endpoint N endpoint that writes the summaries (must write text, so not typesafe)
-  --journal-endpoint N bedroom: endpoint that writes his journal when he journals (must write text);
-                      entries join every later prompt, and the run ends with them and his wants.
-                      Kept in --memory FILE if given, otherwise in memory for the run. It also
-                      writes his thoughts when he thinks, and words each day's request for a piece.
-                      Defaults to --memory-endpoint; "none" for off
+  --memory FILE       keep long-term memory in this SQLite file: how each action turned out, what
+                      happened around him, a daily snapshot, his thoughts; plus memories when
+                      --memory-endpoint is set. Recalled memories and thoughts join each prompt
+  --memory-endpoint N endpoint that writes the memories, of stretches and of whole days (must write
+                      text, so not typesafe)
+  --writer-endpoint N bedroom: endpoint that writes his thoughts when he thinks, revises his
+                      self-model each night (with --memory-endpoint), and words each day's request
+                      for a piece (must write text). Defaults to --memory-endpoint; "none" for off.
+                      The run ends with every version of his self-model, in self-NN.txt.
+                      (--journal-endpoint is its old name)
+  --recall-endpoint N typesafe endpoint that scores which memories and thoughts reach each prompt,
+                      and how significant each event is (which decides when memories are written).
+                      Defaults to the deciding endpoint when it's typesafe; "none" for keywords
                       His art is drawn by the deciding model itself, one closed pick a stroke, so
                       typesafe draws too (a PNG per piece in art-NN/ beside the log); the scripted
                       policy and a replay don't draw
@@ -89,8 +96,8 @@ Key-and-door exits non-zero unless every run solved the room; the bedroom, unles
 lived its days without hitting the decision cap. Bedroom runs also write hours-NN.jsonl (money
 and needs each game hour), money-NN.jsonl (every transaction) and needs-NN.jsonl (every need
 change) next to the decision log, tokens-NN.jsonl (every model call: sim tick, game day, purpose, tokens, cost when the endpoint has
-price_in/price_out) and journal-NN.txt when there is a journal. Journal sessions
-and drawings are logged in the decision log too, as lines with "kind": "journal" and "art"."""
+price_in/price_out) and self-NN.txt when his self-model is revised. Drawings are
+logged in the decision log too, as lines with "kind": "art"."""
 
 private class Args(argv: Array<String>) {
     private val values = mutableMapOf<String, String>()
@@ -118,7 +125,7 @@ private class Args(argv: Array<String>) {
     companion object {
         val FLAGS = setOf("--quiet", "--no-log", "--help", "--content-docs")
         val KNOWN = FLAGS + setOf(
-            "--scenario", "--endpoint", "--runs", "--days", "--minute-ticks", "--ticks", "--max-decisions", "--config", "--strategy", "--log-dir", "--replay", "--memory", "--memory-endpoint", "--journal-endpoint", "--grant",
+            "--scenario", "--endpoint", "--runs", "--days", "--minute-ticks", "--ticks", "--max-decisions", "--config", "--strategy", "--log-dir", "--replay", "--memory", "--memory-endpoint", "--writer-endpoint", "--journal-endpoint", "--recall-endpoint", "--grant",
             "--affinities", "--curiosity",
         )
     }
@@ -165,18 +172,18 @@ private data class BedroomResult(
     val bought: List<String>,
     /** Decisions per intent: "do sketch" to 40. */
     val choices: Map<String, Int>,
-    val journal: JournalResult? = null,
+    /** His self-model's nightly revisions, when something revises it. */
+    val self: SelfResult? = null,
 )
 
 @Serializable
-private data class JournalResult(
-    /** Entries kept: written and the activity succeeded. */
-    val entries: Int,
-    /** Sessions the writer failed. */
+private data class SelfResult(
+    /** Nights it was revised, changed or not. */
+    val nights: Int,
+    /** Versions written: nights it changed. */
+    val versions: Int,
+    /** Nights the call failed. */
     val failed: Int,
-    val wants: Int,
-    @SerialName("prompt_tokens") val promptTokens: Int,
-    @SerialName("completion_tokens") val completionTokens: Int,
 )
 
 fun main(argv: Array<String>) {
@@ -243,42 +250,62 @@ fun main(argv: Array<String>) {
             requireNotNull(args.string("--memory")) { "--memory-endpoint needs --memory FILE" }
             Endpoints.create(config, name)
         }
-        // Like the app: the journal (and thinking) defaults to the memory endpoint; "none" turns it off.
-        val journalEndpoint = (args.string("--journal-endpoint") ?: args.string("--memory-endpoint"))?.takeIf { it != "none" }
-        val journalModel = journalEndpoint?.let { Endpoints.create(config, it) }
+        // Like the app: the writer (thoughts, the self-model, commissions) defaults to the memory endpoint; "none" turns it off.
+        val writerEndpoint = (args.string("--writer-endpoint") ?: args.string("--journal-endpoint") ?: args.string("--memory-endpoint"))?.takeIf { it != "none" }
+        val writerModel = writerEndpoint?.let { Endpoints.create(config, it) }
+        // Recall and significance are scored by a typesafe endpoint: the one named, or the deciding one if it can score.
+        val recallEndpoint = args.string("--recall-endpoint")
+        val ownScorer = recallEndpoint?.takeIf { it != "none" && it != endpoint }?.let { Endpoints.scorer(config, it) }
+        val rawScorer: Scorer? = when {
+            recallEndpoint == "none" -> null
+            ownScorer != null -> ownScorer
+            else -> decisionModel as? Scorer
+        }
+        val scorerName = recallEndpoint?.takeIf { it != "none" } ?: endpoint
         // The deciding model draws his art, pick by pick, so a picking model can; the scripted policy and a replay can't.
         val painting = scenario == Scenario.Bedroom && replay == null && endpoint != "scripted"
-        val store: MemoryStore? = args.string("--memory")?.let { SqliteMemoryStore(File(it)) } ?: if (journalModel != null || painting) InMemoryStore() else null
-        val sessions = mutableListOf<JournalSession>()
+        val store: MemoryStore? = args.string("--memory")?.let { SqliteMemoryStore(File(it)) } ?: if (writerModel != null || painting || rawScorer != null) InMemoryStore() else null
+        val revisions = mutableListOf<SelfRevision>()
+        val core = (personality ?: BedroomContent.default().personality)
         val memory = store?.let { st ->
             val run = "$stamp-$n"
             val studio = if (!painting) null else ArtStudio(
                 Painter(ledger.meter(decisionModel, TokenPurpose.Art, priceOf(endpoint))), st, run, dir = logDir?.let { d -> File(d, "art-%02d".format(n)) },
-                voice = journalModel?.let { CommissionVoice(ledger.meter(it, TokenPurpose.Art, priceOf(journalEndpoint!!))) },
+                voice = writerModel?.let { CommissionVoice(ledger.meter(it, TokenPurpose.Art, priceOf(writerEndpoint!!))) },
             ) { d ->
                 log?.write(d)
                 if (!quiet) printDrawing(d)
             }
+            val scorer = rawScorer?.let { MemoryScorer(ledger.meter(it, TokenPurpose.Recall, priceOf(scorerName)), ledger.meter(it, TokenPurpose.Significance, priceOf(scorerName)), onFailure = { e -> System.err.println("scoring failed: ${e.message}") }) }
             AgentMemory(
                 st, run,
                 studio = studio,
-                summarizer = summaryModel?.let { Summarizer(ledger.meter(it, TokenPurpose.Summary, priceOf(summaryEndpoint!!)), st, run, onFailure = { e -> System.err.println("summary failed: ${e.message}") }) },
-                journal = journalModel?.let { JournalWriter(ledger.meter(it, TokenPurpose.Journal, priceOf(journalEndpoint!!)), st, run) },
-                thinker = journalModel?.let { Thinker(ledger.meter(it, TokenPurpose.Think, priceOf(journalEndpoint!!))) },
-                onJournal = { s ->
-                    sessions += s
-                    log?.write(s)
-                    if (!quiet) printJournal(s)
+                summarizer = summaryModel?.let {
+                    Summarizer(
+                        ledger.meter(it, TokenPurpose.Summary, priceOf(summaryEndpoint!!)), st, run,
+                        threshold = if (scorer != null) Summarizer.THRESHOLD else null,
+                        onFailure = { e -> System.err.println("summary failed: ${e.message}") },
+                    )
                 },
+                scorer = scorer,
+                selfModeler = if (summaryModel == null || scenario != Scenario.Bedroom) null else writerModel?.let {
+                    SelfModeler(ledger.meter(it, TokenPurpose.SelfModel, priceOf(writerEndpoint!!)), st, run, core.core.you, core.selfSeed)
+                },
+                onSelf = { r ->
+                    revisions += r
+                    if (!quiet) printSelf(r)
+                },
+                thinker = writerModel?.let { Thinker(ledger.meter(it, TokenPurpose.Think, priceOf(writerEndpoint!!))) },
             )
         }
         try {
-            runOnce(n, scenario, model, timeout, minuteTicks, maxTicks, maxDecisions, quiet, log, logDir, ledger, memory, granted, personality, sessions)
+            runOnce(n, scenario, model, timeout, minuteTicks, maxTicks, maxDecisions, quiet, log, logDir, ledger, memory, granted, personality, revisions)
         } finally {
             log?.close()
             store?.close()
             (summaryModel as? AutoCloseable)?.close()
-            (journalModel as? AutoCloseable)?.close()
+            (writerModel as? AutoCloseable)?.close()
+            (ownScorer as? AutoCloseable)?.close()
             (decisionModel as? AutoCloseable)?.close()
         }
     }
@@ -299,7 +326,7 @@ private fun personalityOf(args: Args): Personality? {
         parts[0].trim() to (parts[1].trim().toDoubleOrNull() ?: throw IllegalArgumentException("--affinities: '${parts[1]}' isn't a number"))
     }
     val c = curiosity?.let { it.toDoubleOrNull() ?: throw IllegalArgumentException("--curiosity takes a number") } ?: base.curiosity
-    return Personality(base.affinities + changed, c).also { BedroomContent.default().withPersonality(it) } // fail fast on an unknown quality
+    return base.copy(affinities = base.affinities + changed, curiosity = c).also { BedroomContent.default().withPersonality(it) } // fail fast on an unknown quality
 }
 
 private fun modelSource(scenario: Scenario, endpoint: String, replay: File?, args: Args): Triple<String, Duration, () -> DecisionModel> {
@@ -337,7 +364,7 @@ private fun runOnce(
     memory: AgentMemory? = null,
     granted: Set<String> = emptySet(),
     personality: Personality? = null,
-    sessions: List<JournalSession> = emptyList(),
+    revisions: List<SelfRevision> = emptyList(),
 ): RunResult {
     val records = mutableListOf<AgentRuntime.DecisionRecord>()
     lateinit var stampOf: (Long) -> String
@@ -397,16 +424,9 @@ private fun runOnce(
             moneyEnd = b.ledger.balance,
             bought = days.flatMap { it.bought },
             choices = records.groupingBy { b.describe(it.intent).split(' ').take(2).joinToString(" ") }.eachCount().toList().sortedByDescending { it.second }.toMap(),
-            journal = memory?.takeIf { it.journaling }?.let { m ->
-                val entries = m.journalEntries()
-                logDir?.let { dir -> File(dir, "journal-%02d.txt".format(n)).writeText(BedroomReport.journal(entries) + "\n") }
-                JournalResult(
-                    entries = entries.size,
-                    failed = sessions.count { it.status == JournalSession.Status.Failed },
-                    wants = BedroomReport.wants(entries).size,
-                    promptTokens = sessions.sumOf { it.usage.promptTokens },
-                    completionTokens = sessions.sumOf { it.usage.completionTokens },
-                )
+            self = memory?.takeIf { it.selfWriter != null }?.let { m ->
+                logDir?.let { dir -> File(dir, "self-%02d.txt".format(n)).writeText(BedroomReport.selfModels(m.selfVersions(), m.selfText().orEmpty()) + "\n") }
+                SelfResult(nights = revisions.size, versions = m.selfVersions().size, failed = revisions.count { it.error != null })
             },
         )
     }
@@ -440,7 +460,7 @@ private fun runOnce(
     ))
     life?.let { printBedroom(it) }
     if (bedroom != null) println(TokenReport.format(ledger, minuteTicks, endTick).prependIndent("  "))
-    memory?.takeIf { it.journaling }?.let { println(BedroomReport.journal(it.journalEntries()).prependIndent("  ")) }
+    memory?.takeIf { it.selfWriter != null && bedroom != null }?.let { m -> println(BedroomReport.selfModels(m.selfVersions(), bedroom!!.content.personality.selfSeed).prependIndent("  ")) }
     return result
 }
 
@@ -451,9 +471,7 @@ private fun printBedroom(life: BedroomResult) {
     }
     println("  lowest needs ${life.lowest}; ticks with a need at 0: ${life.ticksAtZero}")
     println("  choices ${life.choices}")
-    life.journal?.let { j ->
-        println("  journal: ${j.entries} entries, ${j.failed} failed, ${j.wants} wants, ${j.promptTokens}+${j.completionTokens} tokens")
-    }
+    life.self?.let { s -> println("  self-model: ${s.nights} nights, ${s.versions} versions, ${s.failed} failed") }
 }
 
 private fun printDrawing(d: Drawing) {
@@ -463,13 +481,13 @@ private fun printDrawing(d: Drawing) {
     d.artwork?.letters()?.forEach { println("        $it") }
 }
 
-private fun printJournal(s: JournalSession) {
-    val stamp = if (s.day != null) "d%2d %s".format(s.day, s.time) else "t=%4d".format(s.tick)
-    val what = when (s.status) {
-        JournalSession.Status.Failed -> "FAILED: ${s.error}"
-        else -> "${s.status.name.lowercase()}: ${s.searches} searches, ${s.wants.size} wants, ${s.latency.inWholeMilliseconds} ms"
+private fun printSelf(r: SelfRevision) {
+    val what = when {
+        r.error != null -> "FAILED: ${r.error}"
+        r.changed -> "revised: ${r.note}"
+        else -> "unchanged: ${r.note}"
     }
-    println("%s  journal %s".format(stamp, what))
+    println("night %2s  self    %s".format(r.day ?: "-", what))
 }
 
 private fun <T> writeJsonl(file: File, rows: List<T>, serializer: kotlinx.serialization.KSerializer<T>) {
