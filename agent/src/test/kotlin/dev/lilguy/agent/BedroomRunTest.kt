@@ -51,8 +51,8 @@ class BedroomRunTest {
         val w = lived.world
         printDays(w)
         assertEquals(15, w.clock.day(w.tick))
-        // The baseline buys nothing to do, so it ends up bored; stimulation at 0 isn't harm.
-        lived.lowest.filterKeys { it != Need.Stimulation }.forEach { (need, low) -> assertTrue(low > 0.0, "$need reached $low") }
+        // The baseline buys nothing to do, so it ends up bored; stimulation at 0 isn't harm. Frustration at 0 is calm.
+        lived.lowest.filterKeys { it != Need.Stimulation && it != Need.Frustration }.forEach { (need, low) -> assertTrue(low > 0.0, "$need reached $low") }
         assertTrue(lived.decisions.none { it.fellBack })
         val failed = w.snapshot().events.filter { "failed" in it.text }
         assertTrue(failed.isEmpty(), "failed intents: $failed")
@@ -63,20 +63,24 @@ class BedroomRunTest {
      * earning just enough food leaves a few spare waking hours a day and no savings. Day 1 is
      * left out: he starts with food and money. The target was 3 to 5 hours until selling art
      * stopped taking an hour (Ian); that hour went to spare time.
+     *
+     * The knowledge-and-skill retune (sketch energy 6 to 3, fullness asleep 5 to 2 an hour) left
+     * him about 11 spare hours and 4 to 5 sketching; the bounds hold that until a Jev run says
+     * whether the economy needs tightening again.
      */
     @Test
-    fun `surviving takes most of the day and leaves 3 to 6 spare waking hours`() {
+    fun `surviving takes part of the day and leaves 8 to 14 spare waking hours`() {
         val lived = live(6)
         val w = lived.world
         lived.hours.toSortedMap().forEach { (day, h) -> println("day $day: " + h.entries.sortedBy { it.key }.joinToString { "%s %.1f".format(it.key, it.value) }) }
         val spare = (2..6).map { lived.hours[it].orEmpty()["wait"] ?: 0.0 }
         val sketching = (2..6).map { lived.hours[it].orEmpty()["sketch"] ?: 0.0 }
-        assertTrue(spare.average() in 3.0..6.0, "spare waking hours a day: $spare")
-        assertTrue(sketching.average() >= 6.0, "sketching hours a day: $sketching")
+        assertTrue(spare.average() in 8.0..14.0, "spare waking hours a day: $spare")
+        assertTrue(sketching.average() >= 4.0, "sketching hours a day: $sketching")
         val mealPrice = w.content.item("meal")!!.price!!
         val richest = w.ledger.transactions.maxOf { it.balance }
         assertTrue(richest < 2 * mealPrice, "saved up $richest")
-        lived.lowest.filterKeys { it != Need.Stimulation }.forEach { (need, low) -> assertTrue(low > 0.0, "$need reached $low") }
+        lived.lowest.filterKeys { it != Need.Stimulation && it != Need.Frustration }.forEach { (need, low) -> assertTrue(low > 0.0, "$need reached $low") }
     }
 
     @Test
@@ -89,7 +93,8 @@ class BedroomRunTest {
     private val smallWorld = dev.lilguy.sim.BedroomContent.default().let { c ->
         val tier1 = setOf(
             "canvas", "easel", "record_player", "jazz_record", "ambient_record", "folk_record", "novel", "poetry_book",
-            "field_guide", "plant", "poster", "rug", "painting", "paint", "read", "listen", "play_record",
+            "field_guide", "drawing_book", "music_book", "guitar", "plant", "poster", "rug", "painting", "paint", "read", "study",
+            "listen", "play_record", "play_guitar",
         )
         c.copy(
             items = c.items.map { if (it.id in tier1) it.copy(tier = 1) else it },
@@ -131,14 +136,14 @@ class BedroomRunTest {
         assertTrue("- What you can do: eat, sketch, sell your art, hang your art on the wall, sleep and stop and think." in system)
         assertTrue("You live in this bedroom. You need money for food." in system)
         assertTrue("a sketch sells for $3" in system)
-        listOf("easel", "canvas", "record", "painting", "decor", "`uses`", "music", "journal", "restrictive").forEach { assertTrue(it !in system, "mentions '$it'") }
+        listOf("easel", "canvas", "record", "painting", "decor", "`uses`", "music", "journal", "restrictive").forEach { w -> assertTrue(w !in system, "mentions '$w': " + system.lines().filter { w in it }) }
         assertTrue(Persona.SELF_HEADER !in system, "no self-model unless something revises it")
         val withSelf = BedroomPrompt.system(world.content, world.clock.ticksPerMinute, self = "- Who I am: someone who sketches.")
         assertTrue("${Persona.SELF_HEADER}\n- Who I am: someone who sketches." in withSelf)
 
         // Granting brings the gated content into the prompt.
         val grown = BedroomPrompt.system(smallWorld.unlocked(setOf("paint", "easel", "canvas", "painting")), 5)
-        assertTrue("sketch and paint make art" in grown && "a painting sells for $70" in grown, grown)
+        assertTrue("sketch and paint make art" in grown && "a painting sells for $30" in grown, grown)
         assertTrue("for food and for anything you want to own" in grown)
     }
 

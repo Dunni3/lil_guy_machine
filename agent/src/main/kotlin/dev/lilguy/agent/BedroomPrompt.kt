@@ -102,7 +102,9 @@ object BedroomPrompt {
      * Only what he knows is named: [content] is the known part.
      */
     private fun learningHint(content: BedroomContent): String? {
-        val skills = content.vocabulary.skills
+        // Only skills something he knows raises: a practice op, or a book's study.
+        val raised = content.verbs.flatMap { v -> v.ops<PracticeOp>().flatMap { it.gains.keys } } + content.books.flatMap { it.skill.keys }
+        val skills = content.vocabulary.skills.filter { it in raised }
         if (skills.isEmpty() && content.books.isEmpty()) return null
         val parts = buildList {
             if (skills.isNotEmpty()) {
@@ -113,7 +115,7 @@ object BedroomPrompt {
                 val pays = listOfNotNull(
                     if (r.gainPerLevel > 0) "what you do with a skill gives ${(r.gainPerLevel * 100).toInt()}% more mood and stimulation per level" else null,
                     if (r.pricePerLevel > 0 && content.items.any { it.sellSkill != null }) "your art sells for ${(r.pricePerLevel * 100).toInt()}% more per level of art skill you had when you made it" else null,
-                    r.deepens.entries.takeIf { r.affinityPerLevel > 0 && it.isNotEmpty() }?.let { d -> "knowing more about " + d.joinToString(" and ") { (s, q) -> "$s makes $q things mean more to you" } },
+                    r.deepens.entries.filter { it.key in skills }.takeIf { r.affinityPerLevel > 0 && it.isNotEmpty() }?.let { d -> "knowing more about " + d.joinToString(" and ") { (s, q) -> "$s makes $q things mean more to you" } },
                 ).joinToString("; ")
                 add("you have skills (${skills.joinToString(", ")}, in `skills`), each from 0 with no limit" + (if (by.isNotEmpty()) ", raised by $by" else "") + (if (pays.isNotEmpty()) ": $pays." else "."))
             }

@@ -44,7 +44,7 @@ class MemoryTest {
         val outcomes = events.filter { it.kind == EventKind.Outcome }
         assertTrue(outcomes.size in decisions.size - 1..decisions.size, "one outcome per finished intent: ${outcomes.size} for ${decisions.size} decisions")
         // From the sim's own words for what the ops did, with how long it took.
-        assertTrue(outcomes.any { it.text.startsWith("sketch (1h): done; +1 sketch, energy -6") }, outcomes.map { it.text }.toString())
+        assertTrue(outcomes.any { it.text.startsWith("sketch (1h): done; +1 sketch, art skill 0.2 (+0.1), energy -3") }, outcomes.map { it.text }.toString())
         assertTrue(outcomes.none { "money $" in it.text && it.text.startsWith("sketch") }, "outcomes don't restate his state")
         // How things stood: at the start, then once each morning he woke (two days from 08:00 reach day 3).
         val snapshots = events.filter { it.kind == EventKind.Snapshot }
