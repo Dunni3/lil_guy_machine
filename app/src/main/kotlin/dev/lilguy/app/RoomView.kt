@@ -93,6 +93,7 @@ class RoomView(private val art: ArtTextures) : Disposable {
     /** What's beyond the room, dimmed with the light; the game clears to it before [render] (one frame behind). */
     val background = Color(0.15f, 0.13f, 0.16f, 1f)
     private val light = Light()
+    private val blobTint = Color(Color.WHITE)
 
     /** The newest thought, and how long it has been on show. */
     private var thoughtCount = 0
@@ -153,8 +154,8 @@ class RoomView(private val art: ArtTextures) : Disposable {
             modelBatch.render(placed(e, now.map), env)
         }
         renderArt(session, now)
-        blob.render(modelBatch, env, asleep)
         modelBatch.end()
+        blob.render(camera, blobTint, asleep)
         Gdx.gl.glDisable(GL20.GL_DEPTH_TEST)
 
         updateThought(session, delta)
@@ -265,6 +266,10 @@ class RoomView(private val art: ArtTextures) : Disposable {
         minuteHand.transform.setToTranslation(clockX, RoomModels.CLOCK_Y, 1.07f).rotate(Vector3.Z, -360f * hour)
         ambient.color.set(light.ambient)
         sun.color.set(light.sun)
+        // The guy shades himself; the room's light only tints him, white at midday.
+        val a = light.ambient
+        val s = light.sun
+        blobTint.set((a.r + s.r) / DAY_LIGHT[0], (a.g + s.g) / DAY_LIGHT[1], (a.b + s.b) / DAY_LIGHT[2], 1f)
         glassColor.color.set(light.sky)
         background.set(light.ambient).mul(0.22f, 0.2f, 0.24f, 1f)
     }
@@ -461,6 +466,10 @@ class RoomView(private val art: ArtTextures) : Disposable {
         /** What he stands, sits or lies on, by item id, and how high its top is. */
         val SURFACES = mapOf("bed" to 0.3f, "chair" to 0.38f)
         val SUN_DIRECTION = Vector3(0.45f, -1f, -0.55f)
+        /** Ambient plus sun at midday (the 9:30 to 16:30 key), so the guy's tint is white then. */
+        val DAY_LIGHT = Color.valueOf("c8c4b8").let { a ->
+            Color.valueOf("6a665e").let { s -> floatArrayOf(a.r + s.r, a.g + s.g, a.b + s.b) }
+        }
         /** (dx, dy) toward the room, from a wall tile. */
         val INWARD = listOf(0 to 1, 1 to 0, -1 to 0, 0 to -1)
 
