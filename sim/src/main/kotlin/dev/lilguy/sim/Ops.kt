@@ -113,7 +113,7 @@ data class ProduceOp(val items: Map<String, Int>) : Op() {
         "+${w.quantity(id, n)}"
     }
 
-    override fun describe(w: OpWorld, b: Bound, forSale: Boolean) = items.map { (id, n) -> w.quantity(id, n) + (w.item(id).sellPrice?.let { ", sells for $$it" } ?: "") }
+    override fun describe(w: OpWorld, b: Bound, forSale: Boolean) = items.map { (id, n) -> w.quantity(id, n) + (w.priceOf(id)?.let { ", sells for $$it" } ?: "") }
 }
 
 /** Sells every carried item with this affordance (or id) at its `sellable` price. */
@@ -125,7 +125,7 @@ data class SellOp(val what: String) : Op() {
 
     override fun lockReason(w: OpWorld, b: Bound): String? {
         if (w.count(what) > 0) return null
-        val makers = w.content.verbs.filter { m -> m.effects.any { op -> op is ProduceOp && op.items.keys.any { what in w.item(it).names } } }.map { it.id }
+        val makers = w.content.verbs.filter { m -> w.knows(m.id) && m.effects.any { op -> op is ProduceOp && op.items.keys.any { what in w.item(it).names } } }.map { it.id }
         return "you have no ${w.noun(what)} to sell" + if (makers.isEmpty()) "" else "; ${makers.joinToString(" or ")} makes some"
     }
 
@@ -188,7 +188,7 @@ data class EnjoyOp(val what: String) : Op() {
     override fun problems(c: BedroomContent, verb: VerbSpec) = if (what in verb.args) emptyList() else listOf("enjoy names '$what', which isn't an argument of this verb")
 
     /** Null until bound (a locked option, or the shop's "what it's for"). */
-    private fun liking(w: OpWorld, b: Bound): Double = b.args[what]?.let { w.content.value(w.item(it)) * w.content.qualityValue.inUse } ?: 0.0
+    private fun liking(w: OpWorld, b: Bound): Double = b.args[what]?.let { w.value(w.item(it)) * w.content.qualityValue.inUse } ?: 0.0
 
     override fun finish(w: OpWorld, b: Bound): List<String> {
         val d = liking(w, b).takeIf { it != 0.0 } ?: return emptyList()
@@ -204,6 +204,53 @@ data class EnjoyOp(val what: String) : Op() {
 }
 
 /**
+ * Reads the next chapter of the book bound to [book] (an argument slot), when the item is a book
+ * ([BookSpec]). [study]: studying it, which raises the book's skills and needs a chapter left to
+ * study; reading a finished book again rereads it, with no progress. Finishing the last chapter
+ * teaches him what the book teaches.
+ */
+data class ProgressOp(val book: String, val study: Boolean = false) : Op() {
+    override val key get() = "progress"
+
+    override fun problems(c: BedroomContent, verb: VerbSpec) = if (book in verb.args) emptyList() else listOf("progress names '$book', which isn't an argument of this verb")
+
+    override fun lockReason(w: OpWorld, b: Bound): String? {
+        if (!study) return null
+        val id = b.args[book] ?: return null
+        val spec = w.content.book(id) ?: return "the ${w.item(id).name} is no book to study"
+        if (spec.skill.isEmpty()) return "there's nothing to study in \"${spec.title}\"; read it instead"
+        return if (w.chaptersRead(id) >= spec.chapters.size) "you've finished \"${spec.title}\"" else null
+    }
+
+    override fun finish(w: OpWorld, b: Bound) = b.args[book]?.let { w.readChapter(it, study) }.orEmpty()
+
+    override fun describe(w: OpWorld, b: Bound, forSale: Boolean): List<String> {
+        val id = b.args[book] ?: return emptyList()
+        val spec = w.content.book(id) ?: return emptyList()
+        val read = w.chaptersRead(id)
+        if (read >= spec.chapters.size) return listOf("rereads \"${spec.title}\" (you've finished it)")
+        val next = read + 1
+        return listOfNotNull(
+            "chapter $next of ${spec.chapters.size} of \"${spec.title}\"",
+            if (study) spec.skill.entries.joinToString { (skill, d) -> "$skill skill ${signed(d)}" } else null,
+            w.teaching(id)?.takeIf { next == spec.chapters.size }?.let { "finishing it teaches you $it" },
+        )
+    }
+}
+
+/** Raises his skills by [gains] when the verb finishes. The verb's mood and stimulation gains grow with these skills ([SkillRules]). */
+data class PracticeOp(val gains: Map<String, Double>) : Op() {
+    override val key get() = "practice"
+
+    override fun problems(c: BedroomContent, verb: VerbSpec) = gains.keys.filter { it !in c.vocabulary.skills }.map { "practice: '$it' isn't in vocabulary.skills" } +
+        gains.filterValues { it <= 0 }.keys.map { "practice: $it needs a positive gain" }
+
+    override fun finish(w: OpWorld, b: Bound) = gains.map { (skill, d) -> w.practise(skill, d) }
+
+    override fun describe(w: OpWorld, b: Bound, forSale: Boolean) = if (forSale) emptyList() else gains.map { (skill, d) -> "$skill skill ${signed(d)}" }
+}
+
+/**
  * What [Op]s need from the world. [BedroomWorld] implements it privately; nothing else should.
  * [count] and [take] work by id or affordance.
  */
@@ -211,6 +258,26 @@ internal interface OpWorld {
     val content: BedroomContent
 
     fun item(id: String): ItemSpec
+
+    /** What [item] is worth to him: [BedroomContent.value], with what his skills add to his affinities. */
+    fun value(item: ItemSpec): Double
+
+    /** What one [id] would sell for if he made it now, with his skill; null when it isn't sellable. */
+    fun priceOf(id: String): Int?
+
+    /** False for a verb or item a book teaches that he hasn't learned. */
+    fun knows(id: String): Boolean
+
+    fun chaptersRead(book: String): Int
+
+    /** Reads the next chapter of [book] ([ProgressOp]); returns the event's parts. */
+    fun readChapter(book: String, study: Boolean): List<String>
+
+    /** "to paint, and about the easel and canvas": what finishing [book] would teach him that he doesn't know; null for nothing. */
+    fun teaching(book: String): String?
+
+    /** Raises [skill] by [d]; returns the event text. */
+    fun practise(skill: String, d: Double): String
 
     /** How many owned items answer to [tag], plus one more [extra] if given ("what if he bought it"). */
     fun count(tag: String, extra: String? = null): Int
@@ -263,12 +330,12 @@ internal interface OpWorld {
  * [fresh] how fresh the habit was when it started (1 for a new or routine one). [extra]: for lock
  * reasons, as if he also owned that item.
  */
-internal class Bound(val verb: VerbSpec, val args: Map<String, String>, val fresh: Double, val extra: String? = null) {
+internal class Bound(val verb: VerbSpec, val args: Map<String, String>, val fresh: Double, val extra: String? = null, val skilled: Double = 1.0) {
     /** The item bound to [name] when it's an argument slot, otherwise [name] itself (an id or affordance); unbound, the slot's type. */
     fun resolve(name: String): String = args[name] ?: verb.args[name] ?: name
 
-    /** [d] as paid at [fresh]: gains in mood and stimulation shrink with wear; costs and other needs don't. */
-    fun paid(need: String, d: Double): Double = if (d > 0 && (need == Need.Mood.id || need == Need.Stimulation.id)) d * fresh else d
+    /** [d] as paid at [fresh] and [skilled]: gains in mood and stimulation shrink with wear and grow with skill; costs and other needs don't. */
+    fun paid(need: String, d: Double): Double = if (d > 0 && (need == Need.Mood.id || need == Need.Stimulation.id)) d * fresh * skilled else d
 
     /** "mood +2", rounded, as paid now. */
     fun shown(need: String, d: Double) = "$need ${signed(paid(need, d).roundToInt().toDouble())}"
@@ -298,12 +365,18 @@ internal data class OpEntry(
     val background: Background? = null,
     val sleep: NoParams? = null,
     val enjoy: String? = null,
+    val progress: Progress? = null,
+    val practice: Map<String, Double>? = null,
     val write: Write? = null,
     val draw: String? = null,
 ) {
     @Serializable
     @SerialName("write")
-    data class Write(val with: String, val into: List<String>, val timing: Timing = Timing.During, @SerialName("shows_as") val showsAs: String? = null)
+    data class Write(val with: String, val into: List<String>, val timing: Timing = Timing.During, @SerialName("shows_as") val showsAs: String? = null, val optional: Boolean = false)
+
+    @Serializable
+    @SerialName("progress")
+    data class Progress(val book: String, val study: Boolean = false)
 
     @Serializable
     @SerialName("set_state")
@@ -322,7 +395,8 @@ internal data class OpEntry(
         val set = listOfNotNull(
             need?.let(::NeedOp), rate?.let(::RateOp), consume?.let(::ConsumeOp), produce?.let(::ProduceOp), sell?.let(::SellOp),
             setState?.let { SetStateOp(it.target, it.state) }, background?.let { BackgroundOp(it.name, it.minutes, it.rates) },
-            sleep?.let { SleepOp }, enjoy?.let(::EnjoyOp), write?.let { WriteOp(it.with, it.into, it.timing, it.showsAs) }, draw?.let(::DrawOp),
+            sleep?.let { SleepOp }, enjoy?.let(::EnjoyOp), progress?.let { ProgressOp(it.book, it.study) }, practice?.let(::PracticeOp),
+            write?.let { WriteOp(it.with, it.into, it.timing, it.showsAs, it.optional) }, draw?.let(::DrawOp),
         )
         require(set.size == 1) { "an effect is one op, such as `- need: { mood: 2 }`; this one has ${if (set.isEmpty()) "none" else set.joinToString { it.key }}" }
         return set.single()
@@ -339,7 +413,9 @@ internal data class OpEntry(
             is BackgroundOp -> OpEntry(background = Background(op.name, op.minutes, op.rates))
             SleepOp -> OpEntry(sleep = NoParams())
             is EnjoyOp -> OpEntry(enjoy = op.what)
-            is WriteOp -> OpEntry(write = Write(op.with, op.into, op.timing, op.showsAs))
+            is ProgressOp -> OpEntry(progress = Progress(op.book, op.study))
+            is PracticeOp -> OpEntry(practice = op.gains)
+            is WriteOp -> OpEntry(write = Write(op.with, op.into, op.timing, op.showsAs, op.optional))
             is DrawOp -> OpEntry(draw = op.what)
         }
     }

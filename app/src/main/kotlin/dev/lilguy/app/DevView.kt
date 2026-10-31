@@ -636,16 +636,18 @@ class DevView(private val art: ArtTextures) : Disposable {
         if (life != null) {
             heading("NEEDS")
             barsTop = cursor + 6f
-            val levels = listOf("energy" to life.energy, "fullness" to life.fullness, "mood" to life.mood, "stimulation" to life.stimulation)
+            val levels = listOf("energy" to life.energy, "fullness" to life.fullness, "mood" to life.mood, "stimulation" to life.stimulation, "frustration" to life.frustration)
             levels.forEachIndexed { i, (name, value) ->
                 font.data.setScale(SMALL_SCALE)
-                font.color = if (value < LOW) FAILED else TEXT
+                font.color = if (bad(name, value)) FAILED else TEXT
                 val y = barsTop - i * BAR_PITCH
                 font.draw(batch, name, PANEL_X, y - 2)
                 font.draw(batch, value.toInt().toString(), BAR_X + BAR_WIDTH + 16f, y - 2)
             }
             cursor = barsTop - levels.size * BAR_PITCH - 6f
             line("mood settles toward ${life.moodTarget.toInt()}", SMALL_SCALE * 0.9f, MUTED, maxLines = 1)
+            if (life.skills.isNotEmpty()) line("skills " + life.skills.entries.joinToString(" · ") { (k, v) -> "$k $v" }, SMALL_SCALE * 0.9f, TEXT, maxLines = 1)
+            life.books.forEach { b -> line("\"${b.title}\" ${b.read}/${b.chapters} chapters" + (b.teaches?.let { " · teaches $it" } ?: ""), SMALL_SCALE * 0.85f, MUTED, maxLines = 1, gapAfter = 0f) }
 
             heading("DOING")
             val doing = life.doing
@@ -969,15 +971,18 @@ class DevView(private val art: ArtTextures) : Disposable {
 
     private fun plural(n: Int, what: String) = if (n == 1) "1 $what" else "$n ${what}s"
 
+    /** Low is bad for every need but frustration, where high is. */
+    private fun bad(need: String, value: Double) = if (need == "frustration") value > 100 - LOW else value < LOW
+
     private fun seconds(s: Float): String = if (s < 10) "%.1f".format(s) else s.toInt().toString()
 
     private fun drawNeedBars(life: LifeSnapshot) {
-        val needs = listOf(life.energy to ENERGY, life.fullness to FULLNESS, life.mood to MOOD, life.stimulation to STIMULATION)
+        val needs = listOf(life.energy to ENERGY, life.fullness to FULLNESS, life.mood to MOOD, life.stimulation to STIMULATION, life.frustration to FRUSTRATION)
         needs.forEachIndexed { i, (value, color) ->
             val y = barsTop - i * BAR_PITCH - BAR_HEIGHT
             shapes.color = BAR_BG
             shapes.rect(BAR_X, y, BAR_WIDTH, BAR_HEIGHT)
-            shapes.color = if (value < LOW) FAILED else color
+            shapes.color = if (bad(if (color == FRUSTRATION) "frustration" else "", value)) FAILED else color
             shapes.rect(BAR_X, y, BAR_WIDTH * (value / 100.0).toFloat().coerceIn(0f, 1f), BAR_HEIGHT)
         }
         // Where mood drifts to.
@@ -1097,6 +1102,7 @@ class DevView(private val art: ArtTextures) : Disposable {
         private val FULLNESS = Color.valueOf("4cd18aff")
         private val MOOD = Color.valueOf("5fd3e8ff")
         private val STIMULATION = Color.valueOf("c58ae0ff")
+        private val FRUSTRATION = Color.valueOf("e8795fff")
 
         private val TEXT = Color.valueOf("eef0f4ff")
         private val MUTED = Color.valueOf("8d95a5ff")

@@ -59,3 +59,4 @@ these hold the outcome. Skim this index before related changes.
 - 2026-10-31 [Affordances, qualities and affinities; every verb has a kind with a contract](2026-10-31-affordances-qualities-affinities-and-verb-kinds.md)
 - 2026-10-31 [Verbs are ops with arguments; authored ops share one lifecycle; think is a verb](2026-10-31-verbs-are-ops-with-arguments-authored-ops-and-think-is-a-verb.md)
 - 2026-10-31 [Memory redesign: no journal or wants; outcome events, day memories, a self-model, Jev-scored recall](2026-10-31-memory-redesign-outcomes-days-self-model-scored-recall.md)
+- 2026-10-31 [Knowledge and skill: books are read a chapter a session and teach what they hide; named skills pay off](2026-10-31-knowledge-and-skill-books-teach-skills-pay.md)

@@ -63,7 +63,9 @@ object Describe {
     /** How things stand, without the option lists: money, needs, what he holds and owns, what's playing. */
     fun state(obs: Observation): String = buildList {
         obs.money?.let { add("money $$it") }
-        obs.needs?.let { add("energy ${it.energy}, fullness ${it.fullness}, mood ${it.mood}, stimulation ${it.stimulation}") }
+        obs.needs?.let { add("energy ${it.energy}, fullness ${it.fullness}, mood ${it.mood}, stimulation ${it.stimulation}, frustration ${it.frustration}") }
+        obs.skills?.filterValues { it > 0 }?.takeIf { it.isNotEmpty() }?.let { s -> add("skills " + s.entries.joinToString { (k, v) -> "$k $v" }) }
+        obs.books?.takeIf { it.isNotEmpty() }?.let { b -> add("reading " + b.joinToString { "\"${it.title}\" ${it.read}/${it.chapters}" }) }
         obs.holding?.takeIf { it.isNotEmpty() }?.let { add("holding ${it.joinToString()}") }
         obs.owns?.takeIf { it.isNotEmpty() }?.let { o -> add("owns " + o.entries.joinToString { (k, v) -> if (v > 1) "$k x$v" else k }) }
         obs.music?.let { add("playing $it") }

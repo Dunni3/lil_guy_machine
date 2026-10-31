@@ -22,6 +22,8 @@ enum class TokenPurpose {
     @SerialName("decision") Decision,
     /** The think intent's thought. */
     @SerialName("think") Think,
+    /** What stuck with him from a chapter. */
+    @SerialName("reading") Reading,
     /** A memory: a stretch of events (level 1) or a day (level 2). */
     @SerialName("summary") Summary,
     /** A drawing, or the day's commission. */

@@ -83,6 +83,12 @@
                     "integer",
                     "null"
                   ]
+                },
+                "skill": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 }
               },
               "additionalProperties": false

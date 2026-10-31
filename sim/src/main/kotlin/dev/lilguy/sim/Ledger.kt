@@ -61,14 +61,17 @@ enum class Need {
     @SerialName("mood") Mood,
 
     /** Low means bored; new things and hobbies feed it, repeating the same thing drains it. */
-    @SerialName("stimulation") Stimulation;
+    @SerialName("stimulation") Stimulation,
+
+    /** High means frustrated: failures raise it, successes and rest bring it down, and it fades on its own. */
+    @SerialName("frustration") Frustration;
 
     val id: String get() = name.lowercase()
 }
 
 /**
- * Needs as the agent sees them: whole numbers from 0 to 100. [stimulation] has a default so
- * content and logs written before it existed still load; it is always written out.
+ * Needs as the agent sees them: whole numbers from 0 to 100. [stimulation] and [frustration] have
+ * defaults so content and logs written before they existed still load; they are always written out.
  */
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
@@ -77,12 +80,14 @@ data class NeedLevels(
     val fullness: Int,
     val mood: Int,
     @EncodeDefault val stimulation: Int = 60,
+    @EncodeDefault val frustration: Int = 0,
 ) {
     operator fun get(need: Need): Int = when (need) {
         Need.Energy -> energy
         Need.Fullness -> fullness
         Need.Mood -> mood
         Need.Stimulation -> stimulation
+        Need.Frustration -> frustration
     }
 }
 
@@ -104,7 +109,7 @@ data class NeedChange(
 )
 
 /**
- * Energy, fullness, mood and stimulation, each kept as a double from 0 to 100 and changed only through
+ * Energy, fullness, mood, stimulation and frustration, each kept as a double from 0 to 100 and changed only through
  * [change], which clamps and logs. Call [flush] at each game hour to write the hour's rate changes.
  */
 class Needs(start: NeedLevels, private val clock: GameClock) {
@@ -117,7 +122,7 @@ class Needs(start: NeedLevels, private val clock: GameClock) {
 
     operator fun get(need: Need): Double = values[need.ordinal]
 
-    fun levels() = NeedLevels(level(Need.Energy), level(Need.Fullness), level(Need.Mood), level(Need.Stimulation))
+    fun levels() = NeedLevels(level(Need.Energy), level(Need.Fullness), level(Need.Mood), level(Need.Stimulation), level(Need.Frustration))
 
     /** What the agent sees. Rounded down, so "0" means really empty and "100" really full. */
     fun level(need: Need): Int = this[need].toInt()

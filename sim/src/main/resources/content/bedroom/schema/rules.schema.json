@@ -36,7 +36,8 @@
                   "energy",
                   "fullness",
                   "mood",
-                  "stimulation"
+                  "stimulation",
+                  "frustration"
                 ]
               },
               "below": {
@@ -70,6 +71,12 @@
         },
         "bored_mood": {
           "type": "number"
+        },
+        "asleep_fullness_per_hour": {
+          "type": [
+            "number",
+            "null"
+          ]
         }
       },
       "required": [
@@ -130,6 +137,69 @@
           "type": "null"
         }
       ]
+    },
+    "frustration": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "per_failure": {
+              "type": "number"
+            },
+            "per_success": {
+              "type": "number"
+            },
+            "per_hour": {
+              "type": "number"
+            },
+            "above": {
+              "type": "number"
+            },
+            "mood": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "per_failure",
+            "per_success",
+            "per_hour",
+            "above",
+            "mood"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "skills": {
+      "type": "object",
+      "properties": {
+        "gain_per_level": {
+          "type": "number"
+        },
+        "price_per_level": {
+          "type": "number"
+        },
+        "affinity_per_level": {
+          "type": "number"
+        },
+        "deepens": {
+          "type": "object",
+          "propertyNames": {
+            "enum": [
+              "art",
+              "music",
+              "nature"
+            ]
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
     },
     "shop": {
       "type": "object",

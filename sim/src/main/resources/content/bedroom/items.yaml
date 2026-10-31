@@ -12,16 +12,22 @@ items:
   - { id: chair, name: chair, group: furniture, slot: chair }
   - { id: sketchbook, name: sketchbook, group: tool }
   - { id: meal, name: meal, group: food, affords: { edible: {} }, price: 24, pack: 3, stackable: true }
+  # Painting is learned: drawing_book teaches paint, the easel and canvas (library.yaml).
   - { id: canvas, name: canvas, group: supply, price: 15, stackable: true }
   - { id: easel, name: easel, group: furniture, slot: easel, blocks: true, price: 17 }
   - { id: record_player, name: record player, group: furniture, slot: shelf, blocks: true, price: 150 }
   - { id: jazz_record, name: jazz record, group: record, affords: { playable: {} }, qualities: { lively: 2, warm: 1 }, price: 20 }
   - { id: ambient_record, name: ambient record, group: record, affords: { playable: {} }, qualities: { calm: 2, strange: 1 }, price: 20 }
   - { id: folk_record, name: folk record, group: record, affords: { playable: {} }, qualities: { warm: 2, natural: 1 }, price: 20 }
-  # Books carry qualities for when he reads a particular one (the library, step 3); `read` doesn't know which yet.
+  # Books: what each one is (chapters, skills, what it teaches) is in library.yaml. Their qualities
+  # are paid when he reads one (`enjoy`).
   - { id: novel, name: novel, group: book, affords: { readable: {} }, qualities: { strange: 2, warm: 1 }, price: 12 }
   - { id: poetry_book, name: poetry book, group: book, affords: { readable: {} }, qualities: { pretty: 2, calm: 1 }, price: 12 }
   - { id: field_guide, name: field guide, group: book, affords: { readable: {} }, qualities: { natural: 2, bright: 1 }, price: 12 }
+  - { id: drawing_book, name: drawing book, group: book, affords: { readable: {} }, qualities: { pretty: 1, bright: 1 }, price: 14 }
+  - { id: music_book, name: music book, group: book, affords: { readable: {} }, qualities: { lively: 1, warm: 1 }, price: 12 }
+  # Taught by music_book.
+  - { id: guitar, name: guitar, group: instrument, price: 45 }
   # Decor: in view, its qualities raise comfort.
   - { id: plant, name: plant, group: decor, slot: plant, blocks: true, price: 25, affords: { viewable: {} }, qualities: { natural: 2, calm: 2 } }
   - { id: poster, name: poster, group: decor, slot: poster, blocks: true, price: 15, affords: { viewable: {} }, qualities: { bright: 2, pretty: 1 } }
@@ -30,16 +36,16 @@ items:
   # wide, up to `colors` crayons and `strokes` strokes, each two picks (which stroke, then which
   # crayon) by the model that decides for him, so strokes is what a piece costs in calls. Painting's
   # bigger canvas is what the easel buys him. Hung art's comfort is the gallery's, since what a piece is like is whatever
-  # he drew.
+  # he drew. A piece's price grows with his art skill when he made it (`sellable: { skill }`).
   - id: sketch
     name: sketch
     group: art
     carried: true
     stackable: true
-    affords: { sellable: { price: 3 }, hangable: {}, viewable: {}, drawable: { size: 16, colors: 4, strokes: 6 } }
+    affords: { sellable: { price: 3, skill: art }, hangable: {}, viewable: {}, drawable: { size: 16, colors: 4, strokes: 6 } }
   - id: painting
     name: painting
     group: art
     carried: true
     stackable: true
-    affords: { sellable: { price: 70 }, hangable: {}, viewable: {}, drawable: { size: 32, colors: 16, strokes: 12 } }
+    affords: { sellable: { price: 30, skill: art }, hangable: {}, viewable: {}, drawable: { size: 32, colors: 16, strokes: 12 } }

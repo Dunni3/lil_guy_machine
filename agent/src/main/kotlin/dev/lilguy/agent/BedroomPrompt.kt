@@ -10,7 +10,10 @@ import dev.lilguy.sim.GridWorld
 import dev.lilguy.sim.Intent
 import dev.lilguy.sim.IntentStatus
 import dev.lilguy.sim.Observation
+import dev.lilguy.sim.PracticeOp
 import dev.lilguy.sim.ProduceOp
+import dev.lilguy.sim.ProgressOp
+import dev.lilguy.sim.RateOp
 import dev.lilguy.sim.SellOp
 import dev.lilguy.sim.SetStateOp
 import dev.lilguy.sim.Target
@@ -84,7 +87,41 @@ object BedroomPrompt {
         val r = content.needs
         if (r.stimulationPerHour >= 0) return ""
         val drag = if (r.bored > 0 && r.boredMood > 0) " Below ${r.bored.toInt()} you're bored, and it drags the mood you settle to down, up to ${(r.bored * r.boredMood).toInt()} lower at 0." else ""
-        return " Stimulation falls ${(-r.stimulationPerHour).toInt()} an hour while you're awake; hobbies, making things and anything new bring it back.$drag"
+        return " Stimulation falls ${num(-r.stimulationPerHour)} an hour while you're awake; hobbies, making things and anything new bring it back.$drag"
+    }
+
+    /** " Frustration rises 10 when something you try fails ...", or empty without frustration. */
+    private fun frustrationRule(content: BedroomContent): String {
+        val f = content.frustration ?: return ""
+        val sleep = if (content.verbs.any { v -> v.ops<RateOp>().any { (it.perHour["frustration"] ?: 0.0) < 0 } && v.effects.any { !it.awake } }) " and faster while you sleep" else ""
+        return " Frustration rises ${f.perFailure.toInt()} when something you try fails, falls ${(-f.perSuccess).toInt()} each time you finish something, and fades ${(-f.perHour).toInt()} an hour$sleep; above ${f.above.toInt()} it drags the mood you settle to down."
+    }
+
+    /**
+     * The learning line: skills, practice and books, or null when the content has no skills or books.
+     * Only what he knows is named: [content] is the known part.
+     */
+    private fun learningHint(content: BedroomContent): String? {
+        // Only skills something he knows raises: a practice op, or a book's study.
+        val raised = content.verbs.flatMap { v -> v.ops<PracticeOp>().flatMap { it.gains.keys } } + content.books.flatMap { it.skill.keys }
+        val skills = content.vocabulary.skills.filter { it in raised }
+        if (skills.isEmpty() && content.books.isEmpty()) return null
+        val parts = buildList {
+            if (skills.isNotEmpty()) {
+                val practice = content.verbs.filter { it.ops<PracticeOp>().isNotEmpty() }.map { it.id }
+                val study = content.verbs.filter { v -> v.ops<ProgressOp>().any { it.study } }.map { it.id }
+                val by = listOfNotNull(practice.takeIf { it.isNotEmpty() }?.joinToString(", "), study.takeIf { it.isNotEmpty() }?.let { "${it.joinToString(" or ")} a book" }).joinToString(" and ")
+                val r = content.skills
+                val pays = listOfNotNull(
+                    if (r.gainPerLevel > 0) "what you do with a skill gives ${(r.gainPerLevel * 100).toInt()}% more mood and stimulation per level" else null,
+                    if (r.pricePerLevel > 0 && content.items.any { it.sellSkill != null }) "your art sells for ${(r.pricePerLevel * 100).toInt()}% more per level of art skill you had when you made it" else null,
+                    r.deepens.entries.filter { it.key in skills }.takeIf { r.affinityPerLevel > 0 && it.isNotEmpty() }?.let { d -> "knowing more about " + d.joinToString(" and ") { (s, q) -> "$s makes $q things mean more to you" } },
+                ).joinToString("; ")
+                add("you have skills (${skills.joinToString(", ")}, in `skills`), each from 0 with no limit" + (if (by.isNotEmpty()) ", raised by $by" else "") + (if (pays.isNotEmpty()) ": $pays." else "."))
+            }
+            if (content.books.isNotEmpty()) add("A book is read a chapter at a time, one a session, and `books` shows how far you are. Finishing one can teach you things you don't know yet, which then show up in `activities` and `shop`; the shop says what a book teaches.")
+        }
+        return "- Learning: " + parts.joinToString(" ")
     }
 
     /** The variety line of the prompt: novelty and habituation, or null when the content has neither. */
@@ -93,7 +130,7 @@ object BedroomPrompt {
             content.novelty?.let { n -> add("The first time you do something it gives " + n.effects.entries.joinToString(" and ") { (need, d) -> "${d.toInt()} $need" } + " on top.") }
             content.habituation?.let { h ->
                 val stale = if (h.staleStimulation < 0) ", and doing something you've worn thin costs stimulation" else ""
-                add("Doing the same thing again gives less: each time you finish it, its mood and stimulation gains drop ${(h.perRepeat * 100).toInt()}%, coming back ${(h.recoverPerHour * 100).toInt()}% an hour$stale.")
+                add("Doing the same thing again gives less: each time you finish it, its mood and stimulation gains drop ${num(h.perRepeat * 100)}%, coming back ${num(h.recoverPerHour * 100)}% an hour$stale.")
                 val routine = content.verbs.filter { it.isRoutine }.map { it.phrase ?: it.id }
                 if (routine.isNotEmpty()) add("Routine things (${routine.joinToString(", ")}) don't wear thin.")
             }
@@ -124,8 +161,10 @@ object BedroomPrompt {
         val actions = examples(content, ticksPerMinute).joinToString("\n") { (intent, what) ->
             "- ${PromptBuilder.tag(intent)}: $what\n  ${PromptBuilder.exampleJson.encodeToString(Intent.serializer(), intent)}"
         }
-        val art = content.items.filter { it.sellPrice != null }.joinToString(" and ") { "a ${it.name} sells for $${it.sellPrice}" }
         val makers = content.verbs.filter { it.ops<ProduceOp>().isNotEmpty() }.map { it.id }
+        val made = content.verbs.flatMap { v -> v.ops<ProduceOp>().flatMap { it.items.keys } }.toSet()
+        val art = content.items.filter { it.sellPrice != null && it.id in made }.joinToString(" and ") { "a ${it.name} sells for $${it.sellPrice}" } +
+            if (content.items.any { it.sellSkill != null } && content.skills.pricePerLevel > 0) ", more as your skill grows" else ""
         val work = content.verbs.filter { it.work }.joinToString(", ") { it.id }
         val floor = r.workFloor.joinToString(" or ") { "${it.need} is below ${it.below?.toInt()}" }
         val sellAt = content.verbs.firstOrNull { it.ops<SellOp>().isNotEmpty() }
@@ -148,9 +187,10 @@ object BedroomPrompt {
         val music = if (content.verbs.any { it.ops<BackgroundOp>().isNotEmpty() }) " music: what's playing, if anything." else ""
         val life = listOfNotNull(
             "- Time: the clock shows the day and the time. Activities take game minutes or hours, and you choose again when one finishes.",
-            "- Needs, each from 0 to 100. Energy falls ${-r.awakeEnergyPerHour.toInt()} an hour while you're awake and comes back while you sleep. Fullness falls ${-r.fullnessPerHour.toInt()} an hour; eating brings it back.${stimulationRule(content)} $mood Below ${r.low.toInt()} energy or fullness, mood falls ${-r.lowMoodPerHour.toInt()} an hour instead.$sinking When $floor you can't work ($work).",
+            "- Needs, each from 0 to 100. Energy falls ${-r.awakeEnergyPerHour.toInt()} an hour while you're awake and comes back while you sleep. Fullness falls ${-r.fullnessPerHour.toInt()} an hour${r.asleepFullnessPerHour?.let { " (${(-it).toInt()} asleep)" }.orEmpty()}; eating brings it back.${stimulationRule(content)}${frustrationRule(content)} $mood Below ${r.low.toInt()} energy or fullness, mood falls ${-r.lowMoodPerHour.toInt()} an hour instead.$sinking When $floor you can't work ($work).",
             "- Money: ${makers.joinToString(" and ")} make${if (makers.size > 1) "" else "s"} art, and ${sellAt?.id ?: "selling"} sells everything you hold through the $hatch: $art. The shop delivers through the $hatch, and you pay when it arrives.",
             varietyHint(content),
+            learningHint(content),
             artHint(content),
             reflectionHint(content),
             "- $lists",
@@ -170,8 +210,8 @@ object BedroomPrompt {
             |Reply with a JSON object {"thought": ..., "intent": ...}. "thought" is your reasoning in a sentence or two; "intent" is the one action to take now. Use only ids from the observation.
             |
             |The observation is JSON:
-            |- clock: day and time. money: dollars. needs: ${if (r.stimulationPerHour < 0) "energy, fullness, mood and stimulation" else "energy, fullness and mood"}, 0 to 100.
-            |- holding: art you're carrying, to sell. owns: everything else you own, id to count.$music
+            |- clock: day and time. money: dollars. needs: ${needNames(content).let { it.dropLast(1).joinToString(", ") + " and " + it.last() }}, 0 to 100.
+            |- holding: art you're carrying, to sell. owns: everything else you own, id to count.$music${if (content.vocabulary.skills.isNotEmpty()) "\n            |- skills: your skills, name to level." else ""}${if (content.books.isNotEmpty()) "\n            |- books: the books you own, how many chapters you've read of how many, what studying one raises, and what finishing it would teach you." else ""}
             |- art: the pieces you have made and still have, held to sell or hung on your wall, with their titles. commission: today's request for a piece, if one is open.
             |- $options: your options, as above.
             |- self and nearby: where you are and the furniture around you, with tile x and y. localMap: the room, one string per row, north at the top.
@@ -250,6 +290,15 @@ object BedroomPrompt {
                     put("fullness", n.fullness)
                     put("mood", n.mood)
                     if (content.needs.stimulationPerHour < 0) put("stimulation", n.stimulation)
+                    if (content.frustration != null) put("frustration", n.frustration)
+                }
+            }
+            obs.skills?.let { s -> putJsonObject("skills") { s.forEach { (k, v) -> put(k, v) } } }
+            obs.books?.let { books ->
+                putJsonArray("books") {
+                    books.forEach { b ->
+                        add("${b.id} \"${b.title}\": read ${b.read} of ${b.chapters} chapters" + (b.raises?.let { "; studying raises ${it.joinToString(" and ")}" } ?: "") + (b.teaches?.let { "; finishing it teaches you $it" } ?: ""))
+                    }
                 }
             }
             putJsonArray("holding") { obs.holding.orEmpty().forEach { add(it) } }
@@ -301,6 +350,13 @@ object BedroomPrompt {
             options = options,
         )
     }
+
+    /** "5.5", "3". */
+    private fun num(d: Double): String = if (d == d.toLong().toDouble()) d.toLong().toString() else "%.1f".format(d)
+
+    /** The needs the observation shows, as the content uses them. */
+    private fun needNames(content: BedroomContent): List<String> =
+        listOf("energy", "fullness", "mood") + listOfNotNull(if (content.needs.stimulationPerHour < 0) "stimulation" else null, if (content.frustration != null) "frustration" else null)
 
     private val json = Json { encodeDefaults = true; explicitNulls = true }
 

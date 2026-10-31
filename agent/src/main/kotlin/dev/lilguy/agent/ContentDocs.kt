@@ -7,6 +7,8 @@ import dev.lilguy.sim.Affordance
 import dev.lilguy.sim.AuthoredOp
 import dev.lilguy.sim.AffordanceParams
 import dev.lilguy.sim.BedroomContent
+import dev.lilguy.sim.BookSpec
+import dev.lilguy.sim.SkillRules
 import dev.lilguy.sim.ItemSpec
 import dev.lilguy.sim.Need
 import dev.lilguy.sim.NeedBlock
@@ -48,8 +50,10 @@ object ContentDocs {
         "set_state" to OpDoc("set_state: { target: hangable, state: hung }", "at the finish", "Puts his newest held piece answering to the target into a state. The one state is `hung`: on the picture rail, adding the gallery's comfort."),
         "background" to OpDoc("background: { name: music, minutes: 45, rates: { mood: 2 } }", "at the finish, then each minute", "Starts something that keeps going while he does anything else, playing the item bound to `what`."),
         "sleep" to OpDoc("sleep: {}", "while it runs", "He's asleep: no awake drain of energy or stimulation."),
-        "enjoy" to OpDoc("enjoy: what", "at the finish", "Pays the bound item's value to him (qualities times affinities) as mood, scaled by freshness."),
-        "write" to OpDoc("write: { with: thought, into: [events, short_term], timing: before, shows_as: plan }", "before or during; kept at the finish", "Authored: a model writes it (handler `thought`) into the named destinations, kept only if the verb succeeds. `shows_as: plan` makes a short-term result his plan in later prompts. Without a handler the verb isn't offered."),
+        "enjoy" to OpDoc("enjoy: what", "at the finish", "Pays the bound item's value to him (qualities times affinities, plus what his skills add) as mood, scaled by freshness."),
+        "progress" to OpDoc("progress: { book: what, study: true }", "at the finish", "Reads the next chapter of the book bound to the argument (library.yaml). Finishing the last chapter teaches him what the book teaches. `study: true` also raises the book's skills, and is locked once the book is finished or when it has no skill; reading a finished book rereads it."),
+        "practice" to OpDoc("practice: { art: 0.2 }", "at the finish", "Raises skills (vocabulary.yaml). The verb's mood and stimulation gains grow with the skills it practises (rules.yaml `skills`)."),
+        "write" to OpDoc("write: { with: thought, into: [events, short_term], timing: before, shows_as: plan }", "before or during; kept at the finish", "Authored: a model writes it (handler `thought`, or `reading` for what stuck from a chapter) into the named destinations, kept only if the verb succeeds. `shows_as: plan` makes a short-term result his plan in later prompts. Without a handler the verb isn't offered, unless the write is `optional: true`."),
         "draw" to OpDoc("draw: sketch", "during; kept at the finish", "Authored: the drawing model draws a drawable item the verb produced (listed after its produce); the piece gets its title and tags. Without an artist the piece is made undrawn."),
     )
 
@@ -80,11 +84,17 @@ object ContentDocs {
                 "$item.blocks" to "He stands beside it, not on it.",
                 "$item.carried" to "Carried in his hands (art) rather than kept in the room.",
                 "$content.reflection" to "A verb the agent loop makes him do every so often, without asking the decision model.",
+                "$content.books" to "What the readable items are as books: chapters (one a session), skills studying raises, and what finishing one teaches.",
+                "${BookSpec.serializer().descriptor.serialName}.teaches" to "Verb and item ids that aren't in his world until he finishes the book.",
+                "${BookSpec.serializer().descriptor.serialName}.chapters" to "One sentence each, of what happens in it; he reads one a session.",
+                "${BookSpec.serializer().descriptor.serialName}.skill" to "Skill to how much studying one chapter raises it.",
+                "write.optional" to "The verb still makes sense without this write, so it's offered when no handler is configured.",
             ),
             enums = mapOf(
                 "${NeedBlock.serializer().descriptor.serialName}.need" to needs,
                 "set_state.state" to SetStateOp.STATES,
                 "$op.enjoy" to VerbSpec.SLOTS,
+                "progress.book" to VerbSpec.SLOTS,
                 "write.with" to AuthoredOp.HANDLERS.keys.filter { it != "draw" },
                 "write.shows_as" to AuthoredOp.SHOWS_AS,
             ),
@@ -98,6 +108,9 @@ object ContentDocs {
                 "$item.affords" to c.vocabulary.affords,
                 "$item.qualities" to c.vocabulary.qualities,
                 "${Personality.serializer().descriptor.serialName}.affinities" to c.vocabulary.qualities,
+                "$op.practice" to c.vocabulary.skills,
+                "${BookSpec.serializer().descriptor.serialName}.skill" to c.vocabulary.skills,
+                "${SkillRules.serializer().descriptor.serialName}.deepens" to c.vocabulary.skills,
             ),
             exactlyOne = setOf(op),
         )
@@ -211,6 +224,22 @@ object ContentDocs {
             listOf("Quality", "His affinity (default)", "Items"),
             c.vocabulary.qualities.map { q -> listOf(code(q), flow(JsonPrimitive(c.personality.affinity(q))), c.items.filter { q in it.qualities }.joinToString(" ") { code(it.id) + " " + flow(JsonPrimitive(it.qualities.getValue(q))) }) },
         )
+        val skills = table(
+            listOf("Skill", "Practised by", "Studied in", "Raises prices of", "Deepens"),
+            c.vocabulary.skills.map { s ->
+                listOf(
+                    code(s),
+                    verbs.filter { v -> v.effects.any { it is dev.lilguy.sim.PracticeOp && s in it.gains } }.joinToString(" ") { code(it.id) },
+                    c.books.filter { s in it.skill }.joinToString(" ") { code(it.id) },
+                    c.items.filter { it.sellSkill == s }.joinToString(" ") { code(it.id) },
+                    c.skills.deepens[s]?.let(::code).orEmpty(),
+                )
+            },
+        )
+        val books = table(
+            listOf("Book", "Title", "Chapters", "Studying raises", "Finishing teaches"),
+            c.books.map { b -> listOf(code(b.id), esc(b.title), "${b.chapters.size}", b.skill.entries.joinToString(", ") { (s, d) -> "$s ${flow(JsonPrimitive(d))}" }, b.teaches.joinToString(" ") { code(it) }) },
+        )
         return """
             |<!doctype html>
             |<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -235,6 +264,7 @@ object ContentDocs {
             |<li><b>Items</b> are rows in items.yaml. What can be done with one is its <b>affordances</b>; what it's like to him is its <b>qualities</b>. Both come from the closed lists in vocabulary.yaml. An item's value to him is each quality's strength times his affinity for it (personality.yaml).</li>
             |<li><b>Verbs</b> are rows in verbs.yaml. A verb can take <b>arguments</b> (<code>what</code>, <code>on</code>), each filled by an item he owns that answers to an id or affordance: <code>read</code> takes a readable thing. Preconditions and timing are fields (<code>args</code>, <code>at</code>, <code>requires</code>, <code>block</code>, <code>minutes</code> or <code>until</code>, <code>work</code>). What a verb does is <code>effects</code>, a list of <b>ops</b>, run in order; an op can name an argument (<code>enjoy: what</code>).</li>
             |<li>Every verb has a <b>kind</b>, a contract on which ops it may and must use. An op no kind allows is refused everywhere.</li>
+            |<li><b>Books</b> are rows in library.yaml, one per readable item: he reads one a chapter a session (<code>progress</code>). Studying raises its skills; finishing it teaches him verbs and items that aren't in his world until then. <b>Skills</b> (vocabulary.yaml) also rise with <code>practice</code>, and make a verb's gains, a piece's price and his affinity for a quality grow (rules.yaml <code>skills</code>).</li>
             |<li><b>A new item</b> is one row; it works at once with every verb that asks for one of its affordances. <b>A new verb</b> is one row built from existing ops within its kind. <b>A new op</b> is one class in Ops.kt (checks, lock reason, apply, prompt text), a field in its <code>OpEntry</code>, a line in <code>ContentDocs.OPS</code>, and a kind that allows it.</li>
             |</ul>
             |
@@ -255,6 +285,12 @@ object ContentDocs {
             |
             |<h2>Qualities</h2>
             |$qualities
+            |
+            |<h2>Skills</h2>
+            |$skills
+            |
+            |<h2>Books</h2>
+            |$books
             |</body></html>
             |""".trimMargin()
     }

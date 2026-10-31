@@ -23,6 +23,7 @@ import dev.lilguy.agent.art.Painter
 import dev.lilguy.agent.memory.MemoryScorer
 import dev.lilguy.agent.memory.SelfModeler
 import dev.lilguy.agent.memory.SelfRevision
+import dev.lilguy.agent.memory.Reader
 import dev.lilguy.agent.memory.Thinker
 import dev.lilguy.agent.memory.MemoryStore
 import dev.lilguy.agent.memory.Summarizer
@@ -166,7 +167,7 @@ private data class BedroomResult(
     val days: List<DaySummary>,
     /** Lowest level of each need over the run, checked every tick. */
     val lowest: Map<String, Double>,
-    /** Ticks with energy, fullness or mood at 0 (stimulation at 0 is just bored). */
+    /** Ticks with energy, fullness or mood at 0 (stimulation at 0 is just bored, and frustration at 0 is good). */
     @SerialName("ticks_at_zero") val ticksAtZero: Long,
     @SerialName("money_end") val moneyEnd: Int,
     val bought: List<String>,
@@ -296,6 +297,7 @@ fun main(argv: Array<String>) {
                     if (!quiet) printSelf(r)
                 },
                 thinker = writerModel?.let { Thinker(ledger.meter(it, TokenPurpose.Think, priceOf(writerEndpoint!!))) },
+                reader = writerModel?.takeIf { scenario == Scenario.Bedroom }?.let { Reader(ledger.meter(it, TokenPurpose.Reading, priceOf(writerEndpoint!!))) },
             )
         }
         try {
@@ -401,7 +403,7 @@ private fun runOnce(
             printed = world.tick
             if (bedroom != null) {
                 Need.entries.forEach { lowest[it] = minOf(lowest.getValue(it), bedroom.needs[it]) }
-                if (Need.entries.any { it != Need.Stimulation && bedroom.needs[it] <= 0.0 }) ticksAtZero++
+                if (Need.entries.any { it != Need.Stimulation && it != Need.Frustration && bedroom.needs[it] <= 0.0 }) ticksAtZero++
                 if (bedroom.clock.isMinuteStart(world.tick) && bedroom.clock.minuteOfDay(world.tick) % 60 == 0) hours += BedroomReport.sample(bedroom)
             }
         }

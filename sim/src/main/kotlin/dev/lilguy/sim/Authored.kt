@@ -26,6 +26,7 @@ sealed interface AuthoredOp {
         /** Every handler, with the destinations it can write to. */
         val HANDLERS: Map<String, Set<String>> = linkedMapOf(
             "thought" to setOf("events", "short_term"),
+            "reading" to setOf("events"),
             "draw" to setOf("pieces", "events"),
         )
 
@@ -48,13 +49,14 @@ enum class Timing {
 }
 
 /**
- * A model writes something: [with] names the handler (`thought`), [into] where it goes.
- * [showsAs]: `plan` puts a short-term result in every later prompt as his plan.
+ * A model writes something: [with] names the handler (`thought`, `reading`), [into] where it goes.
+ * [showsAs]: `plan` puts a short-term result in every later prompt as his plan. [optional]: the
+ * verb still makes sense without it (reading a chapter), so it's offered with no handler.
  */
-data class WriteOp(val with: String, override val into: List<String>, override val timing: Timing = Timing.During, val showsAs: String? = null) : Op(), AuthoredOp {
+data class WriteOp(val with: String, override val into: List<String>, override val timing: Timing = Timing.During, val showsAs: String? = null, val optional: Boolean = false) : Op(), AuthoredOp {
     override val key get() = "write"
     override val handler get() = with
-    override val essential get() = true
+    override val essential get() = !optional
 
     override fun problems(c: BedroomContent, verb: VerbSpec): List<String> {
         val can = AuthoredOp.HANDLERS[with]?.takeIf { with != "draw" } ?: return listOf("write: no handler '$with'; use ${AuthoredOp.HANDLERS.keys.filter { it != "draw" }.joinToString(" or ")}")
