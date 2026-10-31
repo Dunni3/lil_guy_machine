@@ -66,19 +66,39 @@ class CrayonCanvas(val width: Int, val height: Int, private val scale: Float = 1
         for (i in cover.indices) if (cover[i] > 0f) blend(i, c, alpha * cover[i])
     }
 
+    /** An axis-aligned rectangle filled, with fractional coverage at its edges (cheaper than [fillPath] on a big canvas). */
+    fun fillRect(x: Float, y: Float, w: Float, h: Float, c: Color, alpha: Float = 1f) {
+        val l = (x - ox) * scale
+        val t = (y - oy) * scale
+        val r = l + w * scale
+        val b = t + h * scale
+        for (py in max(0, floor(t).toInt())..min(height - 1, ceil(b).toInt() - 1)) {
+            val cy = (min(b, py + 1f) - max(t, py.toFloat())).coerceIn(0f, 1f)
+            for (px in max(0, floor(l).toInt())..min(width - 1, ceil(r).toInt() - 1)) {
+                val cx = (min(r, px + 1f) - max(l, px.toFloat())).coerceIn(0f, 1f)
+                blend(py * width + px, c, alpha * cx * cy)
+            }
+        }
+    }
+
     fun clip(pts: FloatArray) { mask = coverage(pts) }
 
     fun clipRect(x: Float, y: Float, w: Float, h: Float) = clip(floatArrayOf(x, y, x + w, y, x + w, y + h, x, y + h))
 
     fun unclip() { mask = null }
 
-    fun texture(): Texture {
+    /**
+     * The picture as a texture; [repeat] wraps it (for tiling), and [mipmaps] gives it mip levels,
+     * for a big surface seen smaller than it's painted (both need a power-of-two size on GLES2).
+     */
+    fun texture(repeat: Boolean = false, mipmaps: Boolean = false): Texture {
         val p = Pixmap(width, height, Pixmap.Format.RGBA8888)
         val buf = p.pixels
         for (v in px) buf.put((v.coerceIn(0f, 1f) * 255f + 0.5f).toInt().toByte())
         buf.position(0)
-        return Texture(p).also {
-            it.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear)
+        return Texture(p, mipmaps).also {
+            it.setFilter(if (mipmaps) Texture.TextureFilter.MipMapLinearNearest else Texture.TextureFilter.Linear, Texture.TextureFilter.Linear)
+            if (repeat) it.setWrap(Texture.TextureWrap.Repeat, Texture.TextureWrap.Repeat)
             p.dispose()
         }
     }

@@ -1,20 +1,13 @@
 package dev.lilguy.app
 
-import com.badlogic.gdx.Gdx
-import com.badlogic.gdx.graphics.Camera
 import com.badlogic.gdx.graphics.Color
-import com.badlogic.gdx.graphics.GL20
-import com.badlogic.gdx.graphics.Mesh
 import com.badlogic.gdx.graphics.Texture
-import com.badlogic.gdx.graphics.VertexAttribute
 import com.badlogic.gdx.math.MathUtils
-import com.badlogic.gdx.math.Matrix3
 import com.badlogic.gdx.math.Matrix4
 import com.badlogic.gdx.math.Vector3
 import com.badlogic.gdx.utils.Disposable
 import kotlin.math.abs
 import kotlin.math.cos
-import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
 
@@ -28,8 +21,8 @@ import kotlin.math.sqrt
  * What drives him is sim state only ([Pose]): needs pick the expression and how he breathes; walking
  * hops him with squash and stretch; the activity under way picks a pose.
  *
- * He draws himself with his own shaders, after the room's [com.badlogic.gdx.graphics.g3d.ModelBatch]
- * has flushed ([render]); the room's light only tints him, since the shading is fixed to the camera.
+ * His parts are [CrayonModel]s from his own geometry (the tater body, lumpy limbs), queued on the
+ * room's [CrayonRenderer] each frame ([render]) with his face as the body's overlay.
  */
 class Blob : Disposable {
     enum class Face { Neutral, Happy, Sad, Tired, Thinking, Asleep }
@@ -50,22 +43,20 @@ class Blob : Disposable {
         var standY = 0f
     }
 
-    /** One drawn part: its mesh, its three outline hulls (one per boil frame), its colour (linear). */
-    private class Part(val mesh: Mesh, val hulls: List<Mesh>, val color: Color, val textured: Boolean) {
+    /** One moving part: its model and where it is this frame. */
+    private class Limb(val model: CrayonModel) {
         val transform = Matrix4()
     }
 
-    private val shaders = CrayonShaders()
     private val measure: BodyMeasure
-    private val body: Part
-    private val arms: List<Part>
-    private val feet: List<Part>
-    private val parts: List<Part>
+    private val body: Limb
+    private val arms: List<Limb>
+    private val feet: List<Limb>
+    private val parts: List<Limb>
     private val grain: Texture
     /** By face, then blink (0 open, 1 shut), then boil frame. */
     private val faces: List<List<List<Texture>>>
-    private val shadowMesh: Mesh
-    private val shadowTexture: Texture
+    private val face = CrayonRenderer.Overlay(null, floatArrayOf(FACE_X / DESIGN_W, FACE_Y / DESIGN_H, FACE_W / DESIGN_W, FACE_H / DESIGN_H))
     private val shadowTransform = Matrix4()
     private val shadowWidth: Float
 
@@ -80,7 +71,7 @@ class Blob : Disposable {
     private var lie = 0f
 
     /** The current expression, after blinking. */
-    var face = Face.Neutral
+    var expression = Face.Neutral
         private set
     private var shut = false
 
@@ -88,25 +79,23 @@ class Blob : Disposable {
     val headTop = Vector3()
 
     private val root = Matrix4()
-    private val tmp = Matrix4()
-    private val normalMatrix = Matrix3()
 
     init {
+        val grainCanvas = CrayonCanvas(BODY_W, BODY_H, TEX_SCALE).also { paintGrain(it) }
+        grain = grainCanvas.texture()
+
         // Hull seeds count up per part in the workshop's order: body, then each side's arm and foot.
         var seed = 1
-        fun part(geo: PartGeometry, color: Color, base: Float, vary: Float, textured: Boolean = false): Part {
-            val hulls = List(BOIL_FRAMES) { k ->
-                val nz = Noise3(seed * 31 + k * 7, 4, 4f)
-                geo.hull { x, y, z -> base + vary * nz(x, y, z) }
-            }
-            seed++
-            return Part(geo.mesh(), hulls, linear(color), textured)
+        fun part(geo: PartGeometry, color: Color, base: Float, vary: Float, texture: Texture? = null): Limb {
+            val piece = Piece(geo, CrayonModel.linear(color), texture, Outline(base, vary, seed++))
+            return Limb(CrayonModel(listOf(piece)))
         }
         val bodyGeo = taterBody(RADIUS)
         measure = bodyGeo.measure()
-        body = part(bodyGeo, Color.valueOf(BODY), 0.009f, 0.006f, textured = true)
-        val armList = ArrayList<Part>()
-        val footList = ArrayList<Part>()
+        // The body's colour is all in its texture.
+        body = part(bodyGeo, Color.WHITE, 0.009f, 0.006f, grain)
+        val armList = ArrayList<Limb>()
+        val footList = ArrayList<Limb>()
         for (i in SIDES.indices) {
             armList += part(lumpySphere(0.065f, 0.075f, 0.065f, 16, 12, 20 + i, 0.07f), LIMB, 0.008f, 0.004f)
             footList += part(lumpySphere(0.075f, 0.045f, 0.095f, 16, 12, 30 + i, 0.07f), FOOT, 0.008f, 0.004f)
@@ -115,8 +104,6 @@ class Blob : Disposable {
         feet = footList
         parts = listOf(body) + arms + feet
 
-        val grainCanvas = CrayonCanvas(BODY_W, BODY_H, TEX_SCALE).also { paintGrain(it) }
-        grain = grainCanvas.texture()
         faces = Face.entries.map { f ->
             List(2) { b ->
                 List(BOIL_FRAMES) { k ->
@@ -127,14 +114,6 @@ class Blob : Disposable {
                     }
                 }
             }
-        }
-
-        shadowTexture = CrayonCanvas(128, 100, 0.5f).also { paintShadow(it) }.texture()
-        val w = 0.31f
-        val d = 0.24f
-        shadowMesh = Mesh(true, 4, 6, VertexAttribute.Position(), VertexAttribute.TexCoords(0)).apply {
-            setVertices(floatArrayOf(-w, 0f, -d, 0f, 0f, w, 0f, -d, 1f, 0f, w, 0f, d, 1f, 1f, -w, 0f, d, 0f, 1f))
-            setIndices(shortArrayOf(0, 2, 1, 0, 3, 2))
         }
         shadowWidth = maxOf(measure.armX, 0.25f) / RADIUS
     }
@@ -167,7 +146,7 @@ class Blob : Disposable {
             blinkIn = MathUtils.random(2.2f, 5.5f)
         }
         blinkLeft -= dt
-        face = when {
+        expression = when {
             asleep -> Face.Asleep
             pose.thinking || pose.doing == "think" -> Face.Thinking
             pose.energy < 20 -> Face.Tired
@@ -175,7 +154,7 @@ class Blob : Disposable {
             pose.mood >= 65 || pose.music -> Face.Happy
             else -> Face.Neutral
         }
-        shut = blinkLeft > 0f && face != Face.Asleep
+        shut = blinkLeft > 0f && expression != Face.Asleep
 
         // Squash and stretch: breathing, the walk cycle, chewing, and the landing spring.
         val breathRate = if (asleep) 1.1f else MathUtils.lerp(2.3f, 1.3f, tired)
@@ -219,84 +198,23 @@ class Blob : Disposable {
         }
 
         val shrink = SCALE * (1f - hop * 2f)
-        shadowTransform.setToTranslation(pose.x, pose.standY + SHADOW_LIFT, pose.z).scale(shrink * shadowWidth, 1f, shrink)
+        shadowTransform.setToTranslation(pose.x, pose.standY + SHADOW_LIFT, pose.z).scale(shrink * shadowWidth * SHADOW_W, 1f, shrink * SHADOW_D)
         headTop.set(0f, FEET + m.bottom + m.top + 0.2f, 0f).mul(root)
         if (asleep) headTop.set(pose.x, pose.standY + 0.6f, pose.z)
     }
 
-    /**
-     * Draws him with depth testing against what the room drew; call after the room's batch has ended.
-     * [tint] is the room's light (white at midday). Leaves depth testing on, blending and culling off.
-     */
-    fun render(camera: Camera, tint: Color, asleep: Boolean) {
-        val gl = Gdx.gl
-        val frame = (time * BOIL_FPS).toInt() % BOIL_FRAMES
-        gl.glEnable(GL20.GL_DEPTH_TEST)
-        gl.glDepthFunc(GL20.GL_LEQUAL)
-
-        val flat = shaders.flat
-        if (!asleep) {
-            gl.glEnable(GL20.GL_BLEND)
-            gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA)
-            gl.glDepthMask(false)
-            flat.bind()
-            flat.setUniformMatrix("u_projViewTrans", camera.combined)
-            flat.setUniformMatrix("u_worldTrans", shadowTransform)
-            flat.setUniformf("u_color", tint.r, tint.g, tint.b, 1f)
-            flat.setUniformf("u_useMap", 1f)
-            flat.setUniformi("u_texture", 0)
-            shadowTexture.bind(0)
-            shadowMesh.render(flat, GL20.GL_TRIANGLES)
-            gl.glDepthMask(true)
-            gl.glDisable(GL20.GL_BLEND)
-        }
-
-        gl.glEnable(GL20.GL_CULL_FACE)
-        gl.glCullFace(GL20.GL_BACK)
-        val crayon = shaders.crayon
-        crayon.bind()
-        crayon.setUniformMatrix("u_projViewTrans", camera.combined)
-        crayon.setUniformf("u_lightDir", LIGHT)
-        crayon.setUniformf("u_shadeTint", SHADE_TINT.r, SHADE_TINT.g, SHADE_TINT.b)
-        crayon.setUniformf("u_ink", INK_LINEAR.r, INK_LINEAR.g, INK_LINEAR.b)
-        crayon.setUniformf("u_tint", tint.r, tint.g, tint.b)
-        crayon.setUniformf("u_boil", frame.toFloat())
-        crayon.setUniformf("u_faceRect", FACE_X / DESIGN_W, FACE_Y / DESIGN_H, FACE_W / DESIGN_W, FACE_H / DESIGN_H)
-        crayon.setUniformi("u_grain", 0)
-        crayon.setUniformi("u_face", 1)
-        grain.bind(0)
-        faces[face.ordinal][if (shut) 1 else 0][frame].bind(1)
-        gl.glActiveTexture(GL20.GL_TEXTURE0)
-        for (p in parts) {
-            crayon.setUniformMatrix("u_worldTrans", p.transform)
-            crayon.setUniformMatrix("u_normalMatrix", normalMatrix.set(tmp.set(camera.view).mul(p.transform)).inv().transpose())
-            crayon.setUniformf("u_color", p.color.r, p.color.g, p.color.b)
-            crayon.setUniformf("u_useMap", if (p.textured) 1f else 0f)
-            p.mesh.render(crayon, GL20.GL_TRIANGLES)
-        }
-
-        // The outlines: back faces of the pushed-out hulls, in ink, one boil frame at a time.
-        gl.glCullFace(GL20.GL_FRONT)
-        flat.bind()
-        flat.setUniformMatrix("u_projViewTrans", camera.combined)
-        flat.setUniformf("u_color", INK.r * tint.r, INK.g * tint.g, INK.b * tint.b, 1f)
-        flat.setUniformf("u_useMap", 0f)
-        flat.setUniformi("u_texture", 0)
-        for (p in parts) {
-            flat.setUniformMatrix("u_worldTrans", p.transform)
-            p.hulls[frame].render(flat, GL20.GL_TRIANGLES)
-        }
-        gl.glCullFace(GL20.GL_BACK)
-        gl.glDisable(GL20.GL_CULL_FACE)
+    /** Queues him on [r], between its begin and end: his shadow (not while [asleep]), parts and face. */
+    fun render(r: CrayonRenderer, asleep: Boolean) {
+        if (!asleep) r.shadow(shadowTransform)
+        face.texture = faces[expression.ordinal][if (shut) 1 else 0][r.frame]
+        r.model(body.model, body.transform, face)
+        for (p in parts) if (p !== body) r.model(p.model, p.transform)
     }
 
     override fun dispose() {
-        shaders.dispose()
-        for (p in parts) { p.mesh.dispose(); p.hulls.forEach { it.dispose() } }
+        for (p in parts) p.model.dispose()
         faces.flatten().flatten().forEach { it.dispose() }
         grain.dispose()
-        shadowMesh.dispose()
-        shadowTexture.dispose()
     }
 
     // --- textures, in the workshop's 1024 x 512 design units -----------------------------------------
@@ -379,20 +297,6 @@ class Blob : Disposable {
         x.fillPath(blobPath(ex + r * 0.36f, ey + r * 0.38f, r * 0.13f, r * 0.13f, rand), PAPER_WHITE)
     }
 
-    /** A hatched lavender patch for under him, 256 x 200 design units. */
-    private fun paintShadow(x: CrayonCanvas) {
-        val rand = Rng(9)
-        x.clip(blobPath(128f, 100f, 110f, 80f, rand, 0.06f))
-        var k = -260f
-        while (k < 260f) {
-            val ya = 190 + (rand() - 0.5f) * 8
-            val yb = 10 + (rand() - 0.5f) * 8
-            x.stroke(floatArrayOf(128 + k - 90, ya, 128 + k + 90, yb), 3.5f, SHADOW, 0.45f)
-            k += 8f
-        }
-        x.unclip()
-    }
-
     private fun angleDiff(target: Float, from: Float): Float = ((target - from + 540f) % 360f) - 180f
 
     private companion object {
@@ -402,15 +306,16 @@ class Blob : Disposable {
         /** How far the body sits above his feet' soles. */
         const val FEET = 0.03f
         const val SHADOW_LIFT = 0.045f
+        /** His shadow's size, before it's widened to his arms and shrunk as he hops. */
+        const val SHADOW_W = 0.62f
+        const val SHADOW_D = 0.48f
         const val TURN_SPEED = 600f
         const val PLAY_TO_CAMERA = 0.4f
         const val WALK_RATE = 13f
         const val SPRING = 160f
         const val DAMPING = 9f
         const val BLINK = 0.13f
-        /** The outline and hatching redraw a few times a second, cycling through this many frames. */
-        const val BOIL_FRAMES = 3
-        const val BOIL_FPS = 7f
+        const val BOIL_FRAMES = CrayonModel.BOIL_FRAMES
 
         /** The workshop's texture size, in which the face and grain are drawn, and the scale they're kept at. */
         const val DESIGN_W = 1024f
@@ -428,18 +333,10 @@ class Blob : Disposable {
         const val BODY = "#ffe3a1"
         val LIMB = shade(BODY, -0.02f)
         val FOOT = shade(BODY, -0.055f, 0.02f)
-        val INK: Color = Color.valueOf("#4a3a4f")
-        val INK_LINEAR = linear(INK)
+        val INK = CrayonRenderer.INK
         val PAPER_WHITE: Color = Color.valueOf("#fffdf8")
         val BLUSH: Color = Color.valueOf("#ff9fb4")
         val MOUTH: Color = Color.valueOf("#b05a6e")
         val TONGUE: Color = Color.valueOf("#ff9aaa")
-        val SHADOW: Color = Color.valueOf("#9d8db0")
-        /** What the shaded side is multiplied by, a soft lavender (linear). */
-        val SHADE_TINT = linear(Color.valueOf("#e2d2ec"))
-        /** From up, to the left and toward the camera, in view space (the workshop's). */
-        val LIGHT: Vector3 = Vector3(-0.45f, 0.65f, 0.6f).nor()
-
-        fun linear(c: Color) = Color(c.r.pow(2.2f), c.g.pow(2.2f), c.b.pow(2.2f), c.a)
     }
 }
