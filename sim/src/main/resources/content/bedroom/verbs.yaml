@@ -16,6 +16,13 @@
 # affordance), `sell` (everything carried with an affordance), `set_state` (hung: onto the
 # picture rail), `background` (keeps going while he does anything else), `sleep`, and `enjoy`
 # (an argument's value to him, as mood). Where an op names an item it can name an argument instead.
+#
+# Two ops are authored: a model writes their result, and a handler in the agent layer runs it
+# (agent/.../authored/). `write: { with, into, timing, shows_as }` (with: journal or thought; into:
+# events, short_term, journal; timing: before the verb starts, or during it) and `draw: item` (the
+# drawing model draws a piece the verb produced). Results are kept only if the verb succeeds. A
+# verb whose `write` has no handler configured isn't offered to models; the sim still runs it.
+# `no_repeat`: locked right after he did it.
 
 verbs:
   - id: eat
@@ -36,6 +43,7 @@ verbs:
     block: [{ need: mood, below: 25, reason: "too low to make art" }]
     effects:
       - produce: { sketch: 1 }
+      - draw: sketch
       # Work wears his mood down; journaling is what lifts it. A little stimulation, which
       # habituation soon wears away: sketching all day bores him.
       - need: { energy: -6, mood: -4, stimulation: 3 }
@@ -47,6 +55,7 @@ verbs:
     block: [{ need: mood, below: 25, reason: "too low to make art" }]
     effects:
       - produce: { painting: 1 }
+      - draw: painting
       - consume: { canvas: 1 }
       - need: { energy: -15, mood: -10, stimulation: 12 }
   - id: sell_art
@@ -65,9 +74,8 @@ verbs:
     routine: true
     effects:
       - set_state: { target: what, state: hung }
-  # The agent layer writes an entry when one succeeds (agent/.../memory/JournalWriter.kt). It is
-  # work, so it needs him fed and rested, and costs more energy than sketching: writing about the
-  # life he wants is budgeted against staying alive.
+  # It is work, so it needs him fed and rested, and costs more energy than sketching: writing
+  # about the life he wants is budgeted against staying alive.
   - id: journal
     kind: expressive
     phrase: write in your journal
@@ -77,6 +85,7 @@ verbs:
     work: true
     effects:
       - need: { energy: -10, mood: 12, stimulation: 6 }
+      - write: { with: journal, into: [journal, events], timing: during }
   - id: read
     kind: consumptive
     args: { what: readable }
@@ -113,3 +122,15 @@ verbs:
     effects:
       - enjoy: what
       - background: { name: music, minutes: 45, rates: { mood: 2, stimulation: 6 } }
+  # He stops where he is and works out what he wants; the thought is written before he starts, and
+  # his latest one shows in every later prompt as his plan.
+  - id: think
+    kind: expressive
+    phrase: stop and think
+    at: [here]
+    minutes: 10
+    routine: true
+    no_repeat: true
+    effects:
+      - need: { energy: -2 }
+      - write: { with: thought, into: [events, short_term], timing: before, shows_as: plan }

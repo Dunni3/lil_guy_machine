@@ -6,6 +6,8 @@ status: active
 
 # Affordances, qualities and affinities; every verb has a kind with a contract
 
+The kinds-and-contracts part is superseded by [the grammar redesign](2026-10-31-verbs-are-ops-with-arguments-authored-ops-and-think-is-a-verb.md): kinds list the ops they allow.
+
 Step 2 ("grammar foundation") of `research_notes/2026-10-30_1951_world-grammar-consolidated-plan.md`.
 It is meant to change little on its own; steps 3 to 6 (library and skill, craft, letters and
 perception, invent) build on it.

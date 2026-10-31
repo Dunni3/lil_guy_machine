@@ -6,6 +6,8 @@ status: active
 
 # Think intent; journal on by default; memories every 20 events
 
+The think-intent part is superseded by [the grammar redesign](2026-10-31-verbs-are-ops-with-arguments-authored-ops-and-think-is-a-verb.md): think is a verb in the bedroom.
+
 On the TV (Jev deciding, Gemini writing memories) he never journaled: `journal_endpoint` was
 unset, so the journal was left out of Jev's options. Ian asked for the journal to be a real
 option, for a `think` intent, and for long-term memories every 20 events instead of 40.

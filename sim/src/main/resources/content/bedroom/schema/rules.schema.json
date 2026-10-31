@@ -174,24 +174,28 @@
       ],
       "additionalProperties": false
     },
-    "think": {
-      "type": "object",
-      "properties": {
-        "minutes": {
-          "type": "integer"
+    "reflection": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "verb": {
+              "type": "string"
+            },
+            "every": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "verb",
+            "every"
+          ],
+          "additionalProperties": false
         },
-        "energy": {
-          "type": "number"
-        },
-        "every": {
-          "type": [
-            "integer",
-            "null"
-          ]
+        {
+          "type": "null"
         }
-      },
-      "additionalProperties": false,
-      "description": "The think intent's cost and how often he's made to think."
+      ]
     },
     "commissions": {
       "anyOf": [

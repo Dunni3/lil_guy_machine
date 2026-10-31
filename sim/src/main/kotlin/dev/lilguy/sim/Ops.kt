@@ -15,6 +15,8 @@ import kotlin.math.roundToInt
  * [BedroomWorld] runs a verb's ops in the order they're listed; the order is also the order of the
  * finish event's parts and of the option's "gives".
  *
+ * Ops whose result a model writes are [AuthoredOp]s (Authored.kt).
+ *
  * The world side is [OpWorld], which [BedroomWorld] implements privately. [Bound] is one doing of a
  * verb: the verb, the items its arguments are bound to, and how fresh it was. Where an op names an
  * item it may name an argument slot instead (`enjoy: what`), meaning the item bound to it.
@@ -246,6 +248,12 @@ internal interface OpWorld {
 
     fun hangText(tag: String): List<String>
 
+    /** Records authored [op] of the verb that just succeeded as waiting for its result ([AuthoredView]). */
+    fun await(op: AuthoredOp, b: Bound, piece: Int?)
+
+    /** The id of his newest piece of [item], if any. */
+    fun newestPiece(item: String): Int?
+
     /** Starts [bg] playing [item] on [on]; returns the event text. */
     fun play(item: String, on: String?, bg: BackgroundOp, fresh: Double): String
 }
@@ -290,7 +298,13 @@ internal data class OpEntry(
     val background: Background? = null,
     val sleep: NoParams? = null,
     val enjoy: String? = null,
+    val write: Write? = null,
+    val draw: String? = null,
 ) {
+    @Serializable
+    @SerialName("write")
+    data class Write(val with: String, val into: List<String>, val timing: Timing = Timing.During, @SerialName("shows_as") val showsAs: String? = null)
+
     @Serializable
     @SerialName("set_state")
     data class SetState(val target: String, val state: String)
@@ -308,7 +322,7 @@ internal data class OpEntry(
         val set = listOfNotNull(
             need?.let(::NeedOp), rate?.let(::RateOp), consume?.let(::ConsumeOp), produce?.let(::ProduceOp), sell?.let(::SellOp),
             setState?.let { SetStateOp(it.target, it.state) }, background?.let { BackgroundOp(it.name, it.minutes, it.rates) },
-            sleep?.let { SleepOp }, enjoy?.let(::EnjoyOp),
+            sleep?.let { SleepOp }, enjoy?.let(::EnjoyOp), write?.let { WriteOp(it.with, it.into, it.timing, it.showsAs) }, draw?.let(::DrawOp),
         )
         require(set.size == 1) { "an effect is one op, such as `- need: { mood: 2 }`; this one has ${if (set.isEmpty()) "none" else set.joinToString { it.key }}" }
         return set.single()
@@ -325,6 +339,8 @@ internal data class OpEntry(
             is BackgroundOp -> OpEntry(background = Background(op.name, op.minutes, op.rates))
             SleepOp -> OpEntry(sleep = NoParams())
             is EnjoyOp -> OpEntry(enjoy = op.what)
+            is WriteOp -> OpEntry(write = Write(op.with, op.into, op.timing, op.showsAs))
+            is DrawOp -> OpEntry(draw = op.what)
         }
     }
 }

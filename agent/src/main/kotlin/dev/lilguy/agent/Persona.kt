@@ -1,7 +1,8 @@
 package dev.lilguy.agent
 
-import dev.lilguy.agent.memory.JOURNAL_ACTIVITY
 import dev.lilguy.sim.BedroomContent
+import dev.lilguy.sim.VerbSpec
+import dev.lilguy.sim.WriteOp
 
 /**
  * Who he is, shared by the decision prompt, the journal and the thinker so they can't drift. The
@@ -24,7 +25,10 @@ object Persona {
     const val GOAL = "Your goal is to express yourself in your journal: it is where you work out what would make your life better, plan how to get it, and make your case. " +
         "Money is not the point. It only buys food, and food buys you the time and strength to think, plan and write."
 
-    private fun journals(content: BedroomContent) = content.verb(JOURNAL_ACTIVITY) != null
+    private fun journals(content: BedroomContent) = journalVerb(content) != null
+
+    /** The verb whose result goes into his journal, if he has one: what the journal parts of prompts describe. */
+    fun journalVerb(content: BedroomContent): VerbSpec? = content.verbs.firstOrNull { v -> v.ops<WriteOp>().any { "journal" in it.into } }
 
     /**
      * "cozy, calm and warm things, lively ones a little, and loud ones put you off", from his

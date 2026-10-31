@@ -63,14 +63,19 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   events and memories, `InMemoryStore`), `AgentMemory.kt` (what `AgentRuntime` talks to), `Describe.kt`
   (event text), `Summarizer.kt` (LLM writes level-1 memories), `Recall.kt` (which memories and journal
   entries reach a prompt), `Keywords.kt` (shared keyword scoring), `JournalWriter.kt` (the journal's
-  search-then-write LLM loop; `AgentMemory` keeps an entry only when the activity succeeds),
-  `Thinker.kt` (the `think` intent's one LLM call; the thought goes to events and short-term memory).
+  search-then-write LLM loop), `Thinker.kt` (the `think` verb's one LLM call), `Handlers.kt` (the
+  `journal` and `thought` handlers).
+- Authored ops (a model writes the result of a `write` or `draw` op): `agent/.../authored/Authors.kt`, the
+  handler registry and the one lifecycle they share (timing before or during the verb, kept only if it
+  succeeds, the clock held while a call outlasts its verb, results back to the sim through
+  `BedroomWorld.deliver`). The sim side is `sim/.../Authored.kt`. A verb whose `write` has no handler
+  isn't offered to models. Think is a verb; `reflection` in rules.yaml makes him think every few decisions.
 - Art: `agent/.../art/`: `Painter.kt` (the deciding model draws each piece as a run of closed picks:
   subject, crayon box, then a stroke a call; `CommissionVoice` words each day's commission on a text
   model), `Strokes.kt` (the drawing spec as a menu of ~100 strokes), `Palettes.kt` (named crayon boxes),
-  `Artwork.kt` (ops rasterized to a grid, and a PNG encoder with no ImageIO), `ArtStudio.kt` (draws when
-  an art activity starts, keeps it if it succeeds, saves `art-NN/piece-NNN.png`, hands title and tags to
-  the sim through `BedroomWorld.annotate`). `agent/.../Menu.kt` puts one pick to any model (a choice set
+  `Artwork.kt` (ops rasterized to a grid, and a PNG encoder with no ImageIO), `ArtStudio.kt` (the `draw`
+  handler: saves `art-NN/piece-NNN.png`, delivers title and tags to the piece; commission wording goes
+  through `BedroomWorld.annotate`). `agent/.../Menu.kt` puts one pick to any model (a choice set
   for Jev, a prompt plus enum schema for a text model). The sim's pieces, commissions and
   hanging are in `BedroomWorld.kt`. The app's textures for them are in `ArtTextures.kt`.
   SQLite store: `memory-sqlite/` (JVM only; not in the TV build yet).

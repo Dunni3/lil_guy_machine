@@ -22,7 +22,7 @@ import kotlin.random.Random
  * with the first owned match. Decisions happen when a verb ends.
  *
  * Art is a count like any item, and each carried one is also a numbered piece, so it can be drawn,
- * hung or sold on its own. A drawing model's title and tags arrive later through [annotate]; a
+ * hung or sold on its own. A drawing model's title and tags arrive later through [deliver]; a
  * daily commission ([CommissionRules]) pays extra for the first sold piece whose drawing matches it.
  *
  * Doing the same thing again pays less ([HabituationRules]) and the first time pays more
@@ -91,6 +91,11 @@ class BedroomWorld private constructor(
     private var commission: Commission? = null
     private var commissions = 0
     private val notes = ConcurrentLinkedQueue<ArtNote>()
+
+    /** Authored ops whose verb succeeded, newest last ([AuthoredView]); the oldest drop off. */
+    private val authored = ArrayDeque<AuthoredView>()
+    private var authoredCount = 0
+    private val deliveries = ConcurrentLinkedQueue<Pair<Int, AuthoredResult>>()
     /** [on]: what it plays on, for the renderer's "playing" state. */
     private class Music(val itemId: String, val on: String?, val spec: BackgroundOp, val endTick: Long, val fresh: Double)
 
@@ -131,6 +136,13 @@ class BedroomWorld private constructor(
 
         override fun hangText(tag: String) = listOfNotNull(held(tag).lastOrNull()?.let { "hangs ${pieceName(it)}" }) +
             "comfort +${content.gallery.comfortEach}: mood settles ${content.gallery.comfortEach} higher (${hung().size} of ${content.gallery.max} on the wall)"
+
+        override fun await(op: AuthoredOp, b: Bound, piece: Int?) {
+            authored.addLast(AuthoredView(++authoredCount, b.verb.id, op.handler, ticks, piece))
+            while (authored.size > AUTHORED_KEPT) authored.removeFirst()
+        }
+
+        override fun newestPiece(item: String) = pieces.lastOrNull { it.item == item }?.id
 
         override fun play(item: String, on: String?, bg: BackgroundOp, fresh: Double): String {
             music = Music(item, on, bg, ticks + clock.ticks(bg.minutes), fresh)
@@ -265,6 +277,7 @@ class BedroomWorld private constructor(
         if (places.isNotEmpty() && a.at.none { it == VerbSpec.HERE || it in a.args } && places.none { countTag(it, extra) > 0 }) return "needs ${wanted(places.first())}"
         a.requires.firstOrNull { countTag(it, extra) == 0 }?.let { return "needs ${wanted(it)}" }
         if (args == null) a.args.values.firstOrNull { countTag(it, extra) == 0 }?.let { return "needs ${wanted(it)}" }
+        if (a.noRepeat && (justDid as? Intent.Do)?.activity == a.id) return "you just did; do something else first"
         val b = Bound(a, args.orEmpty(), fresh = 1.0, extra = extra)
         a.effects.firstNotNullOfOrNull { it.lockReason(ops, b) }?.let { return it }
         val blocks = a.block + if (a.work) content.needs.workFloor else emptyList()
@@ -285,7 +298,24 @@ class BedroomWorld private constructor(
 
     // --- intents ---------------------------------------------------------------------------------
 
-    override fun plan(intent: Intent): Work = when (intent) {
+    /** The intent planned before the one being planned now. */
+    private var lastPlanned: Intent? = null
+    private var planning = false
+
+    /** What he did last, for `no_repeat`. While planning, [last] is already the intent being planned, so it's the one before. */
+    private val justDid: Intent? get() = if (planning) lastPlanned else last?.intent
+
+    override fun plan(intent: Intent): Work {
+        planning = true
+        try {
+            return planIntent(intent)
+        } finally {
+            planning = false
+            lastPlanned = intent
+        }
+    }
+
+    private fun planIntent(intent: Intent): Work = when (intent) {
         is Intent.MoveTo -> walkTo(goalOf(intent.target), describe(intent.target))
         is Intent.PickUp -> reject("there's nothing to pick up here: what you own is already yours, and do and buy fetch it for you")
         is Intent.Use -> reject("use is for other rooms; here an item is used through a verb, do(verb, what, on)" + (content.verbs.firstOrNull { "on" in it.args }?.let { "; ${it.id} puts a ${noun(it.args.getValue("what"))} on the ${noun(it.args.getValue("on"))}" } ?: ""))
@@ -293,7 +323,7 @@ class BedroomWorld private constructor(
         is Intent.Wait -> waitFor(intent)
         is Intent.Do -> planDo(intent)
         is Intent.Buy -> planBuy(intent.item)
-        Intent.Think -> planThink()
+        Intent.Think -> reject("think is for other rooms; here it's an activity, do(think)")
     }
 
     private fun goalOf(target: Target): Cell = when (target) {
@@ -357,16 +387,6 @@ class BedroomWorld private constructor(
         if (!spec.stackable && count(id) > 0) reject("you already have the ${spec.name}")
         if (!ledger.canAfford(price)) reject("the ${spec.name} costs $$price and you have $${ledger.balance}")
         return Work.Steps(walkToNearest(listOf(content.shop.at)).first, Work.Timed(clock.ticks(content.shop.minutes)) { purchase(spec, price) })
-    }
-
-    /** Thinking happens where he stands; the thought itself is the agent loop's. */
-    private fun planThink(): Work {
-        val t = content.think
-        return Work.Timed(clock.ticks(t.minutes)) {
-            val applied = needs.change(ticks, Need.Energy, t.energy, "think")
-            event("finished thinking: energy ${signed(applied)}")
-            null
-        }
     }
 
     /**
@@ -436,31 +456,48 @@ class BedroomWorld private constructor(
     // --- art -------------------------------------------------------------------------------------
 
     /**
-     * Hands over what a drawing model made: applied at the start of the next tick. Safe from any
-     * thread; a note for a piece or commission that doesn't exist is dropped.
+     * Hands over a commission's wording: applied at the start of the next tick. Safe from any
+     * thread; a note for a commission that isn't open is dropped.
      */
     fun annotate(note: ArtNote) {
         notes.add(note)
     }
 
+    /**
+     * Hands over the result of authored op [id] ([AuthoredView], from the observation): applied at
+     * the start of the next tick. Safe from any thread; an id that isn't waiting is dropped.
+     */
+    fun deliver(id: Int, result: AuthoredResult) {
+        deliveries.add(id to result)
+    }
+
     private fun applyNotes() {
         while (true) {
-            when (val note = notes.poll() ?: return) {
-                is ArtNote.PieceDrawn -> pieces.getOrNull(note.piece - 1)?.let { p ->
-                    p.title = note.title
-                    p.tags = note.tags
-                    version++
-                    val c = commission?.takeIf { it.id == p.commission && !it.fulfilled }
-                    val verdict = when {
-                        c == null -> ""
-                        matches(p, c) -> ": it matches the request for ${c.wants}, so it earns $${content.commissions!!.reward} more when sold"
-                        else -> ": it doesn't match the request for ${c.wants}"
-                    }
-                    event("${item(p.item).name} ${p.id} is drawn, \"${note.title}\"$verdict")
-                }
+            when (val note = notes.poll() ?: break) {
                 is ArtNote.CommissionWorded -> commission?.takeIf { it.id == note.commission }?.let { it.request = note.request }
             }
         }
+        while (true) {
+            val (id, result) = deliveries.poll() ?: return
+            val i = authored.indexOfFirst { it.id == id && !it.delivered }
+            if (i < 0) continue
+            val view = authored[i]
+            authored[i] = view.copy(delivered = true)
+            version++
+            if (result is AuthoredResult.Drawn) view.piece?.let { pieces.getOrNull(it - 1) }?.let { p -> drawn(p, result) }
+        }
+    }
+
+    private fun drawn(p: Piece, d: AuthoredResult.Drawn) {
+        p.title = d.title
+        p.tags = d.tags
+        val c = commission?.takeIf { it.id == p.commission && !it.fulfilled }
+        val verdict = when {
+            c == null -> ""
+            matches(p, c) -> ": it matches the request for ${c.wants}, so it earns $${content.commissions!!.reward} more when sold"
+            else -> ": it doesn't match the request for ${c.wants}"
+        }
+        event("${item(p.item).name} ${p.id} is drawn, \"${d.title}\"$verdict")
     }
 
     private fun held(tag: String): List<Piece> = pieces.filter { it.state == PieceState.Held && tag in item(it.item).names }
@@ -701,6 +738,7 @@ class BedroomWorld private constructor(
             neglect = neglectText(),
             commission = content.commissions?.let { commissionView() },
             art = if (pieces.isEmpty()) null else artViews(),
+            authored = authored.toList(),
         )
     }
 
@@ -720,7 +758,7 @@ class BedroomWorld private constructor(
      */
     private val current: Options
         get() {
-            val key = listOf(version, clock.minutes(ticks) / ESTIMATE_MINUTES, needs.levels())
+            val key = listOf(version, clock.minutes(ticks) / ESTIMATE_MINUTES, needs.levels(), last?.intent ?: Unit)
             options?.let { if (it.key == key) return it }
             return Options(key, content.verbs.flatMap(::activityOptions), shopItems().map(::shopOption)).also { options = it }
         }
@@ -763,6 +801,8 @@ class BedroomWorld private constructor(
 
     companion object {
         private const val SNAPSHOT_TRANSACTIONS = 8
+        /** Authored ops kept in the observation: enough for any the agent hasn't settled yet. */
+        private const val AUTHORED_KEPT = 16
         /** Duration estimates are rounded to this many minutes, so the option lists change less often. */
         private const val ESTIMATE_MINUTES = 10
 

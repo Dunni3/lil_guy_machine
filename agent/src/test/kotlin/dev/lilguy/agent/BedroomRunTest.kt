@@ -116,12 +116,13 @@ class BedroomRunTest {
             variants.getValue(variant)["properties"]!!.jsonObject[field]!!.jsonObject["enum"]!!.jsonArray.map { it.jsonPrimitive.content }
         // Tier 0: a shop of meals he can't afford yet ($20 for $24), nothing to pick up, and use is for other rooms.
         assertEquals(setOf("do", "move_to", "say", "wait"), variants.keys)
-        assertEquals(listOf("eat", "sketch", "journal", "sleep"), enumOf("do", "activity"))
+        // The schema takes every verb the sim would (the scripted baseline journals with no writer); choices only offer what's shown.
+        assertEquals(listOf("eat", "sketch", "journal", "sleep", "think"), enumOf("do", "activity"))
         assertEquals(listOf("meal"), obs.shop.orEmpty().map { it.id })
 
         val choices = BedroomPrompt.choices(obs, emptyList(), world.clock.ticksPerMinute, world.content)
         assertEquals(
-            listOf("do:eat", "do:sketch", "do:journal", "do:sleep", "wait:${BedroomPrompt.WAIT_TICKS}"),
+            listOf("do:eat", "do:sketch", "do:journal", "do:sleep", "do:think", "wait:${BedroomPrompt.WAIT_TICKS}"),
             choices.options.map { it.label },
         )
         // Every option's reply passes the same schema a writing model is held to.
@@ -135,7 +136,7 @@ class BedroomRunTest {
         val (world, _) = bedroomScenario(BedroomPolicy(), content = smallWorld)
         val system = BedroomPrompt.system(world.content, world.clock.ticksPerMinute)
         assertTrue(system.startsWith("You are intelligent, aspirational and creative"), system.take(80))
-        assertTrue("the only things you can do are eat, sketch, sell your art, hang your art on the wall, write in your journal and sleep." in system)
+        assertTrue("the only things you can do are eat, sketch, sell your art, hang your art on the wall, write in your journal, sleep and stop and think." in system)
         assertTrue(Persona.CREATOR in system)
         assertTrue("You live in this bedroom. You need money for food, as a means, not the goal." in system)
         assertTrue("a sketch sells for $3" in system)

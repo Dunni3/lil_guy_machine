@@ -3,6 +3,7 @@ package dev.lilguy.sim
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import kotlin.math.atan2
 import kotlin.math.roundToInt
 
@@ -44,6 +45,8 @@ data class Observation(
     @EncodeDefault(EncodeDefault.Mode.NEVER) val commission: CommissionView? = null,
     /** The art he has made and still has, held or hung, oldest first. */
     @EncodeDefault(EncodeDefault.Mode.NEVER) val art: List<PieceView>? = null,
+    /** Authored ops waiting for (or given) their results, for the agent layer; never shown to models. */
+    @Transient val authored: List<AuthoredView> = emptyList(),
 )
 
 /**

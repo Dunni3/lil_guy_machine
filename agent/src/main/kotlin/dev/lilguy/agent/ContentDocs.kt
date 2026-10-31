@@ -4,6 +4,7 @@ import dev.lilguy.decision.JsonSchemaGenerator
 import dev.lilguy.decision.SchemaHints
 import dev.lilguy.sim.VerbSpec
 import dev.lilguy.sim.Affordance
+import dev.lilguy.sim.AuthoredOp
 import dev.lilguy.sim.AffordanceParams
 import dev.lilguy.sim.BedroomContent
 import dev.lilguy.sim.ItemSpec
@@ -48,6 +49,8 @@ object ContentDocs {
         "background" to OpDoc("background: { name: music, minutes: 45, rates: { mood: 2 } }", "at the finish, then each minute", "Starts something that keeps going while he does anything else, playing the item bound to `what`."),
         "sleep" to OpDoc("sleep: {}", "while it runs", "He's asleep: no awake drain of energy or stimulation."),
         "enjoy" to OpDoc("enjoy: what", "at the finish", "Pays the bound item's value to him (qualities times affinities) as mood, scaled by freshness."),
+        "write" to OpDoc("write: { with: journal, into: [journal, events], timing: during }", "before or during; kept at the finish", "Authored: a model writes it (handler `journal` or `thought`) into the named destinations, kept only if the verb succeeds. `shows_as: plan` makes a short-term result his plan in later prompts. Without a handler the verb isn't offered."),
+        "draw" to OpDoc("draw: sketch", "during; kept at the finish", "Authored: the drawing model draws a drawable item the verb produced (listed after its produce); the piece gets its title and tags. Without an artist the piece is made undrawn."),
     )
 
     private val json = Json { prettyPrint = true; prettyPrintIndent = "  " }
@@ -76,12 +79,14 @@ object ContentDocs {
                 "$item.slot" to "Placed in this room slot when owned.",
                 "$item.blocks" to "He stands beside it, not on it.",
                 "$item.carried" to "Carried in his hands (art) rather than kept in the room.",
-                "$content.think" to "The think intent's cost and how often he's made to think.",
+                "$content.reflection" to "A verb the agent loop makes him do every so often, without asking the decision model.",
             ),
             enums = mapOf(
                 "${NeedBlock.serializer().descriptor.serialName}.need" to needs,
                 "set_state.state" to SetStateOp.STATES,
                 "$op.enjoy" to VerbSpec.SLOTS,
+                "write.with" to AuthoredOp.HANDLERS.keys.filter { it != "draw" },
+                "write.shows_as" to AuthoredOp.SHOWS_AS,
             ),
             mapKeys = mapOf(
                 "$op.need" to needs,

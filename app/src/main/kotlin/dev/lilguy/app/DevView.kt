@@ -804,7 +804,7 @@ class DevView(private val art: ArtTextures) : Disposable {
         val pieces = studio?.pieces().orEmpty()
         val status = when {
             studio == null -> "the scripted policy doesn't draw: his pieces stay untitled"
-            studio.drawing -> "${studio.artist} is drawing..."
+            session.memory.drawing -> "${studio.artist} is drawing..."
             else -> "${pieces.size} drawn · by ${studio.artist}"
         }
         val sel = (artPick ?: pieces.lastIndex).coerceIn(0, max(0, pieces.lastIndex))
@@ -958,7 +958,7 @@ class DevView(private val art: ArtTextures) : Disposable {
         line("tick ${session.current.tick} · ${s.speed * session.ticksPerMinute} ticks/s · a decision $holdsAfter", SMALL_SCALE * 0.9f, TEXT, maxLines = 2)
         val deciding = session.thinkingFor
         when {
-            session.holding && session.waitingOnArt -> line("held: waiting on his drawing", SMALL_SCALE * 0.9f, INTERRUPTED, maxLines = 1)
+            session.holding && session.waitingOnAuthor.isNotEmpty() -> line("held: waiting on his ${session.waitingOnAuthor.joinToString(" and ") { if (it == "draw") "drawing" else it }}", SMALL_SCALE * 0.9f, INTERRUPTED, maxLines = 1)
             session.holding -> line("held: waiting on the model (%.1f s)".format((deciding?.inWholeMilliseconds ?: 0) / 1000f), SMALL_SCALE * 0.9f, INTERRUPTED, maxLines = 1)
             deciding != null -> line("the model is deciding (%.1f s); the clock runs".format(deciding.inWholeMilliseconds / 1000f), SMALL_SCALE * 0.9f, ACCENT, maxLines = 1)
         }

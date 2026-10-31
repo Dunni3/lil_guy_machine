@@ -36,7 +36,7 @@ enum class VerbKind(
     @SerialName("generative")
     Generative(
         "generative", "turns time (and maybe items it uses up) into a new item",
-        allowed = setOf("need", "rate", "consume", "produce"),
+        allowed = setOf("need", "rate", "consume", "produce", "draw"),
         required = listOf(setOf("produce")),
     ),
 
@@ -48,11 +48,12 @@ enum class VerbKind(
         required = listOf(setOf("set_state")),
     ),
 
-    /** Writing something that persists: the journal (and `think`, which isn't a row). */
+    /** Writing something that persists: the journal, a thought. */
     @SerialName("expressive")
     Expressive(
         "expressive", "he writes something that persists",
-        allowed = setOf("need", "rate"),
+        allowed = setOf("need", "rate", "write"),
+        required = listOf(setOf("write")),
     ),
 
     /** Money moves: selling here, buying is the built-in `buy`. Not for inventing. */

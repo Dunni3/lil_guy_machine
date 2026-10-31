@@ -256,6 +256,53 @@
                     "on",
                     null
                   ]
+                },
+                "write": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "with": {
+                          "type": "string"
+                        },
+                        "into": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "timing": {
+                          "type": "string",
+                          "enum": [
+                            "before",
+                            "during"
+                          ]
+                        },
+                        "shows_as": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "with",
+                        "into"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Authored: a model writes it (handler `journal` or `thought`) into the named destinations, kept only if the verb succeeds. `shows_as: plan` makes a short-term result his plan in later prompts. Without a handler the verb isn't offered. (before or during; kept at the finish)"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "draw": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Authored: the drawing model draws a drawable item the verb produced (listed after its produce); the piece gets its title and tags. Without an artist the piece is made undrawn. (during; kept at the finish)"
                 }
               },
               "minProperties": 1,
@@ -329,6 +376,9 @@
           "routine": {
             "type": "boolean",
             "description": "Upkeep: it neither wears thin nor counts as new."
+          },
+          "no_repeat": {
+            "type": "boolean"
           }
         },
         "required": [

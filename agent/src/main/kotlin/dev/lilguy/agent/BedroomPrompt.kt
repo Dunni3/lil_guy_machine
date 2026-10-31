@@ -1,6 +1,5 @@
 package dev.lilguy.agent
 
-import dev.lilguy.agent.memory.JOURNAL_ACTIVITY
 import dev.lilguy.decision.ActionSchema
 import dev.lilguy.decision.ChoiceSet
 import dev.lilguy.decision.SchemaHints
@@ -15,6 +14,7 @@ import dev.lilguy.sim.ProduceOp
 import dev.lilguy.sim.SellOp
 import dev.lilguy.sim.SetStateOp
 import dev.lilguy.sim.Target
+import dev.lilguy.sim.WriteOp
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
@@ -34,7 +34,7 @@ object BedroomPrompt {
     /** About half an hour of game time at the default scale; the choice set's "wait". */
     const val WAIT_TICKS = 150
 
-    fun examples(content: BedroomContent, ticksPerMinute: Int, thinking: Boolean = false): List<Pair<Intent, String>> = buildList {
+    fun examples(content: BedroomContent, ticksPerMinute: Int): List<Pair<Intent, String>> = buildList {
         val activity = content.verbs.firstOrNull { it.work } ?: content.verbs.first()
         add(Intent.Do(activity.id) to "do an activity from `activities` that isn't locked; the game walks you there")
         content.items.firstOrNull { it.price != null }?.let { add(Intent.Buy(it.id) to "buy something from `shop` that you can afford; it arrives at the ${content.item(content.shop.at)?.name ?: content.shop.at}") }
@@ -44,13 +44,12 @@ object BedroomPrompt {
         }
         add(Intent.MoveTo(Target.Entity("bed")) to "walk to something in the room")
         add(Intent.Say("one day this room will have a window") to "say something out loud")
-        if (thinking) add(Intent.Think to "stop and think about what you want to do next and what you want to achieve")
         add(Intent.Wait(WAIT_TICKS) to "do nothing for N ticks, at most ${GridWorld.MAX_WAIT} ($ticksPerMinute ticks = 1 game minute)")
     }
 
-    /** The journal line of the prompt, or null when the content has no journal activity. */
+    /** The journal line of the prompt, or null when no verb writes into his journal. */
     private fun journalHint(content: BedroomContent): String? {
-        val j = content.verb(JOURNAL_ACTIVITY) ?: return null
+        val j = Persona.journalVerb(content) ?: return null
         val energy = j.needEffects["energy"]?.let { if (it < 0) " and costs ${-it.toInt()} energy" else "" }.orEmpty()
         val work = if (j.work) "; it's work, so you can only do it when you are fed and rested enough to work" else ""
         val minutes = j.minutes?.let { GameClock.duration(it) } ?: "a while"
@@ -114,24 +113,26 @@ object BedroomPrompt {
         return if (parts.isEmpty()) null else "- Variety: " + parts.joinToString(" ").replaceFirstChar { it.lowercase() }
     }
 
-    /** The think line of the prompt. */
-    private fun thinkHint(content: BedroomContent): String {
-        val t = content.think
-        val energy = if (t.energy < 0) " and costs ${(-t.energy).toInt()} energy" else ""
-        val every = t.every?.let { " Every $it decisions you also stop to think on your own." }.orEmpty()
-        return "- Thinking: think stops you where you are for ${GameClock.duration(t.minutes)}$energy. Use it to work out what you want to do next and what you're working toward; your latest thought shows below the observation as your plan for now. You can't think twice in a row.$every"
+    /**
+     * "- Thinking: think stops you where you are ... Every 4 decisions you also stop to think on your
+     * own.", for the verb that writes his plan, or null when he has none.
+     */
+    private fun reflectionHint(content: BedroomContent): String? {
+        val v = content.verbs.firstOrNull { it.ops<WriteOp>().any { w -> w.showsAs == "plan" } } ?: return null
+        val energy = v.needEffects["energy"]?.takeIf { it < 0 }?.let { " and costs ${(-it).toInt()} energy" }.orEmpty()
+        val time = v.minutes?.let { " for ${GameClock.duration(it)}" }.orEmpty()
+        val again = if (v.noRepeat) " You can't ${v.id} twice in a row." else ""
+        val every = content.reflection?.takeIf { it.verb == v.id }?.let { " Every ${it.every} decisions you also ${v.phrase ?: v.id} on your own." }.orEmpty()
+        return "- Thinking: ${v.id} stops you where you are$time$energy. Use it to work out what you want to do next and what you're working toward; your latest thought shows below the observation as your plan for now.$again$every"
     }
 
-    /** True when he may think now: something writes thoughts, and his last action wasn't a think. */
-    fun canThink(obs: Observation, thinking: Boolean): Boolean = thinking && obs.lastIntent != Intent.Think
-
     /**
-     * [content] is what he's told about, so leave the journal activity out of it when nothing
-     * writes entries. [thinking]: something writes his thoughts, so think is offered.
+     * [content] is what he's told about: only the verbs he's offered (a verb whose result nothing
+     * writes is left out).
      */
-    fun system(content: BedroomContent, ticksPerMinute: Int, thinking: Boolean = false): String {
+    fun system(content: BedroomContent, ticksPerMinute: Int): String {
         val r = content.needs
-        val actions = examples(content, ticksPerMinute, thinking).joinToString("\n") { (intent, what) ->
+        val actions = examples(content, ticksPerMinute).joinToString("\n") { (intent, what) ->
             "- ${PromptBuilder.tag(intent)}: $what\n  ${PromptBuilder.exampleJson.encodeToString(Intent.serializer(), intent)}"
         }
         val art = content.items.filter { it.sellPrice != null }.joinToString(" and ") { "a ${it.name} sells for $${it.sellPrice}" }
@@ -143,7 +144,7 @@ object BedroomPrompt {
         val decor = content.items.any { it.slot != null && content.value(it) > 0 }
         val forSale = content.items.filter { it.price != null }
         val wants = if (forSale.any { it.group != "food" }) "for food and for anything you want to own" else "for food"
-        val means = if (content.verb(JOURNAL_ACTIVITY) != null) ", as a means, not the goal" else ""
+        val means = if (Persona.journalVerb(content) != null) ", as a means, not the goal" else ""
         val bored = if (r.stimulationPerHour < 0 && r.boredMood > 0) ", less boredom" else ""
         val mood = if (decor) {
             "Mood drifts ${r.moodDriftPerHour.toInt()} an hour toward ${r.moodBaseline.toInt()} plus your room's comfort$bored; nice things raise it for a while, and decor raises comfort by as much as you like it."
@@ -164,7 +165,7 @@ object BedroomPrompt {
             varietyHint(content),
             artHint(content),
             journalHint(content),
-            if (thinking) thinkHint(content) else null,
+            reflectionHint(content),
             "- $lists",
             "- Nothing ends the game. An action that can't be done fails at once, and lastResult says why. Read it and choose something else rather than repeating it.",
         ).joinToString("\n")
@@ -198,9 +199,9 @@ object BedroomPrompt {
      * The reply schema for one observation: do() takes only activities that aren't locked, and
      * only things listed with them, and buy() only what he can afford, so constrained decoding
      * can't pick anything the sim would refuse for those reasons. There is nothing to pick up in
-     * the bedroom and use() is for other rooms, so both are left out, and think is only there when [canThink].
+     * the bedroom and use() and think() are for other rooms, so they're left out (thinking is an activity here).
      */
-    fun replySchema(obs: Observation, ticksPerMinute: Int, thinking: Boolean = false): ActionSchema<AgentReply> {
+    fun replySchema(obs: Observation, ticksPerMinute: Int): ActionSchema<AgentReply> {
         val open = obs.activities.orEmpty().filter { it.locked == null }
         val hints = SchemaHints(
             descriptions = VARIANT_DESCRIPTIONS + mapOf(
@@ -224,30 +225,29 @@ object BedroomPrompt {
                 "pick_up.itemId" to emptyList(),
             ),
             ranges = mapOf("wait.ticks" to 1..GridWorld.MAX_WAIT),
-            omit = setOf("use") + if (canThink(obs, thinking)) emptySet() else setOf("think"),
+            omit = setOf("use", "think"),
         )
         return ActionSchema.of("reply", AgentReply.serializer(), hints) { it.thought }
     }
 
     /**
      * The decision as a closed set: each activity that isn't locked (once per thing he could do it
-     * with), each purchase he can afford, and waiting half an hour. Without [journaling] (no model writes the
-     * entries) the journal is left out, so a picking model doesn't spend hours on nothing visible. Walking and talking are left out; the
+     * with), each purchase he can afford, and waiting half an hour. Only verbs in [content] are offered: with no model writing
+     * entries the journal is left out, so a picking model doesn't spend hours on nothing visible. Walking and talking are left out; the
      * activities walk him where he needs to be. The state is the life part of the observation
      * (no map or coordinates), plus his recent actions.
      *
      * Options are ordered activities (in content order), purchases, wait: Jev leans toward
      * earlier options, so doing comes before spending and waiting is last.
      */
-    fun choices(obs: Observation, recent: List<Memory.Entry>, ticksPerMinute: Int, content: BedroomContent, journaling: Boolean = true, thinking: Boolean = false): ChoiceSet {
+    fun choices(obs: Observation, recent: List<Memory.Entry>, ticksPerMinute: Int, content: BedroomContent): ChoiceSet {
+        val journaling = Persona.journalVerb(content) != null
+        val thinking = content.reflection?.let { content.verb(it.verb) } != null
+        val offered = obs.activities.orEmpty().filter { content.verb(it.id) != null }
         val options = buildList {
-            obs.activities.orEmpty().filter { it.locked == null && (journaling || it.id != JOURNAL_ACTIVITY) }.forEach { a ->
+            offered.filter { it.locked == null }.forEach { a ->
                 val with = listOfNotNull(a.what?.let { " with the $it" }, a.on?.let { " on the $it" }).joinToString("")
                 add(option(Intent.Do(a.id, a.what, a.on), "Do ${a.id}$with: takes ${a.takes}; gives ${a.gives}."))
-            }
-            if (canThink(obs, thinking)) {
-                val t = content.think
-                add(option(Intent.Think, "Stop and think about what he wants to do next and what he wants to achieve: takes ${GameClock.duration(t.minutes)}; costs ${(-t.energy).toInt()} energy."))
             }
             obs.shop.orEmpty().filter { it.affordable }.forEach { s ->
                 add(option(Intent.Buy(s.id), "Buy ${s.id} for $${s.price}, leaving $${(obs.money ?: 0) - s.price}: ${s.gives}."))
@@ -278,7 +278,7 @@ object BedroomPrompt {
                 }
             }
             putJsonArray("activities") {
-                obs.activities.orEmpty().filter { journaling || it.id != JOURNAL_ACTIVITY }.forEach { a ->
+                offered.forEach { a ->
                     add(buildJsonObject {
                         put("id", a.id)
                         a.what?.let { put("what", it) }

@@ -32,7 +32,8 @@ data class BedroomContent(
     val shop: ShopRules,
     val items: List<ItemSpec>,
     val verbs: List<VerbSpec>,
-    val think: ThinkRules = ThinkRules(),
+    /** A verb the agent loop makes him do every so often; null for none. */
+    val reflection: Reflection? = null,
     /** A daily request for a piece; null for none. */
     val commissions: CommissionRules? = null,
     val gallery: GalleryRules = GalleryRules(),
@@ -86,7 +87,7 @@ data class BedroomContent(
         /** The content's files, each with the top-level keys it holds. */
         val FILES: Map<String, List<String>> = linkedMapOf(
             "room" to listOf("room", "start"),
-            "rules" to listOf("needs", "habituation", "novelty", "shop", "think", "commissions", "gallery", "quality_value"),
+            "rules" to listOf("needs", "habituation", "novelty", "shop", "reflection", "commissions", "gallery", "quality_value"),
             "vocabulary" to listOf("vocabulary"),
             "personality" to listOf("personality"),
             "items" to listOf("items"),
@@ -188,8 +189,7 @@ data class BedroomContent(
             require(c.reward > 0 && c.adjectives.isNotEmpty() && c.nouns.isNotEmpty()) { "commissions need a positive reward and at least one adjective and noun" }
         }
         require(gallery.max >= 1 && gallery.comfortEach >= 0) { "gallery.max must be at least 1" }
-        require(think.minutes >= 1) { "think needs at least 1 minute" }
-        require(think.every == null || think.every >= 1) { "think.every must be at least 1" }
+        reflection?.let { r -> require(verbs.any { it.id == r.verb } && r.every >= 1) { "reflection: verb '${r.verb}' must be a verb and every at least 1" } }
         GameClock.parseHhmm(start.time)
         require(room.approach.keys.all { it in room.slots.values }) { "room.approach names a slot that isn't in room.slots" }
     }
@@ -367,12 +367,11 @@ object Affordance {
 }
 
 /**
- * The think intent: he stands where he is for [minutes] and it costs [energy] on top of being
- * awake. [every]: the agent is made to think after this many decisions without one; null leaves it
- * to the model.
+ * A policy for the decision loop: after [every] decisions without [verb], the agent loop makes him
+ * do it without asking the decision model, when it's offered (something writes its result) and not locked.
  */
 @Serializable
-data class ThinkRules(val minutes: Int = 10, val energy: Double = -2.0, val every: Int? = 4)
+data class Reflection(val verb: String, val every: Int)
 
 @Serializable
 data class ItemSpec(
@@ -432,12 +431,17 @@ data class VerbSpec(
     val phrase: String? = null,
     /** Upkeep (eating, hanging): it neither wears thin with repetition nor counts as new. Some kinds always are. */
     val routine: Boolean = false,
+    /** Locked right after he did it: not twice in a row. */
+    @SerialName("no_repeat") val noRepeat: Boolean = false,
 ) {
     /** Marked routine, or of a kind that always is (selling, sleeping). */
     val isRoutine: Boolean get() = routine || kind.routine
 
     /** Its ops of type [T], in order. */
     inline fun <reified T : Op> ops(): List<T> = effects.filterIsInstance<T>()
+
+    /** Its ops whose result a model writes. */
+    val authored: List<AuthoredOp> get() = effects.filterIsInstance<AuthoredOp>()
 
     /** Its need changes at the finish, all [NeedOp]s together. */
     val needEffects: Map<String, Double> get() = ops<NeedOp>().flatMap { it.changes.entries }.groupBy({ it.key }, { it.value }).mapValues { it.value.sum() }

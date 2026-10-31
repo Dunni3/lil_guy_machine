@@ -114,7 +114,7 @@ class RoomView(private val art: ArtTextures) : Disposable {
         pose.mood = life?.mood ?: 60.0
         pose.music = life?.music != null
         pose.thinking = session.thinkingFor != null ||
-            (agent?.intent == Intent.Think && agent.status.let { it == IntentStatus.Executing || it == IntentStatus.Validated || it == IntentStatus.Submitted })
+            ((agent?.intent as? Intent.Do)?.activity == "think" && agent.status.let { it == IntentStatus.Executing || it == IntentStatus.Validated || it == IntentStatus.Submitted })
         val asleep = pose.doing == "sleep" && !pose.moving
         // On the bed's tile he is on the mattress; standing still on a chair's tile, he sits on it.
         val under = now.entities.firstOrNull { it.id.value in SURFACES && it.x.toInt() == guy.x.toInt() && it.y.toInt() == guy.y.toInt() }?.id?.value
@@ -226,7 +226,7 @@ class RoomView(private val art: ArtTextures) : Disposable {
             val e = now.entities.firstOrNull { it.id.value == stand.id } ?: continue
             val making = life.doing == stand.activity
             val texture = if (making) {
-                session.memory.studio?.inProgress()?.takeIf { it.item == stand.item }?.let { art.partial(it, life.progress ?: 0f, stand.blank) }
+                session.memory.drawingInProgress()?.takeIf { it.item == stand.item }?.let { art.partial(it, life.progress ?: 0f, stand.blank) }
             } else {
                 pieces.lastOrNull { !it.hung && it.item == stand.item }?.let { p -> drawings[p.id]?.let(art::of) }
             }

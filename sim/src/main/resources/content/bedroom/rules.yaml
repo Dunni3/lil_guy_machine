@@ -46,17 +46,13 @@ shop:
   at: mail_hatch
   minutes: 10
 
-think:
-  # The think intent: he stops where he is and works out what he wants; a text model writes the
-  # thought. Thinking is a little tiring, on top of the awake loss.
-  minutes: 10
-  energy: -2
-  # He is made to think after this many decisions without a think (the decision model isn't
-  # asked); remove it to leave thinking to the model. His latest thought is in every prompt.
+# A decision-loop policy: after `every` decisions without `verb`, he's made to do it (the decision
+# model isn't asked), when something writes its result. Remove it to leave thinking to the model.
+reflection:
+  verb: think
   every: 4
 
-# Art is drawn: when an activity that makes a drawable item starts, a text model draws the piece
-# (agent/.../art/). A request for a piece comes through the hatch each day at `arrive`, replacing
+# Art is drawn: a verb with a `draw` op has a text model draw the piece it makes (agent/.../art/). A request for a piece comes through the hatch each day at `arrive`, replacing
 # the day before's: an adjective and a noun from these lists. A piece he finishes while it's open
 # is drawn for it, and the first one sold whose drawing matches (its title or tags name both words)
 # earns `reward` on top of its price.
