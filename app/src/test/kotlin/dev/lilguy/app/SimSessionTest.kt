@@ -76,7 +76,8 @@ class SimSessionTest {
         s.stepUntil { s.history.size >= 3 }
         assertTrue(s.history.size >= 3)
         s.history.forEach { assertEquals(it.decision.tick, it.snapshot.tick) }
-        assertEquals(s.history.size * 2, s.memory.eventCount(), "an observation and an action per decision")
+        // An outcome per finished intent (the latest is still running), plus what happened around him.
+        assertTrue(s.memory.eventCount() in s.history.size - 1..2 * s.history.size, "${s.memory.eventCount()} events for ${s.history.size} decisions")
     }
 
     @Test

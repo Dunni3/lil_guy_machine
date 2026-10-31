@@ -77,7 +77,7 @@ class ThinkTest {
         assertEquals(null, thoughts[1])
         // The thinker saw the decision prompt and its situation, with its own ask.
         val call = thinker.requests.first()
-        assertTrue(call.system.startsWith("You are intelligent, aspirational and creative") && "you have stopped to think" in call.system)
+        assertTrue(call.system.startsWith(world.content.personality.core.you) && "you have stopped to think" in call.system)
         assertTrue(call.messages.single().content.startsWith("Observation:") && call.messages.single().content.endsWith(Thinker.ASK))
         // In the event stream as a thought, and in the next decision's recent actions.
         assertTrue(store.eventsAfter("r", 0, 1000).any { it.kind == EventKind.Thought && it.text == "I'll sketch until I can afford an easel." })

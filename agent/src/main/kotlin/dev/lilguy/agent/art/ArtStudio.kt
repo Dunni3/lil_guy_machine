@@ -67,7 +67,7 @@ class ArtStudio(
         val made = c.withName(id).firstOrNull { it.canvas != null } ?: error("draw: no drawable '$id'")
         val obs = call.obs
         val subjects = Painter.Subjects.of(c.commissions)
-        return painter.draw(call.persona, call.situation, made.name, made.canvas!!, obs.commission, subjects, obs.tick, obs.clock?.day, obs.clock?.time)
+        return painter.draw(call.persona, call.situation, made.name, made.canvas!!, obs.commission, subjects, obs.tick, obs.clock?.day, obs.clock?.time, drawn.mapNotNull { it.title })
             .also { d -> d.error?.let { lastError = it }; if (d.artwork == null) onDrawing(d) }
     }
 

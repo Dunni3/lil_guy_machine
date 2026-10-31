@@ -39,11 +39,12 @@ class AuthorsTest {
     @Test
     fun `an authored result is kept only when its verb succeeds, and reaches the sim through deliver`() {
         val world = BedroomWorld.create()
-        val journal = FakeHandler("journal")
+        val thought = FakeHandler("thought")
         val draw = FakeHandler("draw")
-        val authors = Authors(listOf(journal, draw))
+        val authors = Authors(listOf(thought, draw))
         authors.connect(world)
         fun act(obs: Observation, intent: Intent) = runBlocking { authors.acted(obs, intent, "persona", "situation", "system") }
+        fun think(obs: Observation, intent: Intent) = runBlocking { authors.before(obs, intent, "persona", "situation", "system") }
 
         // Sketching makes a piece and draws it: the drawing is kept and titles that piece.
         val sketch = Intent.Do("sketch")
@@ -56,20 +57,22 @@ class AuthorsTest {
         assertEquals("Sleepy fox", world.observe(world.agentId).art!!.single().title)
         assertTrue(world.observe(world.agentId).authored.single { it.id == view.id }.delivered)
 
-        // Journaling succeeds: the entry is kept and the sim marks it delivered.
-        val write = Intent.Do("journal")
-        act(sketched, write)
-        val written = world.finish(write)
-        authors.observed(written)
-        assertEquals(listOf("journal at ${sketched.tick}"), journal.kept.map { it.first })
+        // Thinking (a `before` op) succeeds: the thought is written before the verb starts, then kept when it finishes.
+        val ponder = Intent.Do("think")
+        assertEquals(listOf<Any>("thought at ${sketched.tick}"), think(sketched, ponder))
+        val thought1 = world.finish(ponder)
+        authors.observed(thought1)
+        assertEquals(listOf("thought at ${sketched.tick}"), thought.kept.map { it.first })
 
+        // Locked right after a think (no_repeat): nothing to write.
+        assertEquals(emptyList(), think(thought1, ponder))
         // The same verb, but it didn't succeed: the result is thrown away and nothing is delivered.
-        act(written, write)
-        authors.observed(written.copy(tick = written.tick + 1, lastResult = IntentStatus.Interrupted))
-        assertEquals(listOf<String?>("journal at ${written.tick}"), journal.discarded)
-        assertEquals(1, journal.kept.size)
+        think(sketched, ponder)
+        authors.observed(sketched.copy(tick = sketched.tick + 1, lastResult = IntentStatus.Interrupted))
+        assertEquals(listOf<String?>("thought at ${sketched.tick}"), thought.discarded)
+        assertEquals(1, thought.kept.size)
         // A verb whose essential op has no handler isn't offered; a missing artist doesn't hide sketching.
         val noWriter = Authors(listOf(draw))
-        assertTrue(!noWriter.offers(world.content.verb("journal")!!) && noWriter.offers(world.content.verb("sketch")!!) && Authors(emptyList()).offers(world.content.verb("sketch")!!))
+        assertTrue(!noWriter.offers(world.content.verb("think")!!) && noWriter.offers(world.content.verb("sketch")!!) && Authors(emptyList()).offers(world.content.verb("sketch")!!))
     }
 }

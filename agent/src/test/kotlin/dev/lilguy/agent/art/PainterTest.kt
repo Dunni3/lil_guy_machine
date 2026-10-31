@@ -38,16 +38,17 @@ private class Picker(private val choose: (List<String>) -> String) : DecisionMod
     }
 }
 
-/** Writes `{"pick": ...}` the way a text model would: the first label the schema allows. */
+/** Writes `{"pick": ...}` the way a text model would: a label the schema allows, the first on its first call, then each next one along. */
 private class Writer : DecisionModel {
     override val id = "writer"
     override val capabilities = Capabilities(jsonSchema = true)
     val prompts = mutableListOf<String>()
 
     override suspend fun <A> decide(request: DecisionRequest, schema: ActionSchema<A>): Decision<A> {
+        val labels = schema.jsonSchema["properties"]!!.jsonObject["pick"]!!.jsonObject["enum"]!!.jsonArray
+        val label = labels[prompts.size % labels.size].jsonPrimitive.content
         prompts += request.messages.last().content
-        val first = schema.jsonSchema["properties"]!!.jsonObject["pick"]!!.jsonObject["enum"]!!.jsonArray.first().jsonPrimitive.content
-        val raw = """{"pick": "$first"}"""
+        val raw = """{"pick": "$label"}"""
         return Decision(schema.decode(raw), null, Usage(), Duration.ZERO, raw)
     }
 }
@@ -58,7 +59,7 @@ class PainterTest {
 
     @Test
     fun `a sketch is assembled pick by pick, and the subject's words become its title and tags`() = runBlocking<Unit> {
-        val script = ArrayDeque(listOf("request", "box:night", "band:bottom:thin", "crayon:1", "disc:top_right:small", "crayon:2"))
+        val script = ArrayDeque(listOf("request", "box:night", "band:bottom:thin", "crayon:1", "shape:moon:top_right:small", "crayon:2"))
         val picker = Picker { script.removeFirst() }
         val d = Painter(picker).draw("who he is", "how things stand", "sketch", sketch, moon, Painter.Subjects.DEFAULT, 500, 1, "10:00")
 
@@ -68,19 +69,20 @@ class PainterTest {
         assertEquals(6, d.calls)
         assertEquals(2, d.ops)
         assertEquals(Usage(promptTokens = 60), d.usage)
-        assertEquals("request box:night band:bottom:thin crayon:1 disc:top_right:small crayon:2", d.raw)
+        assertEquals("request box:night band:bottom:thin crayon:1 shape:moon:top_right:small crayon:2", d.raw)
         val rows = art.letters()
-        // The band is the bottom quarter in pale yellow (b); the small white disc (c) sits in the top right.
+        // The band is the bottom quarter in pale yellow (b); the small white moon (c) is all in the top right.
         assertEquals(List(4) { "b".repeat(16) }, rows.takeLast(4))
-        assertEquals('c', rows[2][13])
-        assertEquals('a', rows[0][0])
-        // The menus: the subject offered the request then eight of his own; strokes then crayons (paper last)
-        // for each stroke, and the stroke just made isn't offered again.
+        val moonCells = rows.flatMapIndexed { y, r -> r.indices.filter { r[it] == 'c' }.map { it to y } }
+        assertTrue(moonCells.isNotEmpty() && moonCells.all { (x, y) -> x >= 11 && y <= 4 }, rows.joinToString("\n"))
+        // The menus: the subject offered the request then eight of his own; the background's strokes,
+        // then the crayons it would show in (not the paper, on the paper); then the subject stage
+        // offers only the moon's shapes.
         assertEquals(listOf("request") + (0 until 8).map { "own:$it" }, picker.menus[0])
         assertTrue(picker.menus[1].all { it.startsWith("box:") })
-        assertTrue(picker.menus[2].none { it.startsWith("crayon:") })
-        assertEquals(listOf("crayon:1", "crayon:2", "crayon:3", "crayon:0"), picker.menus[3])
-        assertTrue("band:bottom:thin" !in picker.menus[4] && "band:bottom:thin" in picker.menus[2])
+        assertTrue("wash" in picker.menus[2] && picker.menus[2].none { it.startsWith("crayon:") || it.startsWith("shape:") })
+        assertEquals(setOf("crayon:1", "crayon:2", "crayon:3"), picker.menus[3].toSet())
+        assertTrue(picker.menus[4].isNotEmpty() && picker.menus[4].all { it.startsWith("shape:moon:") }, picker.menus[4].toString())
     }
 
     @Test
@@ -90,15 +92,22 @@ class PainterTest {
         val d = Painter(eager).draw("", "", "painting", painting, null, Painter.Subjects.DEFAULT, 7, null, null)
         assertNotNull(d.artwork, d.error)
         assertEquals(1 + 2 * 12, d.calls) // no palette call: one box fits sixteen colors
-        assertEquals(12, d.ops)
+        assertTrue(d.ops >= 12)
         assertNull(d.error)
+
+        // A subject of his own isn't one he has drawn before.
+        val few = Painter.Subjects(listOf("wild", "quiet"), listOf("mountain"))
+        val again = Picker { it.first() }
+        Painter(again).draw("", "", "sketch", sketch, null, few, 9, null, null, drawn = listOf("Wild Mountain"))
+        assertEquals(listOf("own:0"), again.menus[0])
+        assertTrue(again.menus.drop(1).any { menu -> menu.any { it.startsWith("shape:mountain:") } })
 
         val writer = Writer()
         val w = Painter(writer).draw("", "", "sketch", sketch, moon, Painter.Subjects.DEFAULT, 500, 1, "10:00")
         assertNotNull(w.artwork, w.error)
         assertEquals("Tiny Moon", w.title)
         assertTrue(writer.prompts.first().contains("- request: What the customer asked for"), writer.prompts.first())
-        assertTrue(writer.prompts[2].contains("- disc:centre:small: Small filled circle, centre."), writer.prompts[2])
-        assertTrue(writer.prompts[3].contains("- crayon:1: pale yellow"), writer.prompts[3])
+        assertTrue(writer.prompts[2].contains("- wash: The whole canvas in one color."), writer.prompts[2])
+        assertTrue(writer.prompts[3].contains("Options, each as `label: what it means`:\n- crayon:"), writer.prompts[3])
     }
 }

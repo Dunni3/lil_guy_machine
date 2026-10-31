@@ -82,7 +82,8 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   makes him think every few decisions.
 - Art: `agent/.../art/`: `Painter.kt` (the deciding model draws each piece as a run of closed picks:
   subject, crayon box, then a stroke a call; `CommissionVoice` words each day's commission on a text
-  model), `Strokes.kt` (the drawing spec as a menu of ~100 strokes), `Palettes.kt` (named crayon boxes),
+  model), `Strokes.kt` (the drawing spec as menus of strokes by stage: background, subject,
+  details), `Shapes.kt` (stencils for each subject noun and the scenery), `Palettes.kt` (named crayon boxes),
   `Artwork.kt` (ops rasterized to a grid, and a PNG encoder with no ImageIO), `ArtStudio.kt` (the `draw`
   handler: saves `art-NN/piece-NNN.png`, delivers title and tags to the piece; commission wording goes
   through `BedroomWorld.annotate`). `agent/.../Menu.kt` puts one pick to any model (a choice set

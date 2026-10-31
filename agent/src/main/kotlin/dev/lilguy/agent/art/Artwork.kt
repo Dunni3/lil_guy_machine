@@ -7,6 +7,7 @@ import java.io.DataOutputStream
 import java.util.zip.CRC32
 import java.util.zip.Deflater
 import kotlin.math.abs
+import kotlin.math.ceil
 
 /**
  * One drawing operation on a square grid; [color] is an index into the piece's palette. The drawing
@@ -39,6 +40,15 @@ sealed interface DrawOp {
     @Serializable
     @SerialName("pixel")
     data class Pixel(val x: Int, val y: Int, override val color: Int) : DrawOp
+
+    /**
+     * A stencil ([Shapes]) scaled into the [w] by [h] box at (x, y): `#` cells are drawn, `.` cells
+     * left as they were. A cell is drawn when at least a third of the stencil under it is `#`, so
+     * thin parts such as a mast survive being drawn small.
+     */
+    @Serializable
+    @SerialName("stamp")
+    data class Stamp(val x: Int, val y: Int, val w: Int, val h: Int, val rows: List<String>, override val color: Int) : DrawOp
 }
 
 /**
@@ -102,6 +112,7 @@ class Artwork(val size: Int, val palette: List<Int>, private val cells: IntArray
                     is DrawOp.Line -> line(op) { x, y -> set(x, y, c) }
                     is DrawOp.Fill -> if (inside(op.x, op.y)) flood(cells, size, op.x, op.y, c)
                     is DrawOp.Pixel -> set(op.x, op.y, c)
+                    is DrawOp.Stamp -> stamp(op) { x, y -> set(x, y, c) }
                 }
             }
             return Artwork(size, palette, cells)
@@ -121,6 +132,28 @@ class Artwork(val size: Int, val palette: List<Int>, private val cells: IntArray
                 val e2 = 2 * err
                 if (e2 >= dy) { err += dy; x += sx }
                 if (e2 <= dx) { err += dx; y += sy }
+            }
+        }
+
+        private fun stamp(op: DrawOp.Stamp, plot: (Int, Int) -> Unit) {
+            val rows = op.rows.size
+            val cols = op.rows.firstOrNull()?.length ?: return
+            if (op.w <= 0 || op.h <= 0) return
+            // Each box cell covers a rectangle of the stencil; its area that is `#` decides it.
+            for (ty in 0 until op.h) for (tx in 0 until op.w) {
+                val sx0 = tx.toDouble() * cols / op.w
+                val sx1 = (tx + 1).toDouble() * cols / op.w
+                val sy0 = ty.toDouble() * rows / op.h
+                val sy1 = (ty + 1).toDouble() * rows / op.h
+                var inked = 0.0
+                for (sy in sy0.toInt() until minOf(rows, ceil(sy1).toInt())) {
+                    val dy = minOf(sy1, sy + 1.0) - maxOf(sy0, sy.toDouble())
+                    for (sx in sx0.toInt() until minOf(cols, ceil(sx1).toInt())) {
+                        if (op.rows[sy][sx] != '#') continue
+                        inked += dy * (minOf(sx1, sx + 1.0) - maxOf(sx0, sx.toDouble()))
+                    }
+                }
+                if (inked * 3 >= (sx1 - sx0) * (sy1 - sy0)) plot(op.x + tx, op.y + ty)
             }
         }
 
