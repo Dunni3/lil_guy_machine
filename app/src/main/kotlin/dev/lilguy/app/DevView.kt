@@ -63,7 +63,7 @@ class DevView(private val art: ArtTextures) : Disposable {
 
     /** The Run page's rows. */
     private enum class RunRow(val label: String) {
-        Days("Length"), Speed("Speed"), DecideCap("While he decides"), Resolution("Clock resolution"), Restart("Restart"), Replay("Replay");
+        Days("Length"), Speed("Speed"), Quiet("Quiet stretches"), DecideCap("While he decides"), Resolution("Clock resolution"), Restart("Restart"), Replay("Replay");
 
         val isAction: Boolean get() = this == Restart || this == Replay
     }
@@ -156,6 +156,7 @@ class DevView(private val art: ArtTextures) : Disposable {
                 session.configure(s.copy(days = days?.coerceAtLeast(1)))
             }
             RunRow.Speed -> session.configure(s.copy(speed = RunSettings.SPEEDS.step(s.speed, by)))
+            RunRow.Quiet -> session.configure(s.copy(quiet = RunSettings.QUIETS.step(s.quiet, by)))
             RunRow.DecideCap -> session.configure(s.copy(decideCap = RunSettings.DECIDE_CAPS.step(s.decideCap, by)))
             RunRow.Resolution -> session.configure(s.copy(ticksPerMinute = RunSettings.RESOLUTIONS.step(s.ticksPerMinute, by)))
             RunRow.Replay -> replayPick = ((replayPick ?: session.run) + by).coerceIn(1, session.run).takeIf { it != session.run }
@@ -1007,6 +1008,7 @@ class DevView(private val art: ArtTextures) : Disposable {
         return when (row) {
             RunRow.Days -> s.days?.let { d -> plural(d, "day") + (session.endTick?.let { " · ends ${stamp(it, session.current)}" } ?: "") } ?: "no end"
             RunRow.Speed -> "${s.speed} game min/s · a day in ${RunSettings.realTime(s.secondsPerDay)}"
+            RunRow.Quiet -> quietText(s.quiet)
             RunRow.DecideCap -> capText(s.decideCap)
             RunRow.Resolution -> "${s.ticksPerMinute} ticks/game min" + if (s.ticksPerMinute != session.ticksPerMinute) " · next run (now ${session.ticksPerMinute})" else ""
             RunRow.Restart -> "a fresh run with these settings"
@@ -1019,6 +1021,8 @@ class DevView(private val art: ArtTextures) : Disposable {
         return when (row) {
             RunRow.Days -> "Game days the run lasts, and the next run's. Raising it extends this run; an ended run reopens, paused. It can't go below the days he has lived."
             RunRow.Speed -> "How fast his day passes on screen. Everything speeds up together; ticks per second = speed x resolution, now ${s.speed * session.ticksPerMinute}."
+            RunRow.Quiet -> "While he's settled into something with little to watch (${RunSettings.QUIET_VERBS.joinToString()}), the clock runs this many times faster. " +
+                "He does the same things; the screen spends less time on them. A decision out meanwhile holds the clock sooner in real time."
             RunRow.DecideCap -> "A model's reply takes real seconds whatever the speed, and he stands still meanwhile. The clock runs up to this much game time while a decision is out, " +
                 "then holds until it comes back. Waits: thinking costs no game time (lockstep). Runs: it costs whatever the latency is at this speed." +
                 (s.decideCap?.takeIf { it > 0 }?.let { " Now: ${seconds(it * 60f / s.speed)} s of model time." } ?: "")
@@ -1029,7 +1033,9 @@ class DevView(private val art: ArtTextures) : Disposable {
     }
 
     private fun summary(s: RunSettings): String =
-        "${s.days?.let { plural(it, "day") } ?: "no end"} · ${s.speed} min/s · ${s.ticksPerMinute} ticks/min · ${capText(s.decideCap)}"
+        "${s.days?.let { plural(it, "day") } ?: "no end"} · ${s.speed} min/s · quiet ${quietText(s.quiet)} · ${s.ticksPerMinute} ticks/min · ${capText(s.decideCap)}"
+
+    private fun quietText(quiet: Int): String = if (quiet == 1) "same speed" else "${quiet}x faster"
 
     private fun capText(cap: Int?): String = when (cap) {
         null -> "clock runs"

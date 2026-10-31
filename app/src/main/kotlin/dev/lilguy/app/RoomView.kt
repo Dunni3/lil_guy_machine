@@ -428,7 +428,9 @@ class RoomView(private val art: ArtTextures) : Disposable {
         }
         font.data.setScale(DOING_SCALE)
         font.color = INK
-        val doing = life.doing?.let { d -> d.replace('_', ' ') + (life.progress?.let { " · ${(it * 100).toInt()}%" } ?: "") }
+        val doing = life.doing?.let { d ->
+            d.replace('_', ' ') + (life.progress?.let { " · ${(it * 100).toInt()}%" } ?: "") + session.fastForward.let { if (it > 1) "   >> ${it}x" else "" }
+        }
         font.draw(batch, doing ?: if (session.thinkingFor != null) "deciding..." else "idle", left, DevView.HEIGHT - MARGIN - CARD_HEIGHT + 40f)
     }
 

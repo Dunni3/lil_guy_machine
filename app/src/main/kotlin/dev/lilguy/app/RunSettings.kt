@@ -15,6 +15,10 @@ import dev.lilguy.sim.GameClock
  * At a high speed that wait costs a lot of his day, so [decideCap] bounds it: the clock may run
  * that many game minutes while a decision is out and then holds until it comes back. 0 is lockstep
  * (latency costs no game time), null lets the clock run (latency costs game time, as in real life).
+ *
+ * [quiet] is for the viewer: while he settles into something with little to watch ([QUIET_VERBS]:
+ * reading, studying, sleeping), the clock runs that many times faster. He does the same things; the
+ * screen spends less time on them.
  */
 data class RunSettings(
     /** Bedroom: game days a run lasts; null for no end. Live: raising it extends the run. */
@@ -25,9 +29,11 @@ data class RunSettings(
     val ticksPerMinute: Int = GameClock.DEFAULT_TICKS_PER_MINUTE,
     /** Game minutes the clock may run while a decision is out; 0 holds at once, null never holds. Live. */
     val decideCap: Int? = DEFAULT_DECIDE_CAP,
+    /** How many times faster the clock runs through quiet stretches; 1 for not at all. Live. */
+    val quiet: Int = DEFAULT_QUIET,
 ) {
-    /** Real seconds per tick at [ticksPerMinute] (the run's resolution, which may differ from this one's). */
-    fun tickSeconds(ticksPerMinute: Int): Float = 1f / (speed * ticksPerMinute)
+    /** Real seconds per tick at [ticksPerMinute] (the run's resolution, which may differ from this one's), [faster] times faster. */
+    fun tickSeconds(ticksPerMinute: Int, faster: Int = 1): Float = 1f / (speed * ticksPerMinute * faster)
 
     /** Real seconds a game day takes. */
     val secondsPerDay: Int get() = GameClock.MINUTES_PER_DAY / speed
@@ -37,10 +43,14 @@ data class RunSettings(
         const val DEFAULT_SPEED = 4
         /** A few seconds of model latency at the default speed before the clock holds. */
         const val DEFAULT_DECIDE_CAP = 15
+        const val DEFAULT_QUIET = 4
+        /** What's quiet to watch: he sits still with it for an hour or more. */
+        val QUIET_VERBS = setOf("read", "study", "sleep")
 
         val SPEEDS = listOf(1, 2, 4, 8, 15, 30, 60)
         val RESOLUTIONS = listOf(1, 2, 5, 10)
         val DECIDE_CAPS = listOf<Int?>(0, 5, 15, 30, 60, null)
+        val QUIETS = listOf(1, 2, 4, 8)
         const val MAX_DAYS = 30
 
         /** "6 min", "24 s", "1h 36m" */
