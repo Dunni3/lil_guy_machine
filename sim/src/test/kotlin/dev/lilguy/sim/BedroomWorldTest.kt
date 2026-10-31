@@ -8,12 +8,12 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class BedroomWorldTest {
-    /** The shipped file gates nothing; the tier mechanism is tested on what used to be tier 1. */
+    /** The shipped file gates nothing; the tier mechanism is tested on what used to be tier 1, and all decor. */
     private val tier1 = setOf(
         "canvas", "easel", "record_player", "jazz_record", "ambient_record", "folk_record", "novel", "poetry_book",
-        "field_guide", "plant", "poster", "rug", "painting", "paint", "read", "listen", "play_record",
+        "field_guide", "painting", "paint", "read", "listen", "play_record",
         "study", "drawing_book", "music_book", "guitar", "play_guitar",
-    )
+    ) + BedroomContent.default().items.filter { it.group == "decor" }.map { it.id }
     /** Books here teach nothing, so painting and the guitar are there from the start; [shipped] is the file as it is. */
     private val content = BedroomContent.default().let { c ->
         c.copy(

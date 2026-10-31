@@ -59,7 +59,7 @@ class LilGuyGame(private val setup: ModelSetup = ModelSetup.scripted()) : Applic
         if (inRoom) ScreenUtils.clear(room.background, true) else ScreenUtils.clear(DevView.BACKGROUND)
         val start = System.nanoTime()
         session.update(delta)
-        if (inRoom) room.render(session, view.banner(session), delta, view.shopOpen) else view.render(session, Gdx.graphics.framesPerSecond)
+        if (inRoom) room.render(session, view.banner(session), delta, view.shopPage) else view.render(session, Gdx.graphics.framesPerSecond)
         renderNanos += System.nanoTime() - start
         drawCalls += profiler.drawCalls
         profiler.reset()

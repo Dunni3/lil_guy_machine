@@ -97,8 +97,8 @@ class RoomView(private val art: ArtTextures) : Disposable {
 
     fun resize(width: Int, height: Int) = viewport.update(width, height, true)
 
-    /** One frame of the live world; [banner] is the run-state line the dev view would show, if any; [shopOpen] shows the catalogue. */
-    fun render(session: SimSession, banner: String?, delta: Float, shopOpen: Boolean = false) {
+    /** One frame of the live world; [banner] is the run-state line the dev view would show, if any; [shopPage] shows that page of the catalogue. */
+    fun render(session: SimSession, banner: String?, delta: Float, shopPage: Int? = null) {
         val now = session.current
         val before = session.previous
         val life = now.life
@@ -162,7 +162,7 @@ class RoomView(private val art: ArtTextures) : Disposable {
         camera.project(head.set(blob.headTop), 0f, 0f, DevView.WIDTH, DevView.HEIGHT)
         // While he's off to buy something, the catalogue opens by itself at that item.
         val buying = (agent?.intent as? Intent.Buy)?.item?.takeIf { agent.status.let { it == IntentStatus.Executing || it == IntentStatus.Validated || it == IntentStatus.Submitted } }
-        drawHud(session, life, bubble, banner, if (shopOpen || buying != null) buying ?: "" else null)
+        drawHud(session, life, bubble, banner, if (shopPage != null || buying != null) buying ?: "" else null, shopPage ?: 0)
     }
 
     // --- 3D --------------------------------------------------------------------------------------
@@ -298,8 +298,8 @@ class RoomView(private val art: ArtTextures) : Disposable {
         if (thoughtAge > THOUGHT_SECONDS) thought = null
     }
 
-    /** [shop]: null with the catalogue closed, else the item he's buying ("" for none). */
-    private fun drawHud(session: SimSession, life: LifeSnapshot?, bubble: String?, banner: String?, shop: String?) {
+    /** [shop]: null with the catalogue closed, else the item he's buying ("" for none); [page] is the one shown when he isn't. */
+    private fun drawHud(session: SimSession, life: LifeSnapshot?, bubble: String?, banner: String?, shop: String?, page: Int) {
         val catalogue = shop?.let { life?.catalog?.takeIf { c -> c.isNotEmpty() } }
         shapes.projectionMatrix = viewport.camera.combined
         batch.projectionMatrix = viewport.camera.combined
@@ -308,19 +308,19 @@ class RoomView(private val art: ArtTextures) : Disposable {
 
         shapes.begin(ShapeRenderer.ShapeType.Filled)
         life?.let { cardShape(it) }
-        catalogue?.let { catalogueShape(it, shop) }
+        catalogue?.let { catalogueShape(it, shop, page) }
         bubble?.let { bubbleShape(it) }
         banner?.let { bannerShape(it) }
         shapes.end()
 
         batch.begin()
         life?.let { cardText(session, it) }
-        catalogue?.let { catalogueText(it, life!!.money, shop) }
+        catalogue?.let { catalogueText(it, life!!.money, shop, page) }
         bubble?.let { bubbleText(it) }
         banner?.let { bannerText(it) }
         font.data.setScale(HINT_SCALE)
         font.color = HINT
-        val hint = if (catalogue != null) "UP closes the catalogue · LEFT/RIGHT for the dev pages" else "DOWN for the shop · LEFT/RIGHT for the dev pages"
+        val hint = if (catalogue != null) "DOWN turns the page · UP turns back or closes · LEFT/RIGHT for the dev pages" else "DOWN for the shop · LEFT/RIGHT for the dev pages"
         font.draw(batch, hint, DevView.WIDTH - MARGIN - 700f, DevView.HEIGHT - MARGIN, 700f, Align.right, false)
         batch.end()
     }
@@ -358,14 +358,22 @@ class RoomView(private val art: ArtTextures) : Disposable {
 
     // --- the catalogue: the shop as a mail-order card ----------------------------------------------
 
-    /** What the shop sells, known things first; [rows] of them fit, and the rest are counted at the bottom. */
-    private fun shown(catalog: List<dev.lilguy.sim.CatalogEntry>) = catalog.sortedBy { it.taughtBy != null }.take(SHOP_ROWS)
+    /**
+     * What the shop sells, known things first, [SHOP_ROWS] to a page: the page with the item he's
+     * [buying] on it, else page [page] (kept in range). Returns that page's items and its number.
+     */
+    private fun shown(catalog: List<dev.lilguy.sim.CatalogEntry>, buying: String, page: Int): Pair<List<dev.lilguy.sim.CatalogEntry>, Int> {
+        val pages = catalog.sortedBy { it.taughtBy != null }.chunked(SHOP_ROWS)
+        val at = pages.indexOfFirst { p -> p.any { it.id == buying } }.takeIf { it >= 0 } ?: page.coerceIn(0, pages.lastIndex)
+        return pages[at] to at
+    }
 
-    private fun shopHeight(rows: Int) = SHOP_HEADER + rows * SHOP_PITCH + SHOP_FOOTER
+    /** Every page is as tall as a full one, so the card doesn't jump as it turns. */
+    private fun shopHeight(catalog: List<dev.lilguy.sim.CatalogEntry>) = SHOP_HEADER + minOf(catalog.size, SHOP_ROWS) * SHOP_PITCH + SHOP_FOOTER
 
-    private fun catalogueShape(catalog: List<dev.lilguy.sim.CatalogEntry>, buying: String) {
-        val items = shown(catalog)
-        val h = shopHeight(items.size)
+    private fun catalogueShape(catalog: List<dev.lilguy.sim.CatalogEntry>, buying: String, page: Int) {
+        val items = shown(catalog, buying, page).first
+        val h = shopHeight(catalog)
         val x = SHOP_X
         val top = SHOP_TOP
         // Paper with scalloped top and bottom edges, and a stitched line just inside.
@@ -431,9 +439,9 @@ class RoomView(private val art: ArtTextures) : Disposable {
         }
     }
 
-    private fun catalogueText(catalog: List<dev.lilguy.sim.CatalogEntry>, money: Int, buying: String) {
-        val items = shown(catalog)
-        val h = shopHeight(items.size)
+    private fun catalogueText(catalog: List<dev.lilguy.sim.CatalogEntry>, money: Int, buying: String, page: Int) {
+        val (items, at) = shown(catalog, buying, page)
+        val h = shopHeight(catalog)
         val x = SHOP_X
         val top = SHOP_TOP
         font.data.setScale(SHOP_TITLE_SCALE)
@@ -466,7 +474,8 @@ class RoomView(private val art: ArtTextures) : Disposable {
         }
         font.data.setScale(SHOP_SMALL_SCALE)
         font.color = MUTED
-        val more = (catalog.size - items.size).takeIf { it > 0 }?.let { " · and $it more" }.orEmpty()
+        val pages = shopPages(catalog.size)
+        val more = if (pages > 1) " · page ${at + 1} of $pages" else ""
         font.draw(batch, "in his purse: $$money$more", x, top - h + 40f, SHOP_WIDTH, Align.center, false)
     }
 
@@ -652,7 +661,6 @@ class RoomView(private val art: ArtTextures) : Disposable {
         const val SHOP_HEADER = 104f
         const val SHOP_PITCH = 46f
         const val SHOP_FOOTER = 64f
-        const val SHOP_ROWS = 17
         const val SHOP_TITLE_SCALE = 1.7f
         const val SHOP_NAME_SCALE = 1.45f
         const val SHOP_SMALL_SCALE = 1.15f
@@ -672,3 +680,9 @@ class RoomView(private val art: ArtTextures) : Disposable {
         )
     }
 }
+
+/** Rows on a page of the catalogue card. */
+private const val SHOP_ROWS = 17
+
+/** How many pages of the catalogue card [entries] fill. */
+internal fun shopPages(entries: Int) = maxOf(1, (entries + SHOP_ROWS - 1) / SHOP_ROWS)
