@@ -20,12 +20,17 @@ import kotlin.time.TimeSource
  * prompt and replies through the schema, so it knows only what a model would. It buys nothing but
  * food; that's the point of a baseline.
  *
- * [thinkTime] fakes model latency for watched runs; tests and the CLI use zero.
+ * [thinkTime] fakes model latency for watched runs; tests and the CLI use zero. [script] is a dev aid
+ * for screenshots (LILGUY_SCRIPT): verbs done first, in order, each skipped if it's locked when its
+ * turn comes.
  */
 class BedroomPolicy(
     private val thinkTime: Duration = Duration.ZERO,
     override val id: String = "scripted:bedroom",
+    script: List<String> = emptyList(),
 ) : DecisionModel {
+    private val script = ArrayDeque(script)
+
     override val capabilities = Capabilities(jsonSchema = true)
 
     override suspend fun <A> decide(request: DecisionRequest, schema: ActionSchema<A>): Decision<A> {
@@ -43,6 +48,10 @@ class BedroomPolicy(
         val money = obs.money ?: 0
         val activities = obs.activities.orEmpty()
         val can = activities.filter { it.locked == null }.map { it.id }.toSet()
+        while (script.isNotEmpty()) {
+            val verb = script.removeFirst()
+            if (verb in can) return Intent.Do(verb) to "Scripted: $verb."
+        }
         val mealPrice = obs.shop.orEmpty().firstOrNull { it.id == "meal" }?.price ?: 0
         val affordable = obs.shop.orEmpty().filter { it.affordable }.map { it.id }.toSet()
         val meals = obs.owns.orEmpty()["meal"] ?: 0

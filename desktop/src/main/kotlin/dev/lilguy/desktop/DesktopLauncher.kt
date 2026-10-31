@@ -7,6 +7,7 @@ import com.badlogic.gdx.graphics.PixmapIO
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration
 import com.badlogic.gdx.graphics.Pixmap
+import dev.lilguy.agent.BedroomPolicy
 import dev.lilguy.app.LilGuyGame
 import dev.lilguy.app.ModelSetup
 import dev.lilguy.agent.Scenario
@@ -30,6 +31,7 @@ fun main() {
     // with the config's writer_endpoint (LILGUY_JOURNAL_ENDPOINT is its old name); LILGUY_RECALL_ENDPOINT
     // the typesafe endpoint that scores recall ("none" for keywords); LILGUY_DAYS the bedroom run length (0 for no end).
     // LILGUY_START_ITEMS adds to what he starts with, for screenshots: "novel,folk_record,guitar" or "meal=4".
+    // LILGUY_SCRIPT has the scripted policy do these verbs first, in order: "read,play_guitar".
     val setup = ModelSetup.fromConfig(
         configFile = File(System.getenv("LILGUY_CONFIG") ?: "config/endpoints.yaml"),
         endpoint = System.getenv("LILGUY_ENDPOINT")?.takeIf { it.isNotBlank() },
@@ -45,6 +47,9 @@ fun main() {
         val extra = System.getenv("LILGUY_START_ITEMS").orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
             .associate { it.substringBefore('=') to (it.substringAfter('=', "1").toIntOrNull() ?: 1) }
         if (extra.isEmpty()) s else s.copy(startItems = extra)
+    }.let { s ->
+        val script = System.getenv("LILGUY_SCRIPT").orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
+        if (script.isEmpty()) s else s.copy(create = { BedroomPolicy(ModelSetup.THINK_TIME, script = script) })
     }
     val game = LilGuyGame(setup)
     val shotPath = System.getenv("LILGUY_SCREENSHOT")

@@ -32,7 +32,9 @@ import kotlin.math.tan
  * says ([RoomModels]), the guy as an animated [Blob], light and the window's sky following the game
  * clock, and a small HUD with a bubble over his head. His art shows too: hung pieces in frames on
  * the picture rail, and on the desk (a sketch) or the easel (a painting) the piece he's making or
- * his newest unsold one, each a small texture from [ArtTextures].
+ * his newest unsold one, each a small texture from [ArtTextures]. What he's busy with shows: the book
+ * in his hands or open on the desk, the guitar off its peg and in his arms, the record turning and
+ * notes rising from it.
  *
  * Everything is drawn in the hand-drawn look by one [CrayonRenderer]: furniture and the guy with the
  * crayon shader and boiling ink outlines, the floor and walls as painted textures under the cheap
@@ -75,6 +77,12 @@ class RoomView(private val art: ArtTextures) : Disposable {
     private val at = Matrix4()
     private val workAt = Vector3()
     private var framed: TileMap? = null
+    private var discTurn = 0f
+    /** Notes rising from the record player and his guitar, and the seconds to each one's next. */
+    private val notes = ArrayList<Note>()
+    private var recordNoteIn = 0f
+    private var guitarNoteIn = 0f
+    private val source = Vector3()
 
     private val shapes = ShapeRenderer()
     private val batch = SpriteBatch()
@@ -149,6 +157,14 @@ class RoomView(private val art: ArtTextures) : Disposable {
         renderArt(session, now)
         renderShelf(life, now.map)
         blob.render(crayon, asleep)
+        val book = models.bookColor((agent?.intent as? Intent.Do)?.what)
+        when (blob.held) {
+            Blob.Held.Book -> crayon.model(models.heldBook(book), blob.heldAt)
+            Blob.Held.Guitar -> crayon.model(models.heldGuitar(), blob.heldAt)
+            Blob.Held.None -> {}
+        }
+        renderStudy(book)
+        renderMusic(life, delta)
         crayon.end()
         Gdx.gl.glDisable(GL20.GL_DEPTH_TEST)
 
@@ -236,6 +252,9 @@ class RoomView(private val art: ArtTextures) : Disposable {
             val making = life.doing == stand.activity
             val texture = if (making) {
                 session.memory.drawingInProgress()?.takeIf { it.item == stand.item }?.let { art.partial(it, life.progress ?: 0f, stand.blank) }
+            } else if (life.doing == "study" && stand === SKETCH) {
+                // A fresh page for his notes.
+                null
             } else {
                 pieces.lastOrNull { !it.hung && it.item == stand.item }?.let { p -> drawings[p.id]?.let(art::of) }
             }
@@ -259,7 +278,64 @@ class RoomView(private val art: ArtTextures) : Disposable {
             guitar = if (owned.any { it.id == "guitar" }) models.guitar() else null
         }
         shelf?.let { crayon.model(it, shelfAt.setToTranslation(models.shelfX(map), 0f, 1f)) }
-        guitar?.let { crayon.model(it, guitarAt.setToTranslation(models.guitarX(map), 0f, 1f)) }
+        // Off its peg while he plays it.
+        if (blob.held != Blob.Held.Guitar) guitar?.let { crayon.model(it, guitarAt.setToTranslation(models.guitarX(map), 0f, 1f)) }
+    }
+
+    /** Studying, the book lies open on the desk beside his notes, a page turning over now and then. */
+    private fun renderStudy(color: String) {
+        if (pose.doing != "study" || pose.moving) return
+        val desk = placedAt["desk"] ?: return
+        at.set(desk).translate(RoomModels.STUDY_BOOK_X, RoomModels.STUDY_BOOK_Y, RoomModels.STUDY_BOOK_Z)
+        crayon.model(models.openBook(color), at)
+        val t = (studyClock % STUDY_PAGE_EVERY) / STUDY_PAGE_TURN
+        if (t < 1f) crayon.model(models.page(), at.translate(0f, 0.024f, 0f).rotate(Vector3.Z, 180f * MathUtils.sin(t * MathUtils.HALF_PI)))
+    }
+
+    private var studyClock = 0f
+
+    /**
+     * The record turns while music plays, and notes rise from the player; more from his guitar while
+     * he plays it. Each drifts up, wavering, and shrinks away.
+     */
+    private fun renderMusic(life: LifeSnapshot?, delta: Float) {
+        studyClock += delta
+        val player = placedAt["record_player"]
+        val playing = life?.music != null
+        if (playing) discTurn = (discTurn + delta * DISC_SPEED) % 360f
+        player?.let { crayon.model(models.disc(), at.set(it).translate(RoomModels.DISC_X, RoomModels.DISC_Y, 0f).rotate(Vector3.Y, -discTurn)) }
+
+        recordNoteIn -= delta
+        if (playing && player != null && recordNoteIn <= 0f) {
+            recordNoteIn = NOTE_EVERY
+            notes += Note(player.getTranslation(source).add(RoomModels.DISC_X, RoomModels.DISC_Y + 0.12f, 0.1f))
+        }
+        guitarNoteIn -= delta
+        if (blob.held == Blob.Held.Guitar && guitarNoteIn <= 0f) {
+            guitarNoteIn = NOTE_EVERY * 0.7f
+            notes += Note(source.set(blob.headTop).add(0.1f, -0.05f, 0.15f))
+        }
+        val it = notes.iterator()
+        while (it.hasNext()) {
+            val n = it.next()
+            n.age += delta
+            if (n.age > NOTE_LIFE) { it.remove(); continue }
+            val grow = NOTE_SIZE * (n.age / 0.25f).coerceAtMost(1f) * ((NOTE_LIFE - n.age) / 0.7f).coerceAtMost(1f)
+            val k = n.age * 2.4f + n.phase
+            at.setToTranslation(n.x + 0.08f * MathUtils.sin(k), n.y + NOTE_RISE * n.age, n.z)
+                .rotate(Vector3.Z, 14f * MathUtils.sin(k + 1f)).scale(grow, grow, grow)
+            crayon.model(models.note(n.color), at)
+        }
+    }
+
+    /** One note on its way up, from where it started. */
+    private class Note(from: Vector3) {
+        val x = from.x + MathUtils.random(-0.12f, 0.12f)
+        val y = from.y
+        val z = from.z
+        val phase = MathUtils.random(MathUtils.PI2)
+        val color = NOTE_COLORS[MathUtils.random(NOTE_COLORS.size - 1)]
+        var age = 0f
     }
 
     /** Queues a square of a piece's picture, [size] wide, facing +Z or lying face up when [flat], at [transform]; nothing until it's drawn. */
@@ -601,7 +677,19 @@ class RoomView(private val art: ArtTextures) : Disposable {
         val PAINTING = Stand("easel", "painting", "paint", 0f, RoomModels.CANVAS_Y, RoomModels.CANVAS_Z + 0.025f, 0.44f, flat = false, blank = 0xfdf8ee, canvas = true, slide = 0.38f)
         val STANDS = listOf(SKETCH, PAINTING)
         /** Activities done by hand at a stand, and which: his working hand goes to it. */
-        val WORK = mapOf("sketch" to SKETCH, "journal" to SKETCH, "paint" to PAINTING)
+        val WORK = mapOf("sketch" to SKETCH, "journal" to SKETCH, "study" to SKETCH, "paint" to PAINTING)
+
+        /** Studying: seconds between page turns of the open book, and how long one takes. */
+        const val STUDY_PAGE_EVERY = 7f
+        const val STUDY_PAGE_TURN = 0.8f
+        /** The record's turn (degrees a second), and the notes: seconds apart, how long each lasts, and how fast it rises (metres a second). */
+        const val DISC_SPEED = 200f
+        const val NOTE_EVERY = 0.9f
+        const val NOTE_LIFE = 2.6f
+        const val NOTE_RISE = 0.3f
+        /** Notes are drawn this much bigger than [RoomModels.note], to read from across the room. */
+        const val NOTE_SIZE = 1.7f
+        val NOTE_COLORS = listOf("#f2928a", "#8fb0ec", "#9fd49a", "#c9a0e6")
 
         /** What he stands, sits or lies on, by item id, and how high its top is. */
         val SURFACES = mapOf("bed" to 0.3f, "chair" to 0.38f)

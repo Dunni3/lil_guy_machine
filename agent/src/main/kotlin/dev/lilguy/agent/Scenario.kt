@@ -105,7 +105,7 @@ enum class Scenario(val id: String) {
         granted: Set<String> = emptySet(),
         /** Bedroom: his personality, in place of the content's default. */
         personality: Personality? = null,
-        /** Bedroom: items he starts with on top of the content's, id to count (a dev aid for screenshots); he knows them, so no book teaches them. */
+        /** Bedroom: items he starts with on top of the content's, id to count (a dev aid for screenshots); he knows them and what's taught with them, so no book teaches those. */
         startItems: Map<String, Int> = emptyMap(),
         onDecision: (AgentRuntime.DecisionRecord) -> Unit = {},
     ): Pair<GridWorld, AgentRuntime> = when (this) {
@@ -113,8 +113,9 @@ enum class Scenario(val id: String) {
         Bedroom -> {
             val content = BedroomContent.default().let { c -> personality?.let(c::withPersonality) ?: c }
                 .let { c ->
+                    // Starting with a taught item, he knows what the book teaches with it: the guitar and playing it.
                     if (startItems.isEmpty()) c
-                    else c.copy(start = c.start.copy(items = c.start.items + startItems), books = c.books.map { it.copy(teaches = it.teaches - startItems.keys) })
+                    else c.copy(start = c.start.copy(items = c.start.items + startItems), books = c.books.map { b -> if (b.teaches.any { it in startItems }) b.copy(teaches = emptyList()) else b })
                 }
             bedroomScenario(model, timeout, ticksPerMinute, content, longTerm = longTerm, granted = granted, onDecision = onDecision)
         }
