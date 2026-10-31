@@ -39,6 +39,7 @@ these hold the outcome. Skim this index before related changes.
 - 2026-10-29 [Bedroom numbers: what changed from the plan's first guesses](2026-10-29-bedroom-numbers-what-changed-from-the-plan-s-first-guesses.md)
 - 2026-10-29 [The bedroom prompt describes his situation, plus two facts for closed-choice models](2026-10-29-the-bedroom-prompt-describes-his-situation-plus-two-facts-fo.md)
 - 2026-10-31 [Art is a run of closed picks on the deciding model](2026-10-31-art-is-a-run-of-closed-picks-on-the-deciding-model.md)
+- 2026-10-31 [Art strokes come in stages, with shapes for the subject](2026-10-31-art-strokes-come-in-stages-with-shapes-for-the-subject.md)
 - 2026-10-29 [Item positions are exposed to the renderer, and become movable later](2026-10-29-item-positions-are-exposed-so-the-guy-can-rearrange-them-later.md)
 - 2026-10-29 [The app runs the bedroom by default; the CLI picks a scenario](2026-10-29-the-app-runs-the-bedroom-by-default-the-cli-picks-a-scenario.md)
 - 2026-10-29 [Milestone 4 runs on the TV](2026-10-29-milestone-4-runs-on-the-tv.md)
