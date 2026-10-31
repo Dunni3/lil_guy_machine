@@ -169,6 +169,8 @@ class BedroomWorld private constructor(
             version++
             return "${item(item).name} playing for ${GameClock.duration(bg.minutes)}"
         }
+
+        override fun playing(name: String) = music?.takeIf { it.spec.name == name }?.let { it.itemId to ((it.endTick - ticks) / clock.ticksPerMinute).toInt() }
     }
 
     init {
@@ -886,12 +888,18 @@ class BedroomWorld private constructor(
      */
     private val current: Options
         get() {
-            val key = listOf(version, clock.minutes(ticks) / ESTIMATE_MINUTES, needs.levels(), last?.intent ?: Unit)
+            val key = listOf(version, clock.minutes(ticks) / ESTIMATE_MINUTES, needs.levels(), last?.intent ?: Unit, hearable())
             options?.let { if (it.key == key) return it }
             val activities = content.verbs.filter { isKnown(it.id) }.flatMap(::activityOptions)
             val shop = shopItems().map(::shopOption)
             return Options(key, activities, shop, catalog(shop), verbViews(activities)).also { options = it }
         }
+
+    /** For the options' key: which `hear` verbs the music still has time for, which can change between the clock's 10-minute steps. */
+    private fun hearable(): List<Boolean> = music?.let { m ->
+        val left = (m.endTick - ticks) / clock.ticksPerMinute
+        content.verbs.filter { v -> v.ops<HearOp>().any { it.background == m.spec.name } }.map { left >= (it.minutes ?: 0) }
+    }.orEmpty()
 
     /** The book that teaches [id], while he doesn't know it: "the drawing book, \"Drawing What You See\"". */
     private fun taughtBy(id: String): String? = if (isKnown(id)) null else

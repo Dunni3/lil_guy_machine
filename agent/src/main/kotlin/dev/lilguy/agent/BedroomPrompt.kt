@@ -7,6 +7,7 @@ import dev.lilguy.sim.BackgroundOp
 import dev.lilguy.sim.BedroomContent
 import dev.lilguy.sim.GameClock
 import dev.lilguy.sim.GridWorld
+import dev.lilguy.sim.HearOp
 import dev.lilguy.sim.Intent
 import dev.lilguy.sim.IntentStatus
 import dev.lilguy.sim.Observation
@@ -206,7 +207,9 @@ object BedroomPrompt {
             " `shop` is the catalog: everything for sale, its price, whether you can afford it, and what it's for." +
             if (decor) " Your room has empty places for furniture and decor, and the catalog is where they come from." else ""
         val options = "activities, shop"
-        val music = if (content.verbs.any { it.ops<BackgroundOp>().isNotEmpty() }) " music: what's playing, if anything." else ""
+        val hearing = content.verbs.filter { it.ops<HearOp>().isNotEmpty() }.map { it.id }
+        val hear = if (hearing.isEmpty()) "" else " ${hearing.joinToString(" and ")} ${if (hearing.size > 1) "are" else "is"} for whatever is playing, so offered only while something plays."
+        val music = if (content.verbs.any { it.ops<BackgroundOp>().isNotEmpty() }) " music: what's playing, if anything.$hear" else ""
         val life = listOfNotNull(
             "- Time: the clock shows the day and the time. Activities take game minutes or hours, and you choose again when one finishes.",
             "- Needs, each from 0 to 100. Energy falls ${-r.awakeEnergyPerHour.toInt()} an hour while you're awake and comes back while you sleep. Fullness falls ${-r.fullnessPerHour.toInt()} an hour${r.asleepFullnessPerHour?.let { " (${(-it).toInt()} asleep)" }.orEmpty()}; eating brings it back.${stimulationRule(content)}${frustrationRule(content)} $mood Below ${r.low.toInt()} energy or fullness, mood falls ${-r.lowMoodPerHour.toInt()} an hour instead.$sinking When $floor you can't work ($work).",

@@ -114,15 +114,15 @@ verbs:
     effects:
       - practice: { music: 0.3 }
       - need: { energy: -2, mood: 3, stimulation: 8 }
+  # Putting a record on is how music starts; listen sits down with whatever is on, so it takes no record
+  # of its own and is offered only while there's music with time for it left.
   - id: listen
     kind: consumptive
-    args: { what: playable }
     at: [chair]
-    requires: [record_player]
     minutes: 30
     effects:
+      - hear: music
       - need: { mood: 4, stimulation: 12 }
-      - enjoy: what
   # Gone to bed at night, he sleeps until 07:00 or full energy. At any other hour it's a nap: only
   # when he's exhausted, and short.
   - id: sleep

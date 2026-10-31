@@ -260,6 +260,13 @@
                     null
                   ]
                 },
+                "hear": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Listens to whatever another verb's background of that name is playing, so the verb takes no item of its own: locked unless it's playing with time left for the whole verb. Pays the playing item's value to him as mood, as enjoy does. (at the finish)"
+                },
                 "progress": {
                   "anyOf": [
                     {
