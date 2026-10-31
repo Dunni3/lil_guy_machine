@@ -11,7 +11,6 @@ items:
   - { id: desk, name: desk, group: furniture, slot: desk, blocks: true }
   - { id: chair, name: chair, group: furniture, slot: chair }
   - { id: sketchbook, name: sketchbook, group: tool }
-  - { id: journal, name: journal, group: tool }
   - { id: meal, name: meal, group: food, affords: { edible: {} }, price: 24, pack: 3, stackable: true }
   - { id: canvas, name: canvas, group: supply, price: 15, stackable: true }
   - { id: easel, name: easel, group: furniture, slot: easel, blocks: true, price: 17 }

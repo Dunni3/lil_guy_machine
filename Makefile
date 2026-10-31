@@ -26,8 +26,8 @@ local.properties:
 # --- desktop / headless --------------------------------------------------------
 
 .PHONY: desktop
-desktop: ## Run the app in a desktop window (ENDPOINT=<name>, MEMORY_ENDPOINT=<name|none>, JOURNAL_ENDPOINT=<name|none>, SCENARIO=key-door, MINUTE_TICKS=<n>, DAYS=<n, 0 no end>)
-	LILGUY_ENDPOINT=$(ENDPOINT) LILGUY_MEMORY_ENDPOINT=$(MEMORY_ENDPOINT) LILGUY_JOURNAL_ENDPOINT=$(JOURNAL_ENDPOINT) LILGUY_SCENARIO=$(SCENARIO) LILGUY_MINUTE_TICKS=$(MINUTE_TICKS) LILGUY_DAYS=$(DAYS) $(GRADLE) :desktop:run
+desktop: ## Run the app in a desktop window (ENDPOINT=<name>, MEMORY_ENDPOINT=<name|none>, WRITER_ENDPOINT=<name|none>, RECALL_ENDPOINT=<name|none>, SCENARIO=key-door, MINUTE_TICKS=<n>, DAYS=<n, 0 no end>)
+	LILGUY_ENDPOINT=$(ENDPOINT) LILGUY_MEMORY_ENDPOINT=$(MEMORY_ENDPOINT) LILGUY_WRITER_ENDPOINT=$(or $(WRITER_ENDPOINT),$(JOURNAL_ENDPOINT)) LILGUY_RECALL_ENDPOINT=$(RECALL_ENDPOINT) LILGUY_SCENARIO=$(SCENARIO) LILGUY_MINUTE_TICKS=$(MINUTE_TICKS) LILGUY_DAYS=$(DAYS) $(GRADLE) :desktop:run
 
 .PHONY: cli
 cli: ## Run the headless CLI (ARGS="--endpoint hosted --runs 10"; ARGS=--help for all)
@@ -57,8 +57,8 @@ tv-install: local.properties ## Build and install the debug APK on the connected
 	$(GRADLE) :android:installDebug
 
 .PHONY: tv-run
-tv-run: tv-install ## Install and launch on the connected device (ENDPOINT=<name>, MEMORY_ENDPOINT=<name|none>, JOURNAL_ENDPOINT=<name|none>, SCENARIO=key-door, MINUTE_TICKS=<n>, DAYS=<n>)
-	$(ADB) shell am start -S -n $(APP_ID)/dev.lilguy.android.AndroidLauncher $(if $(ENDPOINT),--es endpoint $(ENDPOINT)) $(if $(MEMORY_ENDPOINT),--es memory_endpoint $(MEMORY_ENDPOINT)) $(if $(JOURNAL_ENDPOINT),--es journal_endpoint $(JOURNAL_ENDPOINT)) $(if $(SCENARIO),--es scenario $(SCENARIO)) $(if $(MINUTE_TICKS),--ei minute_ticks $(MINUTE_TICKS)) $(if $(DAYS),--ei days $(DAYS))
+tv-run: tv-install ## Install and launch on the connected device (ENDPOINT=<name>, MEMORY_ENDPOINT=<name|none>, WRITER_ENDPOINT=<name|none>, RECALL_ENDPOINT=<name|none>, SCENARIO=key-door, MINUTE_TICKS=<n>, DAYS=<n>)
+	$(ADB) shell am start -S -n $(APP_ID)/dev.lilguy.android.AndroidLauncher $(if $(ENDPOINT),--es endpoint $(ENDPOINT)) $(if $(MEMORY_ENDPOINT),--es memory_endpoint $(MEMORY_ENDPOINT)) $(if $(or $(WRITER_ENDPOINT),$(JOURNAL_ENDPOINT)),--es writer_endpoint $(or $(WRITER_ENDPOINT),$(JOURNAL_ENDPOINT))) $(if $(RECALL_ENDPOINT),--es recall_endpoint $(RECALL_ENDPOINT)) $(if $(SCENARIO),--es scenario $(SCENARIO)) $(if $(MINUTE_TICKS),--ei minute_ticks $(MINUTE_TICKS)) $(if $(DAYS),--ei days $(DAYS))
 
 .PHONY: tv-push-config
 tv-push-config: ## Push config/endpoints.yaml and its API keys to the device (dev only)

@@ -19,39 +19,53 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * Turns an observation plus recent memory into a request. The system prompt is fixed per
- * scenario: how the world works, the action space with an example of each action, the reply
- * format and what the observation fields mean. The user message is the observation as one line
- * of JSON, then what he recalls (memories, and journal entries in their own section), and the
+ * Turns an observation plus recent memory into a request. The system prompt says how the world
+ * works, the action space with an example of each action, the reply format and what the
+ * observation fields mean; it opens with who he is, which changes when his self-model does (once
+ * a night), so it's read from [systemFor] per request. The user message is the observation as one
+ * line of JSON, then what he recalls (memories and earlier thoughts), his latest thought, and the
  * recent intents with how each ended (and, for a think, what he thought), each stamped by [stamp].
  *
- * [choices] builds the same decision as a closed set, for models that pick. [persona] is who he
- * is, for the journal; null in rooms without one.
+ * [choices] builds the same decision as a closed set, for models that pick, with his self-model
+ * ([self]) in its state. [persona] is who he is, for authored ops (thoughts, art); null in rooms
+ * without one.
  */
 class PromptBuilder(
-    val system: String,
+    private val systemFor: () -> String,
     private val timeout: Duration,
     private val choices: (Observation, List<Memory.Entry>) -> ChoiceSet,
     private val stamp: (Long) -> String = { "tick $it" },
-    val persona: String? = null,
+    val persona: (() -> String)? = null,
+    private val self: () -> String? = { null },
 ) {
+    /** A fixed system prompt and persona. */
+    constructor(
+        system: String,
+        timeout: Duration,
+        choices: (Observation, List<Memory.Entry>) -> ChoiceSet,
+        stamp: (Long) -> String = { "tick $it" },
+        persona: String? = null,
+    ) : this({ system }, timeout, choices, stamp, persona?.let { p -> { p } })
+
     /** The key-and-door room: [goal] in the system prompt and the key-and-door choice set. */
     constructor(goal: String, timeout: Duration = 20.seconds) :
         this(systemPrompt(goal), timeout, { obs, recent -> actionChoices(obs, goal, recent) })
+
+    /** The system prompt as it stands now. */
+    val system: String get() = systemFor()
 
     fun stampOf(tick: Long): String = stamp(tick)
 
     /**
      * [closedChoice] adds the same decision as a set of options, for models that pick. [memories]
-     * and [journal] are what long-term memory recalled for this decision; [thought] is his latest
-     * thought ("stamp: text"), shown until the next one replaces it.
+     * are what long-term memory recalled for this decision (memories and earlier thoughts);
+     * [thought] is his latest thought ("stamp: text"), shown until the next one replaces it.
      */
     fun build(
         obs: Observation,
         recent: List<Memory.Entry>,
         closedChoice: Boolean = false,
         memories: List<String> = emptyList(),
-        journal: List<String> = emptyList(),
         thought: String? = null,
     ): DecisionRequest {
         val history = recent.joinToString("\n") { e ->
@@ -62,12 +76,8 @@ class PromptBuilder(
             appendLine(OBSERVATION_HEADER)
             appendLine(json.encodeToString(Observation.serializer(), obs))
             if (memories.isNotEmpty()) {
-                appendLine("What you remember from earlier, oldest first:")
+                appendLine(MEMORY_HEADER)
                 memories.forEach { appendLine("- $it") }
-            }
-            if (journal.isNotEmpty()) {
-                appendLine(JOURNAL_HEADER)
-                journal.forEach { appendLine("- $it") }
             }
             if (thought != null) {
                 appendLine(THOUGHT_HEADER)
@@ -83,21 +93,21 @@ class PromptBuilder(
             system = system,
             messages = listOf(Message(Message.Role.User, user)),
             timeout = timeout,
-            choices = if (closedChoice) choices(obs, recent)?.let { withRecall(it, memories, journal, thought) } else null,
+            choices = if (closedChoice) choices(obs, recent)?.let { withRecall(it, memories, thought, self()) } else null,
         )
     }
 
-    /** Adds what he remembers and what he wrote to the state a picking model judges the options against. */
-    private fun withRecall(set: ChoiceSet, memories: List<String>, journal: List<String>, thought: String?): ChoiceSet {
+    /** Adds how he sees himself, what he remembers and his latest thought to the state a picking model judges the options against. */
+    private fun withRecall(set: ChoiceSet, memories: List<String>, thought: String?, self: String?): ChoiceSet {
         var state = set.state
         var instructions = set.instructions
+        if (self != null) {
+            state = JsonObject(state + ("self_model" to JsonPrimitive(self)))
+            instructions += " `state.self_model` is how he sees himself, in his own words, revised as he lives: what he cares about and is working toward. Unless his needs won't allow it, choose in line with his aims."
+        }
         if (memories.isNotEmpty()) {
             state = JsonObject(state + ("memories" to JsonArray(memories.map(::JsonPrimitive))))
-            instructions += " `state.memories` is what he remembers from earlier, oldest first."
-        }
-        if (journal.isNotEmpty()) {
-            state = JsonObject(state + ("journal" to JsonArray(journal.map(::JsonPrimitive))))
-            instructions += " `state.journal` is what he wrote in his journal, oldest first: his own plans, which should shape how he spends his hours."
+            instructions += " `state.memories` is what he remembers from earlier and thoughts he had, oldest first."
         }
         if (thought != null) {
             state = JsonObject(state + ("latest_thought" to JsonPrimitive(thought)))
@@ -108,11 +118,11 @@ class PromptBuilder(
 
     companion object {
         private const val OBSERVATION_HEADER = "Observation:"
-        const val JOURNAL_HEADER = "What you wrote in your journal, oldest first:"
+        const val MEMORY_HEADER = "What you remember from earlier (memories, and thoughts you had), oldest first:"
         const val THOUGHT_HEADER = "What you decided the last time you stopped to think (your plan for now):"
         private const val ASK = "Choose your next action."
 
-        /** The user message of [request] without the closing ask: his situation, for the journal. */
+        /** The user message of [request] without the closing ask: his situation, for authored ops. */
         fun situationOf(request: DecisionRequest): String =
             request.messages.lastOrNull { it.role == Message.Role.User }?.content?.removeSuffix(ASK)?.trimEnd().orEmpty()
         private val json = Json { encodeDefaults = true; ignoreUnknownKeys = true }

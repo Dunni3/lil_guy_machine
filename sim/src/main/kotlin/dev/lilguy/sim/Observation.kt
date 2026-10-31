@@ -39,14 +39,20 @@ data class Observation(
     @EncodeDefault(EncodeDefault.Mode.NEVER) val activities: List<ActivityOption>? = null,
     /** Everything for sale he doesn't already have. */
     @EncodeDefault(EncodeDefault.Mode.NEVER) val shop: List<ShopOption>? = null,
-    /** How long since each activity his mood depends on, such as "last journal 20h ago; ...". */
-    @EncodeDefault(EncodeDefault.Mode.NEVER) val neglect: String? = null,
     /** Today's request for a piece, if one is open. */
     @EncodeDefault(EncodeDefault.Mode.NEVER) val commission: CommissionView? = null,
     /** The art he has made and still has, held or hung, oldest first. */
     @EncodeDefault(EncodeDefault.Mode.NEVER) val art: List<PieceView>? = null,
     /** Authored ops waiting for (or given) their results, for the agent layer; never shown to models. */
     @Transient val authored: List<AuthoredView> = emptyList(),
+    /**
+     * How [lastIntent] ended, in the sim's words: what its ops did when it finished, a purchase, or
+     * why it failed. Null while it runs or when nothing was said (a wait). For memory; models read
+     * [lastResult] and [recentEvents].
+     */
+    @Transient val outcome: String? = null,
+    /** [recentEvents] without the outcomes: deliveries, requests, the day changing. For memory. */
+    @Transient val news: List<String> = emptyList(),
 )
 
 /**
@@ -163,8 +169,6 @@ data class LifeSnapshot(
     val stimulation: Double,
     /** The mood his mood drifts toward: the baseline plus the room's comfort, less boredom. */
     val moodTarget: Double,
-    /** Why his mood is falling instead of drifting, when a neglect rule is in force. */
-    val moodSinking: String? = null,
     /** The activity under way (after any walk to it), and how far through it is, 0..1. */
     val doing: String?,
     val progress: Float?,
@@ -205,4 +209,5 @@ data class AgentSnapshot(
     val saying: String?,
 )
 
-data class WorldEvent(val tick: Long, val text: String)
+/** [outcome]: it says how an intent ended (a finish, a purchase, a failure) rather than what happened around him. */
+data class WorldEvent(val tick: Long, val text: String, val outcome: Boolean = false)

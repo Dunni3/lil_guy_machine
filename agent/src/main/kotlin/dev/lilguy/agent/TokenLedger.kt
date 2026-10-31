@@ -7,6 +7,9 @@ import dev.lilguy.decision.DecisionFailed
 import dev.lilguy.decision.DecisionModel
 import dev.lilguy.decision.DecisionRequest
 import dev.lilguy.decision.EndpointConfig
+import dev.lilguy.decision.ScoreRequest
+import dev.lilguy.decision.ScoreResult
+import dev.lilguy.decision.Scorer
 import dev.lilguy.decision.Usage
 import dev.lilguy.sim.GameClock
 import kotlinx.serialization.SerialName
@@ -19,12 +22,16 @@ enum class TokenPurpose {
     @SerialName("decision") Decision,
     /** The think intent's thought. */
     @SerialName("think") Think,
-    /** A journal session's searches and write. */
-    @SerialName("journal") Journal,
-    /** A level-1 memory summary. */
+    /** A memory: a stretch of events (level 1) or a day (level 2). */
     @SerialName("summary") Summary,
     /** A drawing, or the day's commission. */
     @SerialName("art") Art,
+    /** The nightly revision of his self-model. */
+    @SerialName("self") SelfModel,
+    /** Scoring which memories and thoughts reach a prompt. */
+    @SerialName("recall") Recall,
+    /** Scoring how significant new events are. */
+    @SerialName("significance") Significance,
 }
 
 /** Dollars per million tokens, from an endpoint's `price_in` and `price_out`. */
@@ -89,7 +96,7 @@ data class TokenDay(val day: Int, val total: TokenTotals, val byPurpose: Map<Tok
  * game time: per day, per purpose, and where it is heading. Fill it by wrapping each model with
  * [meter]; [attach] it to the world once there is one, or calls are stamped tick 0.
  *
- * Safe to write from any coroutine: summaries and journal entries run in the background.
+ * Safe to write from any coroutine: summaries, thoughts and scoring run in the background.
  */
 class TokenLedger {
     private val log = java.util.concurrent.CopyOnWriteArrayList<TokenCall>()
@@ -108,6 +115,21 @@ class TokenLedger {
 
     /** [model], reporting every `decide` here as [purpose]. Closing stays with whoever owns [model]. */
     fun meter(model: DecisionModel, purpose: TokenPurpose, price: TokenPrice? = null): DecisionModel = Metered(model, purpose, price)
+
+    /** [scorer], reporting every `score` here as [purpose]. */
+    fun meter(scorer: Scorer, purpose: TokenPurpose, price: TokenPrice? = null): Scorer = object : Scorer {
+        override val id: String get() = scorer.id
+
+        override suspend fun score(request: ScoreRequest): ScoreResult {
+            val tick = tickNow()
+            try {
+                return scorer.score(request).also { record(tick, purpose, id, price, it.usage, 1, it.latency.inWholeMilliseconds, failed = false) }
+            } catch (e: DecisionFailed) {
+                record(tick, purpose, id, price, e.usage, 1, 0, failed = true)
+                throw e
+            }
+        }
+    }
 
     /** Writes every call so far to [file] as JSONL, replacing it. */
     fun writeJsonl(file: java.io.File) {
@@ -137,22 +159,22 @@ class TokenLedger {
             val tick = tickNow()
             try {
                 val d = inner.decide(request, schema)
-                record(tick, d.usage, d.attempts.size, d.latency.inWholeMilliseconds, failed = false)
+                record(tick, purpose, id, price, d.usage, d.attempts.size, d.latency.inWholeMilliseconds, failed = false)
                 return d
             } catch (e: DecisionFailed) {
-                record(tick, e.usage, e.attempts.size, 0, failed = true)
+                record(tick, purpose, id, price, e.usage, e.attempts.size, 0, failed = true)
                 throw e
             }
         }
+    }
 
-        private fun record(tick: Long, usage: Usage, attempts: Int, latencyMs: Long, failed: Boolean) {
-            val reading = clock?.reading(tick)
-            log += TokenCall(
-                tick, reading?.day, reading?.time, purpose, id,
-                calls = attempts.coerceAtLeast(1), usage.promptTokens, usage.completionTokens, latencyMs,
-                costUsd = price?.cost(usage), failed = failed,
-            )
-        }
+    private fun record(tick: Long, purpose: TokenPurpose, model: String, price: TokenPrice?, usage: Usage, attempts: Int, latencyMs: Long, failed: Boolean) {
+        val reading = clock?.reading(tick)
+        log += TokenCall(
+            tick, reading?.day, reading?.time, purpose, model,
+            calls = attempts.coerceAtLeast(1), usage.promptTokens, usage.completionTokens, latencyMs,
+            costUsd = price?.cost(usage), failed = failed,
+        )
     }
 }
 
@@ -179,7 +201,7 @@ object TokenReport {
             total.costUsd?.let { appendLine("cost: $%.4f over the run = $%.4f/day, $%.2f per 30 days".format(it, it / simDays, it / simDays * 30)) }
             appendLine("at that rate: %.1fM tokens per 30 game days".format(perDay * 30 / 1_000_000))
         }
-        // Does a call cost more as the run goes on? Memory and journal recall grow the prompt; this shows if it levels off.
+        // Does a call cost more as the run goes on? Recall grows the prompt; this shows if it levels off.
         val decisions = ledger.calls().filter { it.purpose == TokenPurpose.Decision && !it.failed }
         if (decisions.size >= 2) {
             val perDay = decisions.groupBy { it.day ?: 1 }.toSortedMap().mapValues { (_, c) -> c.sumOf { it.promptTokens } / c.size }

@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * An op whose result a model writes: a journal entry, a thought, a drawing. Content says that it
+ * An op whose result a model writes: a thought, a drawing. Content says that it
  * happens, where its result goes ([into]) and its parameters; a handler in the agent layer
  * (agent/.../authored/) says how. The sim never calls a model or waits for one. When the verb
  * succeeds it records the op as [AuthoredView] with an id, and the agent layer hands the result
@@ -25,13 +25,12 @@ sealed interface AuthoredOp {
     companion object {
         /** Every handler, with the destinations it can write to. */
         val HANDLERS: Map<String, Set<String>> = linkedMapOf(
-            "journal" to setOf("journal", "events"),
             "thought" to setOf("events", "short_term"),
             "draw" to setOf("pieces", "events"),
         )
 
-        /** Where results can go: his event stream, short-term memory, journal, and the sim's art pieces. */
-        val DESTINATIONS = listOf("events", "short_term", "journal", "pieces")
+        /** Where results can go: his event stream, short-term memory, and the sim's art pieces. */
+        val DESTINATIONS = listOf("events", "short_term", "pieces")
 
         /** How a short-term result can show in later prompts. */
         val SHOWS_AS = listOf("plan")
@@ -49,7 +48,7 @@ enum class Timing {
 }
 
 /**
- * A model writes something: [with] names the handler (`journal`, `thought`), [into] where it goes.
+ * A model writes something: [with] names the handler (`thought`), [into] where it goes.
  * [showsAs]: `plan` puts a short-term result in every later prompt as his plan.
  */
 data class WriteOp(val with: String, override val into: List<String>, override val timing: Timing = Timing.During, val showsAs: String? = null) : Op(), AuthoredOp {
@@ -109,6 +108,6 @@ sealed interface AuthoredResult {
     /** A drawing: its [title] and the [tags] the drawing model claimed for it. */
     data class Drawn(val title: String, val tags: List<String>) : AuthoredResult
 
-    /** Text that went to the agent's own stores (a journal entry, a thought); the sim only marks it delivered. */
+    /** Text that went to the agent's own stores (a thought); the sim only marks it delivered. */
     data class Written(val text: String) : AuthoredResult
 }

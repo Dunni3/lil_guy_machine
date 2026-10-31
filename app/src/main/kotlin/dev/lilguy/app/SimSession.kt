@@ -10,11 +10,12 @@ import dev.lilguy.agent.art.CommissionVoice
 import dev.lilguy.agent.art.Painter
 import dev.lilguy.agent.memory.AgentMemory
 import dev.lilguy.agent.memory.InMemoryStore
-import dev.lilguy.agent.memory.JournalSession
-import dev.lilguy.agent.memory.JournalWriter
+import dev.lilguy.agent.memory.MemoryScorer
+import dev.lilguy.agent.memory.SelfModeler
 import dev.lilguy.agent.memory.Thinker
 import dev.lilguy.agent.memory.Summarizer
 import dev.lilguy.decision.DecisionModel
+import dev.lilguy.sim.BedroomContent
 import dev.lilguy.sim.BedroomWorld
 import dev.lilguy.sim.GameClock
 import dev.lilguy.sim.GridWorld
@@ -39,8 +40,8 @@ import kotlin.time.Duration
  *
  * Ticks from the render thread (which makes the render thread the sim thread), as fast as
  * [settings] say, holding the clock while a slow decision is out ([RunSettings.decideCap]) and
- * while an authored op's call (a drawing, a journal entry) is still out after its verb has ended ([waitingOnAuthor]).
- * The agent and the memory and journal writers run in a per-run child of [scope], off that thread. Every
+ * while an authored op's call (a drawing, a thought) is still out after its verb has ended ([waitingOnAuthor]).
+ * The agent, the memory writers and the scorer run in a per-run child of [scope], off that thread. Every
  * decision is kept with the world as it was when it was made ([history]), so the view can flip
  * back through the whole run.
  */
@@ -91,7 +92,7 @@ class SimSession(
     lateinit var memory: AgentMemory
         private set
 
-    /** Every model call this run (decisions, thoughts, journal, summaries) with the game time it was made at. */
+    /** Every model call this run (decisions, thoughts, summaries, the self-model, scoring) with the game time it was made at. */
     lateinit var tokens: TokenLedger
         private set
 
@@ -99,8 +100,8 @@ class SimSession(
     @Volatile var memoryError: String? = null
         private set
 
-    /** The journal writer's latest failure this run, if any. */
-    @Volatile var journalError: String? = null
+    /** The latest failure of the self-model's revision or of recall scoring this run, if any. */
+    @Volatile var writerError: String? = null
         private set
 
     /** Why the run ended, once it has. */
@@ -131,7 +132,8 @@ class SimSession(
     private var agent: Job? = null
     private var model: DecisionModel? = null
     private var writer: DecisionModel? = null
-    private var journalWriter: DecisionModel? = null
+    private var textWriter: DecisionModel? = null
+    private var scorerModel: Any? = null
     private var log: DecisionLog? = null
     /** Decisions from the agent coroutine, waiting for the render thread to file them in [history]. */
     private var inbox = ConcurrentLinkedQueue<AgentRuntime.DecisionRecord>()
@@ -235,19 +237,29 @@ class SimSession(
         val runId = "run-$run"
         val w = setup.memoryModel?.invoke()
         val summarizer = w?.let {
-            Summarizer(ledger.meter(it, TokenPurpose.Summary, setup.prices.memory), store, runId, onFailure = { e -> if (run == thisRun) memoryError = e.message ?: e.toString() })
+            Summarizer(
+                ledger.meter(it, TokenPurpose.Summary, setup.prices.memory), store, runId,
+                threshold = if (setup.recallScorer != null) Summarizer.THRESHOLD else null,
+                onFailure = { e -> if (run == thisRun) memoryError = e.message ?: e.toString() },
+            )
         }
-        val jw = setup.journalModel?.invoke()
-        val onJournal = { s: JournalSession ->
-            runCatching { runLog?.write(s) }
-            if (run == thisRun && s.status == JournalSession.Status.Failed) journalError = s.error
+        val jw = setup.writerModel?.invoke()
+        val rawScorer = setup.recallScorer?.invoke()
+        val scorer = rawScorer?.let { MemoryScorer(ledger.meter(it, TokenPurpose.Recall, setup.prices.recall), ledger.meter(it, TokenPurpose.Significance, setup.prices.recall), onFailure = { e -> if (run == thisRun) writerError = "scoring: ${e.message ?: e}" }) }
+        val personality = if (setup.scenario == Scenario.Bedroom) BedroomContent.default().personality else null
+        val selfModeler = if (w == null || personality == null) null else jw?.let {
+            SelfModeler(ledger.meter(it, TokenPurpose.SelfModel, setup.prices.writer), store, runId, personality.core.you, personality.selfSeed)
         }
-        // The deciding model draws his art, pick by pick; the journal's model writes his thoughts and words each day's request.
+        // The deciding model draws his art, pick by pick; the writer writes his thoughts and words each day's request.
         val studio = if (!setup.paints || setup.scenario != Scenario.Bedroom) null else ArtStudio(
             Painter(ledger.meter(rawModel, TokenPurpose.Art, setup.prices.decision)), store, runId, rs, setup.logDir?.let { d -> File(d, "art-%03d".format(thisRun)) },
-            voice = jw?.let { CommissionVoice(ledger.meter(it, TokenPurpose.Art, setup.prices.journal)) },
+            voice = jw?.let { CommissionVoice(ledger.meter(it, TokenPurpose.Art, setup.prices.writer)) },
         ) { drawing -> runCatching { runLog?.write(drawing) } }
-        memory = AgentMemory(store, runId, summarizer, scope = rs, journal = jw?.let { JournalWriter(ledger.meter(it, TokenPurpose.Journal, setup.prices.journal), store, runId) }, onJournal = onJournal, thinker = jw?.let { Thinker(ledger.meter(it, TokenPurpose.Think, setup.prices.journal)) }, studio = studio)
+        memory = AgentMemory(
+            store, runId, summarizer, scope = rs, scorer = scorer, selfModeler = selfModeler,
+            onSelf = { r -> if (run == thisRun && r.error != null) writerError = "self-model: ${r.error}" },
+            thinker = jw?.let { Thinker(ledger.meter(it, TokenPurpose.Think, setup.prices.writer)) }, studio = studio,
+        )
         val (gw, r) = setup.scenario.create(m, setup.timeout, settings.ticksPerMinute, longTerm = memory) {
             runCatching { runLog?.write(it) }
             runInbox.add(it)
@@ -256,7 +268,8 @@ class SimSession(
         tokens = ledger
         model = rawModel
         writer = w
-        journalWriter = jw
+        textWriter = jw
+        scorerModel = rawScorer
         log = runLog
         inbox = runInbox
         runScope = rs
@@ -267,7 +280,7 @@ class SimSession(
         recent.addLast(current)
         state = RunState.Ready
         memoryError = null
-        journalError = null
+        writerError = null
         endedBecause = null
         endedOnDays = false
         holding = false
@@ -281,13 +294,15 @@ class SimSession(
         setup.logDir?.let { dir -> runCatching { tokens.writeJsonl(File(dir, "tokens-%03d.jsonl".format(run))) } }
         (model as? AutoCloseable)?.close()
         (writer as? AutoCloseable)?.close()
-        (journalWriter as? AutoCloseable)?.close()
+        (textWriter as? AutoCloseable)?.close()
+        (scorerModel as? AutoCloseable)?.close()
         log?.close()
         runScope = null
         agent = null
         model = null
         writer = null
-        journalWriter = null
+        textWriter = null
+        scorerModel = null
         log = null
         moments.clear()
         recent.clear()
@@ -319,8 +334,8 @@ class SimSession(
 
     /** A decision has been out for as many game minutes as [RunSettings.decideCap] allows. */
     private fun mustHold(): Boolean {
-        // Until a drawing lands its piece has no title or tags, so selling it couldn't meet a request; a journal entry
-        // landing late would be recalled late. Every authored call holds the clock the same way.
+        // Until a drawing lands its piece has no title or tags, so selling it couldn't meet a request. Every authored call
+        // holds the clock the same way.
         if (memory.holding) return true
         val cap = settings.decideCap ?: return false
         return waitTicks >= cap.toLong() * ticksPerMinute && world.awaitingDecision(world.agentId)

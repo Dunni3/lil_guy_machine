@@ -48,7 +48,7 @@ enum class VerbKind(
         required = listOf(setOf("set_state")),
     ),
 
-    /** Writing something that persists: the journal, a thought. */
+    /** Writing something that persists: a thought, later letters. */
     @SerialName("expressive")
     Expressive(
         "expressive", "he writes something that persists",

@@ -290,7 +290,7 @@
                         "into"
                       ],
                       "additionalProperties": false,
-                      "description": "Authored: a model writes it (handler `journal` or `thought`) into the named destinations, kept only if the verb succeeds. `shows_as: plan` makes a short-term result his plan in later prompts. Without a handler the verb isn't offered. (before or during; kept at the finish)"
+                      "description": "Authored: a model writes it (handler `thought`) into the named destinations, kept only if the verb succeeds. `shows_as: plan` makes a short-term result his plan in later prompts. Without a handler the verb isn't offered. (before or during; kept at the finish)"
                     },
                     {
                       "type": "null"

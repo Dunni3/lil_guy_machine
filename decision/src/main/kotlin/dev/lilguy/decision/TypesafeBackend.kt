@@ -1,5 +1,7 @@
 package dev.lilguy.decision
 
+import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -20,12 +22,15 @@ import kotlin.time.TimeSource
  *
  * [Decision.raw] is the answer object (choice, confidence, probabilities), which is what a log
  * needs to see how sure it was.
+ *
+ * As a [Scorer] it sends many Score questions in one request; System One answers each on its own,
+ * in parallel, so adding questions barely adds time. A request holds at most 64k tokens.
  */
 class TypesafeBackend(
     private val config: EndpointConfig,
     apiKey: String?,
     override val id: String = "typesafe:${config.model}",
-) : DecisionModel, AutoCloseable {
+) : DecisionModel, Scorer, AutoCloseable {
     override val capabilities = Capabilities(closedChoice = true, logprobs = true)
 
     private val http = JsonHttp(config.timeout, apiKey)
@@ -51,12 +56,7 @@ class TypesafeBackend(
             })
         }
         val response = http.post(url, body)
-        val usage = (response["usage"] as? JsonObject).let { u ->
-            Usage(
-                promptTokens = (u?.get("input_tokens") as? JsonPrimitive)?.intOrNull ?: 0,
-                completionTokens = (u?.get("output_tokens") as? JsonPrimitive)?.intOrNull ?: 0,
-            )
-        }
+        val usage = usageOf(response)
         val answer = response["answers"]?.jsonObject?.get(QUESTION) as? JsonObject
             ?: throw DecisionFailed("no answer to '$QUESTION' in ${response.toString().take(300)}", usage = usage)
         val raw = answer.toString()
@@ -71,6 +71,47 @@ class TypesafeBackend(
             throw DecisionFailed("option '$label' doesn't fit the schema: ${e.message}", listOf(Attempt(raw, e.message)), usage)
         }
         return Decision(value, rationaleOf(answer, label!!), usage, started.elapsedNow(), raw, listOf(Attempt(raw)))
+    }
+
+    override suspend fun score(request: ScoreRequest): ScoreResult {
+        val started = TimeSource.Monotonic.markNow()
+        if (request.questions.isEmpty()) return ScoreResult(emptyMap(), Usage(), started.elapsedNow())
+        val body = buildJsonObject {
+            put("model", config.model)
+            put("state", request.state)
+            put("questions", buildJsonObject {
+                request.questions.forEach { (key, q) ->
+                    put(key, buildJsonObject {
+                        put("type", "score")
+                        put("instructions", q.instructions)
+                        put("criteria", JsonArray(q.criteria.map(::JsonPrimitive)))
+                    })
+                }
+            })
+        }
+        val response = withTimeout(request.timeout) { http.post(url, body) }
+        val usage = usageOf(response)
+        val answers = response["answers"] as? JsonObject
+            ?: throw DecisionFailed("no answers in ${response.toString().take(300)}", usage = usage)
+        val scored = request.questions.mapNotNull { (key, q) ->
+            val a = answers[key] as? JsonObject ?: return@mapNotNull null
+            val score = (a["score"] as? JsonPrimitive)?.doubleOrNull ?: return@mapNotNull null
+            val p = a["probabilities"] as? JsonObject
+            key to ScoreAnswer(
+                score = score,
+                levels = q.criteria.size,
+                confidence = (a["confidence"] as? JsonPrimitive)?.doubleOrNull,
+                probabilities = q.criteria.indices.map { i -> (p?.get(i.toString()) as? JsonPrimitive)?.doubleOrNull ?: 0.0 },
+            )
+        }.toMap()
+        return ScoreResult(scored, usage, started.elapsedNow())
+    }
+
+    private fun usageOf(response: JsonObject) = (response["usage"] as? JsonObject).let { u ->
+        Usage(
+            promptTokens = (u?.get("input_tokens") as? JsonPrimitive)?.intOrNull ?: 0,
+            completionTokens = (u?.get("output_tokens") as? JsonPrimitive)?.intOrNull ?: 0,
+        )
     }
 
     /** "pick_up:key (p 0.82, confidence 0.71, next move_to:door 0.10)" */

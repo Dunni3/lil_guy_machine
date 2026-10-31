@@ -154,7 +154,7 @@ abstract class GridWorld protected constructor(
         run.handle.status = IntentStatus.Interrupted
         running = null
         workEnded(run.handle)
-        event("${describe(run.handle.intent)} was interrupted")
+        outcome(run.handle, "${describe(run.handle.intent)} was interrupted")
     }
 
     private fun finish(handle: Handle, status: IntentStatus) {
@@ -163,7 +163,7 @@ abstract class GridWorld protected constructor(
             running = null
             workEnded(handle)
         }
-        if (status is IntentStatus.Failed) event("${describe(handle.intent)} failed: ${status.reason}")
+        if (status is IntentStatus.Failed) outcome(handle, "${describe(handle.intent)} failed: ${status.reason}")
         finishedThisTick = true
     }
 
@@ -263,14 +263,33 @@ abstract class GridWorld protected constructor(
         return Work.Walk(ArrayDeque(path.cells))
     }
 
-    protected fun event(text: String) {
-        events.addLast(WorldEvent(ticks, text))
+    protected fun event(text: String) = addEvent(WorldEvent(ticks, text))
+
+    /**
+     * An event that says how the running intent ended: what it did when it finished (its ops'
+     * results), a purchase, a failure. It's also kept on the intent, as [Observation.outcome].
+     */
+    protected fun outcome(text: String) {
+        running?.handle?.let { return outcome(it, text) }
+        event(text)
+    }
+
+    private fun outcome(handle: Handle, text: String) {
+        handle.outcome = text
+        addEvent(WorldEvent(ticks, text, outcome = true))
+    }
+
+    private fun addEvent(e: WorldEvent) {
+        events.addLast(e)
         while (events.size > MAX_EVENTS) events.removeFirst()
     }
 
     protected fun eventLog(): List<WorldEvent> = events.toList()
 
     protected fun recentEvents(): List<String> = events.takeLast(OBSERVED_EVENTS).map { "${stamp(it.tick)}: ${it.text}" }
+
+    /** [recentEvents] without the ones that are an intent's outcome: what happened around him. */
+    protected fun news(): List<String> = events.takeLast(OBSERVED_EVENTS).filter { !it.outcome }.map { "${stamp(it.tick)}: ${it.text}" }
 
     protected fun agentSnapshot(): AgentSnapshot = AgentSnapshot(
         id = guy.id,
@@ -297,6 +316,9 @@ abstract class GridWorld protected constructor(
 
     protected class Handle(override val intent: Intent) : IntentHandle {
         @Volatile override var status: IntentStatus = IntentStatus.Submitted
+
+        /** How it ended, in the sim's words ([outcome]); null while it runs, or when nothing was said. */
+        @Volatile var outcome: String? = null
     }
 
     protected class Running(val handle: Handle, val work: Work)

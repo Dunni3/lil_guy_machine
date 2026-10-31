@@ -12,23 +12,23 @@ His world is small and a little tight. A day has a clock, his needs (energy, ful
 down, and food costs money. He earns it by making art and selling it at the door. That takes time
 and energy, and energy only comes from being fed, so every hour he spends is a trade.
 
-He is told he is bigger than his world: intelligent, creative, capable of a full life, stuck for
-now in a room where he can only eat, sleep, work and write. He keeps a **journal**, and the one
-who made his world reads it. Things he wants may be granted, but only if he writes them down and
-argues for them. The journal is the only door out. Writing in it costs the same hours and energy
-as staying alive, so he has to budget for wanting more.
+He is told only a little about himself: he is intelligent, creative and capable of a full and rich
+life, and what he makes of it is up to him. The rest is his to work out. He stops to **think** now
+and then, in his own words, about what he'll do next and what he's working toward.
 
-He also **remembers**. What happens to him is recorded, summarized into memories in the
-background, and the relevant ones (and his own journal entries) come back when he decides what to
-do next. Over a long run, the hope is that he becomes someone: with interests, plans and a history,
-and a world that has grown because he asked for it.
+He also **remembers**. How each thing he does turns out is recorded, written up in the background
+into memories when enough has happened, and each night into a memory of the whole day. From those
+days he revises a short **self-model** in his own words: who he is, what he cares about, what he
+believes about his world, what he's working toward. The relevant memories and earlier thoughts come
+back when he decides what to do next. Over a long run, the hope is that he becomes someone: with
+interests, plans and a history of his own.
 
 ## Where it stands
 
 - **Working:** the bedroom life sim (clock, money, needs, a data-driven list of activities and a
-  shop), decisions from a scripted policy or a model, long-term memory v0, the tighter economy,
-  the persona and the journal described above, and a 2D dev view on desktop and TV for watching a
-  run, stepping back through his decisions, and reading his memories and journal.
+  shop), decisions from a scripted policy or a model, long-term memory with day memories and a
+  self-model, the tighter economy, and a 2D dev view on desktop and TV for watching a run,
+  stepping back through his decisions, and reading his memories, thoughts and self-model.
 - **Later:** personality (interests, skills, wants of his own), granting requests to grow the
   world, and a proper 3D renderer in place of the dev view.
 

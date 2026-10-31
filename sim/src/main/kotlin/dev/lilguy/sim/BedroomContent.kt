@@ -179,10 +179,6 @@ data class BedroomContent(
         }
         require(personality.curiosity > 0) { "personality: curiosity must be positive" }
         require(qualityValue.inView >= 0 && qualityValue.inUse >= 0) { "quality_value: in_view and in_use can't be negative" }
-        needs.neglect.forEach { n ->
-            require(verbs.any { it.id == n.verb }) { "neglect names verb '${n.verb}', which isn't in verbs" }
-            require(n.afterHours >= 1 && n.moodPerHour < 0) { "neglect of ${n.verb}: after_hours must be at least 1 and mood_per_hour negative" }
-        }
         items.forEach { item -> item.canvas?.let { require(item.carried) { "item ${item.id}: only a carried item can be drawable" } } }
         commissions?.let { c ->
             GameClock.parseHhmm(c.arrive)
@@ -223,8 +219,6 @@ data class NeedRules(
     val low: Double,
     @SerialName("low_mood_per_hour") val lowMoodPerHour: Double,
     @SerialName("work_floor") val workFloor: List<NeedBlock>,
-    /** Mood falls instead of drifting while an activity has gone undone too long. */
-    val neglect: List<Neglect> = emptyList(),
     /** Stimulation lost per waking hour. */
     @SerialName("stimulation_per_hour") val stimulationPerHour: Double = 0.0,
     /** Below [bored] stimulation, each point under it lowers the mood he settles to by [boredMood]. */
@@ -258,10 +252,26 @@ data class Vocabulary(val affords: List<String> = emptyList(), val qualities: Li
  * Who he is, as numbers, and something a run can vary. [affinities]: how much he likes each quality,
  * from -1 (it puts him off) to 2; a quality left out counts 0. [curiosity] scales how fast
  * stimulation drains and how much a first time pays; 1 is the content's numbers.
+ *
+ * [core] is what is true of him by design, the same every day of every run and never his to edit;
+ * [selfSeed] is how he sees himself before his first night revises it (the agent layer's
+ * self-model). Both are prose, so they live here as data rather than in code.
  */
 @Serializable
-data class Personality(val affinities: Map<String, Double> = emptyMap(), val curiosity: Double = 1.0) {
+data class Personality(
+    val affinities: Map<String, Double> = emptyMap(),
+    val curiosity: Double = 1.0,
+    val core: Core = Core(),
+    @SerialName("self_seed") val selfSeed: String = "You don't know much about yourself yet.",
+) {
     fun affinity(quality: String): Double = affinities[quality] ?: 0.0
+
+    /** The core in his words ([you]) and for models that read about him ([he]). */
+    @Serializable
+    data class Core(
+        val you: String = "You are intelligent and creative, and capable of a full and rich life. What you make of it is up to you.",
+        val he: String = "The character is intelligent and creative, and capable of a full and rich life. What he makes of it is up to him.",
+    )
 
     companion object {
         val AFFINITY_RANGE = -1.0..2.0
@@ -285,18 +295,6 @@ data class QualityValue(
 /** The first time he finishes an activity (or a use with a given item) adds [effects]; routine ones don't count. */
 @Serializable
 data class NoveltyRules(val effects: Map<String, Double>)
-
-/**
- * Once [verb] hasn't finished for [afterHours] (counting from the start of the run), mood
- * falls [moodPerHour] instead of drifting, until he does it again. [reason] says why, as an event.
- */
-@Serializable
-data class Neglect(
-    val verb: String,
-    @SerialName("after_hours") val afterHours: Int,
-    @SerialName("mood_per_hour") val moodPerHour: Double,
-    val reason: String,
-)
 
 /** Refuses an activity when [need] is below [below] or above [above]. */
 @Serializable

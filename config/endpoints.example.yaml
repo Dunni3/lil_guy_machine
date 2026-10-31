@@ -35,6 +35,9 @@ agents:
   - character: hero
     endpoint: typesafe        # swap to "local" with no code change
     memory_endpoint: hosted   # writes long-term memories; must write text (not typesafe). Optional.
-    journal_endpoint: hosted  # writes his journal entries and his thoughts (think); must write text.
-                              # Defaults to memory_endpoint; "none" and he is offered neither.
+    writer_endpoint: hosted   # writes his thoughts (think), his self-model each night and the day's
+                              # commission; must write text. Defaults to memory_endpoint; "none" and
+                              # he isn't offered think. (journal_endpoint is the old name, still read.)
+    recall_endpoint: typesafe # scores which memories and thoughts reach each prompt, and each event's
+                              # significance; typesafe only. Optional: without it recall uses keywords.
     decision_interval: on_intent_complete

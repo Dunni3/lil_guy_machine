@@ -18,8 +18,8 @@
 # (an argument's value to him, as mood). Where an op names an item it can name an argument instead.
 #
 # Two ops are authored: a model writes their result, and a handler in the agent layer runs it
-# (agent/.../authored/). `write: { with, into, timing, shows_as }` (with: journal or thought; into:
-# events, short_term, journal; timing: before the verb starts, or during it) and `draw: item` (the
+# (agent/.../authored/). `write: { with, into, timing, shows_as }` (with: thought; into: events,
+# short_term; timing: before the verb starts, or during it) and `draw: item` (the
 # drawing model draws a piece the verb produced). Results are kept only if the verb succeeds. A
 # verb whose `write` has no handler configured isn't offered to models; the sim still runs it.
 # `no_repeat`: locked right after he did it.
@@ -44,8 +44,8 @@ verbs:
     effects:
       - produce: { sketch: 1 }
       - draw: sketch
-      # Work wears his mood down; journaling is what lifts it. A little stimulation, which
-      # habituation soon wears away: sketching all day bores him.
+      # Work wears his mood down. A little stimulation, which habituation soon wears away:
+      # sketching all day bores him.
       - need: { energy: -6, mood: -4, stimulation: 3 }
   - id: paint
     kind: generative
@@ -74,18 +74,6 @@ verbs:
     routine: true
     effects:
       - set_state: { target: what, state: hung }
-  # It is work, so it needs him fed and rested, and costs more energy than sketching: writing
-  # about the life he wants is budgeted against staying alive.
-  - id: journal
-    kind: expressive
-    phrase: write in your journal
-    at: [desk]
-    requires: [journal]
-    minutes: 60
-    work: true
-    effects:
-      - need: { energy: -10, mood: 12, stimulation: 6 }
-      - write: { with: journal, into: [journal, events], timing: during }
   - id: read
     kind: consumptive
     args: { what: readable }

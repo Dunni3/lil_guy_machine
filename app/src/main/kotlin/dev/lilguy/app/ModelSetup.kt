@@ -6,6 +6,7 @@ import dev.lilguy.agent.TokenPrice
 import dev.lilguy.decision.DecisionModel
 import dev.lilguy.decision.Endpoints
 import dev.lilguy.decision.EndpointsFile
+import dev.lilguy.decision.Scorer
 import dev.lilguy.sim.GameClock
 import java.io.File
 import java.time.LocalDateTime
@@ -35,21 +36,24 @@ class ModelSetup(
     val memoryModel: (() -> DecisionModel)? = null,
     /** Bedroom: game days a run lasts before it ends, null for no end: the first run's; the Run page changes it. */
     val days: Int? = DEFAULT_DAYS,
-    /** A fresh model for each run that writes his journal; null and journaling writes nothing. */
-    val journalModel: (() -> DecisionModel)? = null,
-    /** What each of the three models costs, for the token report; null for free or unknown. */
+    /** A fresh model for each run that writes his thoughts, his self-model and each day's commission; null and he isn't offered think. */
+    val writerModel: (() -> DecisionModel)? = null,
+    /** What each model costs, for the token report; null for free or unknown. */
     val prices: Prices = Prices(),
     /** The deciding model also draws his art, pick by pick; false for the scripted policy, which can't. */
     val paints: Boolean = false,
+    /** A fresh scorer for each run that ranks recall and scores significance (typesafe); null for keywords. */
+    val recallScorer: (() -> Scorer)? = null,
 ) {
-    class Prices(val decision: TokenPrice? = null, val memory: TokenPrice? = null, val journal: TokenPrice? = null)
+    class Prices(val decision: TokenPrice? = null, val memory: TokenPrice? = null, val writer: TokenPrice? = null, val recall: TokenPrice? = null)
 
     fun copy(
         memoryModel: (() -> DecisionModel)? = this.memoryModel,
         notice: String? = this.notice,
-        journalModel: (() -> DecisionModel)? = this.journalModel,
+        writerModel: (() -> DecisionModel)? = this.writerModel,
         prices: Prices = this.prices,
-    ) = ModelSetup(create, scenario, ticksPerMinute, timeout, logDir, notice, memoryModel, days, journalModel, prices, paints)
+        recallScorer: (() -> Scorer)? = this.recallScorer,
+    ) = ModelSetup(create, scenario, ticksPerMinute, timeout, logDir, notice, memoryModel, days, writerModel, prices, paints, recallScorer)
 
     /** The Run page's starting values; the viewer changes them from there. */
     val settings: RunSettings get() = RunSettings(days, ticksPerMinute = ticksPerMinute)
@@ -76,8 +80,10 @@ class ModelSetup(
          * Falls back to the scripted policy, with a notice saying why, when there's no config, no
          * endpoint chosen, or no key. [env] is the only place keys come from. Logs go in a new
          * timestamped directory under [logRoot]. Memories are written by [memoryEndpoint] (or the
-         * config's `memory_endpoint`; "none" turns it off), whichever model decides, and the journal
-         * by [journalEndpoint] (or `journal_endpoint`) the same way.
+         * config's `memory_endpoint`; "none" turns it off), whichever model decides; his thoughts,
+         * self-model and commissions by [writerEndpoint] (or `writer_endpoint`) the same way; and
+         * recall is scored by [recallEndpoint] (or `recall_endpoint`, else the deciding endpoint when
+         * it's typesafe; "none" for keywords).
          */
         fun fromConfig(
             configFile: File,
@@ -88,11 +94,12 @@ class ModelSetup(
             ticksPerMinute: Int = GameClock.DEFAULT_TICKS_PER_MINUTE,
             memoryEndpoint: String? = null,
             days: Int? = DEFAULT_DAYS,
-            journalEndpoint: String? = null,
+            writerEndpoint: String? = null,
+            recallEndpoint: String? = null,
         ): ModelSetup {
             val logDir = logRoot?.let { File(it, "app-${scenario.id}-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))) }
             if (!configFile.isFile) {
-                val notice = if (endpoint != null || memoryEndpoint != null || journalEndpoint != null) "no config at ${configFile.path}; using the scripted policy" else null
+                val notice = if (endpoint != null || memoryEndpoint != null || writerEndpoint != null) "no config at ${configFile.path}; using the scripted policy" else null
                 return scripted(notice, logDir, scenario, ticksPerMinute, days)
             }
             val config = try {
@@ -102,12 +109,14 @@ class ModelSetup(
             }
             val notices = mutableListOf<String>()
             val writer = textWriter(config, memoryEndpoint ?: config.defaultMemoryEndpoint, env, notices, "memory", "memories won't be written")
-            val journal = textWriter(config, journalEndpoint ?: config.defaultJournalEndpoint, env, notices, "journal", "the journal won't be written")
+            val writerName = writerEndpoint ?: config.defaultWriterEndpoint
+            val textModel = textWriter(config, writerName, env, notices, "writer", "he won't think or keep a self-model")
             val base = scripted(null, logDir, scenario, ticksPerMinute, days)
             fun priceOf(name: String?) = name?.let { config.endpoints[it] }?.let(TokenPrice::of)
             var decisionPrice: TokenPrice? = null
+            val deciding = endpoint ?: config.defaultEndpoint ?: "scripted"
             val agent = try {
-                val name = endpoint ?: config.defaultEndpoint ?: "scripted"
+                val name = deciding
                 if (name == "scripted") {
                     base
                 } else {
@@ -120,12 +129,25 @@ class ModelSetup(
                 notices.add(0, "${e.message}; using the scripted policy")
                 base
             }
-            val prices = Prices(decisionPrice, priceOf(memoryEndpoint ?: config.defaultMemoryEndpoint), priceOf(journalEndpoint ?: config.defaultJournalEndpoint))
-            return agent.copy(memoryModel = writer, journalModel = journal, notice = notices.joinToString("; ").ifEmpty { null }, prices = prices)
+            // Recall is scored by a typesafe endpoint: the one named, or the deciding one when it can score.
+            val recallName = (recallEndpoint ?: config.defaultRecallEndpoint)
+                ?: deciding.takeIf { config.endpoints[it]?.kind == "typesafe" && agent !== base }
+            val scorer = recallName?.takeIf { it != "none" }?.let { name ->
+                try {
+                    Endpoints.scorer(config, name, env).let { (it as? AutoCloseable)?.close() }
+                    val factory: () -> Scorer = { Endpoints.scorer(config, name, env) }
+                    factory
+                } catch (e: Exception) {
+                    notices += "${e.message}; recall goes by keywords"
+                    null
+                }
+            }
+            val prices = Prices(decisionPrice, priceOf(memoryEndpoint ?: config.defaultMemoryEndpoint), priceOf(writerName), priceOf(recallName))
+            return agent.copy(memoryModel = writer, writerModel = textModel, notice = notices.joinToString("; ").ifEmpty { null }, prices = prices, recallScorer = scorer)
         }
 
         /**
-         * A factory for a model that writes text ([what]: memories or the journal), or null, with a
+         * A factory for a model that writes text ([what]: memories, or the writer), or null, with a
          * notice ending in [without] when one was asked for but can't be used.
          */
         private fun textWriter(config: EndpointsFile, name: String?, env: (String) -> String?, notices: MutableList<String>, what: String, without: String): (() -> DecisionModel)? {

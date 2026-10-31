@@ -1,34 +1,20 @@
 package dev.lilguy.agent
 
 import dev.lilguy.sim.BedroomContent
-import dev.lilguy.sim.VerbSpec
-import dev.lilguy.sim.WriteOp
 
 /**
- * Who he is, shared by the decision prompt, the journal and the thinker so they can't drift. The
- * world is small and he is bigger than it; the journal is where the gap goes, and it is his goal:
- * money only buys the food that gives him time to write. What he "can only do" is read from the
- * unlocked content, so the prompt stays true when something is granted, and the goal is only
- * stated when the journal is there.
+ * Who he is, shared by the decision prompt, the thinker and the art so they can't drift. Three
+ * parts: the fixed core from content ([BedroomContent.personality]), true by design and never his
+ * to edit; his taste, generated from his affinities so the prompt can't contradict the sim; and his
+ * self-model, in his own words, revised each night from his day ([dev.lilguy.agent.memory.SelfModeler]).
+ * What he can do is a fact about the world, so it's in the rules ([abilities]), not here.
  */
 object Persona {
-    /** "eat, sketch, sell your art, write in your journal and sleep". */
+    /** "eat, sketch, sell your art, sleep and stop and think". */
     fun abilities(content: BedroomContent): String {
         val all = content.verbs.map { it.phrase ?: it.id.replace('_', ' ') }
         return if (all.size <= 1) all.joinToString() else all.dropLast(1).joinToString(", ") + " and " + all.last()
     }
-
-    /** The creator and the grant condition: wants may be granted, but only written down with reasons. */
-    const val CREATOR = "The one who made this world is watching it and reads your journal. What you want may be granted, but only if you write it down and give your reasons: say what you want and why it would make your life better or your world larger. Wanting something in silence changes nothing."
-
-    /** His goal, when there is a journal to write in. */
-    const val GOAL = "Your goal is to express yourself in your journal: it is where you work out what would make your life better, plan how to get it, and make your case. " +
-        "Money is not the point. It only buys food, and food buys you the time and strength to think, plan and write."
-
-    private fun journals(content: BedroomContent) = journalVerb(content) != null
-
-    /** The verb whose result goes into his journal, if he has one: what the journal parts of prompts describe. */
-    fun journalVerb(content: BedroomContent): VerbSpec? = content.verbs.firstOrNull { v -> v.ops<WriteOp>().any { "journal" in it.into } }
 
     /**
      * "cozy, calm and warm things, lively ones a little, and loud ones put you off", from his
@@ -50,17 +36,19 @@ object Persona {
         return (if (parts.isEmpty()) "" else "you like ${parts.joinToString(", ")}") + (off?.let { (if (parts.isEmpty()) "" else ", and ") + it }.orEmpty())
     }
 
-    fun text(content: BedroomContent): String =
-        "You are intelligent, aspirational and creative, and capable of a full and rich life. For now your circumstances are small: " +
-            "you live in a restrictive little world, and the only things you can do are ${abilities(content)}. But you can find your way out. " +
-            "You can design and plan your way out. Wanting more, and working out what you want and how you would get it, is how your world grows. " +
-            (if (journals(content)) "$GOAL " else "") +
-            (taste(content)?.let { "As for taste, ${it}. " } ?: "") +
-            "You will be living here a long time. $CREATOR"
+    /** What the prompts call his self-model. */
+    const val SELF_HEADER = "How you see yourself, in your own words (you revise this as you live):"
 
-    /** The same in the third person and short, for models that pick from options and only read the choice set. */
-    fun short(content: BedroomContent): String =
-        "The character is intelligent, aspirational and creative, but lives in a small, restrictive world where he can only ${abilities(content)}. " +
-            "The world's creator reads his journal and may grant what he wants, but only what he writes down with his reasons." +
-            if (journals(content)) " His goal is to express himself in his journal and plan a better life there; money only buys the food that gives him time and strength to write." else ""
+    /**
+     * The core, his taste, and [self] (his self-model as rendered lines, or its seed) when
+     * something revises it; null leaves it out.
+     */
+    fun text(content: BedroomContent, self: String? = null): String = buildString {
+        append(content.personality.core.you)
+        taste(content)?.let { append(" As for taste, $it.") }
+        if (self != null) append("\n\n$SELF_HEADER\n$self")
+    }
+
+    /** The core in the third person, for models that pick from options and only read the choice set. */
+    fun short(content: BedroomContent): String = content.personality.core.he
 }
