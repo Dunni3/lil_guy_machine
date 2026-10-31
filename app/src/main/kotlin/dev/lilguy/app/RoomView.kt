@@ -298,7 +298,7 @@ class RoomView(private val art: ArtTextures) : Disposable {
     private fun cardShape(life: LifeSnapshot) {
         shapes.color = CARD
         roundRect(MARGIN, DevView.HEIGHT - MARGIN - CARD_HEIGHT, CARD_WIDTH, CARD_HEIGHT, 18f)
-        val needs = listOf(life.energy to ENERGY, life.fullness to FULLNESS, life.mood to MOOD)
+        val needs = listOf(life.energy to ENERGY, life.fullness to FULLNESS, life.mood to MOOD, life.stimulation to STIMULATION)
         for ((i, need) in needs.withIndex()) {
             val y = DevView.HEIGHT - MARGIN - 86f - i * BAR_PITCH
             shapes.color = BAR_BG
@@ -317,7 +317,7 @@ class RoomView(private val art: ArtTextures) : Disposable {
         font.draw(batch, "Day ${life.clock.day} · ${life.clock.time}   $${life.money}", left, DevView.HEIGHT - MARGIN - 22f)
         font.data.setScale(LABEL_SCALE)
         font.color = MUTED
-        for ((i, label) in listOf("energy", "food", "mood").withIndex()) {
+        for ((i, label) in listOf("energy", "food", "mood", "fun").withIndex()) {
             font.draw(batch, label, left, DevView.HEIGHT - MARGIN - 86f - i * BAR_PITCH + BAR_HEIGHT - 1f)
         }
         font.data.setScale(DOING_SCALE)
@@ -473,7 +473,7 @@ class RoomView(private val art: ArtTextures) : Disposable {
 
         const val MARGIN = 36f
         const val CARD_WIDTH = 440f
-        const val CARD_HEIGHT = 236f
+        const val CARD_HEIGHT = 270f
         const val BAR_X = MARGIN + 120f
         const val BAR_WIDTH = 280f
         const val BAR_HEIGHT = 18f
@@ -495,6 +495,7 @@ class RoomView(private val art: ArtTextures) : Disposable {
         val ENERGY = Color.valueOf("f5b942ff")
         val FULLNESS = Color.valueOf("6cc070ff")
         val MOOD = Color.valueOf("6fa8e6ff")
+        val STIMULATION = Color.valueOf("c58ae0ff")
         val BUBBLE = Color.valueOf("fffdf6ff")
         val BANNER_BG = Color.valueOf("2a1e18ff")
     }

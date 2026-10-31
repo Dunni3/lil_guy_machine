@@ -87,7 +87,7 @@ class BedroomWorldTest {
         assertNull(w.activity("sleep").locked, "energy 80 is tired enough")
         assertNull(w.activity("sketch").locked)
         assertEquals("1h", w.activity("sketch").takes)
-        assertEquals("1 sketch, sells for $3; energy -6; mood -4", w.activity("sketch").gives)
+        assertEquals("1 sketch, sells for $3; energy -6; mood -4; stimulation +3; new to you: stimulation +15, mood +4", w.activity("sketch").gives)
         assertEquals("uses a meal (you have 2); fullness +45", w.activity("eat").gives)
         assertTrue(w.obs().uses!!.isEmpty())
 
@@ -108,7 +108,7 @@ class BedroomWorldTest {
         assertTrue(desk.inReach)
         // Awake decay over the walk and the hour, plus the sketch's -6.
         assertTrue(obs.needs!!.energy in 69..70, "energy ${obs.needs!!.energy}")
-        assertTrue(obs.recentEvents.last().endsWith("finished sketch: +1 sketch, energy -6, mood -4"), obs.recentEvents.last())
+        assertTrue(obs.recentEvents.last().endsWith("finished sketch: +1 sketch, energy -6, mood -4, stimulation +3, new to you: stimulation +15, mood +4"), obs.recentEvents.last())
         assertEquals("$3 for the 1 sketch you hold", w.activity("sell_art").gives)
     }
 
@@ -160,9 +160,9 @@ class BedroomWorldTest {
         val w = world()
         w.run(Intent.Wait(GridWorld.MAX_WAIT)) // 40 game minutes
         while (w.clock.reading(w.tick) != ClockReading(1, "09:00")) w.step()
-        assertEquals(NeedLevels(76, 65, 57), w.obs().needs)
+        assertEquals(NeedLevels(76, 65, 57, 57), w.obs().needs)
         val reasons = w.needs.changes.map { it.need to it.reason }.toSet()
-        assertEquals(setOf(Need.Energy to "awake", Need.Fullness to "hunger", Need.Mood to "drift toward 50"), reasons)
+        assertEquals(setOf(Need.Energy to "awake", Need.Stimulation to "awake", Need.Fullness to "hunger", Need.Mood to "drift toward 50"), reasons)
         val sums = w.needs.changes.groupBy { it.need }.mapValues { (_, c) -> c.sumOf { it.delta } }
         assertEquals(-4.0, sums.getValue(Need.Energy), 1e-6)
         assertEquals(-5.0, sums.getValue(Need.Fullness), 1e-6)
@@ -242,7 +242,7 @@ class BedroomWorldTest {
         w.run(Intent.Buy("record_player"))
         assertEquals("needs a record ($20)", w.activity("listen").locked)
         w.run(Intent.Buy("jazz_record"))
-        assertEquals(listOf(UseOption("jazz_record", "record_player", "1 min", "music for 45 min: mood +4/h")), w.obs().uses)
+        assertEquals(listOf(UseOption("jazz_record", "record_player", "1 min", "music for 45 min: mood +2/h, stimulation +6/h; new to you: stimulation +15, mood +4")), w.obs().uses)
         assertTrue("use the jazz record on something" in failure(w.run(Intent.Use("jazz_record"))))
         assertTrue("does nothing" in failure(w.run(Intent.Use("jazz_record", on = "bed"))))
         assertIs<IntentStatus.Succeeded>(w.run(Intent.Use("jazz_record", on = "record_player")).status)
@@ -270,6 +270,22 @@ class BedroomWorldTest {
         assertTrue(!w.passable(plant.x, plant.y))
         val rug = w.obs().nearby.first { it.id == "rug" }
         assertTrue(w.passable(rug.x, rug.y))
+    }
+
+    @Test
+    fun `the first time pays more, repeating pays less, and boredom lowers the mood he settles to`() {
+        val w = world()
+        w.run(Intent.Do("sketch"))
+        assertTrue(w.obs().recentEvents.last().endsWith("new to you: stimulation +15, mood +4"), w.obs().recentEvents.last())
+        assertTrue("done a lot lately: gains at 80%" in w.activity("sketch").gives!!, w.activity("sketch").gives)
+        w.run(Intent.Do("sketch"))
+        val again = w.obs().recentEvents.last()
+        assertTrue("new to you" !in again && "done a lot lately, so it paid 80%, stimulation -1" in again, again)
+        // Eating is routine: never new, never worn.
+        w.run(Intent.Do("eat"))
+        assertTrue(w.obs().recentEvents.last().let { "finished eat: used 1 meal, fullness +" in it && "new" !in it && "lately" !in it }, w.obs().recentEvents.last())
+
+        assertEquals(34.0, world(needs = NeedLevels(80, 70, 50, stimulation = 0)).snapshot().life!!.moodTarget)
     }
 
     @Test

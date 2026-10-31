@@ -1,5 +1,7 @@
 package dev.lilguy.sim
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlin.math.roundToInt
@@ -56,18 +58,31 @@ class Ledger(start: Int, private val clock: GameClock) {
 enum class Need {
     @SerialName("energy") Energy,
     @SerialName("fullness") Fullness,
-    @SerialName("mood") Mood;
+    @SerialName("mood") Mood,
+
+    /** Low means bored; new things and hobbies feed it, repeating the same thing drains it. */
+    @SerialName("stimulation") Stimulation;
 
     val id: String get() = name.lowercase()
 }
 
-/** Needs as the agent sees them: whole numbers from 0 to 100. */
+/**
+ * Needs as the agent sees them: whole numbers from 0 to 100. [stimulation] has a default so
+ * content and logs written before it existed still load; it is always written out.
+ */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
-data class NeedLevels(val energy: Int, val fullness: Int, val mood: Int) {
+data class NeedLevels(
+    val energy: Int,
+    val fullness: Int,
+    val mood: Int,
+    @EncodeDefault val stimulation: Int = 60,
+) {
     operator fun get(need: Need): Int = when (need) {
         Need.Energy -> energy
         Need.Fullness -> fullness
         Need.Mood -> mood
+        Need.Stimulation -> stimulation
     }
 }
 
@@ -89,11 +104,11 @@ data class NeedChange(
 )
 
 /**
- * Energy, fullness and mood, each kept as a double from 0 to 100 and changed only through
+ * Energy, fullness, mood and stimulation, each kept as a double from 0 to 100 and changed only through
  * [change], which clamps and logs. Call [flush] at each game hour to write the hour's rate changes.
  */
 class Needs(start: NeedLevels, private val clock: GameClock) {
-    private val values = doubleArrayOf(start.energy.toDouble(), start.fullness.toDouble(), start.mood.toDouble())
+    private val values = DoubleArray(Need.entries.size) { start[Need.entries[it]].toDouble() }
     private val history = mutableListOf<NeedChange>()
     /** Rate changes since the last [flush], summed per need and reason. */
     private val pending = LinkedHashMap<Pair<Need, String>, Double>()
@@ -102,7 +117,7 @@ class Needs(start: NeedLevels, private val clock: GameClock) {
 
     operator fun get(need: Need): Double = values[need.ordinal]
 
-    fun levels() = NeedLevels(level(Need.Energy), level(Need.Fullness), level(Need.Mood))
+    fun levels() = NeedLevels(level(Need.Energy), level(Need.Fullness), level(Need.Mood), level(Need.Stimulation))
 
     /** What the agent sees. Rounded down, so "0" means really empty and "100" really full. */
     fun level(need: Need): Int = this[need].toInt()

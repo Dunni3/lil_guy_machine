@@ -34,7 +34,7 @@ start:
   # Was 40: one day of slack at most.
   money: 20
   time: "08:00"
-  needs: { energy: 80, fullness: 70, mood: 60 }
+  needs: { energy: 80, fullness: 70, mood: 60, stimulation: 60 }
   items: { mail_hatch: 1, picture_rail: 1, bed: 1, desk: 1, chair: 1, sketchbook: 1, journal: 1, meal: 2 }
 
 needs:
@@ -55,6 +55,27 @@ needs:
   # art (sketch and paint block below 25), so it ends up costing him his income too.
   neglect:
     - { activity: journal, after_hours: 24, mood_per_hour: -5, reason: "a day without writing in your journal" }
+  # Stimulation (low = bored) drains while he's awake. Hobbies, making things and anything new feed
+  # it; repeating the same thing pays less and drains it (habituation, below). Mood is the summary:
+  # below `bored`, each missing point lowers the mood he settles to by `bored_mood` (16 at 0).
+  # (research_notes/2026-10-30_1951_world-grammar-consolidated-plan.md, step 1)
+  stimulation_per_hour: -3
+  bored: 40
+  bored_mood: 0.4
+
+# Repetition wears an activity thin: each time he finishes one, its wear rises `per_repeat` (wear
+# runs 0 to 1) and fades `recover_per_hour`. Its mood and stimulation gains are paid at 1 - wear, and
+# finishing one that was already worn costs `stale_stimulation` times the wear. Activities marked
+# `routine` (eating, sleeping, selling, hanging) don't wear. A use wears per item, so each record is
+# its own.
+habituation:
+  per_repeat: 0.25
+  recover_per_hour: 0.04
+  stale_stimulation: -6
+
+# The first time he finishes an activity (or plays a given record) pays this on top. Routine ones don't count.
+novelty:
+  effects: { stimulation: 15, mood: 4 }
 
 shop:
   # Orders are placed and delivered at the mail hatch.
@@ -127,11 +148,13 @@ items:
 # finishes. `rates`: need changes per hour while doing it. `block`: refused when a need is above
 # or below a level. Activities end after `minutes`, or for `until`, at a time of day or when a
 # need reaches a level, whichever comes first; `stop_below` ends one early when a need drops.
-# `phrase` is how the prompt says what he can do. Listed in the order options are offered to models.
+# `phrase` is how the prompt says what he can do. `routine`: upkeep that neither wears thin nor
+# counts as new (see habituation). Listed in the order options are offered to models.
 activities:
   - id: eat
     at: [desk]
     minutes: 30
+    routine: true
     consumes: { meal: 1 }
     effects: { fullness: 45 }
     block: [{ need: fullness, above: 90, reason: "not hungry" }]
@@ -141,8 +164,9 @@ activities:
     minutes: 60
     work: true
     produces: { sketch: 1 }
-    # Work wears his mood down; journaling is what lifts it (Ian).
-    effects: { energy: -6, mood: -4 }
+    # Work wears his mood down; journaling is what lifts it (Ian). A little stimulation, which
+    # habituation soon wears away: sketching all day bores him.
+    effects: { energy: -6, mood: -4, stimulation: 3 }
     block: [{ need: mood, below: 25, reason: "too low to make art" }]
   - id: paint
     at: [easel]
@@ -150,18 +174,20 @@ activities:
     work: true
     consumes: { canvas: 1 }
     produces: { painting: 1 }
-    effects: { energy: -15, mood: -10 }
+    effects: { energy: -15, mood: -10, stimulation: 12 }
     block: [{ need: mood, below: 25, reason: "too low to make art" }]
   - id: sell_art
     phrase: sell your art
     at: [mail_hatch]
     # Was 60: a sale is a hand-off at the hatch, not an hour of his day (Ian).
     minutes: 1
+    routine: true
     sells: art
   - id: hang_art
     phrase: hang your art on the wall
     at: [picture_rail]
     minutes: 15
+    routine: true
     hangs: art
   # The agent layer writes an entry when one succeeds (agent/.../memory/JournalWriter.kt). It is
   # work, so it needs him fed and rested, and costs more energy than sketching: writing about the
@@ -173,21 +199,24 @@ activities:
     minutes: 60
     work: true
     # Was mood +3: expressing himself is what makes him happier.
-    effects: { energy: -10, mood: 12 }
+    effects: { energy: -10, mood: 12, stimulation: 6 }
+  # Hobbies were mood +6 and +10. Mood is now mostly the summary of the other needs, so most of
+  # what they gave moved to stimulation.
   - id: read
     at: [bed, chair]
     requires: [book]
     minutes: 60
-    effects: { mood: 6 }
+    effects: { mood: 2, stimulation: 15 }
   - id: listen
     at: [chair]
     requires: [record_player, record]
     minutes: 30
-    effects: { mood: 10 }
+    effects: { mood: 4, stimulation: 12 }
   - id: sleep
     at: [bed]
     until: { time: "07:00", need: energy, reaches: 100 }
     asleep: true
+    routine: true
     rates: { energy: 12 }
     # Added in tuning: he wakes up hungry rather than sleeping fullness down to 0.
     stop_below: { fullness: 10 }
@@ -201,4 +230,5 @@ uses:
     on: record_player
     at: [record_player]
     minutes: 1
-    background: { name: music, minutes: 45, rates: { mood: 4 } }
+    # Was mood +4/h.
+    background: { name: music, minutes: 45, rates: { mood: 2, stimulation: 6 } }

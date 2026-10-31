@@ -36,7 +36,7 @@ object Describe {
     fun observation(obs: Observation, newEvents: List<String>): String = buildList {
         obs.lastIntent?.let { add("last action ${intent(it)}: ${result(obs.lastResult)}") }
         obs.money?.let { add("money $$it") }
-        obs.needs?.let { add("energy ${it.energy}, fullness ${it.fullness}, mood ${it.mood}") }
+        obs.needs?.let { add("energy ${it.energy}, fullness ${it.fullness}, mood ${it.mood}, stimulation ${it.stimulation}") }
         obs.holding?.takeIf { it.isNotEmpty() }?.let { add("holding ${it.joinToString()}") }
         obs.owns?.takeIf { it.isNotEmpty() }?.let { o -> add("owns " + o.entries.joinToString { (k, v) -> if (v > 1) "$k x$v" else k }) }
         obs.music?.let { add("playing $it") }

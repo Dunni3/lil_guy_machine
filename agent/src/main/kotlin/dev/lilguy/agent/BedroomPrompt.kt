@@ -85,6 +85,31 @@ object BedroomPrompt {
         return if (parts.isEmpty()) null else "- Art: everything you make is a picture you draw yourself, with a title. " + parts.joinToString(" ")
     }
 
+    /**
+     * "Stimulation falls 3 an hour while you're awake; ... Below 40 it drags your mood down, up to 16
+     * lower when you're fully bored.", or empty when stimulation doesn't drain.
+     */
+    private fun stimulationRule(content: BedroomContent): String {
+        val r = content.needs
+        if (r.stimulationPerHour >= 0) return ""
+        val drag = if (r.bored > 0 && r.boredMood > 0) " Below ${r.bored.toInt()} you're bored, and it drags the mood you settle to down, up to ${(r.bored * r.boredMood).toInt()} lower at 0." else ""
+        return " Stimulation falls ${(-r.stimulationPerHour).toInt()} an hour while you're awake; hobbies, making things and anything new bring it back.$drag"
+    }
+
+    /** The variety line of the prompt: novelty and habituation, or null when the content has neither. */
+    private fun varietyHint(content: BedroomContent): String? {
+        val parts = buildList {
+            content.novelty?.let { n -> add("The first time you do something it gives " + n.effects.entries.joinToString(" and ") { (need, d) -> "${d.toInt()} $need" } + " on top.") }
+            content.habituation?.let { h ->
+                val stale = if (h.staleStimulation < 0) ", and doing something you've worn thin costs stimulation" else ""
+                add("Doing the same thing again gives less: each time you finish it, its mood and stimulation gains drop ${(h.perRepeat * 100).toInt()}%, coming back ${(h.recoverPerHour * 100).toInt()}% an hour$stale.")
+                val routine = content.activities.filter { it.routine }.map { it.phrase ?: it.id }
+                if (routine.isNotEmpty()) add("Routine things (${routine.joinToString(", ")}) don't wear thin.")
+            }
+        }
+        return if (parts.isEmpty()) null else "- Variety: " + parts.joinToString(" ").replaceFirstChar { it.lowercase() }
+    }
+
     /** The think line of the prompt. */
     private fun thinkHint(content: BedroomContent): String {
         val t = content.think
@@ -115,10 +140,11 @@ object BedroomPrompt {
         val forSale = content.items.filter { it.price != null }
         val wants = if (forSale.any { it.kind != "food" }) "for food and for anything you want to own" else "for food"
         val means = if (content.activity(JOURNAL_ACTIVITY) != null) ", as a means, not the goal" else ""
+        val bored = if (r.stimulationPerHour < 0 && r.boredMood > 0) ", less boredom" else ""
         val mood = if (decor) {
-            "Mood drifts ${r.moodDriftPerHour.toInt()} an hour toward ${r.moodBaseline.toInt()} plus your room's comfort; nice things raise it for a while, and decor raises comfort."
+            "Mood drifts ${r.moodDriftPerHour.toInt()} an hour toward ${r.moodBaseline.toInt()} plus your room's comfort$bored; nice things raise it for a while, and decor raises comfort."
         } else {
-            "Mood drifts ${r.moodDriftPerHour.toInt()} an hour toward ${r.moodBaseline.toInt()}; some activities raise it for a while."
+            "Mood drifts ${r.moodDriftPerHour.toInt()} an hour toward ${r.moodBaseline.toInt()}$bored; some activities raise it for a while."
         }
         val sinking = moodRules(content)?.let { " $it" }.orEmpty()
         val lists = "`activities` lists everything you can do, with how long it takes and what it gives, or why it's locked. `shop` is the catalog: everything for sale, its price, whether you can afford it, and what it's for." +
@@ -128,8 +154,9 @@ object BedroomPrompt {
         val music = if (content.uses.any { it.background != null }) " music: what's playing, if anything." else ""
         val life = listOfNotNull(
             "- Time: the clock shows the day and the time. Activities take game minutes or hours, and you choose again when one finishes.",
-            "- Needs, each from 0 to 100. Energy falls ${-r.awakeEnergyPerHour.toInt()} an hour while you're awake and comes back while you sleep. Fullness falls ${-r.fullnessPerHour.toInt()} an hour; eating brings it back. $mood Below ${r.low.toInt()} energy or fullness, mood falls ${-r.lowMoodPerHour.toInt()} an hour instead.$sinking When $floor you can't work ($work).",
+            "- Needs, each from 0 to 100. Energy falls ${-r.awakeEnergyPerHour.toInt()} an hour while you're awake and comes back while you sleep. Fullness falls ${-r.fullnessPerHour.toInt()} an hour; eating brings it back.${stimulationRule(content)} $mood Below ${r.low.toInt()} energy or fullness, mood falls ${-r.lowMoodPerHour.toInt()} an hour instead.$sinking When $floor you can't work ($work).",
             "- Money: ${makers.joinToString(" and ")} make${if (makers.size > 1) "" else "s"} art, and ${sellAt?.id ?: "selling"} sells everything you hold through the $hatch: $art. The shop delivers through the $hatch, and you pay when it arrives.",
+            varietyHint(content),
             artHint(content),
             journalHint(content),
             if (thinking) thinkHint(content) else null,
@@ -150,7 +177,7 @@ object BedroomPrompt {
             |Reply with a JSON object {"thought": ..., "intent": ...}. "thought" is your reasoning in a sentence or two; "intent" is the one action to take now. Use only ids from the observation.
             |
             |The observation is JSON:
-            |- clock: day and time. money: dollars. needs: energy, fullness and mood, 0 to 100.
+            |- clock: day and time. money: dollars. needs: ${if (r.stimulationPerHour < 0) "energy, fullness, mood and stimulation" else "energy, fullness and mood"}, 0 to 100.
             |- holding: art you're carrying, to sell. owns: everything else you own, id to count.$music
             |- art: the pieces you have made and still have, held to sell or hung on your wall, with their titles. commission: today's request for a piece, if one is open.
             |- $options: your options, as above.
@@ -233,6 +260,7 @@ object BedroomPrompt {
                     put("energy", n.energy)
                     put("fullness", n.fullness)
                     put("mood", n.mood)
+                    if (content.needs.stimulationPerHour < 0) put("stimulation", n.stimulation)
                 }
             }
             putJsonArray("holding") { obs.holding.orEmpty().forEach { add(it) } }
@@ -280,6 +308,7 @@ object BedroomPrompt {
                     "Keep him fed and rested enough, and put the hours that leaves toward his journal: it takes an hour and energy that earning his food also needs. " +
                     (if (content.needs.neglect.isNotEmpty()) "He needs it, too: a day without journaling and his mood sinks (`state.neglect` says how long it's been), and when his mood is low he can't make art, so he can't earn. " else "")
                 else "") +
+                (if (content.habituation != null) "Doing the same thing over and over bores him: its gains shrink and his stimulation falls, which drags his mood down; new things and hobbies lift it. " else "") +
                 (if (thinking) "Thinking lets him work out what he wants and plan; he also stops to think on his own every few decisions. " else "") +
                 "Read `state.last_action` and `state.recent_actions`: don't repeat an action that just failed.",
             state = state,
