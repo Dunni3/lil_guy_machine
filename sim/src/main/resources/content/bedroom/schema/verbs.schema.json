@@ -431,6 +431,63 @@
           },
           "no_repeat": {
             "type": "boolean"
+          },
+          "by_day": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "block": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "need": {
+                          "type": "string",
+                          "enum": [
+                            "energy",
+                            "fullness",
+                            "mood",
+                            "stimulation",
+                            "frustration"
+                          ]
+                        },
+                        "below": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "above": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "reason": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "need",
+                        "reason"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "minutes": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [

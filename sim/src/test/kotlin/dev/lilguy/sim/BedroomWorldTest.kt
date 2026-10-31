@@ -30,7 +30,8 @@ class BedroomWorldTest {
         needs: NeedLevels = content.start.needs,
         items: Map<String, Int> = content.start.items,
         granted: Set<String> = content.gated,
-    ) = BedroomWorld.create(content.copy(start = content.start.copy(money = money, needs = needs, items = items)), granted = granted)
+        time: String = content.start.time,
+    ) = BedroomWorld.create(content.copy(start = content.start.copy(money = money, needs = needs, items = items, time = time)), granted = granted)
 
     /** Submits [intent], steps until it ends, and returns its handle. */
     private fun BedroomWorld.run(intent: Intent, maxTicks: Int = 20_000): IntentHandle {
@@ -87,7 +88,7 @@ class BedroomWorldTest {
         assertEquals("you have no art to sell; sketch or paint makes some", w.activity("sell_art").locked)
         assertEquals("needs a book ($12)", w.activity("read").locked)
         assertEquals("needs a record player ($150)", w.activity("listen").locked)
-        assertNull(w.activity("sleep").locked, "energy 80 is tired enough")
+        assertEquals("not bedtime yet; by day only a nap, when exhausted (energy 80)", w.activity("sleep").locked)
         assertNull(w.activity("sketch").locked)
         assertEquals("1h", w.activity("sketch").takes)
         assertEquals("1 sketch, sells for $3; art skill +0.1; energy -3; mood -4; stimulation +3; new to you: stimulation +8, mood +3", w.activity("sketch").gives)
@@ -189,15 +190,23 @@ class BedroomWorldTest {
     }
 
     @Test
-    fun `sleep lasts until 07 00 or full energy`() {
-        val w = world(needs = NeedLevels(energy = 30, fullness = 90, mood = 50))
-        assertNull(w.activity("sleep").locked)
+    fun `at night sleep lasts until 07 00 or full energy, by day it's a short nap when exhausted`() {
+        // By day: refused until he's exhausted, then a nap of at most 90 minutes, not until 07:00.
+        assertEquals("not bedtime yet; by day only a nap, when exhausted (energy 30)", world(needs = NeedLevels(energy = 30, fullness = 90, mood = 50)).activity("sleep").locked)
+        val nap = world(needs = NeedLevels(energy = 20, fullness = 90, mood = 50))
+        assertEquals("up to 1h 30m or energy 100, or fullness below 10, about 1h 30m", nap.activity("sleep").takes)
+        nap.run(Intent.Do("sleep"))
+        assertTrue(nap.clock.reading(nap.tick).time in "09:30".."09:40", "woke at ${nap.clock.reading(nap.tick).time}")
+        assertTrue(nap.obs().needs!!.energy in 36..38, "18 energy from the nap, less the walk to bed: ${nap.obs().needs!!.energy}")
+
+        // At night: until full energy, or 07:00.
+        val w = world(needs = NeedLevels(energy = 30, fullness = 90, mood = 50), time = "21:00")
         assertEquals("until 07:00 or energy 100, or fullness below 10, about 5h 50m", w.activity("sleep").takes)
         w.run(Intent.Do("sleep"))
         assertEquals(100, w.obs().needs!!.energy)
         val woke = w.clock.reading(w.tick)
-        assertEquals(1, woke.day)
-        assertTrue(woke.time in "13:45".."14:05", "woke at ${woke.time}")
+        assertEquals(2, woke.day)
+        assertTrue(woke.time in "02:45".."03:05", "woke at ${woke.time}")
         assertEquals("not tired (energy 100)", w.activity("sleep").locked)
 
         // Going to bed at 03:00 with energy 24, he wakes at 07:00 before reaching 100.
@@ -213,7 +222,7 @@ class BedroomWorldTest {
 
     @Test
     fun `hunger wakes him up`() {
-        val w = world(needs = NeedLevels(energy = 10, fullness = 20, mood = 50))
+        val w = world(needs = NeedLevels(energy = 10, fullness = 20, mood = 50), time = "22:00")
         w.run(Intent.Do("sleep"))
         assertEquals(9, w.obs().needs!!.fullness)
         assertTrue(w.obs().needs!!.energy < 100)

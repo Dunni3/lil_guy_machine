@@ -90,6 +90,29 @@
       ],
       "additionalProperties": false
     },
+    "night": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "string"
+            },
+            "to": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "from",
+            "to"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "habituation": {
       "anyOf": [
         {

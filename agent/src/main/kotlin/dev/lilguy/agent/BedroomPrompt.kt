@@ -139,6 +139,28 @@ object BedroomPrompt {
     }
 
     /**
+     * "- Night and day: night runs 20:00 to 04:00. ...", for verbs that change by day, or null when
+     * none do.
+     */
+    private fun nightHint(content: BedroomContent): String? {
+        val night = content.night ?: return null
+        val parts = content.verbs.mapNotNull { v ->
+            val d = v.byDay ?: return@mapNotNull null
+            val name = v.phrase ?: v.id
+            val atNight = v.until?.let { u -> "$name started then lasts until ${u.time}" + (u.need?.let { " or until $it reaches ${u.reaches!!.toInt()}" } ?: "") }
+                ?: "$name started then takes ${GameClock.duration(v.minutes!!)}"
+            val nap = if (v.effects.any { !it.awake }) " it's a nap" else " it's different"
+            val rules = listOfNotNull(
+                d.minutes?.let { "at most ${GameClock.duration(it)}" },
+                d.block.takeIf { it.isNotEmpty() }?.joinToString(" and ") { b -> "only when ${b.need} is " + (b.above?.let { "${it.toInt()} or less" } ?: "at least ${b.below!!.toInt()}") },
+            ).joinToString(", and ")
+            "$atNight. Started at any other hour$nap: $rules."
+        }
+        if (parts.isEmpty()) return null
+        return "- Night and day: night runs ${night.from} to ${night.to}. " + parts.joinToString(" ").replaceFirstChar { it.uppercase() }
+    }
+
+    /**
      * "- Thinking: think stops you where you are ... Every 4 decisions you also stop to think on your
      * own.", for the verb that writes his plan, or null when he has none.
      */
@@ -189,6 +211,7 @@ object BedroomPrompt {
             "- Time: the clock shows the day and the time. Activities take game minutes or hours, and you choose again when one finishes.",
             "- Needs, each from 0 to 100. Energy falls ${-r.awakeEnergyPerHour.toInt()} an hour while you're awake and comes back while you sleep. Fullness falls ${-r.fullnessPerHour.toInt()} an hour${r.asleepFullnessPerHour?.let { " (${(-it).toInt()} asleep)" }.orEmpty()}; eating brings it back.${stimulationRule(content)}${frustrationRule(content)} $mood Below ${r.low.toInt()} energy or fullness, mood falls ${-r.lowMoodPerHour.toInt()} an hour instead.$sinking When $floor you can't work ($work).",
             "- Money: ${makers.joinToString(" and ")} make${if (makers.size > 1) "" else "s"} art, and ${sellAt?.id ?: "selling"} sells everything you hold through the $hatch: $art. The shop delivers through the $hatch, and you pay when it arrives.",
+            nightHint(content),
             varietyHint(content),
             learningHint(content),
             artHint(content),

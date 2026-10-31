@@ -76,7 +76,7 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   core and the self-model seed are in `personality.yaml`.
 - Authored ops (a model writes the result of a `write` or `draw` op): `agent/.../authored/Authors.kt`, the
   handler registry and the one lifecycle they share (timing before or during the verb, kept only if it
-  succeeds, the clock held while a call outlasts its verb, results back to the sim through
+  succeeds, the clock held while a `before` call is out or a `during` call outlasts its verb, results back to the sim through
   `BedroomWorld.deliver`). The sim side is `sim/.../Authored.kt`. A verb whose `write` has no handler
   isn't offered to models, unless the write is `optional`. Think is a verb; `reflection` in rules.yaml
   makes him think every few decisions.

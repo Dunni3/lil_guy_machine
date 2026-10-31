@@ -51,6 +51,8 @@ data class BedroomContent(
     val skills: SkillRules = SkillRules(),
     /** What the readable items are: chapters, what studying them raises, what finishing one teaches. */
     val books: List<BookSpec> = emptyList(),
+    /** The hours that count as night; a verb's `by_day` applies at the others. Null: no difference. */
+    val night: NightRules? = null,
 ) {
     @Transient private val byId = items.associateBy { it.id }
 
@@ -109,7 +111,7 @@ data class BedroomContent(
         /** The content's files, each with the top-level keys it holds. */
         val FILES: Map<String, List<String>> = linkedMapOf(
             "room" to listOf("room", "start"),
-            "rules" to listOf("needs", "habituation", "novelty", "frustration", "skills", "shop", "reflection", "commissions", "gallery", "quality_value"),
+            "rules" to listOf("needs", "night", "habituation", "novelty", "frustration", "skills", "shop", "reflection", "commissions", "gallery", "quality_value"),
             "vocabulary" to listOf("vocabulary"),
             "personality" to listOf("personality"),
             "items" to listOf("items"),
@@ -189,7 +191,13 @@ data class BedroomContent(
                 require(u.need == null || a.effects.any { it is RateOp && u.need in it.perHour }) { "$where: until ${u.need} needs a rate for ${u.need}" }
             }
             (a.stopBelow.keys + a.block.map { it.need }).forEach { needOf(it) }
+            a.byDay?.let { d ->
+                require(night != null) { "$where has `by_day`, so rules need `night`" }
+                require(d.minutes == null || d.minutes > 0) { "$where: by_day minutes must be positive" }
+                d.block.forEach { needOf(it.need) }
+            }
         }
+        night?.let { GameClock.parseHhmm(it.from); GameClock.parseHhmm(it.to) }
         needs.workFloor.forEach { needOf(it.need) }
         require(needs.stimulationPerHour <= 0 && needs.boredMood >= 0) { "stimulation_per_hour can't be positive or bored_mood negative" }
         habituation?.let { h ->
@@ -272,6 +280,19 @@ data class NeedRules(
     /** Fullness lost per hour while he sleeps; [fullnessPerHour] when null. */
     @SerialName("asleep_fullness_per_hour") val asleepFullnessPerHour: Double? = null,
 )
+
+/**
+ * Night runs from [from] to [to] (across midnight when [to] is earlier). A verb started then is
+ * done as written; started at any other hour, its `by_day` applies ([VerbSpec.ByDay]).
+ */
+@Serializable
+data class NightRules(val from: String, val to: String) {
+    fun covers(minuteOfDay: Int): Boolean {
+        val f = GameClock.parseHhmm(from)
+        val t = GameClock.parseHhmm(to)
+        return if (f <= t) minuteOfDay in f until t else minuteOfDay >= f || minuteOfDay < t
+    }
+}
 
 /**
  * Frustration: each failed action adds [perFailure], each finished verb that isn't routine adds
@@ -533,6 +554,8 @@ data class VerbSpec(
     val routine: Boolean = false,
     /** Locked right after he did it: not twice in a row. */
     @SerialName("no_repeat") val noRepeat: Boolean = false,
+    /** Started outside the rules' `night`: these blocks too, and at most these minutes. Null: the same by day. */
+    @SerialName("by_day") val byDay: ByDay? = null,
 ) {
     /** Marked routine, or of a kind that always is (selling, sleeping). */
     val isRoutine: Boolean get() = routine || kind.routine
@@ -548,6 +571,10 @@ data class VerbSpec(
 
     @Serializable
     data class Until(val time: String, val need: String? = null, val reaches: Double? = null)
+
+    /** What changes when the verb is started by day: more [block]s, and at most [minutes] long (a nap). */
+    @Serializable
+    data class ByDay(val block: List<NeedBlock> = emptyList(), val minutes: Int? = null)
 
     companion object {
         /** The argument slots a verb can have; [Intent.Do] has a field for each. */

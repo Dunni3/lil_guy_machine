@@ -113,13 +113,13 @@ class BedroomRunTest {
             variants.getValue(variant)["properties"]!!.jsonObject[field]!!.jsonObject["enum"]!!.jsonArray.map { it.jsonPrimitive.content }
         // Tier 0: a shop of meals he can't afford yet ($20 for $24), nothing to pick up, and use is for other rooms.
         assertEquals(setOf("do", "move_to", "say", "wait"), variants.keys)
-        // The schema takes every verb the sim would; choices only offer what's shown.
-        assertEquals(listOf("eat", "sketch", "sleep", "think"), enumOf("do", "activity"))
+        // The schema takes every verb the sim would; choices only offer what's shown. Sleep isn't: at 08:00 it's only a nap, when exhausted.
+        assertEquals(listOf("eat", "sketch", "think"), enumOf("do", "activity"))
         assertEquals(listOf("meal"), obs.shop.orEmpty().map { it.id })
 
         val choices = BedroomPrompt.choices(obs, emptyList(), world.clock.ticksPerMinute, world.content)
         assertEquals(
-            listOf("do:eat", "do:sketch", "do:sleep", "do:think", "wait:${BedroomPrompt.WAIT_TICKS}"),
+            listOf("do:eat", "do:sketch", "do:think", "wait:${BedroomPrompt.WAIT_TICKS}"),
             choices.options.map { it.label },
         )
         // Every option's reply passes the same schema a writing model is held to.
