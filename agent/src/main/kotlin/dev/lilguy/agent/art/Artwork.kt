@@ -9,8 +9,8 @@ import java.util.zip.Deflater
 import kotlin.math.abs
 
 /**
- * One drawing operation on a square grid; [color] is an index into the piece's palette. Nothing a
- * model sends is run: these are data, checked by the schema and drawn by [Artwork.draw].
+ * One drawing operation on a square grid; [color] is an index into the piece's palette. The drawing
+ * spec: a model never writes these, it picks [Strokes] that become them, and [Artwork.draw] draws them.
  */
 @Serializable
 sealed interface DrawOp {
@@ -106,25 +106,6 @@ class Artwork(val size: Int, val palette: List<Int>, private val cells: IntArray
             }
             return Artwork(size, palette, cells)
         }
-
-        /**
-         * "#3a2a20" or "3A2A20" to 0x3a2a20; null when it doesn't start with six hex digits. Anything
-         * after them is ignored: models sometimes trail an alpha byte or stray tokens after a good color.
-         */
-        fun parseColor(text: String): Int? = COLOR.find(text)?.groupValues?.get(1)?.toInt(16)
-
-        /**
-         * Every color in [entries], in order: each entry's leading color (as [parseColor]), then any
-         * further "#RRGGBB" in it. Models sometimes pack a whole palette into one string, joined by
-         * spaces, quotes or stray tokens. Entries with no leading color give none.
-         */
-        fun parseColors(entries: List<String>): List<Int> = entries.flatMap { entry ->
-            val lead = COLOR.find(entry) ?: return@flatMap emptyList()
-            (sequenceOf(lead) + MORE.findAll(entry, lead.range.last + 1)).map { it.groupValues[1].toInt(16) }.toList()
-        }
-
-        private val COLOR = Regex("""^\s*#?([0-9a-fA-F]{6})""")
-        private val MORE = Regex("""#([0-9a-fA-F]{6})""")
 
         private fun line(op: DrawOp.Line, plot: (Int, Int) -> Unit) {
             var x = op.x0

@@ -113,10 +113,11 @@ items:
   - { id: poster, name: poster, kind: decor, slot: poster, blocks: true, price: 15, comfort: 3 }
   - { id: rug, name: rug, kind: decor, slot: rug, price: 60, comfort: 6 }
   # Art is carried until sold or hung. Sketches were $12: now food takes most of his working hours.
-  # `canvas` is what the drawing model gets: a square grid `size` wide, up to `colors` colors and
-  # `ops` drawing operations. Painting's bigger canvas is what the easel buys him.
-  - { id: sketch, name: sketch, kind: art, tags: [art], carried: true, stackable: true, sell_price: 3, canvas: { size: 16, colors: 4, ops: 40 } }
-  - { id: painting, name: painting, kind: art, tags: [art], carried: true, stackable: true, sell_price: 70, canvas: { size: 32, colors: 16, ops: 120 } }
+  # `canvas` is what a piece is drawn on: a square grid `size` wide, up to `colors` crayons and
+  # `strokes` strokes, each two picks (which stroke, then which crayon) by the model that decides
+  # for him, so strokes is what a piece costs in calls. Painting's bigger canvas is what the easel buys him.
+  - { id: sketch, name: sketch, kind: art, tags: [art], carried: true, stackable: true, sell_price: 3, canvas: { size: 16, colors: 4, strokes: 6 } }
+  - { id: painting, name: painting, kind: art, tags: [art], carried: true, stackable: true, sell_price: 70, canvas: { size: 32, colors: 16, strokes: 12 } }
 
 # do(activity). `at`: where it happens (an owned slot item; the nearest is used). `requires`:
 # tags he must own. `consumes`: tags used up when it finishes. `effects`: need changes when it

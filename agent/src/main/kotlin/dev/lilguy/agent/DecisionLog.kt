@@ -122,7 +122,8 @@ data class ArtLogEntry(
     val title: String?,
     val tags: List<String>,
     val ops: Int,
-    val dropped: Int,
+    /** Model calls the piece took: one per pick. */
+    val calls: Int,
     /** The picture as letters, one row a line (a is palette color 0). */
     val letters: List<String>,
     val palette: List<String>,
@@ -170,7 +171,7 @@ class DecisionLog(val file: File, private val run: String, private val model: St
             ArtLogEntry.serializer(),
             ArtLogEntry(
                 run = run, artist = d.artist, tick = d.tick, day = d.day, time = d.time, item = d.item, piece = d.piece,
-                commission = d.commission, title = d.title, tags = d.tags, ops = d.ops, dropped = d.dropped,
+                commission = d.commission, title = d.title, tags = d.tags, ops = d.ops, calls = d.calls,
                 letters = d.artwork?.letters().orEmpty(), palette = d.artwork?.palette?.map { "#%06x".format(it) }.orEmpty(),
                 raw = d.raw, latencyMs = d.latency.inWholeMilliseconds, promptTokens = d.usage.promptTokens,
                 completionTokens = d.usage.completionTokens, error = d.error,

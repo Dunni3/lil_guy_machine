@@ -16,8 +16,9 @@ import dev.lilguy.agent.TokenTotals
 import dev.lilguy.agent.memory.AgentMemory
 import dev.lilguy.agent.memory.InMemoryStore
 import dev.lilguy.agent.art.ArtStudio
-import dev.lilguy.agent.art.ArtWriter
+import dev.lilguy.agent.art.CommissionVoice
 import dev.lilguy.agent.art.Drawing
+import dev.lilguy.agent.art.Painter
 import dev.lilguy.agent.memory.JournalSession
 import dev.lilguy.agent.memory.JournalWriter
 import dev.lilguy.agent.memory.Thinker
@@ -68,8 +69,11 @@ private const val USAGE = """lil guy machine cli: lockstep runs of the key-and-d
   --journal-endpoint N bedroom: endpoint that writes his journal when he journals (must write text);
                       entries join every later prompt, and the run ends with them and his wants.
                       Kept in --memory FILE if given, otherwise in memory for the run. It also
-                      writes his thoughts when he thinks, and draws his art (a PNG per piece in art-NN/
-                      beside the log). Defaults to --memory-endpoint; "none" for off
+                      writes his thoughts when he thinks, and words each day's request for a piece.
+                      Defaults to --memory-endpoint; "none" for off
+                      His art is drawn by the deciding model itself, one closed pick a stroke, so
+                      typesafe draws too (a PNG per piece in art-NN/ beside the log); the scripted
+                      policy and a replay don't draw
   --grant IDS         bedroom: unlock gated content, comma-separated ids (e.g. paint,easel,canvas,painting)
   --quiet             one line per run instead of every decision and event
 
@@ -226,15 +230,18 @@ fun main(argv: Array<String>) {
         // Like the app: the journal (and thinking) defaults to the memory endpoint; "none" turns it off.
         val journalEndpoint = (args.string("--journal-endpoint") ?: args.string("--memory-endpoint"))?.takeIf { it != "none" }
         val journalModel = journalEndpoint?.let { Endpoints.create(config, it) }
-        val store: MemoryStore? = args.string("--memory")?.let { SqliteMemoryStore(File(it)) } ?: journalModel?.let { InMemoryStore() }
+        // The deciding model draws his art, pick by pick, so a picking model can; the scripted policy and a replay can't.
+        val painting = scenario == Scenario.Bedroom && replay == null && endpoint != "scripted"
+        val store: MemoryStore? = args.string("--memory")?.let { SqliteMemoryStore(File(it)) } ?: if (journalModel != null || painting) InMemoryStore() else null
         val sessions = mutableListOf<JournalSession>()
         val memory = store?.let { st ->
             val run = "$stamp-$n"
-            val studio = journalModel?.takeIf { scenario == Scenario.Bedroom }?.let {
-                ArtStudio(ArtWriter(ledger.meter(it, TokenPurpose.Art, priceOf(journalEndpoint!!))), st, run, dir = logDir?.let { d -> File(d, "art-%02d".format(n)) }) { d ->
-                    log?.write(d)
-                    if (!quiet) printDrawing(d)
-                }
+            val studio = if (!painting) null else ArtStudio(
+                Painter(ledger.meter(decisionModel, TokenPurpose.Art, priceOf(endpoint))), st, run, dir = logDir?.let { d -> File(d, "art-%02d".format(n)) },
+                voice = journalModel?.let { CommissionVoice(ledger.meter(it, TokenPurpose.Art, priceOf(journalEndpoint!!))) },
+            ) { d ->
+                log?.write(d)
+                if (!quiet) printDrawing(d)
             }
             AgentMemory(
                 st, run,
@@ -419,7 +426,7 @@ private fun printBedroom(life: BedroomResult) {
 
 private fun printDrawing(d: Drawing) {
     val stamp = if (d.day != null) "d%2d %s".format(d.day, d.time) else "t=%4d".format(d.tick)
-    val what = if (d.artwork == null) "FAILED: ${d.error}" else "${d.item} ${d.piece ?: "?"} \"${d.title}\" (${d.tags.joinToString()}; ${d.ops} ops${if (d.dropped > 0) ", ${d.dropped} dropped" else ""})"
+    val what = if (d.artwork == null) "FAILED: ${d.error} (after ${d.calls} picks)" else "${d.item} ${d.piece ?: "?"} \"${d.title}\" (${d.tags.joinToString()}; ${d.ops} ops in ${d.calls} picks, ${d.latency.inWholeSeconds}s)"
     println("%s  drew %s".format(stamp, what))
     d.artwork?.letters()?.forEach { println("        $it") }
 }
