@@ -427,8 +427,9 @@ data class ShopRules(val at: String, val minutes: Int)
 
 /**
  * A request for a piece that arrives each day at [arrive] and stays open until the next one: an
- * adjective and a noun picked from the lists. The first piece made while it's open, drawn to match,
- * and sold earns [reward] on top of its price.
+ * adjective and a noun picked from the lists. The first piece made while it's open, drawn to match
+ * (the adjective in its title or tags, a shape drawn for the noun), and sold earns [reward] on top
+ * of its price.
  */
 @Serializable
 data class CommissionRules(

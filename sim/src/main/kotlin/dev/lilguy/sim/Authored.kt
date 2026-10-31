@@ -107,8 +107,12 @@ data class AuthoredView(val id: Int, val verb: String, val handler: String, val 
 
 /** What the agent layer hands back for an authored op ([BedroomWorld.deliver]). */
 sealed interface AuthoredResult {
-    /** A drawing: its [title] and the [tags] the drawing model claimed for it. */
-    data class Drawn(val title: String, val tags: List<String>) : AuthoredResult
+    /**
+     * A drawing: its [title] and the [tags] the drawing model claimed for it. [shows]: the noun it
+     * drew a subject shape for, null when it drew none; a request's noun is matched on this, not on
+     * the words.
+     */
+    data class Drawn(val title: String, val tags: List<String>, val shows: String? = null) : AuthoredResult
 
     /** Text that went to the agent's own stores (a thought); the sim only marks it delivered. */
     data class Written(val text: String) : AuthoredResult

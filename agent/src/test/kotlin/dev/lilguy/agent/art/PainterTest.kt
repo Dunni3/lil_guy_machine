@@ -66,6 +66,8 @@ class PainterTest {
         val art = assertNotNull(d.artwork, d.error)
         assertEquals("Tiny Moon", d.title)
         assertEquals(listOf("tiny", "moon"), d.tags)
+        // The subject stage drew the moon's shape, so the piece shows the request's noun.
+        assertEquals("moon", d.shows)
         assertEquals(6, d.calls)
         assertEquals(2, d.ops)
         assertEquals(Usage(promptTokens = 60), d.usage)

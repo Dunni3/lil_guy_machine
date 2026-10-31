@@ -257,6 +257,23 @@ class BedroomWorldTest {
     }
 
     @Test
+    fun `a commission pays only for a piece that drew its noun, whatever the title says`() {
+        val w = world(time = "08:59", needs = NeedLevels(80, 70, 80))
+        while (w.obs().commission == null) w.step()
+        val (adjective, noun) = w.obs().commission!!.wants.split(' ').drop(1)
+        val title = "$adjective $noun"
+        // Two sketches for the request, both titled for it; only the second drew the noun's shape.
+        repeat(2) { assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("sketch")).status) }
+        val (first, second) = w.obs().authored.filter { it.handler == "draw" }
+        w.deliver(first.id, AuthoredResult.Drawn(title, listOf(adjective, noun)))
+        w.deliver(second.id, AuthoredResult.Drawn(title, listOf(adjective, noun), shows = noun))
+        w.step()
+        val notes = w.obs().art!!.associate { it.id to it.commission }
+        assertEquals("doesn't match the request: there's no $noun drawn in it", notes[first.piece])
+        assertEquals("matches the request: +$12 when sold", notes[second.piece])
+    }
+
+    @Test
     fun `decor raises the mood baseline`() {
         val w = world(money = 500)
         assertEquals(50.0, w.snapshot().life!!.moodTarget)

@@ -71,7 +71,7 @@ object BedroomPrompt {
     private fun artHint(content: BedroomContent): String? {
         val parts = buildList {
             content.commissions?.let { c ->
-                add("A request for a piece comes in every day at ${c.arrive} (`commission`) and stays open until the next. The first piece you finish while it's open that is what it asks for earns $${c.reward} more when you sell it; it's yours to take or leave.")
+                add("A request for a piece comes in every day at ${c.arrive} (`commission`) and stays open until the next. The first piece you finish while it's open that shows what it asks for earns $${c.reward} more when you sell it; it's yours to take or leave.")
             }
             content.verbs.firstOrNull { it.ops<SetStateOp>().isNotEmpty() }?.let { h ->
                 add("${h.id} puts your newest piece on your wall instead of selling it: each one hung adds ${content.gallery.comfortEach} comfort, up to ${content.gallery.max}.")

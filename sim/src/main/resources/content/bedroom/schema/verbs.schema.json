@@ -359,7 +359,7 @@
                     "string",
                     "null"
                   ],
-                  "description": "Authored: the drawing model draws a drawable item the verb produced (listed after its produce); the piece gets its title and tags. Without an artist the piece is made undrawn. (during; kept at the finish)"
+                  "description": "Authored: the drawing model draws a drawable item the verb produced (listed after its produce); the piece gets its title, tags and the noun it drew a shape for, which a commission is matched on. Without an artist the piece is made undrawn. (during; kept at the finish)"
                 }
               },
               "minProperties": 1,

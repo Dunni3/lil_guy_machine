@@ -478,7 +478,7 @@ private fun printBedroom(life: BedroomResult) {
 
 private fun printDrawing(d: Drawing) {
     val stamp = if (d.day != null) "d%2d %s".format(d.day, d.time) else "t=%4d".format(d.tick)
-    val what = if (d.artwork == null) "FAILED: ${d.error} (after ${d.calls} picks)" else "${d.item} ${d.piece ?: "?"} \"${d.title}\" (${d.tags.joinToString()}; ${d.ops} ops in ${d.calls} picks, ${d.latency.inWholeSeconds}s)"
+    val what = if (d.artwork == null) "FAILED: ${d.error} (after ${d.calls} picks)" else "${d.item} ${d.piece ?: "?"} \"${d.title}\" (${d.tags.joinToString()}; shows ${d.shows ?: "no subject"}; ${d.ops} ops in ${d.calls} picks, ${d.latency.inWholeSeconds}s)"
     println("%s  drew %s".format(stamp, what))
     d.artwork?.letters()?.forEach { println("        $it") }
 }

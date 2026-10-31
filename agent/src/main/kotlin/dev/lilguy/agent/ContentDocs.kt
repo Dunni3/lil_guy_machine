@@ -55,7 +55,7 @@ object ContentDocs {
         "progress" to OpDoc("progress: { book: what, study: true }", "at the finish", "Reads the next chapter of the book bound to the argument (library.yaml). Finishing the last chapter teaches him what the book teaches. `study: true` also raises the book's skills, and is locked once the book is finished or when it has no skill; reading a finished book rereads it."),
         "practice" to OpDoc("practice: { art: 0.2 }", "at the finish", "Raises skills (vocabulary.yaml). The verb's mood and stimulation gains grow with the skills it practises (rules.yaml `skills`)."),
         "write" to OpDoc("write: { with: thought, into: [events, short_term], timing: before, shows_as: plan }", "before or during; kept at the finish", "Authored: a model writes it (handler `thought`, or `reading` for what stuck from a chapter) into the named destinations, kept only if the verb succeeds. `shows_as: plan` makes a short-term result his plan in later prompts. Without a handler the verb isn't offered, unless the write is `optional: true`."),
-        "draw" to OpDoc("draw: sketch", "during; kept at the finish", "Authored: the drawing model draws a drawable item the verb produced (listed after its produce); the piece gets its title and tags. Without an artist the piece is made undrawn."),
+        "draw" to OpDoc("draw: sketch", "during; kept at the finish", "Authored: the drawing model draws a drawable item the verb produced (listed after its produce); the piece gets its title, tags and the noun it drew a shape for, which a commission is matched on. Without an artist the piece is made undrawn."),
     )
 
     private val json = Json { prettyPrint = true; prettyPrintIndent = "  " }
