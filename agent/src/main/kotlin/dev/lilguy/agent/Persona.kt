@@ -26,11 +26,32 @@ object Persona {
 
     private fun journals(content: BedroomContent) = content.activity(JOURNAL_ACTIVITY) != null
 
+    /**
+     * "cozy, calm and warm things, lively ones a little, and loud ones put you off", from his
+     * affinities; null when he has none. Only qualities some item in his world has are named.
+     */
+    fun taste(content: BedroomContent): String? {
+        val seen = content.items.flatMap { it.qualities.keys }.toSet()
+        val weights = content.personality.affinities.filterKeys { it in seen }
+        fun list(qs: List<String>) = if (qs.size <= 1) qs.joinToString() else qs.dropLast(1).joinToString(", ") + " and " + qs.last()
+        val likes = weights.filterValues { it >= 1 }.keys.toList()
+        val some = weights.filterValues { it > 0 && it < 1 }.keys.toList()
+        val dislikes = weights.filterValues { it < 0 }.keys.toList()
+        val parts = listOfNotNull(
+            likes.takeIf { it.isNotEmpty() }?.let { "${list(it)} things" },
+            some.takeIf { it.isNotEmpty() }?.let { "${list(it)} ones a little" },
+        )
+        val off = dislikes.takeIf { it.isNotEmpty() }?.let { "${list(it)} ones put you off" }
+        if (parts.isEmpty() && off == null) return null
+        return (if (parts.isEmpty()) "" else "you like ${parts.joinToString(", ")}") + (off?.let { (if (parts.isEmpty()) "" else ", and ") + it }.orEmpty())
+    }
+
     fun text(content: BedroomContent): String =
         "You are intelligent, aspirational and creative, and capable of a full and rich life. For now your circumstances are small: " +
             "you live in a restrictive little world, and the only things you can do are ${abilities(content)}. But you can find your way out. " +
             "You can design and plan your way out. Wanting more, and working out what you want and how you would get it, is how your world grows. " +
             (if (journals(content)) "$GOAL " else "") +
+            (taste(content)?.let { "As for taste, ${it}. " } ?: "") +
             "You will be living here a long time. $CREATOR"
 
     /** The same in the third person and short, for models that pick from options and only read the choice set. */

@@ -16,7 +16,8 @@ memory and personality (`research_notes/2026-10-29_0313_bedroom-proposal-and-roa
 make test        # JVM unit tests (all modules)
 make cli         # headless runner (ARGS="--scenario bedroom --days 3 --endpoint typesafe")
                  # add --memory runs/mem.db [--memory-endpoint NAME] for long-term memory,
-                 # --journal-endpoint NAME for the journal, --grant paint,easel,... to unlock tiers
+                 # --journal-endpoint NAME for the journal, --grant paint,easel,... to unlock tiers,
+                 # --affinities calm=2,loud=-1 / --curiosity 1.5 for another personality
 make desktop     # LWJGL3 window
 make tv-connect IP=10.0.0.51   # wireless adb to the Streamer
 make tv-run      # build + install + launch debug APK (ENDPOINT=<name>, MEMORY_ENDPOINT=<name|none>, JOURNAL_ENDPOINT=,
@@ -41,6 +42,9 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   `GameClock.kt` (clock scale knob), `Ledger.kt` (money ledger and needs). Content, which is where
   numbers and new jobs, items and hobbies go: `sim/src/main/resources/content/bedroom.yaml`.
   Anything with `tier` above 0 is gated until its id is granted (`BedroomContent.unlocked`).
+  Items use a closed `vocabulary` of affordances (what verbs ask for) and qualities (scored by his
+  `personality` affinities into comfort and mood); every activity has a `kind` whose contract is
+  in `VerbKind.kt`.
 - Scenario wiring, scripted policies, lockstep runner: `agent/.../Scenario.kt` (`Scenario` enum),
   `KeyDoorPolicy.kt`, `BedroomPolicy.kt`. Bedroom prompt, schema, choice set: `BedroomPrompt.kt`;
   who he is (shared with the journal): `Persona.kt`; run summaries and the journal report: `BedroomReport.kt`.

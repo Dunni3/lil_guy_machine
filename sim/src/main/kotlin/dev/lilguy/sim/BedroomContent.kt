@@ -15,6 +15,10 @@ import java.io.File
  * Items, activities and uses above tier 0 are gated: they exist in the file but not in the world
  * until granted. [unlocked] is the content he can see, and it is checked the same way, so a
  * tier-0 activity can't depend on a gated item.
+ *
+ * Items are described in a closed [vocabulary]: affordances (what can be done with one; activities
+ * ask for them) and qualities (what it's like to him; his [personality] scores them). Every
+ * activity has a [VerbKind], and its row must keep that kind's contract.
  */
 @Serializable
 data class BedroomContent(
@@ -33,6 +37,10 @@ data class BedroomContent(
     val habituation: HabituationRules? = null,
     /** The first time with an activity pays a bonus; null turns it off. */
     val novelty: NoveltyRules? = null,
+    val vocabulary: Vocabulary = Vocabulary(),
+    /** His default affinities and curiosity; a run can swap in another ([withPersonality]). */
+    val personality: Personality = Personality(),
+    @SerialName("quality_value") val qualityValue: QualityValue = QualityValue(),
 ) {
     @Transient private val byId = items.associateBy { it.id }
 
@@ -40,8 +48,17 @@ data class BedroomContent(
 
     fun activity(id: String): ActivitySpec? = activities.find { it.id == id }
 
-    /** Items with [tag] (an id is its own tag), in file order. */
-    fun withTag(tag: String): List<ItemSpec> = items.filter { tag in it.allTags }
+    /** Items that answer to [name], an id or an affordance, in file order. */
+    fun withName(name: String): List<ItemSpec> = items.filter { name in it.names }
+
+    /**
+     * What [item] is worth to him: each quality's strength times his affinity for it, summed. In
+     * view it adds comfort ([QualityValue.inView]); used, mood ([QualityValue.inUse]).
+     */
+    fun value(item: ItemSpec): Double = item.qualities.entries.sumOf { (q, strength) -> strength * personality.affinity(q) }
+
+    /** The same content with [p] as his personality, checked again. */
+    fun withPersonality(p: Personality): BedroomContent = copy(personality = p).also { it.validate() }
 
     /** Ids of everything above tier 0: what can be granted. */
     val gated: Set<String> get() = (items.filter { it.tier > 0 }.map { it.id } + (activities + uses).filter { it.tier > 0 }.map { it.id }).toSet()
@@ -76,9 +93,17 @@ data class BedroomContent(
     private fun validate() {
         val ids = items.map { it.id }
         require(ids.size == ids.toSet().size) { "item ids must be unique: ${ids.groupBy { it }.filterValues { it.size > 1 }.keys}" }
-        val tags = items.flatMap { it.allTags }.toSet()
+        val tags = items.flatMap { it.names }.toSet()
         val slots = room.slots.values.toSet()
+        val affordances = vocabulary.affords.toSet()
+        val qualities = vocabulary.qualities.toSet()
+        require(affordances.none { it in ids }) { "affordances can't share a name with an item: ${affordances.filter { it in ids }}" }
         items.forEach { item ->
+            item.affords.forEach { require(it in affordances) { "item ${item.id} affords '$it', which isn't in vocabulary.affords" } }
+            item.qualities.forEach { (q, s) ->
+                require(q in qualities) { "item ${item.id} is '$q', which isn't in vocabulary.qualities" }
+                require(s > 0 && s <= QualityValue.MAX_STRENGTH) { "item ${item.id}: quality $q needs a strength above 0 and at most ${QualityValue.MAX_STRENGTH}" }
+            }
             item.slot?.let { require(it in slots) { "item ${item.id} goes in slot '$it', which the room doesn't have" } }
             require(item.pack >= 1) { "item ${item.id}: pack must be at least 1" }
             require(item.price == null || item.price > 0) { "item ${item.id}: price must be positive" }
@@ -94,9 +119,10 @@ data class BedroomContent(
             val where = "activity ${a.id}"
             require(a.at.isNotEmpty()) { "$where needs at least one place in `at`" }
             a.at.forEach { require(byId[it]?.slot != null) { "$where happens at '$it', which isn't a slot item" } }
-            (a.requires + a.consumes.keys + listOfNotNull(a.sells, a.hangs, a.item)).forEach { require(it in tags) { "$where names '$it', which no item has as a tag" } }
+            (a.requires + a.consumes.keys + listOfNotNull(a.sells, a.hangs, a.item)).forEach { require(it in tags) { "$where names '$it', which isn't an item or an affordance any item has" } }
             a.produces.keys.forEach { require(it in ids) { "$where produces '$it', which isn't an item" } }
             a.on?.let { require(it in ids) { "$where is used on '$it', which isn't an item" } }
+            a.kind.violations(a, affordances).forEach { throw IllegalArgumentException("$where: $it") }
             require((a.minutes != null) != (a.until != null)) { "$where needs exactly one of `minutes` and `until`" }
             a.until?.let { GameClock.parseHhmm(it.time) }
             (a.effects.keys + a.rates.keys + a.stopBelow.keys + a.block.map { it.need } + a.background?.rates?.keys.orEmpty()).forEach { needOf(it) }
@@ -109,6 +135,12 @@ data class BedroomContent(
             require(h.perRepeat in 0.0..1.0 && h.recoverPerHour > 0 && h.staleStimulation <= 0) { "habituation: per_repeat 0 to 1, recover_per_hour positive, stale_stimulation not positive" }
         }
         novelty?.effects?.keys?.forEach { needOf(it) }
+        personality.affinities.forEach { (q, w) ->
+            require(q in qualities) { "personality likes '$q', which isn't in vocabulary.qualities" }
+            require(w in Personality.AFFINITY_RANGE) { "personality: affinity for $q must be in ${Personality.AFFINITY_RANGE}" }
+        }
+        require(personality.curiosity > 0) { "personality: curiosity must be positive" }
+        require(qualityValue.inView >= 0 && qualityValue.inUse >= 0) { "quality_value: in_view and in_use can't be negative" }
         needs.neglect.forEach { n ->
             require(activities.any { it.id == n.activity }) { "neglect names activity '${n.activity}', which isn't in activities" }
             require(n.afterHours >= 1 && n.moodPerHour < 0) { "neglect of ${n.activity}: after_hours must be at least 1 and mood_per_hour negative" }
@@ -164,7 +196,7 @@ data class NeedRules(
  * Repetition wears an activity thin. Each finish adds [perRepeat] to its wear (0 to 1), which
  * fades [recoverPerHour] an hour. Its positive mood and stimulation effects are paid at
  * 1 - wear, and finishing one that was already worn costs [staleStimulation] times the wear.
- * Activities marked `routine` don't wear. A use wears per item (each record on its own).
+ * Routine activities (marked, or of a routine [VerbKind]) don't wear. A use wears per item (each record on its own).
  */
 @Serializable
 data class HabituationRules(
@@ -172,6 +204,42 @@ data class HabituationRules(
     @SerialName("recover_per_hour") val recoverPerHour: Double,
     @SerialName("stale_stimulation") val staleStimulation: Double = 0.0,
 )
+
+/**
+ * The closed lists items are described in. [affords]: what can be done with an item; activities
+ * ask for these in `requires`, `consumes`, `sells`, `hangs` and a use's `item`, as well as for item
+ * ids. [qualities]: what an item is like to him, each with a strength, scored by his affinities.
+ */
+@Serializable
+data class Vocabulary(val affords: List<String> = emptyList(), val qualities: List<String> = emptyList())
+
+/**
+ * Who he is, as numbers, and something a run can vary. [affinities]: how much he likes each quality,
+ * from -1 (it puts him off) to 2; a quality left out counts 0. [curiosity] scales how fast
+ * stimulation drains and how much a first time pays; 1 is the content's numbers.
+ */
+@Serializable
+data class Personality(val affinities: Map<String, Double> = emptyMap(), val curiosity: Double = 1.0) {
+    fun affinity(quality: String): Double = affinities[quality] ?: 0.0
+
+    companion object {
+        val AFFINITY_RANGE = -1.0..2.0
+    }
+}
+
+/**
+ * How an item's value ([BedroomContent.value]) is paid. [inView]: comfort per point while it sits in
+ * its slot (what decor does). [inUse]: mood per point when a consumptive use of it finishes.
+ */
+@Serializable
+data class QualityValue(
+    @SerialName("in_view") val inView: Double = 1.0,
+    @SerialName("in_use") val inUse: Double = 1.0,
+) {
+    companion object {
+        const val MAX_STRENGTH = 3.0
+    }
+}
 
 /** The first time he finishes an activity (or a use with a given item) adds [effects]; routine ones don't count. */
 @Serializable
@@ -243,22 +311,27 @@ data class ItemSpec(
     val price: Int? = null,
     val pack: Int = 1,
     val stackable: Boolean = false,
-    val tags: List<String> = emptyList(),
+    /** What can be done with it, from [Vocabulary.affords]. */
+    val affords: List<String> = emptyList(),
+    /** What it's like, quality to strength, from [Vocabulary.qualities]. */
+    val qualities: Map<String, Double> = emptyMap(),
     /** Carried in his hands (art) rather than kept in the room. */
     val carried: Boolean = false,
     @SerialName("sell_price") val sellPrice: Int? = null,
-    val comfort: Int = 0,
     /** Above 0, it's gated until granted; see [BedroomContent.unlocked]. */
     val tier: Int = 0,
     /** Art that is drawn: the canvas a drawing model gets. */
     val canvas: CanvasSpec? = null,
 ) {
-    val allTags: Set<String> get() = setOf(id) + tags
+    /** What an activity can ask for it by: its id and its affordances. */
+    val names: Set<String> get() = setOf(id) + affords
 }
 
 @Serializable
 data class ActivitySpec(
     val id: String,
+    /** What sort of verb it is; the row must keep the kind's contract. */
+    val kind: VerbKind,
     val at: List<String>,
     val requires: List<String> = emptyList(),
     val minutes: Int? = null,
@@ -285,9 +358,12 @@ data class ActivitySpec(
     val tier: Int = 0,
     /** What he does, for the prompt's "the only things you can do are ..."; the id when null. */
     val phrase: String? = null,
-    /** Upkeep (eating, sleeping, selling): it neither wears thin with repetition nor counts as new. */
+    /** Upkeep (eating, hanging): it neither wears thin with repetition nor counts as new. Some kinds always are. */
     val routine: Boolean = false,
 ) {
+    /** Marked routine, or of a kind that always is (selling, sleeping). */
+    val isRoutine: Boolean get() = routine || kind.routine
+
     @Serializable
     data class Until(val time: String, val need: String? = null, val reaches: Double? = null)
 

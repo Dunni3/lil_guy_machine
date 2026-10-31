@@ -129,7 +129,7 @@ class BedroomRunTest {
         // Every option's reply passes the same schema a writing model is held to.
         val decoder = ActionSchema("reply", AgentReply.serializer(), schema)
         choices.options.forEach { decoder.decode(it.reply.toString()) }
-        assertTrue("you have no art to sell; sketch makes some" in choices.state.toString())
+        assertTrue("you have no sketch to sell; sketch makes some" in choices.state.toString())
     }
 
     @Test
