@@ -398,8 +398,16 @@ class BedroomWorld private constructor(
         a.effects.firstNotNullOfOrNull { it.lockReason(ops, b) }?.let { return it }
         val blocks = a.block + byDay(a)?.block.orEmpty() + if (a.work) content.needs.workFloor else emptyList()
         blocks.firstOrNull { it.blocks(needs[needOf(it.need)]) }?.let { return "${it.reason} (${it.need} ${needs.level(needOf(it.need))})" }
+        // Started now, it would end as soon as it began: sleep while starving wakes him in a minute.
+        a.stopBelow.entries.firstOrNull { (need, level) -> needs[needOf(need)] < level }?.let { (need, level) ->
+            return "it ends below $need ${level.toInt()} ($need ${needs.level(needOf(need))})"
+        }
         return null
     }
+
+    /** What his food is: what the verbs that feed him use up ("edible"). */
+    private val foodTags: List<String>
+        get() = content.verbs.filter { (it.needEffects[Need.Fullness.id] ?: 0.0) > 0 }.flatMap { v -> v.ops<ConsumeOp>().flatMap { it.items.keys } }.distinct()
 
     /** [a]'s daytime changes, when it has some and it isn't night now. */
     private fun byDay(a: VerbSpec): VerbSpec.ByDay? = a.byDay?.takeIf { content.night?.covers(clock.minuteOfDay(ticks)) == false }
@@ -817,6 +825,12 @@ class BedroomWorld private constructor(
         if (comfort > 0) parts += "comfort +$comfort: mood settles $comfort higher"
         if (comfort < 0) parts += "comfort $comfort: you don't like it, so mood settles ${-comfort} lower"
         if (spec.qualities.isNotEmpty()) parts += spec.qualities.keys.joinToString(", ")
+        // Spending the food money: said when he has no food left and this would leave him short of the cheapest.
+        val left = ledger.balance - spec.price!!
+        foodTags.filter { tag -> tag !in spec.names && countTag(tag) == 0 }.firstOrNull { tag ->
+            val cheapest = content.withName(tag).mapNotNull { it.price }.minOrNull()
+            cheapest != null && left in 0 until cheapest
+        }?.let { parts += "leaves you $$left with no food, short of ${wanted(it)}" }
         return ShopOption(spec.id, spec.price!!, ledger.canAfford(spec.price), parts.joinToString("; "))
     }
 

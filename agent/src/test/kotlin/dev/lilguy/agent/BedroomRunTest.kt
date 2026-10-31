@@ -133,7 +133,7 @@ class BedroomRunTest {
         val (world, _) = bedroomScenario(BedroomPolicy(), content = smallWorld)
         val system = BedroomPrompt.system(world.content, world.clock.ticksPerMinute)
         assertTrue(system.startsWith(world.content.personality.core.you), system.take(80))
-        assertTrue("- What you can do: eat, sketch, sell your art, hang your art on the wall, sleep and stop and think." in system)
+        assertTrue("- What you can do: eat, eat plain oats from the cupboard, sketch, sell your art, hang your art on the wall, sleep and stop and think." in system)
         assertTrue("You live in this bedroom. You need money for food." in system)
         assertTrue("a sketch sells for $3" in system)
         listOf("easel", "canvas", "record", "painting", "decor", "`uses`", "music", "journal", "restrictive").forEach { w -> assertTrue(w !in system, "mentions '$w': " + system.lines().filter { w in it }) }

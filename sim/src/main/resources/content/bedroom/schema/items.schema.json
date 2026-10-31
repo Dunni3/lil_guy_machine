@@ -54,7 +54,8 @@
                 "viewable",
                 "combinable",
                 "wearable",
-                "drawable"
+                "drawable",
+                "staple"
               ]
             },
             "additionalProperties": {

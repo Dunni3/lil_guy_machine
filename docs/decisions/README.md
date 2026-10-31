@@ -63,3 +63,4 @@ these hold the outcome. Skim this index before related changes.
 - 2026-10-31 [Night and day: verbs change by day through `by_day`; the clock holds while a `before` call is out](2026-10-31-night-and-day-and-the-clock-holds-for-before-calls.md)
 - 2026-10-31 [Music starts with a record; listen hears whatever is playing (the `hear` op)](2026-10-31-listen-hears-what-is-playing.md)
 - 2026-10-31 [A commission pays for a piece that drew its noun's shape; the drawing reports what it shows](2026-10-31-commissions-are-judged-by-the-shape-drawn.md)
+- 2026-10-31 [No dead ends: a free floor under hunger, and a verb isn't offered when it would stop at once](2026-10-31-no-dead-ends-there-is-always-a-way-back-to-food.md)

@@ -56,7 +56,7 @@ class BedroomWorldTest {
         assertEquals(ClockReading(1, "08:00"), obs.clock)
         assertEquals(20, obs.money)
         assertEquals(NeedLevels(80, 70, 60), obs.needs)
-        assertEquals(mapOf("bed" to 1, "desk" to 1, "chair" to 1, "sketchbook" to 1, "meal" to 2), obs.owns)
+        assertEquals(mapOf("bed" to 1, "desk" to 1, "chair" to 1, "sketchbook" to 1, "meal" to 2, "oats" to 1), obs.owns)
         assertEquals(emptyList(), obs.holding)
         assertEquals(setOf("mail_hatch", "picture_rail", "bed", "desk", "chair"), obs.nearby.map { it.id }.toSet())
         assertTrue(obs.localMap.any { 'b' in it } && obs.localMap.none { 'e' in it }, "the easel slot is empty until bought")
@@ -66,7 +66,7 @@ class BedroomWorldTest {
     fun `tier 0 is the small world, and gated content comes in only when granted`() {
         val w = world(granted = emptySet())
         val obs = w.obs()
-        assertEquals(listOf("eat", "sketch", "sell_art", "hang_art", "sleep", "think"), obs.activities!!.map { it.id })
+        assertEquals(listOf("eat", "eat_oats", "sketch", "sell_art", "hang_art", "sleep", "think"), obs.activities!!.map { it.id })
         assertEquals(listOf("meal"), obs.shop!!.map { it.id })
         assertEquals("you have no sketch to sell; sketch makes some", w.activity("sell_art").locked)
         assertTrue("no activity called 'paint'" in failure(w.run(Intent.Do("paint"))))
@@ -76,7 +76,7 @@ class BedroomWorldTest {
 
         // A grant has to bring what it needs with it, and only gated ids can be granted.
         val painting = setOf("paint", "easel", "canvas", "painting")
-        assertEquals(listOf("eat", "sketch", "paint", "sell_art", "hang_art", "sleep", "think"), world(money = 500, granted = painting).obs().activities!!.map { it.id })
+        assertEquals(listOf("eat", "eat_oats", "sketch", "paint", "sell_art", "hang_art", "sleep", "think"), world(money = 500, granted = painting).obs().activities!!.map { it.id })
         assertTrue("canvas" in assertFailsWith<IllegalArgumentException> { content.unlocked(setOf("paint", "easel")) }.message!!)
         assertTrue("meal" in assertFailsWith<IllegalArgumentException> { content.unlocked(setOf("meal")) }.message!!)
     }
@@ -218,6 +218,29 @@ class BedroomWorldTest {
         late.run(Intent.Do("sleep"))
         assertEquals(ClockReading(2, "07:00"), late.clock.reading(late.tick))
         assertTrue(late.obs().needs!!.energy in 66..72, "energy ${late.obs().needs!!.energy}")
+    }
+
+    @Test
+    fun `broke, starving and exhausted, he still has a way back`() {
+        // Where the 2026-10-31 TV run left him: $2, no food, every need at the bottom.
+        val w = world(money = 2, needs = NeedLevels(energy = 0, fullness = 0, mood = 7), items = content.start.items - "meal", time = "23:30")
+        assertEquals("it ends below fullness 10 (fullness 0)", w.activity("sleep").locked, "not offered only to wake him a minute later")
+        assertEquals("too low to make art (mood 7)", w.activity("sketch").locked)
+        w.run(Intent.Do("eat_oats"))
+        assertEquals(2, w.ledger.balance, "the oats cost nothing")
+        assertEquals("not hungry enough for plain oats (fullness 25)", w.activity("eat_oats").locked)
+        assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("sleep")).status)
+        assertTrue(w.obs().needs!!.energy > 60, "slept: energy ${w.obs().needs!!.energy}")
+        // Eating oats whenever they're offered, rested and fed, his mood comes back up to where he can work.
+        val woke = w.tick
+        while (w.activity("sketch").locked != null) {
+            if (w.activity("eat_oats").locked == null) w.run(Intent.Do("eat_oats")) else w.step()
+            assertTrue(w.tick - woke < w.clock.ticks(12 * 60), "still ${w.activity("sketch").locked} 12h after waking: ${w.obs().needs}")
+        }
+
+        // Before it came to that: spending the last of the food money says so.
+        val poor = world(money = 21, items = content.start.items - "meal")
+        assertTrue(poor.obs().shop!!.first { it.id == "canvas" }.gives.endsWith("leaves you \$6 with no food, short of a meal (3 for \$24)"))
     }
 
     @Test

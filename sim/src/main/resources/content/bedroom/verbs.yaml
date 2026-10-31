@@ -39,6 +39,20 @@ verbs:
     effects:
       - consume: { edible: 1 }
       - need: { fullness: 45 }
+  # The floor under hunger: the oats in the cupboard never run out and cost nothing, so he can't be
+  # left starving with no way to eat, and so no way to sleep (hunger wakes him) or work. Offered at
+  # rules.yaml's `low` fullness, where hunger starts pulling his mood down, so oats can always lift
+  # him out of that. Meals stay worth buying: oats fill less, and they aren't routine, so a diet of
+  # them wears thin and bores him (habituation), which lowers the mood he settles to.
+  - id: eat_oats
+    kind: consumptive
+    phrase: eat plain oats from the cupboard
+    at: [desk]
+    requires: [staple]
+    minutes: 15
+    block: [{ need: fullness, above: 15, reason: "not hungry enough for plain oats" }]
+    effects:
+      - need: { fullness: 25 }
   - id: sketch
     kind: generative
     at: [desk]
