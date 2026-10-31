@@ -57,10 +57,13 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   entries reach a prompt), `Keywords.kt` (shared keyword scoring), `JournalWriter.kt` (the journal's
   search-then-write LLM loop; `AgentMemory` keeps an entry only when the activity succeeds),
   `Thinker.kt` (the `think` intent's one LLM call; the thought goes to events and short-term memory).
-- Art: `agent/.../art/`: `ArtWriter.kt` (the drawing model's call: title, palette, tags, ops; also
-  words each day's commission), `Artwork.kt` (ops rasterized to a grid, and a PNG encoder with no ImageIO),
-  `ArtStudio.kt` (draws when an art activity starts, keeps it if it succeeds, saves `art-NN/piece-NNN.png`,
-  hands title and tags to the sim through `BedroomWorld.annotate`). The sim's pieces, commissions and
+- Art: `agent/.../art/`: `Painter.kt` (the deciding model draws each piece as a run of closed picks:
+  subject, crayon box, then a stroke a call; `CommissionVoice` words each day's commission on a text
+  model), `Strokes.kt` (the drawing spec as a menu of ~100 strokes), `Palettes.kt` (named crayon boxes),
+  `Artwork.kt` (ops rasterized to a grid, and a PNG encoder with no ImageIO), `ArtStudio.kt` (draws when
+  an art activity starts, keeps it if it succeeds, saves `art-NN/piece-NNN.png`, hands title and tags to
+  the sim through `BedroomWorld.annotate`). `agent/.../Menu.kt` puts one pick to any model (a choice set
+  for Jev, a prompt plus enum schema for a text model). The sim's pieces, commissions and
   hanging are in `BedroomWorld.kt`. The app's textures for them are in `ArtTextures.kt`.
   SQLite store: `memory-sqlite/` (JVM only; not in the TV build yet).
 - Token accounting: `agent/.../TokenLedger.kt`. `ledger.meter(model, purpose)` wraps a model so every call

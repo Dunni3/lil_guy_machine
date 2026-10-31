@@ -6,7 +6,8 @@ import dev.lilguy.agent.Scenario
 import dev.lilguy.agent.TokenLedger
 import dev.lilguy.agent.TokenPurpose
 import dev.lilguy.agent.art.ArtStudio
-import dev.lilguy.agent.art.ArtWriter
+import dev.lilguy.agent.art.CommissionVoice
+import dev.lilguy.agent.art.Painter
 import dev.lilguy.agent.memory.AgentMemory
 import dev.lilguy.agent.memory.InMemoryStore
 import dev.lilguy.agent.memory.JournalSession
@@ -241,10 +242,11 @@ class SimSession(
             runCatching { runLog?.write(s) }
             if (run == thisRun && s.status == JournalSession.Status.Failed) journalError = s.error
         }
-        // The journal's model also writes his thoughts when he stops to think, and draws his art.
-        val studio = jw?.takeIf { setup.scenario == Scenario.Bedroom }?.let {
-            ArtStudio(ArtWriter(ledger.meter(it, TokenPurpose.Art, setup.prices.journal)), store, runId, rs, setup.logDir?.let { d -> File(d, "art-%03d".format(thisRun)) }) { drawing -> runCatching { runLog?.write(drawing) } }
-        }
+        // The deciding model draws his art, pick by pick; the journal's model writes his thoughts and words each day's request.
+        val studio = if (!setup.paints || setup.scenario != Scenario.Bedroom) null else ArtStudio(
+            Painter(ledger.meter(rawModel, TokenPurpose.Art, setup.prices.decision)), store, runId, rs, setup.logDir?.let { d -> File(d, "art-%03d".format(thisRun)) },
+            voice = jw?.let { CommissionVoice(ledger.meter(it, TokenPurpose.Art, setup.prices.journal)) },
+        ) { drawing -> runCatching { runLog?.write(drawing) } }
         memory = AgentMemory(store, runId, summarizer, scope = rs, journal = jw?.let { JournalWriter(ledger.meter(it, TokenPurpose.Journal, setup.prices.journal), store, runId) }, onJournal = onJournal, thinker = jw?.let { Thinker(ledger.meter(it, TokenPurpose.Think, setup.prices.journal)) }, studio = studio)
         val (gw, r) = setup.scenario.create(m, setup.timeout, settings.ticksPerMinute, longTerm = memory) {
             runCatching { runLog?.write(it) }

@@ -17,22 +17,23 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * Where his art gets made, the way [dev.lilguy.agent.memory.AgentMemory] handles the journal: when
- * he starts an activity that makes a drawn item (one with a canvas), an [ArtWriter] draws it, in
+ * he starts an activity that makes a drawn item (one with a canvas), the [Painter] draws it, in
  * the background with a [scope] and inline without. At the next decision point, if the activity
  * succeeded, the drawing is matched to the sim's new piece, saved as a PNG in [dir], put in the
  * event stream, and handed to the world ([BedroomWorld.annotate]) so the sim knows its title and
  * tags; if it failed or was interrupted, the drawing is thrown away. Each day's commission is also
- * worded once, in the customer's voice.
+ * worded once, in the customer's voice, when there's a [voice] (a text model) to do it.
  *
  * [connect] it to the world before the run starts.
  */
 class ArtStudio(
-    private val writer: ArtWriter,
+    private val painter: Painter,
     private val store: MemoryStore,
     private val run: String,
     private val scope: CoroutineScope? = null,
     /** One PNG per piece goes here; null to keep them in memory only. */
     private val dir: File? = null,
+    private val voice: CommissionVoice? = null,
     /** Every finished drawing, kept or not; called from whichever coroutine finished it. */
     private val onDrawing: (Drawing) -> Unit = {},
 ) {
@@ -49,7 +50,7 @@ class ArtStudio(
     private val claimed = mutableSetOf<Int>()
     private val drawn = CopyOnWriteArrayList<Drawing>()
 
-    val artist: String get() = writer.artist
+    val artist: String get() = painter.artist
 
     /** True while a piece is being drawn or waiting to be matched to its piece. */
     val drawing: Boolean get() = pending?.job?.isActive == true || committing?.isActive == true
@@ -107,7 +108,8 @@ class ArtStudio(
         pending?.job?.cancel()
         val p = Pending(intent, made.id, obs.tick)
         pending = p
-        val draw = suspend { p.result = writer.draw(persona, situation, made.name, canvas, obs.commission, obs.tick, obs.clock?.day, obs.clock?.time) }
+        val subjects = Painter.Subjects.of(c.commissions)
+        val draw = suspend { p.result = painter.draw(persona, situation, made.name, canvas, obs.commission, subjects, obs.tick, obs.clock?.day, obs.clock?.time) }
         if (scope == null) draw() else p.job = scope.launch { draw() }
     }
 
@@ -117,9 +119,10 @@ class ArtStudio(
     }
 
     private suspend fun word(obs: Observation) {
+        val v = voice ?: return
         val c = obs.commission?.takeIf { it.request == null && it.id !in worded } ?: return
         worded += c.id
-        val write = suspend { writer.word(c)?.let { sink(ArtNote.CommissionWorded(c.id, it)) } }
+        val write = suspend { v.word(c)?.let { sink(ArtNote.CommissionWorded(c.id, it)) } }
         if (scope == null) write() else scope.launch { write() }
     }
 

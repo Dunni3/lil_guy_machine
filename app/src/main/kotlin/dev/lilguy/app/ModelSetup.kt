@@ -39,6 +39,8 @@ class ModelSetup(
     val journalModel: (() -> DecisionModel)? = null,
     /** What each of the three models costs, for the token report; null for free or unknown. */
     val prices: Prices = Prices(),
+    /** The deciding model also draws his art, pick by pick; false for the scripted policy, which can't. */
+    val paints: Boolean = false,
 ) {
     class Prices(val decision: TokenPrice? = null, val memory: TokenPrice? = null, val journal: TokenPrice? = null)
 
@@ -47,7 +49,7 @@ class ModelSetup(
         notice: String? = this.notice,
         journalModel: (() -> DecisionModel)? = this.journalModel,
         prices: Prices = this.prices,
-    ) = ModelSetup(create, scenario, ticksPerMinute, timeout, logDir, notice, memoryModel, days, journalModel, prices)
+    ) = ModelSetup(create, scenario, ticksPerMinute, timeout, logDir, notice, memoryModel, days, journalModel, prices, paints)
 
     /** The Run page's starting values; the viewer changes them from there. */
     val settings: RunSettings get() = RunSettings(days, ticksPerMinute = ticksPerMinute)
@@ -112,7 +114,7 @@ class ModelSetup(
                     val spec = config.endpoints[name] ?: throw IllegalArgumentException("no endpoint '$name' in ${configFile.path}")
                     Endpoints.create(config, name, env).let { (it as? AutoCloseable)?.close() } // fail now on a missing key
                     decisionPrice = priceOf(name)
-                    ModelSetup({ Endpoints.create(config, name, env) }, scenario, ticksPerMinute, spec.decisionTimeout, logDir, days = days)
+                    ModelSetup({ Endpoints.create(config, name, env) }, scenario, ticksPerMinute, spec.decisionTimeout, logDir, days = days, paints = true)
                 }
             } catch (e: Exception) {
                 notices.add(0, "${e.message}; using the scripted policy")

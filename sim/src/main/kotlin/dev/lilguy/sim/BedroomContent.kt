@@ -104,7 +104,7 @@ data class BedroomContent(
             require(activities.any { it.id == n.activity }) { "neglect names activity '${n.activity}', which isn't in activities" }
             require(n.afterHours >= 1 && n.moodPerHour < 0) { "neglect of ${n.activity}: after_hours must be at least 1 and mood_per_hour negative" }
         }
-        items.forEach { item -> item.canvas?.let { require(item.carried && it.size in 4..64 && it.colors in 2..32 && it.ops >= 1) { "item ${item.id}: a canvas needs a carried item, size 4 to 64, 2 to 32 colors and at least 1 op" } } }
+        items.forEach { item -> item.canvas?.let { require(item.carried && it.size in 4..64 && it.colors in 2..32 && it.strokes >= 1) { "item ${item.id}: a canvas needs a carried item, size 4 to 64, 2 to 32 colors and at least 1 stroke" } } }
         commissions?.let { c ->
             GameClock.parseHhmm(c.arrive)
             require(c.reward > 0 && c.adjectives.isNotEmpty() && c.nouns.isNotEmpty()) { "commissions need a positive reward and at least one adjective and noun" }
@@ -192,9 +192,9 @@ data class CommissionRules(
 @Serializable
 data class GalleryRules(val max: Int = 3, @SerialName("comfort_each") val comfortEach: Int = 3)
 
-/** What a drawing model gets for a piece of this item: a [size] by [size] grid, up to [colors] colors and [ops] operations. */
+/** What a piece of this item is drawn on: a [size] by [size] grid, up to [colors] colors and [strokes] strokes, each two of a model's picks. */
 @Serializable
-data class CanvasSpec(val size: Int, val colors: Int, val ops: Int)
+data class CanvasSpec(val size: Int, val colors: Int, val strokes: Int)
 
 /**
  * The think intent: he stands where he is for [minutes] and it costs [energy] on top of being
@@ -222,7 +222,7 @@ data class ItemSpec(
     val comfort: Int = 0,
     /** Above 0, it's gated until granted; see [BedroomContent.unlocked]. */
     val tier: Int = 0,
-    /** Art that is drawn: the canvas a drawing model gets. */
+    /** Art that is drawn: the canvas a piece of it is drawn on. */
     val canvas: CanvasSpec? = null,
 ) {
     val allTags: Set<String> get() = setOf(id) + tags

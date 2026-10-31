@@ -803,7 +803,7 @@ class DevView(private val art: ArtTextures) : Disposable {
         val studio = session.memory.studio
         val pieces = studio?.pieces().orEmpty()
         val status = when {
-            studio == null -> "no artist configured (journal_endpoint, or memory_endpoint): his pieces aren't drawn"
+            studio == null -> "the scripted policy doesn't draw: his pieces stay untitled"
             studio.drawing -> "${studio.artist} is drawing..."
             else -> "${pieces.size} drawn · by ${studio.artist}"
         }
@@ -851,7 +851,7 @@ class DevView(private val art: ArtTextures) : Disposable {
         shown?.commission?.let { line(it, SMALL_SCALE * 0.9f, CODE, maxLines = 2, gapAfter = 0.3f, indent = indent) }
         if (d.tags.isNotEmpty()) line("tags: ${d.tags.joinToString()}", SMALL_SCALE * 0.9f, TEXT, maxLines = 3, gapAfter = 0.3f, indent = indent)
         d.commission?.let { line("asked: $it", SMALL_SCALE * 0.85f, MUTED, maxLines = 4, gapAfter = 0.3f, indent = indent) }
-        line("${d.ops} ops${if (d.dropped > 0) " (${d.dropped} over the limit dropped)" else ""} · ${d.artist}", SMALL_SCALE * 0.85f, MUTED, maxLines = 2, indent = indent)
+        line("${d.ops} ops in ${d.calls} picks · ${d.artist}", SMALL_SCALE * 0.85f, MUTED, maxLines = 2, indent = indent)
         cursor = min(cursor, imageTop - big - 12f)
     }
 

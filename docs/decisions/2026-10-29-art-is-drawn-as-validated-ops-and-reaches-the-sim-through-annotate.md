@@ -4,7 +4,9 @@ date: 2026-10-29
 status: active
 ---
 
-From `research_notes/2026-10-29_2148_art-making-plan.md`.
+From `research_notes/2026-10-29_2148_art-making-plan.md`. The "drawing model" bullet is
+superseded by `2026-10-31-art-is-a-run-of-closed-picks-on-the-deciding-model.md`: the deciding
+model draws, pick by pick.
 
 - **The door is a mail hatch.** Item `mail_hatch` (slot `hatch`, letter `H`) in the same wall
   tile, where the shop delivers and `sell_art` sells. The bedroom has no door, so nothing hints at
