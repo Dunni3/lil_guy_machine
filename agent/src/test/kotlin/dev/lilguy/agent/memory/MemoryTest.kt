@@ -35,24 +35,28 @@ private class FakeWriter(val closedChoice: Boolean = false, val fail: () -> Bool
 
 class MemoryTest {
     @Test
-    fun `a run records observations and actions as free text`() {
+    fun `a run records outcomes, what happened around him, and a snapshot when he wakes`() {
         val store = InMemoryStore()
-        val (world, runtime) = bedroomScenario(BedroomPolicy(), longTerm = AgentMemory(store, "r1"))
-        runBlocking { runLockstep(world, runtime, maxTicks = 7200) }
+        val decisions = mutableListOf<dev.lilguy.agent.AgentRuntime.DecisionRecord>()
+        val (world, runtime) = bedroomScenario(BedroomPolicy(), longTerm = AgentMemory(store, "r1")) { decisions += it }
+        runBlocking { runLockstep(world, runtime, maxTicks = 2 * 7200) }
         val events = store.eventsAfter("r1", 0, 10_000)
-        val obs = events.filter { it.kind == EventKind.Observation }
-        val acts = events.filter { it.kind == EventKind.Action }
-        assertTrue(obs.size > 5 && acts.size > 5)
-        assertTrue(obs.size - acts.size in 0..1, "one observation per decision")
-        assertEquals("d1", obs.first().stamp.substringBefore(' '))
-        assertTrue(obs.first().text.contains("money") && obs.first().text.contains("energy"), obs.first().text)
-        assertTrue(acts.any { it.text.startsWith("do activity=") }, acts.map { it.text }.toString())
+        val outcomes = events.filter { it.kind == EventKind.Outcome }
+        assertTrue(outcomes.size in decisions.size - 1..decisions.size, "one outcome per finished intent: ${outcomes.size} for ${decisions.size} decisions")
+        // From the sim's own words for what the ops did, with how long it took.
+        assertTrue(outcomes.any { it.text.startsWith("sketch (1h): done; +1 sketch, energy -6") }, outcomes.map { it.text }.toString())
+        assertTrue(outcomes.none { "money $" in it.text && it.text.startsWith("sketch") }, "outcomes don't restate his state")
+        // How things stood: at the start, then once each morning he woke (two days from 08:00 reach day 3).
+        val snapshots = events.filter { it.kind == EventKind.Snapshot }
+        assertEquals(listOf(1, 2, 3), snapshots.map { it.day })
+        assertTrue(snapshots.first().text.startsWith("money $20; energy 80"), snapshots.first().text)
+        assertTrue(events.any { it.kind == EventKind.World && it.text == "day 2 begins" })
     }
 
     @Test
     fun `summaries cover each event once, in order, and survive a failing model`() {
         val store = InMemoryStore()
-        for (i in 1..10) store.appendEvent("r", i * 10L, 1, "08:%02d".format(i), if (i % 2 == 0) EventKind.Action else EventKind.Observation, "event $i")
+        for (i in 1..10) store.appendEvent("r", i * 10L, 1, "08:%02d".format(i), if (i % 2 == 0) EventKind.Outcome else EventKind.World, "event $i")
         var down = true
         val writer = FakeWriter(fail = { down })
         val summarizer = Summarizer(writer, store, "r", batchSize = 4)
@@ -69,8 +73,10 @@ class MemoryTest {
         assertEquals(listOf(1L to 4L, 5L to 8L, 9L to 10L), ms.map { it.fromId to it.toId })
         assertEquals("fake-writer", ms.first().source)
         assertEquals("Day 1 08:01-08:04", ms.first().span.label)
-        assertTrue(writer.prompts.last().contains("[d1 08:09] I saw: event 9"), writer.prompts.last())
+        assertTrue(writer.prompts.last().contains("[d1 08:09] Happened: event 9"), writer.prompts.last())
         assertTrue(writer.prompts.last().contains("I did: event 10"))
+        // Each memory is written with the one before it in view.
+        assertTrue("Your memory of just before this" in writer.prompts.last() && "(batch 3)" in writer.prompts.last(), writer.prompts.last())
     }
 
     @Test
@@ -79,14 +85,18 @@ class MemoryTest {
     }
 
     @Test
-    fun `recall takes the latest memories plus older ones that share words, within the budget`() {
-        fun m(id: Long, text: String) = StoredMemory(id, "r", 1, id, id, Span(1, "08:00", 1, "09:00"), text, "t")
-        val all = listOf(m(1, "I bought the easel and it was worth it."), m(2, "I napped."), m(3, "I ate a meal."), m(4, "I sold a sketch."), m(5, "I slept."), m(6, "I painted."))
-        val picked = Recall(latest = 2, related = 1).select(all, "buy easel canvas").map { it.id }
-        assertEquals(listOf(1L, 5L, 6L), picked)
+    fun `recall takes the latest memories plus older memories and thoughts that share words, within the budget`() {
+        fun m(id: Long, text: String) = Recollection(Recollection.Kind.Memory, id, "Day 1 08:00-09:00", text, null, id * 10)
+        val easel = Recollection(Recollection.Kind.Thought, 7, "Day 1 08:30", "I want the easel.", null, 15)
+        val all = listOf(m(1, "I bought the canvas and it was worth it."), easel, m(2, "I napped."), m(3, "I ate a meal."), m(4, "I sold a sketch."), m(5, "I slept."), m(6, "I painted."))
+        assertEquals(listOf(1L, 5L, 6L), Recall(latest = 2, related = 1).select(all, "buy canvas").map { it.id })
+        assertEquals(listOf(7L, 5L, 6L), Recall(latest = 2, related = 1).select(all, "easel").map { it.id })
         assertEquals(listOf(5L, 6L), Recall(latest = 2, related = 1).select(all, "nothing relevant").map { it.id })
         assertEquals(listOf(6L), Recall(latest = 3, related = 0, charBudget = 30).select(all, "").map { it.id })
-        assertEquals("Day 1 08:00-09:00: I painted.", Recall().render(all.last()))
+        assertEquals("Day 1 08:00-09:00: I painted.", all.last().render())
+        assertEquals("Day 1 08:30, you thought: \"I want the easel.\"", easel.render())
+        // Ranked: the latest memory always, then by relevance, importance and recency.
+        assertEquals(listOf(7L, 6L), Recall(pick = 2).selectRanked(all, mapOf(easel.key to 1.0), now = 70).map { it.id })
     }
 
     @Test
