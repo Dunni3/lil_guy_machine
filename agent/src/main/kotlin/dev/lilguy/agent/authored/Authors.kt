@@ -62,7 +62,8 @@ class AuthorCall(
  *   call starts in [acted], when the verb starts, in the background with a [scope] (inline without).
  * - **Keep or throw away.** At the next decision point ([observed]) the result is kept only if the
  *   verb succeeded; otherwise the call is cancelled and the result discarded.
- * - **Hold.** While a `during` call outlasts its verb, [holding] is true and the app's clock waits.
+ * - **Hold.** While a `before` call is out, or a `during` call outlasts its verb, [holding] is true
+ *   and the app's clock waits: a thought costs the verb's minutes, not the model's seconds too.
  * - **Destinations** are the handler's to write; the sim's part goes through [BedroomWorld.deliver].
  *
  * A verb is offered to models only when every essential authored op ([AuthoredOp.essential]) has a
@@ -91,6 +92,8 @@ class Authors(handlers: List<AuthorHandler<*>>, private val scope: CoroutineScop
     private val pending = CopyOnWriteArrayList<Pending>()
     /** Kept results still waiting on their call, by handler. */
     private val committing = CopyOnWriteArrayList<Pair<String, Job>>()
+    /** Handlers whose `before` call is out right now. */
+    private val inline = CopyOnWriteArrayList<String>()
 
     /** Runs authored ops for [world]: its content says which verbs have them, and results go back to it. */
     fun connect(world: BedroomWorld) {
@@ -111,11 +114,11 @@ class Authors(handlers: List<AuthorHandler<*>>, private val scope: CoroutineScop
     /** The result of the latest [handler] call not yet kept or thrown away, once the model has sent it. Readable from any thread. */
     fun inProgress(handler: String): Any? = pending.lastOrNull { it.handler.name == handler }?.result
 
-    /** True while a `during` call has outlasted its verb: the clock should wait for it. */
-    val holding: Boolean get() = committing.any { it.second.isActive }
+    /** True while a `before` call is out or a `during` call has outlasted its verb: the clock should wait for it. */
+    val holding: Boolean get() = inline.isNotEmpty() || committing.any { it.second.isActive }
 
     /** The handlers [holding] is waiting on. */
-    val holdingFor: List<String> get() = committing.filter { it.second.isActive }.map { it.first }.distinct()
+    val holdingFor: List<String> get() = (inline + committing.filter { it.second.isActive }.map { it.first }).distinct()
 
     /**
      * He chose [intent] at [obs]: runs its verb's `before` ops now and returns their results, or none
@@ -123,7 +126,12 @@ class Authors(handlers: List<AuthorHandler<*>>, private val scope: CoroutineScop
      */
     suspend fun before(obs: Observation, intent: Intent, persona: String, situation: String, system: String): List<Any> =
         start(obs, intent, persona, situation, system, Timing.Before).mapNotNull { p ->
-            p.run()
+            inline += p.handler.name
+            try {
+                p.run()
+            } finally {
+                inline.remove(p.handler.name)
+            }
             p.result
         }
 

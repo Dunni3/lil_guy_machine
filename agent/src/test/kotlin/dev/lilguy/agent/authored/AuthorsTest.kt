@@ -15,9 +15,15 @@ import kotlin.test.assertTrue
 private class FakeHandler(override val name: String) : AuthorHandler<String> {
     val kept = mutableListOf<Pair<String, AuthoredView?>>()
     val discarded = mutableListOf<String?>()
+    /** Set to see whether the clock was held while it wrote. */
+    var authors: Authors? = null
+    var heldWhileWriting: Boolean? = null
     override val writer = "fake"
 
-    override suspend fun author(call: AuthorCall) = "$name at ${call.obs.tick}"
+    override suspend fun author(call: AuthorCall): String {
+        heldWhileWriting = authors?.holding
+        return "$name at ${call.obs.tick}"
+    }
 
     override fun keep(result: String, call: AuthorCall, ended: Observation, view: AuthoredView?, deliver: (AuthoredResult) -> Unit) {
         kept += result to view
@@ -43,6 +49,7 @@ class AuthorsTest {
         val draw = FakeHandler("draw")
         val authors = Authors(listOf(thought, draw))
         authors.connect(world)
+        thought.authors = authors
         fun act(obs: Observation, intent: Intent) = runBlocking { authors.acted(obs, intent, "persona", "situation", "system") }
         fun think(obs: Observation, intent: Intent) = runBlocking { authors.before(obs, intent, "persona", "situation", "system") }
 
@@ -60,6 +67,7 @@ class AuthorsTest {
         // Thinking (a `before` op) succeeds: the thought is written before the verb starts, then kept when it finishes.
         val ponder = Intent.Do("think")
         assertEquals(listOf<Any>("thought at ${sketched.tick}"), think(sketched, ponder))
+        assertTrue(thought.heldWhileWriting == true && !authors.holding, "the clock waits only while the thought is being written")
         val thought1 = world.finish(ponder)
         authors.observed(thought1)
         assertEquals(listOf("thought at ${sketched.tick}"), thought.kept.map { it.first })

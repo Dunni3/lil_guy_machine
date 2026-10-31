@@ -24,6 +24,12 @@ needs:
   bored: 40
   bored_mood: 0.4
 
+# Night runs from `from` to `to`. A verb started then is done as written; started at any other
+# hour, its `by_day` applies (verbs.yaml): sleep by day is a nap.
+night:
+  from: "20:00"
+  to: "04:00"
+
 # Repetition wears an activity thin: each time he finishes one, its wear rises `per_repeat` (wear
 # runs 0 to 1) and fades `recover_per_hour`. Its mood and stimulation gains are paid at 1 - wear, and
 # finishing one that was already worn costs `stale_stimulation` times the wear. Routine verbs

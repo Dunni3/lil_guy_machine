@@ -392,10 +392,13 @@ class BedroomWorld private constructor(
         if (a.noRepeat && (justDid as? Intent.Do)?.activity == a.id) return "you just did; do something else first"
         val b = Bound(a, args.orEmpty(), fresh = 1.0, extra = extra)
         a.effects.firstNotNullOfOrNull { it.lockReason(ops, b) }?.let { return it }
-        val blocks = a.block + if (a.work) content.needs.workFloor else emptyList()
+        val blocks = a.block + byDay(a)?.block.orEmpty() + if (a.work) content.needs.workFloor else emptyList()
         blocks.firstOrNull { it.blocks(needs[needOf(it.need)]) }?.let { return "${it.reason} (${it.need} ${needs.level(needOf(it.need))})" }
         return null
     }
+
+    /** [a]'s daytime changes, when it has some and it isn't night now. */
+    private fun byDay(a: VerbSpec): VerbSpec.ByDay? = a.byDay?.takeIf { content.night?.covers(clock.minuteOfDay(ticks)) == false }
 
     /** "an easel ($120)", "a meal (3 for $18)", "a sketchbook". The cheapest item with [tag] for sale, if any. */
     private fun wanted(tag: String): String {
@@ -512,7 +515,8 @@ class BedroomWorld private constructor(
         return Work.Until(
             start = {
                 if (at != guy.cell) guy.facing = Direction.of(at.x + 0.5f - guy.x, at.y + 0.5f - guy.y)
-                val length = if (until != null) clock.ticksUntil(ticks, GameClock.parseHhmm(until.time)) else clock.ticks(a.minutes!!).toLong()
+                val full = if (until != null) clock.ticksUntil(ticks, GameClock.parseHhmm(until.time)) else clock.ticks(a.minutes!!).toLong()
+                val length = byDay(a)?.minutes?.let { min(full, clock.ticks(it).toLong()) } ?: full
                 doing = Doing(bound(a, args), ticks, ticks + length)
             },
             done = {
@@ -741,15 +745,18 @@ class BedroomWorld private constructor(
     }
 
     private fun takes(a: VerbSpec): String {
-        val until = a.until ?: return GameClock.duration(a.minutes!!) + a.effects.joinToString("") { it.takes() }
-        val byClock = clock.ticksUntil(ticks, GameClock.parseHhmm(until.time)) / clock.ticksPerMinute
+        val nap = byDay(a)?.minutes
+        val until = a.until ?: return GameClock.duration(nap?.let { min(it, a.minutes!!) } ?: a.minutes!!) + a.effects.joinToString("") { it.takes() }
+        val toClock = clock.ticksUntil(ticks, GameClock.parseHhmm(until.time)) / clock.ticksPerMinute
+        val byClock = nap?.let { min(it.toLong(), toClock) } ?: toClock
         val need = until.need?.let(::needOf)
         val perHour = need?.let { n -> a.ops<RateOp>().firstNotNullOfOrNull { it.perHour[n.id] } }
         val byNeed = if (need != null && perHour != null && perHour > 0) ((until.reaches!! - needs[need]) / perHour * 60).toLong() else Long.MAX_VALUE
         val estimate = (min(byClock, byNeed) + ESTIMATE_MINUTES / 2) / ESTIMATE_MINUTES * ESTIMATE_MINUTES
         val about = GameClock.duration(estimate.coerceAtLeast(ESTIMATE_MINUTES.toLong()).toInt())
         val stops = a.stopBelow.entries.joinToString("") { (n, level) -> ", or $n below ${level.toInt()}" }
-        return "until ${until.time}" + (need?.let { " or ${it.id} ${until.reaches!!.toInt()}" } ?: "") + stops + ", about $about"
+        val ends = if (nap != null) "up to ${GameClock.duration(byClock.toInt())}" else "until ${until.time}"
+        return ends + (need?.let { " or ${it.id} ${until.reaches!!.toInt()}" } ?: "") + stops + ", about $about"
     }
 
     /** [forSale]: describing a verb he can't do yet, so leave out what he has now. [args]: what its arguments are bound to. */

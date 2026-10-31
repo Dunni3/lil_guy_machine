@@ -26,7 +26,8 @@
 # drawing model draws a piece the verb produced). Results are kept only if the verb succeeds. A
 # verb whose `write` has no handler configured isn't offered to models, unless the write is
 # `optional`; the sim still runs it. `with: reading` writes what stuck with him from a chapter.
-# `no_repeat`: locked right after he did it.
+# `no_repeat`: locked right after he did it. `by_day: { block, minutes }`: started outside the night
+# (rules.yaml `night`), these blocks apply too and it lasts at most `minutes`.
 
 verbs:
   - id: eat
@@ -122,10 +123,15 @@ verbs:
     effects:
       - need: { mood: 4, stimulation: 12 }
       - enjoy: what
+  # Gone to bed at night, he sleeps until 07:00 or full energy. At any other hour it's a nap: only
+  # when he's exhausted, and short.
   - id: sleep
     kind: rest
     at: [bed]
     until: { time: "07:00", need: energy, reaches: 100 }
+    by_day:
+      block: [{ need: energy, above: 25, reason: "not bedtime yet; by day only a nap, when exhausted" }]
+      minutes: 90
     # He wakes up hungry rather than sleeping fullness down to 0.
     stop_below: { fullness: 10 }
     block: [{ need: energy, above: 94, reason: "not tired" }]
