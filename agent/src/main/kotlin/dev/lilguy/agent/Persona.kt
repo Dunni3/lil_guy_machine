@@ -13,7 +13,7 @@ import dev.lilguy.sim.BedroomContent
 object Persona {
     /** "eat, sketch, sell your art, write in your journal and sleep". */
     fun abilities(content: BedroomContent): String {
-        val all = content.activities.map { it.phrase ?: it.id.replace('_', ' ') }
+        val all = content.verbs.map { it.phrase ?: it.id.replace('_', ' ') }
         return if (all.size <= 1) all.joinToString() else all.dropLast(1).joinToString(", ") + " and " + all.last()
     }
 
@@ -24,7 +24,7 @@ object Persona {
     const val GOAL = "Your goal is to express yourself in your journal: it is where you work out what would make your life better, plan how to get it, and make your case. " +
         "Money is not the point. It only buys food, and food buys you the time and strength to think, plan and write."
 
-    private fun journals(content: BedroomContent) = content.activity(JOURNAL_ACTIVITY) != null
+    private fun journals(content: BedroomContent) = content.verb(JOURNAL_ACTIVITY) != null
 
     /**
      * "cozy, calm and warm things, lively ones a little, and loud ones put you off", from his

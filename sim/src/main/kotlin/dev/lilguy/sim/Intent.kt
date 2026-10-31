@@ -15,6 +15,7 @@ sealed interface Intent {
     @Serializable @SerialName("pick_up")
     data class PickUp(val itemId: String) : Intent
 
+    /** Key-and-door only: the bedroom does it through a verb's arguments ([Do]). */
     @Serializable @SerialName("use")
     data class Use(val itemId: String, val on: String? = null) : Intent
 
@@ -24,9 +25,13 @@ sealed interface Intent {
     @Serializable @SerialName("wait")
     data class Wait(val ticks: Int) : Intent
 
-    /** Do an activity by id, such as "sketch" or "sleep". The sim walks the character to its spot. */
+    /**
+     * Do a verb by id, such as "sketch" or "sleep". [what] and [on] fill its argument slots with
+     * items he owns ("read", what = "novel"); one left out is filled with the first owned match.
+     * The sim walks the character to its spot.
+     */
     @Serializable @SerialName("do")
-    data class Do(val activity: String) : Intent
+    data class Do(val activity: String, val what: String? = null, val on: String? = null) : Intent
 
     /** Buy an item from the shop by id. The sim walks the character to where buying happens. */
     @Serializable @SerialName("buy")

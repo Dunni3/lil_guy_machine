@@ -306,7 +306,7 @@ private fun modelSource(scenario: Scenario, endpoint: String, replay: File?, arg
     if (replay != null) {
         require(replay.isFile) { "no log at ${replay.path}" }
         val entries = DecisionLog.read(replay)
-        return Triple("replay", 20.seconds) { ReplayDecisionModel(entries, id = "replay:${entries.firstOrNull()?.model}") }
+        return Triple("replay", 20.seconds) { ReplayDecisionModel(entries, id = "replay:${entries.firstOrNull()?.model}", upgrade = scenario.upgrade()) }
     }
     if (endpoint == "scripted") return Triple("scripted", 20.seconds) { scenario.scriptedPolicy() }
     var config = Endpoints.load(File(args.string("--config") ?: Endpoints.DEFAULT_PATH))

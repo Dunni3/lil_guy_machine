@@ -171,7 +171,6 @@ class AgentMemory(
         add(Describe.observation(obs, emptyList()))
         obs.activities.orEmpty().filter { it.locked == null }.forEach { add(it.id) }
         obs.shop.orEmpty().forEach { add(it.id) }
-        obs.uses.orEmpty().forEach { add(it.itemId) }
     }.joinToString(" ").replace('_', ' ')
 
     /** Waits for a running summary and a journal entry being stored, then summarizes whatever is left. Call at the end of a run. */

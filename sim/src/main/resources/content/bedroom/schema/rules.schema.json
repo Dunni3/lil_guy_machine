@@ -67,7 +67,7 @@
           "items": {
             "type": "object",
             "properties": {
-              "activity": {
+              "verb": {
                 "type": "string"
               },
               "after_hours": {
@@ -81,7 +81,7 @@
               }
             },
             "required": [
-              "activity",
+              "verb",
               "after_hours",
               "mood_per_hour",
               "reason"

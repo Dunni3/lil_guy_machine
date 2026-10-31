@@ -101,8 +101,7 @@ class BedroomRunTest {
         )
         c.copy(
             items = c.items.map { if (it.id in tier1) it.copy(tier = 1) else it },
-            activities = c.activities.map { if (it.id in tier1) it.copy(tier = 1) else it },
-            uses = c.uses.map { if (it.id in tier1) it.copy(tier = 1) else it },
+            verbs = c.verbs.map { if (it.id in tier1) it.copy(tier = 1) else it },
         )
     }
 
@@ -115,11 +114,10 @@ class BedroomRunTest {
             .associateBy { it["properties"]!!.jsonObject["type"]!!.jsonObject["enum"]!!.jsonArray.single().jsonPrimitive.content }
         fun enumOf(variant: String, field: String) =
             variants.getValue(variant)["properties"]!!.jsonObject[field]!!.jsonObject["enum"]!!.jsonArray.map { it.jsonPrimitive.content }
-        // Tier 0: no uses, a shop of meals he can't afford yet ($20 for $24), nothing to pick up.
+        // Tier 0: a shop of meals he can't afford yet ($20 for $24), nothing to pick up, and use is for other rooms.
         assertEquals(setOf("do", "move_to", "say", "wait"), variants.keys)
         assertEquals(listOf("eat", "sketch", "journal", "sleep"), enumOf("do", "activity"))
         assertEquals(listOf("meal"), obs.shop.orEmpty().map { it.id })
-        assertEquals(emptyList(), obs.uses)
 
         val choices = BedroomPrompt.choices(obs, emptyList(), world.clock.ticksPerMinute, world.content)
         assertEquals(

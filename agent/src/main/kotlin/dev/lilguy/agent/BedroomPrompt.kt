@@ -35,12 +35,12 @@ object BedroomPrompt {
     const val WAIT_TICKS = 150
 
     fun examples(content: BedroomContent, ticksPerMinute: Int, thinking: Boolean = false): List<Pair<Intent, String>> = buildList {
-        val activity = content.activities.firstOrNull { it.work } ?: content.activities.first()
+        val activity = content.verbs.firstOrNull { it.work } ?: content.verbs.first()
         add(Intent.Do(activity.id) to "do an activity from `activities` that isn't locked; the game walks you there")
         content.items.firstOrNull { it.price != null }?.let { add(Intent.Buy(it.id) to "buy something from `shop` that you can afford; it arrives at the ${content.item(content.shop.at)?.name ?: content.shop.at}") }
-        content.uses.firstOrNull()?.let { u ->
-            val item = content.withName(u.item!!).first().id
-            add(Intent.Use(item, on = u.on) to "use an item you own on another, as listed in `uses`")
+        content.verbs.firstOrNull { it.args.isNotEmpty() }?.let { v ->
+            val args = v.args.mapValues { content.withName(it.value).first().id }
+            add(Intent.Do(v.id, args["what"], args["on"]) to "do an activity with things you own: `what` and `on` name them, as its entry in `activities` does")
         }
         add(Intent.MoveTo(Target.Entity("bed")) to "walk to something in the room")
         add(Intent.Say("one day this room will have a window") to "say something out loud")
@@ -50,7 +50,7 @@ object BedroomPrompt {
 
     /** The journal line of the prompt, or null when the content has no journal activity. */
     private fun journalHint(content: BedroomContent): String? {
-        val j = content.activity(JOURNAL_ACTIVITY) ?: return null
+        val j = content.verb(JOURNAL_ACTIVITY) ?: return null
         val energy = j.needEffects["energy"]?.let { if (it < 0) " and costs ${-it.toInt()} energy" else "" }.orEmpty()
         val work = if (j.work) "; it's work, so you can only do it when you are fed and rested enough to work" else ""
         val minutes = j.minutes?.let { GameClock.duration(it) } ?: "a while"
@@ -63,14 +63,14 @@ object BedroomPrompt {
      * again. Below 25 mood you can't sketch: too low to make art.", or null when no rule applies.
      */
     private fun moodRules(content: BedroomContent): String? {
-        val neglect = content.needs.neglect.filter { content.activity(it.activity) != null }.map { n ->
+        val neglect = content.needs.neglect.filter { content.verb(it.verb) != null }.map { n ->
             "After ${n.reason} (${n.afterHours} hours, counted from the start), mood falls ${-n.moodPerHour.toInt()} an hour instead, until you do it again."
         }
-        val blocks = content.activities.flatMap { a -> a.block.filter { it.need == "mood" && it.below != null }.map { it to a.id } }
+        val blocks = content.verbs.flatMap { a -> a.block.filter { it.need == "mood" && it.below != null }.map { it to a.id } }
             .groupBy { it.first.below!! to it.first.reason }
             .map { (k, v) -> "Below ${k.first.toInt()} mood you can't ${v.joinToString(" or ") { it.second }}: ${k.second}." }
-        val lifts = content.activities.mapNotNull { a -> a.needEffects["mood"]?.takeIf { it > 0 }?.let { "${a.id} adds ${it.toInt()} mood" } }
-        val costs = content.activities.mapNotNull { a -> a.needEffects["mood"]?.takeIf { it < 0 }?.let { "${a.id} costs ${-it.toInt()} mood" } }
+        val lifts = content.verbs.mapNotNull { a -> a.needEffects["mood"]?.takeIf { it > 0 }?.let { "${a.id} adds ${it.toInt()} mood" } }
+        val costs = content.verbs.mapNotNull { a -> a.needEffects["mood"]?.takeIf { it < 0 }?.let { "${a.id} costs ${-it.toInt()} mood" } }
         val effects = if (lifts.isEmpty() && costs.isEmpty()) emptyList() else
             listOf("Each time you finish one, " + (costs + lifts).joinToString(" and ") + ".")
         return (effects + neglect + blocks).joinToString(" ").ifEmpty { null }
@@ -82,7 +82,7 @@ object BedroomPrompt {
             content.commissions?.let { c ->
                 add("A request for a piece comes in every day at ${c.arrive} (`commission`) and stays open until the next. The first piece you finish while it's open that is what it asks for earns $${c.reward} more when you sell it; it's yours to take or leave.")
             }
-            content.activities.firstOrNull { it.ops<SetStateOp>().isNotEmpty() }?.let { h ->
+            content.verbs.firstOrNull { it.ops<SetStateOp>().isNotEmpty() }?.let { h ->
                 add("${h.id} puts your newest piece on your wall instead of selling it: each one hung adds ${content.gallery.comfortEach} comfort, up to ${content.gallery.max}.")
             }
         }
@@ -107,7 +107,7 @@ object BedroomPrompt {
             content.habituation?.let { h ->
                 val stale = if (h.staleStimulation < 0) ", and doing something you've worn thin costs stimulation" else ""
                 add("Doing the same thing again gives less: each time you finish it, its mood and stimulation gains drop ${(h.perRepeat * 100).toInt()}%, coming back ${(h.recoverPerHour * 100).toInt()}% an hour$stale.")
-                val routine = content.activities.filter { it.isRoutine }.map { it.phrase ?: it.id }
+                val routine = content.verbs.filter { it.isRoutine }.map { it.phrase ?: it.id }
                 if (routine.isNotEmpty()) add("Routine things (${routine.joinToString(", ")}) don't wear thin.")
             }
         }
@@ -135,15 +135,15 @@ object BedroomPrompt {
             "- ${PromptBuilder.tag(intent)}: $what\n  ${PromptBuilder.exampleJson.encodeToString(Intent.serializer(), intent)}"
         }
         val art = content.items.filter { it.sellPrice != null }.joinToString(" and ") { "a ${it.name} sells for $${it.sellPrice}" }
-        val makers = content.activities.filter { it.ops<ProduceOp>().isNotEmpty() }.map { it.id }
-        val work = content.activities.filter { it.work }.joinToString(", ") { it.id }
+        val makers = content.verbs.filter { it.ops<ProduceOp>().isNotEmpty() }.map { it.id }
+        val work = content.verbs.filter { it.work }.joinToString(", ") { it.id }
         val floor = r.workFloor.joinToString(" or ") { "${it.need} is below ${it.below?.toInt()}" }
-        val sellAt = content.activities.firstOrNull { it.ops<SellOp>().isNotEmpty() }
+        val sellAt = content.verbs.firstOrNull { it.ops<SellOp>().isNotEmpty() }
         val hatch = content.item(content.shop.at)?.name ?: content.shop.at
         val decor = content.items.any { it.slot != null && content.value(it) > 0 }
         val forSale = content.items.filter { it.price != null }
         val wants = if (forSale.any { it.group != "food" }) "for food and for anything you want to own" else "for food"
-        val means = if (content.activity(JOURNAL_ACTIVITY) != null) ", as a means, not the goal" else ""
+        val means = if (content.verb(JOURNAL_ACTIVITY) != null) ", as a means, not the goal" else ""
         val bored = if (r.stimulationPerHour < 0 && r.boredMood > 0) ", less boredom" else ""
         val mood = if (decor) {
             "Mood drifts ${r.moodDriftPerHour.toInt()} an hour toward ${r.moodBaseline.toInt()} plus your room's comfort$bored; nice things raise it for a while, and decor raises comfort by as much as you like it."
@@ -151,11 +151,12 @@ object BedroomPrompt {
             "Mood drifts ${r.moodDriftPerHour.toInt()} an hour toward ${r.moodBaseline.toInt()}$bored; some activities raise it for a while."
         }
         val sinking = moodRules(content)?.let { " $it" }.orEmpty()
-        val lists = "`activities` lists everything you can do, with how long it takes and what it gives, or why it's locked. `shop` is the catalog: everything for sale, its price, whether you can afford it, and what it's for." +
-            (if (decor) " Your room has empty places for furniture and decor, and the catalog is where they come from." else "") +
-            if (content.uses.isNotEmpty()) " `uses` lists things you can use on other things." else ""
-        val options = if (content.uses.isNotEmpty()) "activities, uses, shop" else "activities, shop"
-        val music = if (content.uses.any { it.ops<BackgroundOp>().isNotEmpty() }) " music: what's playing, if anything." else ""
+        val lists = "`activities` lists everything you can do, with how long it takes and what it gives, or why it's locked." +
+            (if (content.verbs.any { it.args.isNotEmpty() }) " One done with something you own is listed once for each thing you could use, with `what` (and `on`) naming it." else "") +
+            " `shop` is the catalog: everything for sale, its price, whether you can afford it, and what it's for." +
+            if (decor) " Your room has empty places for furniture and decor, and the catalog is where they come from." else ""
+        val options = "activities, shop"
+        val music = if (content.verbs.any { it.ops<BackgroundOp>().isNotEmpty() }) " music: what's playing, if anything." else ""
         val life = listOfNotNull(
             "- Time: the clock shows the day and the time. Activities take game minutes or hours, and you choose again when one finishes.",
             "- Needs, each from 0 to 100. Energy falls ${-r.awakeEnergyPerHour.toInt()} an hour while you're awake and comes back while you sleep. Fullness falls ${-r.fullnessPerHour.toInt()} an hour; eating brings it back.${stimulationRule(content)} $mood Below ${r.low.toInt()} energy or fullness, mood falls ${-r.lowMoodPerHour.toInt()} an hour instead.$sinking When $floor you can't work ($work).",
@@ -187,64 +188,62 @@ object BedroomPrompt {
             |- $options: your options, as above.
             |- self and nearby: where you are and the furniture around you, with tile x and y. localMap: the room, one string per row, north at the top.
             |- lastIntent and lastResult: your previous action and how it ended (succeeded, failed with a reason, or interrupted).
-            |- recentEvents: the last few things that happened, stamped with day and time.${if (content.needs.neglect.any { content.activity(it.activity) != null }) "\n            |- neglect: how long since your last journal, and whether your mood is falling for it." else ""}
+            |- recentEvents: the last few things that happened, stamped with day and time.${if (content.needs.neglect.any { content.verb(it.verb) != null }) "\n            |- neglect: how long since your last journal, and whether your mood is falling for it." else ""}
             |
             |Below the observation you may see what you remember from earlier, what you wrote in your journal, and what you decided the last time you stopped to think. The journal and that thought are your own words: let the plans in them shape what you do with your hours.
         """.trimMargin()
     }
 
     /**
-     * The reply schema for one observation: do() takes only activities that aren't locked, buy()
-     * only what he can afford, use() only the uses on offer, so constrained decoding can't pick
-     * anything the sim would refuse for those reasons. There is nothing to pick up in the
-     * bedroom, so pick_up is left out, and think is only there when [canThink].
+     * The reply schema for one observation: do() takes only activities that aren't locked, and
+     * only things listed with them, and buy() only what he can afford, so constrained decoding
+     * can't pick anything the sim would refuse for those reasons. There is nothing to pick up in
+     * the bedroom and use() is for other rooms, so both are left out, and think is only there when [canThink].
      */
     fun replySchema(obs: Observation, ticksPerMinute: Int, thinking: Boolean = false): ActionSchema<AgentReply> {
-        val uses = obs.uses.orEmpty()
+        val open = obs.activities.orEmpty().filter { it.locked == null }
         val hints = SchemaHints(
             descriptions = VARIANT_DESCRIPTIONS + mapOf(
                 "reply.thought" to "Your reasoning in a sentence or two, before you act.",
                 "reply.intent" to "The one action to take now.",
                 "do.activity" to "An activity from `activities` that isn't locked.",
+                "do.what" to "What to do it with, as listed with the activity; null when it lists none.",
+                "do.on" to "What to do it on, as listed with the activity; null when it lists none.",
                 "buy.item" to "An item from `shop` that you can afford.",
-                "use.itemId" to "An item from `uses`.",
-                "use.on" to "What to use it on, from `uses`.",
                 "entity.id" to "An id from nearby.",
                 "wait" to "Do nothing for some ticks ($ticksPerMinute ticks = 1 game minute).",
                 "tile.x" to "Tile column; x grows east.",
                 "tile.y" to "Tile row; y grows south.",
             ),
             enums = mapOf(
-                "do.activity" to obs.activities.orEmpty().filter { it.locked == null }.map { it.id },
+                "do.activity" to open.map { it.id }.distinct(),
+                "do.what" to open.mapNotNull { it.what }.distinct(),
+                "do.on" to open.mapNotNull { it.on }.distinct(),
                 "buy.item" to obs.shop.orEmpty().filter { it.affordable }.map { it.id },
-                "use.itemId" to uses.map { it.itemId }.distinct(),
-                "use.on" to uses.map { it.on }.distinct(),
                 "entity.id" to obs.nearby.map { it.id },
                 "pick_up.itemId" to emptyList(),
             ),
             ranges = mapOf("wait.ticks" to 1..GridWorld.MAX_WAIT),
-            omit = if (canThink(obs, thinking)) emptySet() else setOf("think"),
+            omit = setOf("use") + if (canThink(obs, thinking)) emptySet() else setOf("think"),
         )
         return ActionSchema.of("reply", AgentReply.serializer(), hints) { it.thought }
     }
 
     /**
-     * The decision as a closed set: each activity that isn't locked, each use on offer, each
-     * purchase he can afford, and waiting half an hour. Without [journaling] (no model writes the
+     * The decision as a closed set: each activity that isn't locked (once per thing he could do it
+     * with), each purchase he can afford, and waiting half an hour. Without [journaling] (no model writes the
      * entries) the journal is left out, so a picking model doesn't spend hours on nothing visible. Walking and talking are left out; the
      * activities walk him where he needs to be. The state is the life part of the observation
      * (no map or coordinates), plus his recent actions.
      *
-     * Options are ordered activities (in content order), uses, purchases, wait: Jev leans toward
+     * Options are ordered activities (in content order), purchases, wait: Jev leans toward
      * earlier options, so doing comes before spending and waiting is last.
      */
     fun choices(obs: Observation, recent: List<Memory.Entry>, ticksPerMinute: Int, content: BedroomContent, journaling: Boolean = true, thinking: Boolean = false): ChoiceSet {
         val options = buildList {
             obs.activities.orEmpty().filter { it.locked == null && (journaling || it.id != JOURNAL_ACTIVITY) }.forEach { a ->
-                add(option(Intent.Do(a.id), "Do ${a.id}: takes ${a.takes}; gives ${a.gives}."))
-            }
-            obs.uses.orEmpty().forEach { u ->
-                add(option(Intent.Use(u.itemId, on = u.on), "Put the ${u.itemId} on the ${u.on}: takes ${u.takes}; gives ${u.gives}."))
+                val with = listOfNotNull(a.what?.let { " with the $it" }, a.on?.let { " on the $it" }).joinToString("")
+                add(option(Intent.Do(a.id, a.what, a.on), "Do ${a.id}$with: takes ${a.takes}; gives ${a.gives}."))
             }
             if (canThink(obs, thinking)) {
                 val t = content.think
@@ -282,6 +281,8 @@ object BedroomPrompt {
                 obs.activities.orEmpty().filter { journaling || it.id != JOURNAL_ACTIVITY }.forEach { a ->
                     add(buildJsonObject {
                         put("id", a.id)
+                        a.what?.let { put("what", it) }
+                        a.on?.let { put("on", it) }
                         a.locked?.let { put("locked", it) }
                         a.takes?.let { put("takes", it) }
                         a.gives?.let { put("gives", it) }
@@ -328,9 +329,9 @@ object BedroomPrompt {
         reply = json.encodeToJsonElement(AgentReply.serializer(), AgentReply(description, intent)).jsonObject,
     )
 
-    /** "do:sketch", "buy:canvas", "use:jazz_record:record_player", "wait:150". */
+    /** "do:sketch", "do:play_record:jazz_record:record_player", "buy:canvas", "wait:150". */
     private fun label(intent: Intent): String = when (intent) {
-        is Intent.Do -> "do:${intent.activity}"
+        is Intent.Do -> (listOf("do", intent.activity) + listOfNotNull(intent.what, intent.on)).joinToString(":")
         is Intent.Buy -> "buy:${intent.item}"
         is Intent.Use -> "use:${intent.itemId}" + (intent.on?.let { ":$it" } ?: "")
         is Intent.Wait -> "wait:${intent.ticks}"

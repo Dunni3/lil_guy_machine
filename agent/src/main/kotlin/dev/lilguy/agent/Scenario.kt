@@ -59,7 +59,7 @@ fun bedroomScenario(
     val thinking = longTerm?.thinking == true
     // What he's told about: without a journal writer the journal would cost an hour and write nothing, so the prompt doesn't
     // mention it and a picking model isn't offered it. The reply schema still takes it, as the sim does (the scripted baseline journals).
-    val shown = world.content.let { c -> if (journaling) c else c.copy(activities = c.activities.filter { it.id != JOURNAL_ACTIVITY }) }
+    val shown = world.content.let { c -> if (journaling) c else c.copy(verbs = c.verbs.filter { it.id != JOURNAL_ACTIVITY }) }
     val prompts = PromptBuilder(
         system = BedroomPrompt.system(shown, ticksPerMinute, thinking),
         timeout = timeout,
@@ -104,6 +104,21 @@ enum class Scenario(val id: String) {
         Bedroom -> {
             val content = BedroomContent.default().let { c -> personality?.let(c::withPersonality) ?: c }
             bedroomScenario(model, timeout, ticksPerMinute, content, longTerm = longTerm, granted = granted, onDecision = onDecision)
+        }
+    }
+
+    /**
+     * Maps an intent from a decision log written before verbs took arguments onto today's action
+     * space: in the bedroom, use(item, on) is the verb whose `what` and `on` those items fill.
+     */
+    fun upgrade(content: BedroomContent = BedroomContent.default()): (Intent) -> Intent = { intent ->
+        when {
+            this == Bedroom && intent is Intent.Use -> content.verbs.firstOrNull { v ->
+                val what = v.args["what"] ?: return@firstOrNull false
+                val on = v.args["on"] ?: return@firstOrNull false
+                content.item(intent.itemId)?.names?.contains(what) == true && intent.on != null && content.item(intent.on!!)?.names?.contains(on) == true
+            }?.let { Intent.Do(it.id, intent.itemId, intent.on) } ?: intent
+            else -> intent
         }
     }
 

@@ -102,7 +102,7 @@ class ArtStudio(
     suspend fun acted(obs: Observation, intent: Intent, persona: String, situation: String) {
         word(obs)
         val c = content ?: return
-        val activity = (intent as? Intent.Do)?.let { c.activity(it.activity) } ?: return
+        val activity = (intent as? Intent.Do)?.let { c.verb(it.activity) } ?: return
         if (obs.activities.orEmpty().any { it.id == activity.id && it.locked != null }) return
         val made = activity.ops<ProduceOp>().flatMap { it.items.keys }.mapNotNull { c.item(it) }.firstOrNull { it.canvas != null } ?: return
         val canvas: CanvasSpec = made.canvas!!

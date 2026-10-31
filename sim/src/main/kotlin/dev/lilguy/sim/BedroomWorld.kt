@@ -17,8 +17,9 @@ import kotlin.random.Random
  * [ledger], the [needs], what he owns, and the running activity (plus background music). What an
  * activity does is its list of [Op]s; this class runs them and gives them the world ([OpWorld]).
  *
- * do(activity) and buy(item) walk him to the right spot on their own; use(item, on) puts one
- * item on another (a record on the player). Decisions happen when an activity ends.
+ * do(verb, what, on) and buy(item) walk him to the right spot on their own. A verb's arguments
+ * are bound to items he owns (a record, and the player it goes on); one he leaves out is filled
+ * with the first owned match. Decisions happen when a verb ends.
  *
  * Art is a count like any item, and each carried one is also a numbered piece, so it can be drawn,
  * hung or sold on its own. A drawing model's title and tags arrive later through [annotate]; a
@@ -64,11 +65,11 @@ class BedroomWorld private constructor(
     private var version = 0
     private var options: Options? = null
 
-    private class Options(val key: List<Any>, val activities: List<ActivityOption>, val uses: List<UseOption>, val shop: List<ShopOption>)
+    private class Options(val key: List<Any>, val activities: List<ActivityOption>, val shop: List<ShopOption>)
 
-    /** [bound]: the activity, its item, and how fresh it was when it started, which scales its rates. */
+    /** [bound]: the verb, its bound arguments, and how fresh it was when it started, which scales its rates. */
     private class Doing(val bound: Bound, val startTick: Long, val endTick: Long) {
-        val activity: ActivitySpec get() = bound.verb
+        val activity: VerbSpec get() = bound.verb
     }
 
     private enum class PieceState { Held, Hung, Sold }
@@ -90,7 +91,8 @@ class BedroomWorld private constructor(
     private var commission: Commission? = null
     private var commissions = 0
     private val notes = ConcurrentLinkedQueue<ArtNote>()
-    private class Music(val itemId: String, val spec: BackgroundOp, val endTick: Long, val fresh: Double)
+    /** [on]: what it plays on, for the renderer's "playing" state. */
+    private class Music(val itemId: String, val on: String?, val spec: BackgroundOp, val endTick: Long, val fresh: Double)
 
     /**
      * The world as [Op]s see it. The art and music parts are here rather than in the ops because
@@ -130,8 +132,8 @@ class BedroomWorld private constructor(
         override fun hangText(tag: String) = listOfNotNull(held(tag).lastOrNull()?.let { "hangs ${pieceName(it)}" }) +
             "comfort +${content.gallery.comfortEach}: mood settles ${content.gallery.comfortEach} higher (${hung().size} of ${content.gallery.max} on the wall)"
 
-        override fun play(item: String, bg: BackgroundOp, fresh: Double): String {
-            music = Music(item, bg, ticks + clock.ticks(bg.minutes), fresh)
+        override fun play(item: String, on: String?, bg: BackgroundOp, fresh: Double): String {
+            music = Music(item, on, bg, ticks + clock.ticks(bg.minutes), fresh)
             version++
             return "${item(item).name} playing for ${GameClock.duration(bg.minutes)}"
         }
@@ -211,19 +213,19 @@ class BedroomWorld private constructor(
 
     // --- habituation and novelty -----------------------------------------------------------------
 
-    /** What wears and what counts as new: the activity, or for a use, the use and the item used. */
-    private fun habit(a: ActivitySpec, usedItem: String?): String = if (usedItem == null) a.id else "${a.id}:$usedItem"
+    /** What wears and what counts as new: the verb and the items bound to its arguments, "play_record:jazz_record:record_player". */
+    private fun habit(a: VerbSpec, args: Map<String, String>): String = (listOf(a.id) + args.values).joinToString(":")
 
-    /** 1 when fresh, down to 0 when worn out; always 1 for routine activities or without habituation. */
-    private fun freshness(a: ActivitySpec, usedItem: String? = null): Double {
+    /** 1 when fresh, down to 0 when worn out; always 1 for routine verbs or without habituation. */
+    private fun freshness(a: VerbSpec, args: Map<String, String> = emptyMap()): Double {
         val h = content.habituation ?: return 1.0
         if (a.isRoutine) return 1.0
-        val (level, since) = wear[habit(a, usedItem)] ?: return 1.0
+        val (level, since) = wear[habit(a, args)] ?: return 1.0
         val hours = (ticks - since).toDouble() / clock.ticks(60)
         return 1.0 - (level - h.recoverPerHour * hours).coerceIn(0.0, 1.0)
     }
 
-    private fun isNew(a: ActivitySpec, usedItem: String? = null): Boolean = content.novelty != null && !a.isRoutine && habit(a, usedItem) !in tried
+    private fun isNew(a: VerbSpec, args: Map<String, String> = emptyMap()): Boolean = content.novelty != null && !a.isRoutine && habit(a, args) !in tried
 
     /** The first-time bonus, scaled by his curiosity. */
     private fun novelty(): Map<String, Double> = content.novelty!!.effects.mapValues { it.value * content.personality.curiosity }
@@ -232,8 +234,8 @@ class BedroomWorld private constructor(
     private fun paid(need: Need, d: Double, fresh: Double): Double = if (d > 0 && (need == Need.Mood || need == Need.Stimulation)) d * fresh else d
 
     /** Wears the habit, charges stimulation if it was already worn, and pays the novelty bonus the first time. */
-    private fun habituate(a: ActivitySpec, usedItem: String?, fresh: Double, parts: MutableList<String>) {
-        val key = habit(a, usedItem)
+    private fun habituate(a: VerbSpec, args: Map<String, String>, fresh: Double, parts: MutableList<String>) {
+        val key = habit(a, args)
         content.habituation?.takeIf { !a.isRoutine }?.let { h ->
             val worn = 1.0 - fresh
             if (worn > 0) {
@@ -243,7 +245,7 @@ class BedroomWorld private constructor(
             wear[key] = (worn + h.perRepeat).coerceAtMost(1.0) to ticks
             version++
         }
-        if (isNew(a, usedItem)) {
+        if (isNew(a, args)) {
             tried += key
             version++
             parts += "new to you: " + novelty().entries.joinToString { (need, d) -> "$need ${signed(needs.change(ticks, needOf(need), d, "new: $key"))}" }
@@ -254,11 +256,16 @@ class BedroomWorld private constructor(
 
     // --- rules: what's possible ------------------------------------------------------------------
 
-    /** Why [a] can't be done now, or null when it can. Also used for uses. [extra]: as if he also owned that item. */
-    fun lockReason(a: ActivitySpec, extra: String? = null): String? {
-        if (a.at.none { countTag(it, extra) > 0 }) return "needs ${wanted(a.at.first())}"
+    /**
+     * Why [a] can't be done now with [args] bound, or null when it can. Unbound (null), each
+     * argument only needs some owned match. [extra]: as if he also owned that item.
+     */
+    fun lockReason(a: VerbSpec, args: Map<String, String>? = null, extra: String? = null): String? {
+        val places = a.at.filter { it !in a.args && it != VerbSpec.HERE }
+        if (places.isNotEmpty() && a.at.none { it == VerbSpec.HERE || it in a.args } && places.none { countTag(it, extra) > 0 }) return "needs ${wanted(places.first())}"
         a.requires.firstOrNull { countTag(it, extra) == 0 }?.let { return "needs ${wanted(it)}" }
-        val b = Bound(a, item = null, fresh = 1.0, extra = extra)
+        if (args == null) a.args.values.firstOrNull { countTag(it, extra) == 0 }?.let { return "needs ${wanted(it)}" }
+        val b = Bound(a, args.orEmpty(), fresh = 1.0, extra = extra)
         a.effects.firstNotNullOfOrNull { it.lockReason(ops, b) }?.let { return it }
         val blocks = a.block + if (a.work) content.needs.workFloor else emptyList()
         blocks.firstOrNull { it.blocks(needs[needOf(it.need)]) }?.let { return "${it.reason} (${it.need} ${needs.level(needOf(it.need))})" }
@@ -280,11 +287,11 @@ class BedroomWorld private constructor(
 
     override fun plan(intent: Intent): Work = when (intent) {
         is Intent.MoveTo -> walkTo(goalOf(intent.target), describe(intent.target))
-        is Intent.PickUp -> reject("there's nothing to pick up here: what you own is already yours, and do, use and buy fetch it for you")
-        is Intent.Use -> planUse(intent)
+        is Intent.PickUp -> reject("there's nothing to pick up here: what you own is already yours, and do and buy fetch it for you")
+        is Intent.Use -> reject("use is for other rooms; here an item is used through a verb, do(verb, what, on)" + (content.verbs.firstOrNull { "on" in it.args }?.let { "; ${it.id} puts a ${noun(it.args.getValue("what"))} on the ${noun(it.args.getValue("on"))}" } ?: ""))
         is Intent.Say -> say(intent)
         is Intent.Wait -> waitFor(intent)
-        is Intent.Do -> planDo(intent.activity)
+        is Intent.Do -> planDo(intent)
         is Intent.Buy -> planBuy(intent.item)
         Intent.Think -> planThink()
     }
@@ -319,25 +326,30 @@ class BedroomWorld private constructor(
         return Work.Walk(ArrayDeque(best.cells)) to cell
     }
 
-    private fun planDo(id: String): Work {
-        val a = content.activity(id)
-            ?: reject("there's no activity called '$id'" + (content.uses.find { it.id == id }?.let { "; it's done with use(a ${noun(it.item!!)}, on ${it.on})" } ?: "; the activities are ${content.activities.joinToString { it.id }}"))
+    private fun planDo(intent: Intent.Do): Work {
+        val a = content.verb(intent.activity) ?: reject("there's no activity called '${intent.activity}'; the activities are ${content.verbs.joinToString { it.id }}")
+        val given = mapOf("what" to intent.what, "on" to intent.on).filterValues { it != null }.mapValues { it.value!! }
+        (given.keys - a.args.keys).firstOrNull()?.let { reject("${a.id} takes no `$it`" + if (a.args.isEmpty()) "" else "; it takes ${a.args.keys.joinToString(" and ")}") }
         lockReason(a)?.let { reject("can't ${a.id}: $it") }
-        val (walk, at) = walkToNearest(a.at)
-        return Work.Steps(walk, activity(a, at) { complete(a) })
+        val args = a.args.mapValues { (slot, type) ->
+            val id = given[slot] ?: return@mapValues owned.keys.first { type in item(it).names }
+            val spec = content.item(id)
+            if (spec == null || count(id) == 0) reject("you don't have '$id'")
+            if (type !in spec.names) reject("${a.id} takes ${article(noun(type))} as `$slot`, and the ${spec.name} isn't one")
+            id
+        }
+        lockReason(a, args)?.let { reject("can't ${a.id}: $it") }
+        val places = a.at.mapNotNull { if (it == VerbSpec.HERE) null else args[it] ?: it }
+        if (VerbSpec.HERE in a.at) return activity(a, guy.cell, args) { complete(a, args) }
+        val (walk, at) = walkToNearest(places)
+        return Work.Steps(walk, activity(a, at, args) { complete(a, args) })
     }
 
-    private fun planUse(intent: Intent.Use): Work {
-        val spec = content.item(intent.itemId)
-        if (spec == null || count(spec.id) == 0) reject("you don't have '${intent.itemId}'")
-        val rules = content.uses.filter { it.item in spec.names }
-        if (rules.isEmpty()) reject("the ${spec.name} can't be used on anything")
-        val on = intent.on ?: reject("use the ${spec.name} on something: ${rules.joinToString(" or ") { it.on!! }}")
-        val rule = rules.find { it.on == on } ?: reject("using the ${spec.name} on $on does nothing; try ${rules.joinToString(" or ") { it.on!! }}")
-        lockReason(rule)?.let { reject("can't use the ${spec.name} on $on: $it") }
-        val (walk, at) = walkToNearest(rule.at)
-        return Work.Steps(walk, activity(rule, at, spec.id) { complete(rule, usedItem = spec.id) })
-    }
+    /** Every way to bind [a]'s arguments to items he owns, in the order he owns them; one empty binding when it has none. */
+    private fun bindings(a: VerbSpec): List<Map<String, String>> =
+        a.args.entries.fold(listOf(emptyMap())) { acc, (slot, type) ->
+            acc.flatMap { b -> owned.keys.filter { type in item(it).names }.map { b + (slot to it) } }
+        }
 
     private fun planBuy(id: String): Work {
         val spec = content.item(id)
@@ -358,10 +370,10 @@ class BedroomWorld private constructor(
     }
 
     /**
-     * The timed part of an activity: sets [doing] when it starts and ends by duration or `until`.
+     * The timed part of a verb: sets [doing] when it starts and ends by duration or `until`.
      * [at] is the tile of what he does it at; he turns to face it unless he's on it.
      */
-    private fun activity(a: ActivitySpec, at: Cell, usedItem: String? = null, finish: () -> String?): Work.Until {
+    private fun activity(a: VerbSpec, at: Cell, args: Map<String, String>, finish: () -> String?): Work.Until {
         val until = a.until
         val untilNeed = until?.need?.let(::needOf)
         val stops = a.stopBelow.mapKeys { needOf(it.key) }
@@ -369,7 +381,7 @@ class BedroomWorld private constructor(
             start = {
                 if (at != guy.cell) guy.facing = Direction.of(at.x + 0.5f - guy.x, at.y + 0.5f - guy.y)
                 val length = if (until != null) clock.ticksUntil(ticks, GameClock.parseHhmm(until.time)) else clock.ticks(a.minutes!!).toLong()
-                doing = Doing(Bound(a, usedItem, freshness(a, usedItem)), ticks, ticks + length)
+                doing = Doing(Bound(a, args, freshness(a, args)), ticks, ticks + length)
             },
             done = {
                 val d = doing!!
@@ -384,15 +396,15 @@ class BedroomWorld private constructor(
         doing = null
     }
 
-    private fun complete(a: ActivitySpec, usedItem: String? = null): String? {
-        val b = Bound(a, usedItem, freshness(a, usedItem))
+    private fun complete(a: VerbSpec, args: Map<String, String>): String? {
+        val b = Bound(a, args, freshness(a, args))
         a.effects.firstNotNullOfOrNull { it.gone(ops, b) }?.let { return it }
         lastDone[a.id] = ticks
-        if (neglected?.activity == a.id) neglected = null
+        if (neglected?.verb == a.id) neglected = null
         val fresh = b.fresh
         val parts = a.effects.flatMapTo(mutableListOf()) { it.finish(ops, b) }
         a.stopBelow.forEach { (need, level) -> if (needs[needOf(need)] < level) parts += "stopped early: $need ${needs.level(needOf(need))}" }
-        habituate(a, usedItem, fresh, parts)
+        habituate(a, args, fresh, parts)
         event("finished ${a.id}" + if (parts.isEmpty()) "" else ": " + parts.joinToString(", "))
         return null
     }
@@ -551,8 +563,8 @@ class BedroomWorld private constructor(
         rate(Need.Fullness, r.fullnessPerHour, "hunger")
         d?.activity?.effects?.forEach { it.minute(ops, d.bound) }
         music?.let { m -> m.spec.rates.forEach { (need, perHour) -> rate(needOf(need), paid(needOf(need), perHour, m.fresh), m.spec.name) } }
-        val now = r.neglect.firstOrNull { ticks - (lastDone[it.activity] ?: 0L) >= clock.ticks(it.afterHours * 60) }
-        if (now != null && neglected == null) event("${now.reason}: mood falls ${-now.moodPerHour.toInt()} an hour until you ${now.activity}")
+        val now = r.neglect.firstOrNull { ticks - (lastDone[it.verb] ?: 0L) >= clock.ticks(it.afterHours * 60) }
+        if (now != null && neglected == null) event("${now.reason}: mood falls ${-now.moodPerHour.toInt()} an hour until you ${now.verb}")
         neglected = now
         // Low energy or fullness, or a neglected activity, replaces the drift: mood just falls, at the steeper rate.
         val low = needs[Need.Energy] < r.low || needs[Need.Fullness] < r.low
@@ -571,12 +583,15 @@ class BedroomWorld private constructor(
 
     private fun shopItems(): List<ItemSpec> = content.items.filter { it.price != null && (it.stackable || count(it.id) == 0) }
 
-    private fun activityOption(a: ActivitySpec): ActivityOption {
-        lockReason(a)?.let { return ActivityOption(a.id, locked = it) }
-        return ActivityOption(a.id, takes = takes(a), gives = gives(a))
+    /** One option per way to bind [a]'s arguments that isn't locked, or one locked option saying why. */
+    private fun activityOptions(a: VerbSpec): List<ActivityOption> {
+        lockReason(a)?.let { return listOf(ActivityOption(a.id, locked = it)) }
+        val open = bindings(a).map { it to lockReason(a, it) }
+        if (open.none { it.second == null }) return listOf(ActivityOption(a.id, locked = open.first().second))
+        return open.filter { it.second == null }.map { (args, _) -> ActivityOption(a.id, args["what"], args["on"], takes(a), gives(a, args = args)) }
     }
 
-    private fun takes(a: ActivitySpec): String {
+    private fun takes(a: VerbSpec): String {
         val until = a.until ?: return GameClock.duration(a.minutes!!) + a.effects.joinToString("") { it.takes() }
         val byClock = clock.ticksUntil(ticks, GameClock.parseHhmm(until.time)) / clock.ticksPerMinute
         val need = until.need?.let(::needOf)
@@ -588,9 +603,9 @@ class BedroomWorld private constructor(
         return "until ${until.time}" + (need?.let { " or ${it.id} ${until.reaches!!.toInt()}" } ?: "") + stops + ", about $about"
     }
 
-    /** [forSale]: describing an activity he can't do yet, so leave out what he has now. [usedItem]: for a use, the item. */
-    private fun gives(a: ActivitySpec, forSale: Boolean = false, usedItem: String? = null): String {
-        val b = Bound(a, usedItem, freshness(a, usedItem))
+    /** [forSale]: describing a verb he can't do yet, so leave out what he has now. [args]: what its arguments are bound to. */
+    private fun gives(a: VerbSpec, forSale: Boolean = false, args: Map<String, String> = emptyMap()): String {
+        val b = Bound(a, args, freshness(a, args))
         val parts = a.effects.flatMapTo(mutableListOf()) { it.describe(ops, b, forSale) }
         if (forSale) return parts.joinToString("; ")
         val fresh = b.fresh
@@ -598,20 +613,15 @@ class BedroomWorld private constructor(
             val stale = (h.staleStimulation * (1 - fresh)).roundToInt()
             parts += "done a lot lately: gains at ${percent(fresh)}" + if (stale < 0) ", and stimulation $stale" else ""
         }
-        if (isNew(a, usedItem)) parts += "new to you: " + novelty().entries.joinToString { (need, d) -> "$need ${signed(d.roundToInt().toDouble())}" }
+        if (isNew(a, args)) parts += "new to you: " + novelty().entries.joinToString { (need, d) -> "$need ${signed(d.roundToInt().toDouble())}" }
         return parts.joinToString("; ")
-    }
-
-    private fun useOptions(): List<UseOption> = content.uses.flatMap { rule ->
-        if (lockReason(rule) != null) emptyList()
-        else owned.keys.filter { rule.item!! in item(it).names }.map { UseOption(it, rule.on!!, takes(rule), gives(rule, usedItem = it)) }
     }
 
     private fun shopOption(spec: ItemSpec): ShopOption {
         val parts = mutableListOf<String>()
         if (spec.pack > 1) parts += quantity(spec.id, spec.pack)
-        val unlocks = (content.activities + content.uses).filter { a ->
-            spec.id in a.at || (a.requires + a.effects.flatMap { it.asksFor }).any { it in spec.names } || a.item in spec.names
+        val unlocks = content.verbs.filter { a ->
+            spec.id in a.at || (a.requires + a.effects.flatMap { it.asksFor } + a.args.values).any { it in spec.names }
         }
         // What it's for. When it's what a locked activity is missing, say so and what that activity gives.
         unlocks.forEach { a ->
@@ -637,7 +647,7 @@ class BedroomWorld private constructor(
         val entities = buildList {
             add(EntitySnapshot(guy.id, "guy", guy.x, guy.y, 1f, guy.facing.degrees))
             placed().forEach { (spec, cell) ->
-                val state = if (spec.id == music?.let { m -> content.uses.firstOrNull { u -> u.ops<BackgroundOp>().any { it.name == m.spec.name } }?.on }) "playing ${music!!.itemId}" else null
+                val state = if (spec.id == music?.on) "playing ${music!!.itemId}" else null
                 add(EntitySnapshot(EntityId(spec.id), spec.group, cell.x + 0.5f, cell.y + 0.5f, if (spec.blocks) 1f else 0.2f, 0f, state))
             }
         }
@@ -650,7 +660,7 @@ class BedroomWorld private constructor(
             mood = needs[Need.Mood],
             stimulation = needs[Need.Stimulation],
             moodTarget = moodTarget(),
-            moodSinking = neglected?.let { "${it.reason}: mood falls ${-it.moodPerHour.toInt()} an hour until the next ${it.activity}" },
+            moodSinking = neglected?.let { "${it.reason}: mood falls ${-it.moodPerHour.toInt()} an hour until the next ${it.verb}" },
             doing = d?.activity?.id,
             progress = d?.let { ((ticks - it.startTick).toFloat() / (it.endTick - it.startTick).coerceAtLeast(1)).coerceIn(0f, 1f) },
             music = musicText(),
@@ -687,7 +697,6 @@ class BedroomWorld private constructor(
             owns = ownsMap(),
             music = musicText(),
             activities = current.activities,
-            uses = current.uses,
             shop = current.shop,
             neglect = neglectText(),
             commission = content.commissions?.let { commissionView() },
@@ -697,10 +706,10 @@ class BedroomWorld private constructor(
 
     /** "last journal 20h ago; after 24h without one, mood falls 5 an hour", or null with no neglect rules. */
     private fun neglectText(): String? = content.needs.neglect.takeIf { it.isNotEmpty() }?.joinToString("; ") { n ->
-        val last = lastDone[n.activity]
+        val last = lastDone[n.verb]
         val hours = (ticks - (last ?: 0L)) / clock.ticks(60)
-        val since = if (last == null) "no ${n.activity} yet, ${hours}h since the start" else "last ${n.activity} ${hours}h ago"
-        if (neglected == n) "$since: mood falls ${-n.moodPerHour.toInt()} an hour until your next ${n.activity}"
+        val since = if (last == null) "no ${n.verb} yet, ${hours}h since the start" else "last ${n.verb} ${hours}h ago"
+        if (neglected == n) "$since: mood falls ${-n.moodPerHour.toInt()} an hour until your next ${n.verb}"
         else "$since; after ${n.afterHours}h without one, mood falls ${-n.moodPerHour.toInt()} an hour"
     }
 
@@ -713,7 +722,7 @@ class BedroomWorld private constructor(
         get() {
             val key = listOf(version, clock.minutes(ticks) / ESTIMATE_MINUTES, needs.levels())
             options?.let { if (it.key == key) return it }
-            return Options(key, content.activities.map(::activityOption), useOptions(), shopItems().map(::shopOption)).also { options = it }
+            return Options(key, content.verbs.flatMap(::activityOptions), shopItems().map(::shopOption)).also { options = it }
         }
 
     /** The whole room, one string per row, with owned furniture as its slot letter; legend in [mapLegend]. */

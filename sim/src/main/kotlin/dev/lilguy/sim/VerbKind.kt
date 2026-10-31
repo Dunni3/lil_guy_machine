@@ -4,13 +4,13 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * What sort of verb an activity or use is, and its contract: which [Op]s its `effects` may use and
+ * What sort of verb a verb is, and its contract: which [Op]s its `effects` may use and
  * which it must. [BedroomContent] checks every row against its kind the way it checks ids, so a verb
  * he invents later can be held to its kind like an invented item is held to the schema. An op no
  * kind lists is refused for every kind, so a new op has to be allowed somewhere on purpose.
  *
  * [allowed]: op keys ([Op.key]) it may use. [required]: each set is "at least one of these".
- * [affordance]: it must ask for an item by affordance (in `requires`, a `consume` or a use's `item`),
+ * [affordance]: it must ask for an item by affordance (in `requires`, `args` or a `consume`),
  * not only by id. [routine]: the kind is upkeep, so its rows neither wear thin nor count as new
  * whatever their `routine` flag says. Perceptual and study kinds come when their ops do.
  */
@@ -74,11 +74,11 @@ enum class VerbKind(
     );
 
     /** What breaks the contract in [a], as messages; empty when it holds. [affordances]: the vocabulary's. */
-    fun violations(a: ActivitySpec, affordances: Set<String>): List<String> {
+    fun violations(a: VerbSpec, affordances: Set<String>): List<String> {
         val used = a.effects.map { it.key }.toSet()
         val article = if (id.first() in "aeiou") "an" else "a"
-        val asks = a.requires + a.effects.flatMap { it.asksFor } + listOfNotNull(a.item)
-        return listOfNotNull(if (affordance && asks.none { it in affordances }) "$article $id verb needs an affordance in requires, a consume or item" else null) +
+        val asks = a.requires + a.effects.flatMap { it.asksFor } + a.args.values
+        return listOfNotNull(if (affordance && asks.none { it in affordances }) "$article $id verb needs an affordance in requires, args or a consume" else null) +
             required.filter { it.none { op -> op in used } }.map { "$article $id verb needs ${it.joinToString(" or ")}" } +
             (used - allowed).map { "$article $id verb can't $it" }
     }

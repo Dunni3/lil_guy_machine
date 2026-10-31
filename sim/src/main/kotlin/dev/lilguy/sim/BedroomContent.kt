@@ -10,16 +10,16 @@ import kotlinx.serialization.Transient
 import java.io.File
 
 /**
- * The bedroom as data: the room, need rules, items and activities, loaded from the YAML files in
+ * The bedroom as data: the room, need rules, items and verbs, loaded from the YAML files in
  * `content/bedroom/` ([FILES] says which keys each holds; on the classpath by default). Field names
  * match the files. Loading checks that every id an activity names exists, so a typo fails at
  * start-up, not mid-run.
  *
- * Items, activities and uses above tier 0 are gated: they exist in the file but not in the world
+ * Items and verbs above tier 0 are gated: they exist in the file but not in the world
  * until granted. [unlocked] is the content he can see, and it is checked the same way, so a
- * tier-0 activity can't depend on a gated item.
+ * tier-0 verb can't depend on a gated item.
  *
- * Items are described in a closed [vocabulary]: affordances (what can be done with one; activities
+ * Items are described in a closed [vocabulary]: affordances (what can be done with one; verbs
  * ask for them, and some take parameters) and qualities (what it's like to him; his [personality]
  * scores them). What a verb does is its list of [Op]s; every verb has a [VerbKind], and its ops must
  * keep that kind's contract.
@@ -31,8 +31,7 @@ data class BedroomContent(
     val needs: NeedRules,
     val shop: ShopRules,
     val items: List<ItemSpec>,
-    val activities: List<ActivitySpec>,
-    val uses: List<ActivitySpec> = emptyList(),
+    val verbs: List<VerbSpec>,
     val think: ThinkRules = ThinkRules(),
     /** A daily request for a piece; null for none. */
     val commissions: CommissionRules? = null,
@@ -50,7 +49,7 @@ data class BedroomContent(
 
     fun item(id: String): ItemSpec? = byId[id]
 
-    fun activity(id: String): ActivitySpec? = activities.find { it.id == id }
+    fun verb(id: String): VerbSpec? = verbs.find { it.id == id }
 
     /** Items that answer to [name], an id or an affordance, in file order. */
     fun withName(name: String): List<ItemSpec> = items.filter { name in it.names }
@@ -68,7 +67,7 @@ data class BedroomContent(
     fun withPersonality(p: Personality): BedroomContent = copy(personality = p).also { it.validate() }
 
     /** Ids of everything above tier 0: what can be granted. */
-    val gated: Set<String> get() = (items.filter { it.tier > 0 }.map { it.id } + (activities + uses).filter { it.tier > 0 }.map { it.id }).toSet()
+    val gated: Set<String> get() = (items.filter { it.tier > 0 }.map { it.id } + verbs.filter { it.tier > 0 }.map { it.id }).toSet()
 
     /** The content with only tier 0 and the [granted] ids in it. */
     fun unlocked(granted: Set<String>): BedroomContent {
@@ -77,8 +76,7 @@ data class BedroomContent(
         fun open(id: String, tier: Int) = tier == 0 || id in granted
         return copy(
             items = items.filter { open(it.id, it.tier) },
-            activities = activities.filter { open(it.id, it.tier) },
-            uses = uses.filter { open(it.id, it.tier) },
+            verbs = verbs.filter { open(it.id, it.tier) },
         ).also { it.validate() }
     }
 
@@ -92,7 +90,7 @@ data class BedroomContent(
             "vocabulary" to listOf("vocabulary"),
             "personality" to listOf("personality"),
             "items" to listOf("items"),
-            "verbs" to listOf("activities", "uses"),
+            "verbs" to listOf("verbs"),
         )
 
         /** Content from [files], file name (no extension) to its text. Each file may hold only its own keys ([FILES]). */
@@ -148,14 +146,17 @@ data class BedroomContent(
             require(n >= 1) { "start item '$id' needs a count of at least 1" }
         }
         require(shop.at in ids) { "the shop is at '${shop.at}', which isn't an item" }
-        val activityIds = (activities + uses).map { it.id }
-        require(activityIds.size == activityIds.toSet().size) { "activity ids must be unique" }
-        (activities + uses).forEach { a ->
-            val where = "activity ${a.id}"
+        val verbIds = verbs.map { it.id }
+        require(verbIds.size == verbIds.toSet().size) { "verb ids must be unique" }
+        verbs.forEach { a ->
+            val where = "verb ${a.id}"
+            (a.args.keys - VerbSpec.SLOTS).forEach { throw IllegalArgumentException("$where: argument '$it' isn't a slot; use ${VerbSpec.SLOTS.joinToString(" or ")}") }
             require(a.at.isNotEmpty()) { "$where needs at least one place in `at`" }
-            a.at.forEach { require(byId[it]?.slot != null) { "$where happens at '$it', which isn't a slot item" } }
-            (a.requires + listOfNotNull(a.item)).forEach { require(it in tags) { "$where names '$it', which isn't an item or an affordance any item has" } }
-            a.on?.let { require(it in ids) { "$where is used on '$it', which isn't an item" } }
+            a.at.forEach { at ->
+                val places = a.args[at]?.let(::withName) ?: if (at == VerbSpec.HERE) null else listOfNotNull(byId[at])
+                require(places == null || (places.isNotEmpty() && places.all { it.slot != null })) { "$where happens at '$at', which isn't a slot item, an argument naming slot items, or `here`" }
+            }
+            (a.requires + a.args.values).forEach { require(it in tags) { "$where names '$it', which isn't an item or an affordance any item has" } }
             require(a.effects.isNotEmpty()) { "$where does nothing: give it `effects`" }
             (a.effects.flatMap { it.problems(this, a) } + a.kind.violations(a, affordances)).takeIf { it.isNotEmpty() }?.let { throw IllegalArgumentException("$where: " + it.joinToString("; ")) }
             require((a.minutes != null) != (a.until != null)) { "$where needs exactly one of `minutes` and `until`" }
@@ -165,8 +166,6 @@ data class BedroomContent(
             }
             (a.stopBelow.keys + a.block.map { it.need }).forEach { needOf(it) }
         }
-        uses.forEach { require(it.item != null && it.on != null) { "use ${it.id} needs `item` and `on`" } }
-        activities.forEach { require(it.item == null && it.on == null) { "activity ${it.id}: `item` and `on` are only for uses" } }
         needs.workFloor.forEach { needOf(it.need) }
         require(needs.stimulationPerHour <= 0 && needs.boredMood >= 0) { "stimulation_per_hour can't be positive or bored_mood negative" }
         habituation?.let { h ->
@@ -180,8 +179,8 @@ data class BedroomContent(
         require(personality.curiosity > 0) { "personality: curiosity must be positive" }
         require(qualityValue.inView >= 0 && qualityValue.inUse >= 0) { "quality_value: in_view and in_use can't be negative" }
         needs.neglect.forEach { n ->
-            require(activities.any { it.id == n.activity }) { "neglect names activity '${n.activity}', which isn't in activities" }
-            require(n.afterHours >= 1 && n.moodPerHour < 0) { "neglect of ${n.activity}: after_hours must be at least 1 and mood_per_hour negative" }
+            require(verbs.any { it.id == n.verb }) { "neglect names verb '${n.verb}', which isn't in verbs" }
+            require(n.afterHours >= 1 && n.moodPerHour < 0) { "neglect of ${n.verb}: after_hours must be at least 1 and mood_per_hour negative" }
         }
         items.forEach { item -> item.canvas?.let { require(item.carried) { "item ${item.id}: only a carried item can be drawable" } } }
         commissions?.let { c ->
@@ -237,7 +236,7 @@ data class NeedRules(
  * Repetition wears an activity thin. Each finish adds [perRepeat] to its wear (0 to 1), which
  * fades [recoverPerHour] an hour. Its positive mood and stimulation effects are paid at
  * 1 - wear, and finishing one that was already worn costs [staleStimulation] times the wear.
- * Routine activities (marked, or of a routine [VerbKind]) don't wear. A use wears per item (each record on its own).
+ * Routine verbs (marked, or of a routine [VerbKind]) don't wear. A verb with arguments wears per item (each record on its own).
  */
 @Serializable
 data class HabituationRules(
@@ -247,7 +246,7 @@ data class HabituationRules(
 )
 
 /**
- * The closed lists items are described in. [affords]: what can be done with an item; activities
+ * The closed lists items are described in. [affords]: what can be done with an item; verbs
  * ask for these in `requires`, a use's `item` and their ops, as well as for item ids. Some take
  * parameters on the item ([Affordance]). [qualities]: what an item is like to him, each with a
  * strength, scored by his affinities.
@@ -288,12 +287,12 @@ data class QualityValue(
 data class NoveltyRules(val effects: Map<String, Double>)
 
 /**
- * Once [activity] hasn't finished for [afterHours] (counting from the start of the run), mood
+ * Once [verb] hasn't finished for [afterHours] (counting from the start of the run), mood
  * falls [moodPerHour] instead of drifting, until he does it again. [reason] says why, as an event.
  */
 @Serializable
 data class Neglect(
-    val activity: String,
+    val verb: String,
     @SerialName("after_hours") val afterHours: Int,
     @SerialName("mood_per_hour") val moodPerHour: Double,
     val reason: String,
@@ -407,10 +406,16 @@ data class ItemSpec(
 }
 
 @Serializable
-data class ActivitySpec(
+data class VerbSpec(
     val id: String,
     /** What sort of verb it is; the row must keep the kind's contract. */
     val kind: VerbKind,
+    /**
+     * Its argument slots, slot to what fills it (an item id or an affordance): `{ what: readable }`.
+     * do() names the items, or the first owned match fills each slot. Slots are [SLOTS].
+     */
+    val args: Map<String, String> = emptyMap(),
+    /** Where it happens: owned slot items by id, an argument naming one (`on`), or [HERE]; the nearest is used. */
     val at: List<String>,
     val requires: List<String> = emptyList(),
     val minutes: Int? = null,
@@ -421,9 +426,6 @@ data class ActivitySpec(
     val block: List<NeedBlock> = emptyList(),
     /** Ends early when a need falls below its level: he wakes up hungry. */
     @SerialName("stop_below") val stopBelow: Map<String, Double> = emptyMap(),
-    /** For uses: the tag of the item used, and the item it is used on. */
-    val item: String? = null,
-    val on: String? = null,
     /** Above 0, it's gated until granted; see [BedroomContent.unlocked]. */
     val tier: Int = 0,
     /** What he does, for the prompt's "the only things you can do are ..."; the id when null. */
@@ -442,6 +444,14 @@ data class ActivitySpec(
 
     @Serializable
     data class Until(val time: String, val need: String? = null, val reaches: Double? = null)
+
+    companion object {
+        /** The argument slots a verb can have; [Intent.Do] has a field for each. */
+        val SLOTS = listOf("what", "on")
+
+        /** `at: [here]`: where he stands. */
+        const val HERE = "here"
+    }
 }
 
 /** "energy" to [Need.Energy]; anything else is a content error. */

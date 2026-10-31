@@ -2,7 +2,7 @@ package dev.lilguy.agent
 
 import dev.lilguy.decision.JsonSchemaGenerator
 import dev.lilguy.decision.SchemaHints
-import dev.lilguy.sim.ActivitySpec
+import dev.lilguy.sim.VerbSpec
 import dev.lilguy.sim.Affordance
 import dev.lilguy.sim.AffordanceParams
 import dev.lilguy.sim.BedroomContent
@@ -45,9 +45,9 @@ object ContentDocs {
         "produce" to OpDoc("produce: { sketch: 1 }", "at the finish", "Makes items. A drawable item made this way is drawn by the drawing model."),
         "sell" to OpDoc("sell: sellable", "at the finish", "Sells everything carried that answers to the name, at each item's `sellable` price, plus any commission reward."),
         "set_state" to OpDoc("set_state: { target: hangable, state: hung }", "at the finish", "Puts his newest held piece answering to the target into a state. The one state is `hung`: on the picture rail, adding the gallery's comfort."),
-        "background" to OpDoc("background: { name: music, minutes: 45, rates: { mood: 2 } }", "at the finish, then each minute", "Starts something that keeps going while he does anything else, playing the used item."),
+        "background" to OpDoc("background: { name: music, minutes: 45, rates: { mood: 2 } }", "at the finish, then each minute", "Starts something that keeps going while he does anything else, playing the item bound to `what`."),
         "sleep" to OpDoc("sleep: {}", "while it runs", "He's asleep: no awake drain of energy or stimulation."),
-        "enjoy" to OpDoc("enjoy: item", "at the finish", "Pays the bound item's value to him (qualities times affinities) as mood, scaled by freshness."),
+        "enjoy" to OpDoc("enjoy: what", "at the finish", "Pays the bound item's value to him (qualities times affinities) as mood, scaled by freshness."),
     )
 
     private val json = Json { prettyPrint = true; prettyPrintIndent = "  " }
@@ -55,22 +55,21 @@ object ContentDocs {
     private fun hints(c: BedroomContent): SchemaHints {
         val needs = Need.entries.map { it.id }
         val op = Op.serializer().descriptor.serialName
-        val activity = ActivitySpec.serializer().descriptor.serialName
+        val activity = VerbSpec.serializer().descriptor.serialName
         val item = ItemSpec.serializer().descriptor.serialName
         val content = BedroomContent.serializer().descriptor.serialName
         return SchemaHints(
             descriptions = OPS.mapKeys { "$op.${it.key}" }.mapValues { "${it.value.what} (${it.value.acts})" } + mapOf(
                 op to "One op: a map with a single key, such as `- need: { mood: 2 }`.",
                 "$activity.kind" to "What sort of verb it is: a contract on which ops `effects` may use.",
-                "$activity.at" to "Where it happens: owned slot items, by id; the nearest is used.",
+                "$activity.at" to "Where it happens: owned slot items by id (the nearest is used), an argument naming one, or `here`.",
                 "$activity.requires" to "Items or affordances he must own.",
                 "$activity.effects" to "What it does: ops, run in order.",
                 "$activity.work" to "Work: refused below the work floor (rules.yaml).",
                 "$activity.routine" to "Upkeep: it neither wears thin nor counts as new.",
                 "$activity.phrase" to "How the prompt says what he can do; the id when left out.",
                 "$activity.tier" to "Above 0, gated until its id is granted.",
-                "$activity.item" to "Uses: the item used, an id or an affordance; its ops call it `item`.",
-                "$activity.on" to "Uses: the item it's used on.",
+                "$activity.args" to "Argument slots (what, on), each filled by an owned item answering to this id or affordance. Ops and `at` can name a slot.",
                 "$item.group" to "For display and grouping: fixture, furniture, decor, tool, food, supply, record, book, art.",
                 "$item.affords" to "Affordances from vocabulary.yaml, each with its parameters (`{}` for none).",
                 "$item.qualities" to "Qualities from vocabulary.yaml, each with a strength above 0 and at most 3.",
@@ -82,13 +81,14 @@ object ContentDocs {
             enums = mapOf(
                 "${NeedBlock.serializer().descriptor.serialName}.need" to needs,
                 "set_state.state" to SetStateOp.STATES,
-                "$op.enjoy" to listOf("item"),
+                "$op.enjoy" to VerbSpec.SLOTS,
             ),
             mapKeys = mapOf(
                 "$op.need" to needs,
                 "$op.rate" to needs,
                 "background.rates" to needs,
                 "$activity.stop_below" to needs,
+                "$activity.args" to VerbSpec.SLOTS,
                 "${NoveltyRules.serializer().descriptor.serialName}.effects" to needs,
                 "$item.affords" to c.vocabulary.affords,
                 "$item.qualities" to c.vocabulary.qualities,
@@ -151,7 +151,7 @@ object ContentDocs {
 
     /** The grammar reference page, from [c] and the kind and op definitions. */
     fun reference(c: BedroomContent): String {
-        val verbs = c.activities + c.uses
+        val verbs = c.verbs
         val kinds = table(
             listOf("Kind", "Meaning", "May use", "Must use", "Other", "Verbs"),
             VerbKind.entries.map { k ->
@@ -174,10 +174,10 @@ object ContentDocs {
             },
         )
         val verbRows = table(
-            listOf("Verb", "Kind", "Where", "Needs", "Takes", "Effects", "Flags"),
+            listOf("Verb", "Kind", "Where", "Arguments and needs", "Takes", "Effects", "Flags"),
             verbs.map { v ->
                 val time = v.minutes?.let { "${it} min" } ?: v.until!!.let { u -> "until ${u.time}" + (u.need?.let { " or $it ${u.reaches?.roundToInt()}" } ?: "") }
-                val needs = (v.requires + listOfNotNull(v.item?.let { "item: $it" }, v.on?.let { "on: $it" }) +
+                val needs = (v.args.map { (slot, type) -> "$slot: $type" } + v.requires +
                     v.block.map { b -> "not when ${b.need} ${b.below?.let { "below ${it.roundToInt()}" } ?: "above ${b.above?.roundToInt()}"}" }).joinToString("; ")
                 val flags = listOfNotNull(if (v.work) "work" else null, if (v.isRoutine) "routine" else null, if (v.tier > 0) "tier ${v.tier}" else null, v.phrase?.let { "“${esc(it)}”" }).joinToString(", ")
                 listOf(code(v.id), code(v.kind.id), v.at.joinToString(", ") { code(it) }, esc(needs), time + v.stopBelow.entries.joinToString("") { (n, l) -> ", stops below $n ${l.roundToInt()}" }, v.effects.joinToString("<br>") { code(opText(it)) }, flags)
@@ -198,7 +198,7 @@ object ContentDocs {
                 listOf(
                     code(a), Affordance.PARAMS[a]?.entries?.joinToString(", ") { (p, r) -> "$p ${r.first}–${r.last}" }.orEmpty(),
                     c.items.filter { a in it.affords }.joinToString(" ") { code(it.id) },
-                    verbs.filter { v -> a in v.requires || a == v.item || v.effects.any { op -> a in op.asksFor || op.let { o -> o is SellOp && o.what == a || o is SetStateOp && o.target == a } } }.joinToString(" ") { code(it.id) },
+                    verbs.filter { v -> a in v.requires || a in v.args.values || v.effects.any { op -> a in op.asksFor || op.let { o -> o is SellOp && o.what == a || o is SetStateOp && o.target == a } } }.joinToString(" ") { code(it.id) },
                 )
             },
         )
@@ -228,7 +228,7 @@ object ContentDocs {
             |<h2>How it fits together</h2>
             |<ul>
             |<li><b>Items</b> are rows in items.yaml. What can be done with one is its <b>affordances</b>; what it's like to him is its <b>qualities</b>. Both come from the closed lists in vocabulary.yaml. An item's value to him is each quality's strength times his affinity for it (personality.yaml).</li>
-            |<li><b>Verbs</b> are rows in verbs.yaml. Preconditions and timing are fields (<code>at</code>, <code>requires</code>, <code>block</code>, <code>minutes</code> or <code>until</code>, <code>work</code>). What a verb does is <code>effects</code>, a list of <b>ops</b>, run in order.</li>
+            |<li><b>Verbs</b> are rows in verbs.yaml. A verb can take <b>arguments</b> (<code>what</code>, <code>on</code>), each filled by an item he owns that answers to an id or affordance: <code>read</code> takes a readable thing. Preconditions and timing are fields (<code>args</code>, <code>at</code>, <code>requires</code>, <code>block</code>, <code>minutes</code> or <code>until</code>, <code>work</code>). What a verb does is <code>effects</code>, a list of <b>ops</b>, run in order; an op can name an argument (<code>enjoy: what</code>).</li>
             |<li>Every verb has a <b>kind</b>, a contract on which ops it may and must use. An op no kind allows is refused everywhere.</li>
             |<li><b>A new item</b> is one row; it works at once with every verb that asks for one of its affordances. <b>A new verb</b> is one row built from existing ops within its kind. <b>A new op</b> is one class in Ops.kt (checks, lock reason, apply, prompt text), a field in its <code>OpEntry</code>, a line in <code>ContentDocs.OPS</code>, and a kind that allows it.</li>
             |</ul>

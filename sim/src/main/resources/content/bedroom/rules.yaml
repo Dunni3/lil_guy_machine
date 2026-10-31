@@ -19,7 +19,7 @@ needs:
   # the run) and his mood falls instead of drifting, until he writes. Low mood stops him making
   # art (sketch and paint block below 25), so it ends up costing him his income too.
   neglect:
-    - { activity: journal, after_hours: 24, mood_per_hour: -5, reason: "a day without writing in your journal" }
+    - { verb: journal, after_hours: 24, mood_per_hour: -5, reason: "a day without writing in your journal" }
   # Stimulation (low = bored) drains while he's awake. Hobbies, making things and anything new feed
   # it; repeating the same thing pays less and drains it (habituation, below). Mood is the summary:
   # below `bored`, each missing point lowers the mood he settles to by `bored_mood` (16 at 0).
@@ -30,13 +30,14 @@ needs:
 # Repetition wears an activity thin: each time he finishes one, its wear rises `per_repeat` (wear
 # runs 0 to 1) and fades `recover_per_hour`. Its mood and stimulation gains are paid at 1 - wear, and
 # finishing one that was already worn costs `stale_stimulation` times the wear. Routine verbs
-# (eating, sleeping, selling, hanging) don't wear. A use wears per item, so each record is its own.
+# (eating, sleeping, selling, hanging) don't wear. A verb with arguments wears per item, so each
+# record is its own.
 habituation:
   per_repeat: 0.25
   recover_per_hour: 0.04
   stale_stimulation: -6
 
-# The first time he finishes an activity (or plays a given record) pays this on top. Routine ones don't count.
+# The first time he finishes a verb (with given items: a record, a book) pays this on top. Routine ones don't count.
 novelty:
   effects: { stimulation: 15, mood: 4 }
 

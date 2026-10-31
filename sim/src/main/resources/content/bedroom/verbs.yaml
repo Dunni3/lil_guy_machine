@@ -1,10 +1,11 @@
 # yaml-language-server: $schema=schema/verbs.schema.json
-# What he can do. do(activity), or use(item, on) for a use. Listed in the order options are offered
-# to models.
+# What he can do: do(verb, what, on). Listed in the order options are offered to models.
 #
 # `kind`: what sort of verb it is, a contract on which ops `effects` may use (sim/.../VerbKind.kt).
-# `at`: where it happens (an owned slot item; the nearest is used). `requires`: items or
-# affordances he must own. `block`: refused when a need is above or below a level. It ends after
+# `args`: its argument slots (`what`, `on`), each filled by an item he owns that answers to the
+# id or affordance given; do() names the items or the first owned match is used, and options are
+# listed once per way to fill them. `at`: where it happens: owned slot items (the nearest is
+# used), an argument naming one (`on`), or `here`. `requires`: items or affordances he must own. `block`: refused when a need is above or below a level. It ends after
 # `minutes`, or for `until`, at a time of day or when a need reaches a level, whichever comes
 # first; `stop_below` ends it early when a need drops. `work`: refused below the work floor.
 # `phrase`: how the prompt says what he can do. `routine`: upkeep that neither wears thin nor
@@ -14,9 +15,9 @@
 # finishes), `rate` (per hour while doing it), `consume` and `produce` (items, by id or
 # affordance), `sell` (everything carried with an affordance), `set_state` (hung: onto the
 # picture rail), `background` (keeps going while he does anything else), `sleep`, and `enjoy`
-# (the used item's value to him, as mood).
+# (an argument's value to him, as mood). Where an op names an item it can name an argument instead.
 
-activities:
+verbs:
   - id: eat
     kind: consumptive
     at: [desk]
@@ -58,11 +59,12 @@ activities:
   - id: hang_art
     kind: transformative
     phrase: hang your art on the wall
+    args: { what: hangable }
     at: [picture_rail]
     minutes: 15
     routine: true
     effects:
-      - set_state: { target: hangable, state: hung }
+      - set_state: { target: what, state: hung }
   # The agent layer writes an entry when one succeeds (agent/.../memory/JournalWriter.kt). It is
   # work, so it needs him fed and rested, and costs more energy than sketching: writing about the
   # life he wants is budgeted against staying alive.
@@ -77,18 +79,21 @@ activities:
       - need: { energy: -10, mood: 12, stimulation: 6 }
   - id: read
     kind: consumptive
+    args: { what: readable }
     at: [bed, chair]
-    requires: [readable]
     minutes: 60
     effects:
       - need: { mood: 2, stimulation: 15 }
+      - enjoy: what
   - id: listen
     kind: consumptive
+    args: { what: playable }
     at: [chair]
-    requires: [record_player, playable]
+    requires: [record_player]
     minutes: 30
     effects:
       - need: { mood: 4, stimulation: 12 }
+      - enjoy: what
   - id: sleep
     kind: rest
     at: [bed]
@@ -99,16 +104,12 @@ activities:
     effects:
       - sleep: {}
       - rate: { energy: 12 }
-
-# use(itemId, on): an item on another. The same fields, plus the item (an id or an affordance) and
-# the target; `item` is also what its ops call the used item.
-uses:
   - id: play_record
     kind: consumptive
-    item: playable
-    on: record_player
-    at: [record_player]
+    phrase: put a record on
+    args: { what: playable, on: record_player }
+    at: [on]
     minutes: 1
     effects:
-      - enjoy: item
+      - enjoy: what
       - background: { name: music, minutes: 45, rates: { mood: 2, stimulation: 6 } }

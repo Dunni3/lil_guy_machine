@@ -260,7 +260,12 @@ class DecisionLog(val file: File, private val run: String, private val model: St
  * same way. Lockstep runs are deterministic, so a replay retraces the run tick for tick; a tick
  * that doesn't match the log means the sim changed since it was recorded, and is an error.
  */
-class ReplayDecisionModel(entries: List<DecisionLogEntry>, override val id: String = "replay") : DecisionModel {
+class ReplayDecisionModel(
+    entries: List<DecisionLogEntry>,
+    override val id: String = "replay",
+    /** Maps an intent from an older log onto today's action space ([Scenario.upgrade]). */
+    private val upgrade: (Intent) -> Intent = { it },
+) : DecisionModel {
     private val remaining = ArrayDeque(entries)
 
     override val capabilities = Capabilities(jsonSchema = true)
@@ -270,7 +275,7 @@ class ReplayDecisionModel(entries: List<DecisionLogEntry>, override val id: Stri
         val tick = PromptBuilder.observationOf(request)?.tick
         check(tick == null || tick == entry.tick) { "replay out of sync: the sim is at tick $tick but the log's next decision is at tick ${entry.tick}" }
         if (entry.fallback) throw DecisionFailed("replayed fallback: ${entry.error}")
-        val reply = json.encodeToString(AgentReply.serializer(), AgentReply(entry.thought.orEmpty(), entry.intent))
+        val reply = json.encodeToString(AgentReply.serializer(), AgentReply(entry.thought.orEmpty(), upgrade(entry.intent)))
         val value = schema.decode(reply)
         return Decision(value, schema.rationaleOf(value), Usage(entry.promptTokens, entry.completionTokens), Duration.ZERO, entry.raw ?: reply)
     }

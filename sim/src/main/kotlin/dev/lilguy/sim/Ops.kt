@@ -16,7 +16,8 @@ import kotlin.math.roundToInt
  * finish event's parts and of the option's "gives".
  *
  * The world side is [OpWorld], which [BedroomWorld] implements privately. [Bound] is one doing of a
- * verb: the verb, what its arguments name, and how fresh it was.
+ * verb: the verb, the items its arguments are bound to, and how fresh it was. Where an op names an
+ * item it may name an argument slot instead (`enjoy: what`), meaning the item bound to it.
  */
 @Serializable(with = OpSerializer::class)
 sealed class Op {
@@ -30,7 +31,7 @@ sealed class Op {
     open val awake: Boolean get() = true
 
     /** What's wrong with this op in [verb], as messages; empty when it's fine. */
-    internal open fun problems(c: BedroomContent, verb: ActivitySpec): List<String> = emptyList()
+    internal open fun problems(c: BedroomContent, verb: VerbSpec): List<String> = emptyList()
 
     /** Why the verb can't be done now because of this op, or null. */
     internal open fun lockReason(w: OpWorld, b: Bound): String? = null
@@ -60,7 +61,7 @@ sealed class Op {
 data class NeedOp(val changes: Map<String, Double>) : Op() {
     override val key get() = "need"
 
-    override fun problems(c: BedroomContent, verb: ActivitySpec) = needProblems(changes.keys)
+    override fun problems(c: BedroomContent, verb: VerbSpec) = needProblems(changes.keys)
 
     override fun finish(w: OpWorld, b: Bound) = changes.map { (need, d) -> "$need ${signed(w.change(needOf(need), b.paid(need, d), b.verb.id))}" }
 
@@ -71,7 +72,7 @@ data class NeedOp(val changes: Map<String, Double>) : Op() {
 data class RateOp(val perHour: Map<String, Double>) : Op() {
     override val key get() = "rate"
 
-    override fun problems(c: BedroomContent, verb: ActivitySpec) = needProblems(perHour.keys)
+    override fun problems(c: BedroomContent, verb: VerbSpec) = needProblems(perHour.keys)
 
     override fun minute(w: OpWorld, b: Bound) = perHour.forEach { (need, d) -> w.rate(needOf(need), b.paid(need, d), b.verb.id) }
 
@@ -85,17 +86,17 @@ data class ConsumeOp(val items: Map<String, Int>) : Op() {
     override val key get() = "consume"
     override val asksFor get() = items.keys
 
-    override fun problems(c: BedroomContent, verb: ActivitySpec) = items.keys.mapNotNull { c.unknownName(it) } +
+    override fun problems(c: BedroomContent, verb: VerbSpec) = items.keys.mapNotNull { c.unknownName(verb.args[it] ?: it) } +
         items.filterValues { it < 1 }.keys.map { "consumes $it: a count of at least 1" }
 
-    override fun lockReason(w: OpWorld, b: Bound) = items.entries.firstOrNull { (tag, n) -> w.count(tag, b.extra) < n }?.let { "needs ${w.wanted(it.key)}" }
+    override fun lockReason(w: OpWorld, b: Bound) = items.entries.firstOrNull { (tag, n) -> w.count(b.resolve(tag), b.extra) < n }?.let { "needs ${w.wanted(b.resolve(it.key))}" }
 
-    override fun gone(w: OpWorld, b: Bound) = items.entries.firstOrNull { (tag, n) -> w.count(tag) < n }?.let { "you no longer have ${w.wanted(it.key)}" }
+    override fun gone(w: OpWorld, b: Bound) = items.entries.firstOrNull { (tag, n) -> w.count(b.resolve(tag)) < n }?.let { "you no longer have ${w.wanted(b.resolve(it.key))}" }
 
-    override fun finish(w: OpWorld, b: Bound) = items.flatMap { (tag, n) -> w.take(tag, n).map { (id, k) -> "used ${w.quantity(id, k)}" } }
+    override fun finish(w: OpWorld, b: Bound) = items.flatMap { (tag, n) -> w.take(b.resolve(tag), n).map { (id, k) -> "used ${w.quantity(id, k)}" } }
 
     override fun describe(w: OpWorld, b: Bound, forSale: Boolean) = items.map { (tag, n) ->
-        "uses ${if (n == 1) "a" else "$n"} ${w.noun(tag)}" + if (forSale) "" else " (you have ${w.count(tag)})"
+        "uses ${if (n == 1) "a" else "$n"} ${w.noun(b.resolve(tag))}" + if (forSale) "" else " (you have ${w.count(b.resolve(tag))})"
     }
 }
 
@@ -103,7 +104,7 @@ data class ConsumeOp(val items: Map<String, Int>) : Op() {
 data class ProduceOp(val items: Map<String, Int>) : Op() {
     override val key get() = "produce"
 
-    override fun problems(c: BedroomContent, verb: ActivitySpec) = items.keys.filter { c.item(it) == null }.map { "produces '$it', which isn't an item" }
+    override fun problems(c: BedroomContent, verb: VerbSpec) = items.keys.filter { c.item(it) == null }.map { "produces '$it', which isn't an item" }
 
     override fun finish(w: OpWorld, b: Bound) = items.map { (id, n) ->
         w.add(id, n)
@@ -117,12 +118,12 @@ data class ProduceOp(val items: Map<String, Int>) : Op() {
 data class SellOp(val what: String) : Op() {
     override val key get() = "sell"
 
-    override fun problems(c: BedroomContent, verb: ActivitySpec) = listOfNotNull(c.unknownName(what)) +
+    override fun problems(c: BedroomContent, verb: VerbSpec) = listOfNotNull(c.unknownName(what)) +
         c.withName(what).filter { it.sellPrice == null }.map { "sells ${it.id}, which isn't sellable" }
 
     override fun lockReason(w: OpWorld, b: Bound): String? {
         if (w.count(what) > 0) return null
-        val makers = w.content.activities.filter { m -> m.effects.any { op -> op is ProduceOp && op.items.keys.any { what in w.item(it).names } } }.map { it.id }
+        val makers = w.content.verbs.filter { m -> m.effects.any { op -> op is ProduceOp && op.items.keys.any { what in w.item(it).names } } }.map { it.id }
         return "you have no ${w.noun(what)} to sell" + if (makers.isEmpty()) "" else "; ${makers.joinToString(" or ")} makes some"
     }
 
@@ -140,30 +141,30 @@ data class SellOp(val what: String) : Op() {
 data class SetStateOp(val target: String, val state: String) : Op() {
     override val key get() = "set_state"
 
-    override fun problems(c: BedroomContent, verb: ActivitySpec) = listOfNotNull(
-        c.unknownName(target),
+    override fun problems(c: BedroomContent, verb: VerbSpec) = listOfNotNull(
+        c.unknownName(verb.args[target] ?: target),
         if (state in STATES) null else "set_state: state '$state' isn't one of $STATES",
     )
 
-    override fun lockReason(w: OpWorld, b: Bound) = w.hangLock(target)
+    override fun lockReason(w: OpWorld, b: Bound) = w.hangLock(b.resolve(target))
 
-    override fun finish(w: OpWorld, b: Bound) = listOf(w.hang(target))
+    override fun finish(w: OpWorld, b: Bound) = listOf(w.hang(b.resolve(target)))
 
-    override fun describe(w: OpWorld, b: Bound, forSale: Boolean) = if (forSale) emptyList() else w.hangText(target)
+    override fun describe(w: OpWorld, b: Bound, forSale: Boolean) = if (forSale) emptyList() else w.hangText(b.resolve(target))
 
     companion object {
         val STATES = listOf("hung")
     }
 }
 
-/** Starts something that keeps going while he does anything else (music): [rates] per hour for [minutes]. */
+/** Starts something that keeps going while he does anything else: the item bound to `what` (a record) [rates] per hour for [minutes]. */
 data class BackgroundOp(val name: String, val minutes: Int, val rates: Map<String, Double>) : Op() {
     override val key get() = "background"
 
-    override fun problems(c: BedroomContent, verb: ActivitySpec) = needProblems(rates.keys) +
-        listOfNotNull(if (minutes < 1) "background $name: at least 1 minute" else null, if (verb.item == null) "background needs an item it plays" else null)
+    override fun problems(c: BedroomContent, verb: VerbSpec) = needProblems(rates.keys) +
+        listOfNotNull(if (minutes < 1) "background $name: at least 1 minute" else null, if ("what" !in verb.args) "background needs a `what` argument: the item it plays" else null)
 
-    override fun finish(w: OpWorld, b: Bound) = listOf(w.play(b.item!!, this, b.fresh))
+    override fun finish(w: OpWorld, b: Bound) = listOf(w.play(b.args.getValue("what"), b.args["on"], this, b.fresh))
 
     override fun describe(w: OpWorld, b: Bound, forSale: Boolean) =
         if (forSale) emptyList() else listOf("$name for ${GameClock.duration(minutes)}: " + rates.entries.joinToString { (need, d) -> b.shown(need, d) + "/h" })
@@ -177,18 +178,19 @@ data object SleepOp : Op() {
 
 /**
  * Pays the bound item's value to him ([BedroomContent.value]) as mood when the verb finishes, scaled
- * by freshness: liking a record. [what] names the argument (a use's `item`).
+ * by freshness: liking a record or a book. [what] names the argument slot.
  */
 data class EnjoyOp(val what: String) : Op() {
     override val key get() = "enjoy"
 
-    override fun problems(c: BedroomContent, verb: ActivitySpec) = if (what == "item" && verb.item != null) emptyList() else listOf("enjoy names '$what', which isn't an argument of this verb")
+    override fun problems(c: BedroomContent, verb: VerbSpec) = if (what in verb.args) emptyList() else listOf("enjoy names '$what', which isn't an argument of this verb")
 
-    private fun liking(w: OpWorld, b: Bound): Double = b.item?.let { w.content.value(w.item(it)) * w.content.qualityValue.inUse } ?: 0.0
+    /** Null until bound (a locked option, or the shop's "what it's for"). */
+    private fun liking(w: OpWorld, b: Bound): Double = b.args[what]?.let { w.content.value(w.item(it)) * w.content.qualityValue.inUse } ?: 0.0
 
     override fun finish(w: OpWorld, b: Bound): List<String> {
         val d = liking(w, b).takeIf { it != 0.0 } ?: return emptyList()
-        val item = b.item!!
+        val item = b.args.getValue(what)
         return listOf("${if (d > 0) "you like" else "you don't like"} the ${w.item(item).name}: mood ${signed(w.change(Need.Mood, b.paid("mood", d), "liking $item"))}")
     }
 
@@ -244,16 +246,19 @@ internal interface OpWorld {
 
     fun hangText(tag: String): List<String>
 
-    /** Starts [bg] playing [item]; returns the event text. */
-    fun play(item: String, bg: BackgroundOp, fresh: Double): String
+    /** Starts [bg] playing [item] on [on]; returns the event text. */
+    fun play(item: String, on: String?, bg: BackgroundOp, fresh: Double): String
 }
 
 /**
- * One doing of [verb]: [item] is the item a use is done with (null for an activity), [fresh] how
- * fresh the habit was when it started (1 for a new or routine one). [extra]: for lock reasons, as if
- * he also owned that item.
+ * One doing of [verb]: [args] is the item id bound to each argument slot (empty before binding),
+ * [fresh] how fresh the habit was when it started (1 for a new or routine one). [extra]: for lock
+ * reasons, as if he also owned that item.
  */
-internal class Bound(val verb: ActivitySpec, val item: String?, val fresh: Double, val extra: String? = null) {
+internal class Bound(val verb: VerbSpec, val args: Map<String, String>, val fresh: Double, val extra: String? = null) {
+    /** The item bound to [name] when it's an argument slot, otherwise [name] itself (an id or affordance); unbound, the slot's type. */
+    fun resolve(name: String): String = args[name] ?: verb.args[name] ?: name
+
     /** [d] as paid at [fresh]: gains in mood and stimulation shrink with wear; costs and other needs don't. */
     fun paid(need: String, d: Double): Double = if (d > 0 && (need == Need.Mood.id || need == Need.Stimulation.id)) d * fresh else d
 
