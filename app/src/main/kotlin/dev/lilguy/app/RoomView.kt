@@ -8,16 +8,7 @@ import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.graphics.g2d.BitmapFont
 import com.badlogic.gdx.graphics.g2d.GlyphLayout
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
-import com.badlogic.gdx.graphics.g3d.Environment
-import com.badlogic.gdx.graphics.g3d.Material
-import com.badlogic.gdx.graphics.g3d.Model
-import com.badlogic.gdx.graphics.g3d.ModelBatch
-import com.badlogic.gdx.graphics.g3d.ModelInstance
-import com.badlogic.gdx.graphics.g3d.attributes.ColorAttribute
-import com.badlogic.gdx.graphics.g3d.attributes.TextureAttribute
-import com.badlogic.gdx.graphics.g3d.environment.DirectionalLight
-import com.badlogic.gdx.graphics.g3d.utils.ModelBuilder
-import com.badlogic.gdx.graphics.VertexAttributes.Usage
+import com.badlogic.gdx.graphics.Mesh
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.math.MathUtils
 import com.badlogic.gdx.math.Matrix4
@@ -38,16 +29,18 @@ import kotlin.math.tan
 
 /**
  * The room in 3D, the spike of `research_notes/2026-10-29_2053_3d-room-and-character-plan.md`: a
- * fixed-camera cutaway of the room (no front wall, no ceiling), code-built furniture placed where
- * the snapshot says ([RoomModels]), the guy as an animated [Blob], light and the window's sky
- * following the game clock, and a small HUD with a bubble over his head. His art shows too: hung
- * pieces in frames on the picture rail, and his newest unsold piece on the desk (a sketch) or the
- * easel (a painting), each a small texture from [ArtTextures].
+ * fixed-camera cutaway of the room (no front wall, no ceiling), furniture placed where the snapshot
+ * says ([RoomModels]), the guy as an animated [Blob], light and the window's sky following the game
+ * clock, and a small HUD with a bubble over his head. His art shows too: hung pieces in frames on
+ * the picture rail, and his newest unsold piece on the desk (a sketch) or the easel (a painting),
+ * each a small texture from [ArtTextures].
  *
- * Shown as the dev view's first page ([DevView.Page.Room]); the other pages are the 2D dev view.
- * Fill rate stays low for the Streamer: one clear, opaque near-flat-lit geometry, one directional
- * light plus ambient, no shadow maps or post-processing; the only blended things are the blob
- * shadow and the HUD's small rectangles.
+ * Everything is drawn in the hand-drawn look by one [CrayonRenderer]: furniture and the guy with the
+ * crayon shader and boiling ink outlines, the floor and walls as painted textures under the cheap
+ * paper shader. Shown as the dev view's first page ([DevView.Page.Room]); the other pages are the 2D
+ * dev view. Fill rate stays low for the Streamer: one clear, opaque geometry, the per-pixel crayon
+ * shader only on furniture and the guy, no shadow maps or post-processing; the only blended things
+ * are the hatched shadows and the HUD's small rectangles.
  */
 class RoomView(private val art: ArtTextures) : Disposable {
     private val viewport = FitViewport(DevView.WIDTH, DevView.HEIGHT)
@@ -56,30 +49,25 @@ class RoomView(private val art: ArtTextures) : Disposable {
         far = 60f
     }
     private val models = RoomModels()
+    private val crayon = CrayonRenderer()
     private val blob = Blob()
     private val pose = Blob.Pose()
-    private val modelBatch = ModelBatch()
-    private val ambient = ColorAttribute(ColorAttribute.AmbientLight, 0.7f, 0.7f, 0.7f, 1f)
-    private val sun = DirectionalLight().set(0.4f, 0.4f, 0.4f, SUN_DIRECTION)
-    private val env = Environment().apply {
-        set(ambient)
-        add(sun)
-    }
-    private val glassModel: Model
-    private val glass: ModelInstance
-    /** The glass instance's own emissive colour (instances copy their model's materials). */
-    private val glassColor: ColorAttribute
-    private val hourHand = ModelInstance(models.hand(0.1f))
-    private val minuteHand = ModelInstance(models.hand(0.15f))
+    private var room: RoomModels.Room? = null
+    private val identity = Matrix4()
+    private val glassAt = Matrix4()
+    private val hourHand = models.hand(0.1f)
+    private val minuteHand = models.hand(0.15f)
+    private val hourAt = Matrix4()
+    private val minuteAt = Matrix4()
     private var clockX = 0f
-    private val instances = HashMap<String, ModelInstance>()
-    private var room: ModelInstance? = null
+    /** Where each item stands, by id. */
+    private val placedAt = HashMap<String, Matrix4>()
+    private val worldLight = Vector3()
 
-    /** Frames on the rail, one per wall place, and a textured quad per piece shown (by "piece/flat"), for [quadsRun]. */
-    private val frames = List(RoomModels.FRAME_XS.size) { ModelInstance(models.frame()) }
-    private val quads = HashMap<String, Pair<Model, ModelInstance>>()
-    private var quadsRun = -1
+    /** A picture's quad, by "size/flat"; the piece's texture goes on at draw time. */
+    private val quads = HashMap<String, Mesh>()
     private val railAt = Matrix4()
+    private val at = Matrix4()
     private var framed: TileMap? = null
 
     private val shapes = ShapeRenderer()
@@ -93,21 +81,13 @@ class RoomView(private val art: ArtTextures) : Disposable {
     /** What's beyond the room, dimmed with the light; the game clears to it before [render] (one frame behind). */
     val background = Color(0.15f, 0.13f, 0.16f, 1f)
     private val light = Light()
+    /** The room's light as a tint, white at midday. */
+    private val tint = Color(Color.WHITE)
 
     /** The newest thought, and how long it has been on show. */
     private var thoughtCount = 0
     private var thought: String? = null
     private var thoughtAge = 0f
-
-    init {
-        glassModel = ModelBuilder().createBox(
-            RoomModels.WINDOW_WIDTH, RoomModels.WINDOW_TOP - RoomModels.WINDOW_BOTTOM, 0.01f,
-            Material(ColorAttribute.createDiffuse(Color.BLACK), ColorAttribute.createEmissive(Color.SKY)),
-            (Usage.Position or Usage.Normal).toLong(),
-        )
-        glass = ModelInstance(glassModel)
-        glassColor = glass.materials.first().get(ColorAttribute.Emissive) as ColorAttribute
-    }
 
     fun resize(width: Int, height: Int) = viewport.update(width, height, true)
 
@@ -141,20 +121,22 @@ class RoomView(private val art: ArtTextures) : Disposable {
         pose.standY = if (under == "chair" && pose.moving) 0f else SURFACES[under] ?: 0f
         blob.update(delta, pose)
 
-        Gdx.gl.glEnable(GL20.GL_DEPTH_TEST)
-        modelBatch.begin(camera)
-        room?.let { modelBatch.render(it, env) }
-        modelBatch.render(glass, env)
-        modelBatch.render(hourHand, env)
-        modelBatch.render(minuteHand, env)
+        crayon.begin(camera, tint, delta)
+        room?.let { r ->
+            for ((mesh, texture) in r.surfaces) crayon.surface(mesh, texture, identity)
+            crayon.surface(r.glass, models.paint.texture(RoomPaint.WHITE)!!, glassAt, light.sky)
+            crayon.model(r.fixtures, identity)
+        }
+        crayon.model(hourHand, hourAt)
+        crayon.model(minuteHand, minuteAt)
         for (e in now.entities) {
             if (e.carriedBy != null || e.kind == "guy") continue
             if (e.kind == "door" && e.state == "open") continue
-            modelBatch.render(placed(e, now.map), env)
+            place(e, now.map)
         }
         renderArt(session, now)
-        blob.render(modelBatch, env, asleep)
-        modelBatch.end()
+        blob.render(crayon, asleep)
+        crayon.end()
         Gdx.gl.glDisable(GL20.GL_DEPTH_TEST)
 
         updateThought(session, delta)
@@ -170,14 +152,13 @@ class RoomView(private val art: ArtTextures) : Disposable {
 
     // --- 3D --------------------------------------------------------------------------------------
 
-    /** Points the camera at [map]'s room (once per map): a front view from above, the whole room in frame. */
+    /** Points the camera at [map]'s room and builds it (once per map): a front view from above, the whole room in frame. */
     private fun frame(map: TileMap) {
         if (framed === map) return
         framed = map
-        room = ModelInstance(models.room(map))
-        instances.clear()
+        placedAt.clear()
         clockX = models.clockX(map)
-        glass.transform.setToTranslation(models.window(map), (RoomModels.WINDOW_BOTTOM + RoomModels.WINDOW_TOP) / 2, 1.012f)
+        glassAt.setToTranslation(models.window(map), (RoomModels.WINDOW_BOTTOM + RoomModels.WINDOW_TOP) / 2, 1.012f)
         val halfFovX = tan(FOV / 2 * MathUtils.degreesToRadians) * DevView.WIDTH / DevView.HEIGHT
         val distance = (map.width / 2f + SIDE_MARGIN) / halfFovX
         val target = Vector3(map.width / 2f, 1.1f, map.height / 2f + 0.2f)
@@ -185,22 +166,35 @@ class RoomView(private val art: ArtTextures) : Disposable {
         camera.up.set(Vector3.Y)
         camera.lookAt(target)
         camera.update()
+        val start = System.nanoTime()
+        room = models.room(map, CrayonRenderer.worldLight(camera, worldLight))
+        Gdx.app.log(LilGuyGame.TAG, "room built in ${(System.nanoTime() - start) / 1_000_000} ms (painting ${models.paint.paintMillis} ms so far)")
     }
 
-    /** An item's instance, placed at its tile; wall items sit against the wall face that looks into the room. */
-    private fun placed(e: EntitySnapshot, map: TileMap): ModelInstance {
+    /**
+     * Queues an item at its tile; wall items sit against the wall face that looks into the room.
+     * Things standing on the floor get a hatched shadow the size of their footprint.
+     */
+    private fun place(e: EntitySnapshot, map: TileMap) {
         val id = e.id.value
-        val instance = instances.getOrPut(id) { ModelInstance(models.item(id, e.kind)) }
+        val model = models.item(id, e.kind)
+        val transform = placedAt.getOrPut(id) { Matrix4() }
         val tx = e.x.toInt()
         val ty = e.y.toInt()
         if (map[tx, ty] == Terrain.Wall && models.wallItem(id, e.kind)) {
             val (dx, dy) = INWARD.firstOrNull { (dx, dy) -> map[tx + dx, ty + dy] == Terrain.Floor } ?: (0 to 1)
             val yaw = when (dx to dy) { 1 to 0 -> 90f; -1 to 0 -> -90f; 0 to -1 -> 180f; else -> 0f }
-            instance.transform.setToTranslation(tx + 0.5f + dx * 0.5f, 0f, ty + 0.5f + dy * 0.5f).rotate(Vector3.Y, yaw)
+            transform.setToTranslation(tx + 0.5f + dx * 0.5f, 0f, ty + 0.5f + dy * 0.5f).rotate(Vector3.Y, yaw)
         } else {
-            instance.transform.setToTranslation(e.x, 0f, e.y)
+            transform.setToTranslation(e.x, 0f, e.y)
+            if (!models.flat(id, e.kind)) {
+                val b = model.bounds
+                at.set(transform).translate((b[0] + b[3]) / 2, SHADOW_LIFT, (b[2] + b[5]) / 2)
+                    .scale((b[3] - b[0]) * SHADOW_SPREAD, 1f, (b[5] - b[2]) * SHADOW_SPREAD)
+                crayon.shadow(at)
+            }
         }
-        return instance
+        crayon.model(model, transform)
     }
 
     /**
@@ -210,48 +204,27 @@ class RoomView(private val art: ArtTextures) : Disposable {
     private fun renderArt(session: SimSession, now: WorldSnapshot) {
         val pieces = now.life?.art?.takeIf { it.isNotEmpty() } ?: return
         art.sync(session)
-        if (quadsRun != art.run) {
-            quads.values.forEach { it.first.dispose() }
-            quads.clear()
-            quadsRun = art.run
-        }
         val drawings = art.drawings(session)
-        val rail = instances["picture_rail"]
+        val rail = placedAt["picture_rail"]
         if (rail != null && now.entities.any { it.id.value == "picture_rail" }) {
-            pieces.filter { it.hung }.take(frames.size).forEachIndexed { i, p ->
-                railAt.set(rail.transform).translate(RoomModels.FRAME_XS[i], RoomModels.FRAME_BOTTOM, 0f)
-                frames[i].transform.set(railAt)
-                modelBatch.render(frames[i], env)
-                quad(drawings[p.id], RoomModels.FRAME_ART, flat = false)?.let { q ->
-                    q.transform.set(railAt).translate(0f, RoomModels.FRAME / 2, RoomModels.FRAME_ART_Z)
-                    modelBatch.render(q, env)
-                }
+            pieces.filter { it.hung }.take(RoomModels.FRAME_XS.size).forEachIndexed { i, p ->
+                railAt.set(rail).translate(RoomModels.FRAME_XS[i], RoomModels.FRAME_BOTTOM, 0f)
+                crayon.model(models.frame(), railAt)
+                picture(drawings[p.id], RoomModels.FRAME_ART, flat = false, at.set(railAt).translate(0f, RoomModels.FRAME / 2, RoomModels.FRAME_ART_Z))
             }
         }
         for ((item, stand) in STANDS) {
             val p = pieces.lastOrNull { !it.hung && it.item == item } ?: continue
             val e = now.entities.firstOrNull { it.id.value == stand.id } ?: continue
-            val q = quad(drawings[p.id], stand.size, stand.flat) ?: continue
-            q.transform.setToTranslation(e.x + stand.x, stand.y, e.y + stand.z)
-            modelBatch.render(q, env)
+            picture(drawings[p.id], stand.size, stand.flat, at.setToTranslation(e.x + stand.x, stand.y, e.y + stand.z))
         }
     }
 
-    /** A square of the piece's picture, [size] wide, facing +Z, or lying face up when [flat]; null until it's drawn. */
-    private fun quad(drawing: Drawing?, size: Float, flat: Boolean): ModelInstance? {
-        val d = drawing ?: return null
-        val texture = art.of(d) ?: return null
-        return quads.getOrPut("${d.piece}/$flat") {
-            val material = Material(TextureAttribute.createDiffuse(texture))
-            val attributes = (Usage.Position or Usage.Normal or Usage.TextureCoordinates).toLong()
-            val h = size / 2
-            val model = if (flat) {
-                ModelBuilder().createRect(-h, 0f, h, h, 0f, h, h, 0f, -h, -h, 0f, -h, 0f, 1f, 0f, material, attributes)
-            } else {
-                ModelBuilder().createRect(-h, -h, 0f, h, -h, 0f, h, h, 0f, -h, h, 0f, 0f, 0f, 1f, material, attributes)
-            }
-            model to ModelInstance(model)
-        }.second
+    /** Queues a square of the piece's picture, [size] wide, facing +Z or lying face up when [flat], at [transform]; nothing until it's drawn. */
+    private fun picture(drawing: Drawing?, size: Float, flat: Boolean, transform: Matrix4) {
+        val d = drawing ?: return
+        val texture = art.of(d) ?: return
+        crayon.surface(quads.getOrPut("$size/$flat") { models.quad(size, flat) }, texture, transform)
     }
 
     /** Ambient, sun, sky, background and the wall clock for the time of day; the bedroom's clock, or noon without one. */
@@ -261,11 +234,12 @@ class RoomView(private val art: ArtTextures) : Disposable {
             h + m / 60f
         } ?: 12f
         light.at(hour)
-        hourHand.transform.setToTranslation(clockX, RoomModels.CLOCK_Y, 1.06f).rotate(Vector3.Z, -30f * hour)
-        minuteHand.transform.setToTranslation(clockX, RoomModels.CLOCK_Y, 1.07f).rotate(Vector3.Z, -360f * hour)
-        ambient.color.set(light.ambient)
-        sun.color.set(light.sun)
-        glassColor.color.set(light.sky)
+        hourAt.setToTranslation(clockX, RoomModels.CLOCK_Y, 1.06f).rotate(Vector3.Z, -30f * hour)
+        minuteAt.setToTranslation(clockX, RoomModels.CLOCK_Y, 1.07f).rotate(Vector3.Z, -360f * hour)
+        // Everything shades itself; the room's light only tints it, white at midday.
+        val a = light.ambient
+        val s = light.sun
+        tint.set((a.r + s.r) / DAY_LIGHT[0], (a.g + s.g) / DAY_LIGHT[1], (a.b + s.b) / DAY_LIGHT[2], 1f)
         background.set(light.ambient).mul(0.22f, 0.2f, 0.24f, 1f)
     }
 
@@ -392,11 +366,10 @@ class RoomView(private val art: ArtTextures) : Disposable {
     }
 
     override fun dispose() {
-        quads.values.forEach { it.first.dispose() }
+        quads.values.forEach { it.dispose() }
         models.dispose()
         blob.dispose()
-        glassModel.dispose()
-        modelBatch.dispose()
+        crayon.dispose()
         shapes.dispose()
         batch.dispose()
         font.dispose()
@@ -460,7 +433,13 @@ class RoomView(private val art: ArtTextures) : Disposable {
 
         /** What he stands, sits or lies on, by item id, and how high its top is. */
         val SURFACES = mapOf("bed" to 0.3f, "chair" to 0.38f)
-        val SUN_DIRECTION = Vector3(0.45f, -1f, -0.55f)
+        /** Furniture shadows: how high over the floor (above the rug), and how much wider than the footprint. */
+        const val SHADOW_LIFT = 0.04f
+        const val SHADOW_SPREAD = 1.2f
+        /** Ambient plus sun at midday (the 9:30 to 16:30 key), so the guy's tint is white then. */
+        val DAY_LIGHT = Color.valueOf("c8c4b8").let { a ->
+            Color.valueOf("6a665e").let { s -> floatArrayOf(a.r + s.r, a.g + s.g, a.b + s.b) }
+        }
         /** (dx, dy) toward the room, from a wall tile. */
         val INWARD = listOf(0 to 1, 1 to 0, -1 to 0, 0 to -1)
 

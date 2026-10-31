@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lil Guy Gallery</title>
+<!--
+  Static browser for the stills tools/workshop/shoot.sh renders from guy.html. Each iteration is a
+  set (a folder here, e.g. v2/); add one to SETS below after shooting it. No dependencies.
+-->
+<style>
+  :root { --bg: #fbf4ea; --card: #fffaf3; --ink: #4a3a4f; --muted: #8b7b8d; --line: #ece0d3; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.45 ui-rounded, "SF Pro Rounded", "Nunito", system-ui, sans-serif; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px 40px; }
+  header { padding: 22px 0 6px; display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: baseline; justify-content: space-between; }
+  h1 { margin: 0; font-size: 24px; letter-spacing: -0.01em; }
+  header p { margin: 2px 0 0; color: var(--muted); }
+  h2 { margin: 0; font-size: 17px; }
+  h3 { margin: 18px 0 8px; font-size: 13px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+  .note { margin: 0 0 16px; padding: 10px 14px; background: var(--card); border: 1.5px solid var(--line); border-radius: 12px; color: var(--muted); font-size: 14px; }
+  .bar { position: sticky; top: 0; z-index: 2; background: color-mix(in srgb, var(--bg) 92%, transparent);
+    backdrop-filter: blur(6px); display: flex; flex-wrap: wrap; gap: 10px 26px; padding: 12px 0; align-items: center;
+    border-bottom: 1.5px solid var(--line); margin-bottom: 18px; }
+  .group { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .group > span { color: var(--muted); font-size: 13px; margin-right: 2px; }
+  button { font: inherit; color: var(--ink); cursor: pointer; }
+  .chip { border: 1.5px solid var(--line); background: var(--card); border-radius: 999px; padding: 4px 12px; font-size: 13px; }
+  .chip[aria-pressed="true"] { border-color: var(--ink); background: #fff; }
+  .swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid #fff; padding: 0; box-shadow: 0 0 0 1.5px var(--line); }
+  .swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--ink); }
+  .designs { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 18px; }
+  .card { background: var(--card); border: 1.5px solid var(--line); border-radius: 18px; overflow: hidden; }
+  .card .body { padding: 12px 16px 16px; }
+  .card .blurb { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  .hero { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; background: var(--bg); }
+  .strip { display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 6px; }
+  .thumb { padding: 0; border: 1.5px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--bg); position: relative; }
+  .thumb img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; }
+  .thumb[aria-pressed="true"] { border-color: var(--ink); }
+  .thumb small { position: absolute; left: 0; right: 0; bottom: 2px; font-size: 10px; color: var(--muted); text-align: center; }
+  .matrix { margin-top: 30px; }
+  .matrix .head { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-bottom: 10px; }
+  .grid { display: grid; grid-template-columns: 74px repeat(var(--n), minmax(0, 170px)); gap: 6px; align-items: center; }
+  .grid .label { font-size: 12px; color: var(--muted); text-align: center; }
+  .grid .row { text-align: right; padding-right: 6px; }
+  .dot { display: inline-block; width: 14px; height: 14px; border-radius: 50%; vertical-align: -2px; margin-right: 4px; }
+  @media (max-width: 640px) {
+    .wrap { padding: 0 16px 32px; }
+    .designs { grid-template-columns: 1fr; }
+    .grid { grid-template-columns: 52px repeat(var(--n), 1fr); gap: 4px; }
+    .grid .label { font-size: 10px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Lil guy design gallery</h1>
+      <p>Stills from the style workshop. Pick a face and colour; every design follows.</p>
+    </div>
+    <div class="group" id="sets"><span>Iteration</span></div>
+  </header>
+  <p class="note" id="note"></p>
+  <div class="bar">
+    <div class="group" id="faces"><span>Face</span></div>
+    <div class="group" id="colours"><span>Colour</span></div>
+  </div>
+  <div class="designs" id="designs"></div>
+  <section class="matrix">
+    <div class="head"><h2>Every face × colour</h2><div class="group" id="matrix-design"></div></div>
+    <div class="grid" id="grid"></div>
+  </section>
+</div>
+<script>
+const COLOURS = { apricot: '#ffd8c0', rose: '#f8bfd0', lavender: '#cdbaf0', sky: '#b8d7f4', mint: '#b5e5cd', butter: '#ffe3a1' };
+const TURN = ['front', 'side', 'back'];
+const SETS = [
+  {
+    id: 'v1', label: 'v1 · two styles',
+    note: 'Two rendering styles on the original ball with a sprout.',
+    faces: ['neutral', 'happy', 'sad', 'tired', 'thinking', 'asleep'],
+    colours: ['apricot', 'rose', 'lavender', 'sky', 'mint', 'butter'],
+    designs: [
+      { id: 'crayon', name: 'A · Wobbly hand-drawn',
+        blurb: 'Lumpy body, an ink line that swells and thins (it boils in motion), two-tone pastel shading with pencil hatching on the shadow side, crayon grain, a face drawn in shaky pen with scribbled cheeks.' },
+      { id: 'paper', name: 'B · Ink-outlined papercraft',
+        blurb: 'Faceted paper panels in slightly different tints, faint fold lines, a crisp ink outline, and a face cut from paper and stuck on like stickers with white margins.' },
+    ],
+  },
+  {
+    id: 'v2', label: 'v2 · shapes',
+    note: 'Hand-drawn only, with bolder hatching that cross-hatches in the deepest shadow, and stronger crayon grain. The sprout is gone. Six body shapes with nothing on top, then three toppers tried on the mochi (any topper works on any shape in the live workshop).',
+    faces: ['neutral', 'happy', 'sad', 'asleep'],
+    colours: ['apricot', 'lavender', 'mint'],
+    designs: [
+      { id: 'ball', name: 'Ball', blurb: 'The v1 sphere, for reference.' },
+      { id: 'mochi', name: 'Mochi', blurb: 'Squat and wide with a flat, squishy bottom and a soft dome. The face sits low, like a rice cake or a slime.' },
+      { id: 'bean', name: 'Bean', blurb: 'Tall and narrow, a little wider at the bottom and leaning slightly. More upright, more of a little person.' },
+      { id: 'gumdrop', name: 'Gumdrop', blurb: 'Narrow round top and a wide flat base, like a gumdrop or a pear.' },
+      { id: 'onigiri', name: 'Onigiri', blurb: 'A puffy rounded triangle from the front, flatter front to back. The most distinctive silhouette.' },
+      { id: 'tater', name: 'Tater', blurb: 'Wide, lumpy and lopsided, like a potato or a pebble. Every side looks a bit different.' },
+      { id: 'mochi_curl', name: 'Mochi + curl', blurb: 'One curl of hair, a shade darker than his body. Bobs as he moves.' },
+      { id: 'mochi_ears', name: 'Mochi + ears', blurb: 'Two round nubs, bear or hamster-ish.' },
+      { id: 'mochi_beanie', name: 'Mochi + beanie', blurb: 'A soft coral beanie with a pompom. An art-kid in his room.' },
+    ],
+  },
+  {
+    id: 'v3', label: 'v3 · the pick',
+    note: 'The chosen look: the butter tater with nothing on top, in all six expressions, plus the turnaround.',
+    faces: ['neutral', 'happy', 'sad', 'tired', 'thinking', 'asleep'],
+    colours: ['butter'],
+    designs: [
+      { id: 'tater', name: 'Tater', blurb: 'Wide, lumpy and lopsided, in butter yellow, no topper.' },
+    ],
+  },
+];
+
+const cap = s => s[0].toUpperCase() + s.slice(1);
+const ui = { set: SETS[SETS.length - 1], face: 'happy', colour: 'lavender', matrix: null };
+const src = (design, name) => `${ui.set.id}/${design}-${name}.jpg`;
+
+function chips(box, items, get, set, label = cap) {
+  box.querySelectorAll('button').forEach(b => b.remove());
+  for (const item of items) {
+    const b = document.createElement('button'); b.className = 'chip'; b.textContent = label(item);
+    b.onclick = () => { set(item); render(); };
+    b.dataset.value = typeof item === 'string' ? item : item.id;
+    box.append(b);
+  }
+  box.sync = () => box.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.value === get()));
+}
+function thumb(img, caption, pressed, onclick) {
+  const b = document.createElement('button'); b.className = 'thumb';
+  b.setAttribute('aria-pressed', pressed);
+  b.innerHTML = `<img loading="lazy" alt="${caption}" src="${img}">${caption ? `<small>${caption}</small>` : ''}`;
+  b.onclick = onclick;
+  return b;
+}
+
+const sets = document.getElementById('sets'), faces = document.getElementById('faces');
+const colours = document.getElementById('colours'), matrixDesign = document.getElementById('matrix-design');
+chips(sets, SETS, () => ui.set.id, s => { ui.set = s; ui.matrix = null; }, s => s.label);
+
+function render() {
+  const { designs, faces: fs, colours: cs } = ui.set;
+  if (!fs.includes(ui.face)) ui.face = fs.includes('happy') ? 'happy' : fs[0];
+  if (!cs.includes(ui.colour)) ui.colour = cs.includes('lavender') ? 'lavender' : cs[0];
+  if (!designs.some(d => d.id === ui.matrix)) ui.matrix = designs[0].id;
+  document.getElementById('note').textContent = ui.set.note;
+
+  chips(faces, fs, () => ui.face, f => { ui.face = f; });
+  colours.querySelectorAll('button').forEach(b => b.remove());
+  for (const name of cs) {
+    const b = document.createElement('button'); b.className = 'swatch'; b.title = name; b.style.background = COLOURS[name];
+    b.setAttribute('aria-pressed', name === ui.colour);
+    b.onclick = () => { ui.colour = name; render(); };
+    colours.append(b);
+  }
+  chips(matrixDesign, designs, () => ui.matrix, d => { ui.matrix = d.id; }, d => d.name);
+  [sets, faces, matrixDesign].forEach(b => b.sync());
+
+  const box = document.getElementById('designs'); box.innerHTML = '';
+  for (const d of designs) {
+    const card = document.createElement('article'); card.className = 'card';
+    card.innerHTML = `<img class="hero" alt="${d.name}, ${ui.face}, ${ui.colour}" src="${src(d.id, `${ui.face}-${ui.colour}`)}">
+      <div class="body"><h2>${d.name}</h2><p class="blurb">${d.blurb}</p>
+      <h3>Faces</h3><div class="strip" style="--n:${fs.length}"></div>
+      <h3>Colours</h3><div class="strip" style="--n:${cs.length}"></div>
+      <h3>Turnaround</h3><div class="strip" style="--n:4"></div></div>`;
+    const [fstrip, cstrip, tstrip] = card.querySelectorAll('.strip');
+    for (const f of fs) fstrip.append(thumb(src(d.id, `${f}-${ui.colour}`), cap(f), f === ui.face, () => { ui.face = f; render(); }));
+    for (const c of cs) cstrip.append(thumb(src(d.id, `${ui.face}-${c}`), cap(c), c === ui.colour, () => { ui.colour = c; render(); }));
+    tstrip.append(thumb(src(d.id, `${fs[0]}-${cs[0]}`), '¾', false, () => { ui.face = fs[0]; ui.colour = cs[0]; render(); }));
+    for (const v of TURN) tstrip.append(thumb(src(d.id, `turn-${v}`), cap(v), false, () => window.open(src(d.id, `turn-${v}`))));
+    box.append(card);
+  }
+
+  const grid = document.getElementById('grid'); grid.style.setProperty('--n', cs.length); grid.innerHTML = '<div></div>';
+  for (const c of cs) grid.insertAdjacentHTML('beforeend', `<div class="label"><span class="dot" style="background:${COLOURS[c]}"></span>${cap(c)}</div>`);
+  for (const f of fs) {
+    grid.insertAdjacentHTML('beforeend', `<div class="label row">${cap(f)}</div>`);
+    for (const c of cs) grid.append(thumb(src(ui.matrix, `${f}-${c}`), '', f === ui.face && c === ui.colour, () => {
+      ui.face = f; ui.colour = c; render(); window.scrollTo({ top: 0, behavior: 'smooth' });
+    }));
+  }
+}
+render();
+</script>
+</body>
+</html>

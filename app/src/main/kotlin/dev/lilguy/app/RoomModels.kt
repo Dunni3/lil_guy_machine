@@ -1,245 +1,363 @@
 package dev.lilguy.app
 
 import com.badlogic.gdx.graphics.Color
-import com.badlogic.gdx.graphics.GL20
-import com.badlogic.gdx.graphics.VertexAttributes.Usage
-import com.badlogic.gdx.graphics.g3d.Material
-import com.badlogic.gdx.graphics.g3d.Model
-import com.badlogic.gdx.graphics.g3d.attributes.ColorAttribute
-import com.badlogic.gdx.graphics.g3d.utils.MeshPartBuilder
-import com.badlogic.gdx.graphics.g3d.utils.ModelBuilder
-import com.badlogic.gdx.graphics.g3d.utils.shapebuilders.BoxShapeBuilder
-import com.badlogic.gdx.graphics.g3d.utils.shapebuilders.CylinderShapeBuilder
-import com.badlogic.gdx.graphics.g3d.utils.shapebuilders.SphereShapeBuilder
-import com.badlogic.gdx.math.Matrix4
+import com.badlogic.gdx.graphics.Mesh
+import com.badlogic.gdx.graphics.Texture
+import com.badlogic.gdx.graphics.VertexAttribute
+import com.badlogic.gdx.math.MathUtils
 import com.badlogic.gdx.math.Vector3
 import com.badlogic.gdx.utils.Disposable
 import dev.lilguy.sim.Terrain
 import dev.lilguy.sim.TileMap
+import kotlin.math.hypot
+import kotlin.math.max
 
 /**
- * The 3D room's geometry, built in code from boxes, spheres and cylinders: no asset files yet.
+ * The 3D room in the hand-drawn look: furniture as part lists ([PartList], drawn by
+ * [CrayonRenderer]), and the floor and walls as flat meshes carrying painted textures ([RoomPaint]),
+ * drawn with the cheap paper shader. No asset files.
  *
- * Conventions every model here follows, so a Blender or kit glTF can replace one later as a drop-in:
- * 1 unit = 1 meter = 1 tile; pivot at the bottom centre of the item's tile; the front faces +Z
- * (toward the camera). Wall items ([wallItem]) instead have their back at z = 0 and are placed
+ * Conventions every model here follows, so another part list (or a model file) can replace one as
+ * a drop-in: 1 unit = 1 meter = 1 tile; pivot at the bottom centre of the item's tile; the front faces
+ * +Z (toward the camera). Wall items ([wallItem]) instead have their back at z = 0 and are placed
  * against whichever wall face looks into the room. Models are keyed by item id ([item]), with a
  * plain box for ids nothing here knows. Positions come from the world snapshot, never from here.
- *
- * Every model is one vertex-coloured mesh part (one draw call), lit by the view's environment.
  */
 class RoomModels : Disposable {
-    private val builder = ModelBuilder()
-    private val lit = Material(ColorAttribute.createDiffuse(Color.WHITE))
-    private val items = HashMap<String, Model>()
+    val paint = RoomPaint()
+    private val items = HashMap<String, CrayonModel>()
     private var roomFor: TileMap? = null
-    private var roomModel: Model? = null
+    private var built: Room? = null
 
-    /** Floor and walls of [map], with the front wall cut down to a lip. Rebuilt when the map changes. */
-    fun room(map: TileMap): Model {
-        roomModel?.takeIf { roomFor === map }?.let { return it }
-        roomModel?.dispose()
+    /**
+     * A room's fixed parts: painted [surfaces] (each a mesh and its texture), crayon [fixtures]
+     * (window frame, curtains, clock), and the window's [glass], whose colour the view sets.
+     */
+    class Room(val surfaces: List<Pair<Mesh, Texture>>, val fixtures: CrayonModel, val glass: Mesh) : Disposable {
+        override fun dispose() {
+            surfaces.forEach { it.first.dispose() }
+            fixtures.dispose()
+            glass.dispose()
+        }
+    }
+
+    /**
+     * Floor and walls of [map], with the front wall cut down to a lip, each side shaded once for the
+     * world-space [light] it faces. Rebuilt when the map changes.
+     */
+    fun room(map: TileMap, light: Vector3): Room {
+        built?.takeIf { roomFor === map }?.let { return it }
+        built?.dispose()
         roomFor = map
-        return build { buildRoom(map) }.also { roomModel = it }
+        return buildRoom(map, light).also { built = it }
     }
 
     /** The model for item [id] (of [kind], for the fallback), built once. */
-    fun item(id: String, kind: String): Model = items.getOrPut("$kind/$id") { build { buildItem(id, kind) } }
+    fun item(id: String, kind: String): CrayonModel = items.getOrPut("$kind/$id") { model { buildItem(id, kind) } }
 
     /** Items that hang in a wall rather than stand on the floor: their back is at z = 0. */
     fun wallItem(id: String, kind: String): Boolean = id in WALL_ITEMS || kind == "door"
+
+    /** Items that lie flat and cast no shadow of their own. */
+    fun flat(id: String, kind: String): Boolean = id == "rug" || kind == "exit"
 
     /**
      * An empty picture frame, pivot at its bottom centre, back at z = 0, [FRAME] square; the view
      * puts a piece's texture on its mat ([FRAME_ART] square, [FRAME_ART_Z] out from the wall).
      */
-    fun frame(): Model = items.getOrPut("frame") {
-        build {
-            box(WOOD_DARK, 0f, 0f, 0.015f, FRAME, FRAME, 0.03f)
-            box(PAPER, 0f, 0.03f, 0.03f, FRAME - 0.06f, FRAME - 0.06f, 0.01f)
-            box(KNOB, 0f, FRAME + 0.08f, 0.01f, 0.03f, 0.03f, 0.02f)
+    fun frame(): CrayonModel = items.getOrPut("frame") {
+        model {
+            box(WOOD_DARK, 0f, 0f, 0.015f, FRAME, FRAME, 0.03f, round = 0.012f)
+            box(PAPER, 0f, 0.03f, 0.03f, FRAME - 0.06f, FRAME - 0.06f, 0.01f, round = 0.004f, outline = 0f)
+            sphere(KNOB, 0f, FRAME + 0.065f, 0.01f, 0.035f, 0.035f, 0.025f)
         }
-    }
-
-    private fun build(body: Shapes.() -> Unit): Model {
-        builder.begin()
-        val part = builder.part("p", GL20.GL_TRIANGLES, (Usage.Position or Usage.Normal or Usage.ColorPacked).toLong(), lit)
-        Shapes(part).body()
-        return builder.end()
-    }
-
-    // --- the room ------------------------------------------------------------------------------
-
-    private fun Shapes.buildRoom(map: TileMap) {
-        val front = map.height - 1
-        for (y in 0 until map.height) for (x in 0 until map.width) {
-            when (map[x, y]) {
-                Terrain.Floor -> floorTile(x, y)
-                Terrain.Wall -> wallTile(map, x, y, if (y == front) LIP else WALL_HEIGHT)
-                Terrain.Void -> Unit
-            }
-        }
-        // A window in the back wall: the frame here, the glass is the view's (its colour follows the clock).
-        val wx = window(map)
-        box(TRIM, wx, WINDOW_BOTTOM - 0.06f, 1.0f, WINDOW_WIDTH + 0.16f, 0.08f, 0.1f)
-        box(TRIM, wx, WINDOW_TOP, 1.0f, WINDOW_WIDTH + 0.12f, 0.06f, 0.04f)
-        box(TRIM, wx - WINDOW_WIDTH / 2 - 0.03f, WINDOW_BOTTOM, 1.0f, 0.06f, WINDOW_TOP - WINDOW_BOTTOM, 0.04f)
-        box(TRIM, wx + WINDOW_WIDTH / 2 + 0.03f, WINDOW_BOTTOM, 1.0f, 0.06f, WINDOW_TOP - WINDOW_BOTTOM, 0.04f)
-        box(TRIM, wx, WINDOW_BOTTOM, 1.0f, 0.04f, WINDOW_TOP - WINDOW_BOTTOM, 0.03f)
-        box(TRIM, wx, (WINDOW_BOTTOM + WINDOW_TOP) / 2, 1.0f, WINDOW_WIDTH, 0.04f, 0.03f)
-        // Curtains, tied back, and a rod.
-        for (side in listOf(-1f, 1f)) {
-            box(CURTAIN, wx + side * (WINDOW_WIDTH / 2 + 0.1f), WINDOW_BOTTOM - 0.25f, 1.06f, 0.26f, WINDOW_TOP - WINDOW_BOTTOM + 0.38f, 0.05f)
-            box(CURTAIN_TIE, wx + side * (WINDOW_WIDTH / 2 + 0.1f), WINDOW_BOTTOM + 0.15f, 1.09f, 0.28f, 0.05f, 0.03f)
-        }
-        cylinder(WOOD_DARK, wx - WINDOW_WIDTH / 2 - 0.35f, WINDOW_TOP + 0.12f, 1.07f, 0.03f, WINDOW_WIDTH + 0.7f, 0.03f, rotZ = -90f)
-        // A wall clock; its hands are the view's ([hand]).
-        cylinder(WOOD_DARK, clockX(map), CLOCK_Y, 1.0f, 0.42f, 0.04f, 0.42f, divisions = 24, rotX = 90f)
-        cylinder(TRIM, clockX(map), CLOCK_Y, 1.03f, 0.36f, 0.02f, 0.36f, divisions = 24, rotX = 90f)
     }
 
     /** One clock hand, pivot at its base, pointing up (+Y) and facing +Z. */
-    fun hand(length: Float): Model = items.getOrPut("hand/$length") { build { box(HAND, 0f, -0.02f, 0f, 0.025f, length, 0.01f) } }
+    fun hand(length: Float): CrayonModel = items.getOrPut("hand/$length") {
+        model { box(HAND, 0f, -0.02f, 0f, 0.025f, length, 0.01f, round = 0.005f, outline = 0f) }
+    }
+
+    /** A square of a picture, [size] wide, facing +Z, or lying face up when [flat], for the paper shader. */
+    fun quad(size: Float, flat: Boolean): Mesh {
+        val h = size / 2
+        return PaperMesh().apply {
+            if (flat) rect(floatArrayOf(-h, 0f, h, h, 0f, h, h, 0f, -h, -h, 0f, -h), FULL_UV, Color.WHITE)
+            else rect(floatArrayOf(-h, -h, 0f, h, -h, 0f, h, h, 0f, -h, h, 0f), FULL_UV, Color.WHITE)
+        }.mesh()
+    }
 
     /** Centre x of the back-wall clock, left of centre. */
     fun clockX(map: TileMap): Float = map.width * 0.27f
 
-    /** Planks running east-west, four to a tile, each a slightly different wood, staggered so seams don't line up. */
-    private fun Shapes.floorTile(x: Int, y: Int) {
-        val g = GAP / 2
-        for (i in 0 until PLANKS) {
-            val row = y * PLANKS + i
-            val z0 = y + i / PLANKS.toFloat()
-            val z1 = z0 + 1f / PLANKS
-            val wood = tmp.set(FLOOR_A).lerp(FLOOR_B, ((x * 7 + row * 13) % 5) / 4f)
-            topQuad(FLOOR_GAP, x.toFloat(), z1 - g, x + 1f, z1, 0f)
-            topQuad(FLOOR_GAP, x.toFloat(), z0, x + 1f, z0 + g, 0f)
-            if (row % 2 == 0) {
-                topQuad(wood, x.toFloat(), z0 + g, x + 1f, z1 - g, 0f)
-            } else {
-                topQuad(wood, x.toFloat(), z0 + g, x + 0.5f - g, z1 - g, 0f)
-                topQuad(FLOOR_GAP, x + 0.5f - g, z0 + g, x + 0.5f + g, z1 - g, 0f)
-                topQuad(wood, x + 0.5f + g, z0 + g, x + 1f, z1 - g, 0f)
+    /** Centre x of the back-wall window: the widest stretch of back wall with nothing in it, right of centre. */
+    fun window(map: TileMap): Float = map.width * 0.7f
+
+    private fun model(body: PartList.() -> Unit): CrayonModel = CrayonModel.of(PartList().apply(body).parts, paint::texture)
+
+    // --- the room ------------------------------------------------------------------------------
+
+    private fun buildRoom(map: TileMap, light: Vector3): Room {
+        val floor = PaperMesh()
+        val walls = PaperMesh()
+        val section = PaperMesh()
+        val front = map.height - 1
+        for (y in 0 until map.height) for (x in 0 until map.width) {
+            when (map[x, y]) {
+                Terrain.Floor -> floorTile(floor, map, x, y, faceShade(0f, 1f, 0f, light))
+                Terrain.Wall -> wallTile(walls, section, map, x, y, if (y == front) LIP else WALL_HEIGHT, light)
+                Terrain.Void -> Unit
             }
         }
+        val glass = PaperMesh().apply {
+            val w = WINDOW_WIDTH / 2
+            val h = (WINDOW_TOP - WINDOW_BOTTOM) / 2
+            rect(floatArrayOf(-w, -h, 0f, w, -h, 0f, w, h, 0f, -w, h, 0f), FULL_UV, Color.WHITE)
+        }.mesh()
+        return Room(
+            listOf(
+                floor.mesh() to paint.texture(RoomPaint.FLOOR)!!,
+                walls.mesh() to paint.texture(RoomPaint.WALL)!!,
+                section.mesh() to paint.texture(RoomPaint.SECTION)!!,
+            ),
+            model { fixtures(map) },
+            glass,
+        )
+    }
+
+    /** The back wall's window frame, curtains and rod, and the clock (its hands are the view's, [hand]). */
+    private fun PartList.fixtures(map: TileMap) {
+        val wx = window(map)
+        val tall = WINDOW_TOP - WINDOW_BOTTOM
+        box(TRIM, wx, WINDOW_BOTTOM - 0.07f, 1.0f, WINDOW_WIDTH + 0.18f, 0.08f, 0.12f)
+        box(TRIM, wx, WINDOW_TOP, 1.0f, WINDOW_WIDTH + 0.12f, 0.07f, 0.05f)
+        box(TRIM, wx - WINDOW_WIDTH / 2 - 0.03f, WINDOW_BOTTOM, 1.0f, 0.07f, tall, 0.05f)
+        box(TRIM, wx + WINDOW_WIDTH / 2 + 0.03f, WINDOW_BOTTOM, 1.0f, 0.07f, tall, 0.05f)
+        box(TRIM, wx, WINDOW_BOTTOM, 1.0f, 0.045f, tall, 0.035f, outline = 0.008f)
+        box(TRIM, wx, WINDOW_BOTTOM + tall / 2 - 0.02f, 1.0f, WINDOW_WIDTH, 0.045f, 0.035f, outline = 0.008f)
+        // Curtains, gathered and tied back, and a rod with knobs on.
+        lump = 0.01f
+        for (side in listOf(-1f, 1f)) {
+            val cx = wx + side * (WINDOW_WIDTH / 2 + 0.1f)
+            box(CURTAIN, cx, WINDOW_BOTTOM - 0.25f, 1.07f, 0.28f, tall + 0.36f, 0.07f, round = 0.03f)
+            capsule(CURTAIN_TIE, cx - 0.16f, WINDOW_BOTTOM + 0.15f, 1.11f, 0.07f, 0.32f, 0.05f, rotZ = -90f)
+        }
+        lump = 0f
+        cylinder(WOOD_DARK, wx - WINDOW_WIDTH / 2 - 0.35f, WINDOW_TOP + 0.13f, 1.08f, 0.035f, WINDOW_WIDTH + 0.7f, 0.035f, rotZ = -90f)
+        for (side in listOf(-1f, 1f)) sphere(WOOD_DARK, wx + side * (WINDOW_WIDTH / 2 + 0.37f), WINDOW_TOP + 0.1f, 1.08f, 0.07f, 0.07f, 0.07f)
+        // The clock: a round box whose front cap is the painted dial.
+        cylinder("#ffffff", clockX(map), CLOCK_Y, 1.0f, 0.42f, 0.05f, 0.42f, rotX = 90f, round = 0.015f, texture = "clock")
+    }
+
+    /** A floor tile, on a quarter-metre grid so the shade where floor meets wall can be laid on per vertex. */
+    private fun floorTile(m: PaperMesh, map: TileMap, x: Int, y: Int, lit: Color) {
+        val n = FLOOR_GRID
+        val c = Array(4) { Color() }
+        val p = FloatArray(12)
+        val uv = FloatArray(8)
+        for (j in 0 until n) for (i in 0 until n) {
+            val x0 = x + i.toFloat() / n
+            val x1 = x + (i + 1f) / n
+            val z0 = y + j.toFloat() / n
+            val z1 = y + (j + 1f) / n
+            // Corners in the order the face wants them: (x0, z1), (x1, z1), (x1, z0), (x0, z0).
+            val xs = floatArrayOf(x0, x1, x1, x0)
+            val zs = floatArrayOf(z1, z1, z0, z0)
+            for (k in 0..3) {
+                p[3 * k] = xs[k]; p[3 * k + 1] = 0f; p[3 * k + 2] = zs[k]
+                uv[2 * k] = xs[k] / RoomPaint.FLOOR_METRES; uv[2 * k + 1] = zs[k] / RoomPaint.FLOOR_METRES
+                val near = MathUtils.clamp(nearestWall(map, xs[k], zs[k]) / CORNER_SHADE_REACH, 0f, 1f)
+                c[k].set(CORNER_SHADE).lerp(Color.WHITE, near * near * (3 - 2 * near)).mul(lit)
+            }
+            m.rect(p, uv, c)
+        }
+    }
+
+    /** How far point ([px], [pz]) is from the nearest tile that isn't floor, looking one tile around. */
+    private fun nearestWall(map: TileMap, px: Float, pz: Float): Float {
+        var best = Float.MAX_VALUE
+        val cx = px.toInt()
+        val cz = pz.toInt()
+        for (tz in cz - 1..cz + 1) for (tx in cx - 1..cx + 1) {
+            if (map[tx, tz] == Terrain.Floor) continue
+            val dx = max(max(tx - px, 0f), px - (tx + 1))
+            val dz = max(max(tz - pz, 0f), pz - (tz + 1))
+            best = minOf(best, hypot(dx, dz))
+        }
+        return best
     }
 
     /**
      * A wall tile: a thin slab along each side that faces the floor, so the room reads as a cutaway
-     * dollhouse. The face into the room gets a baseboard, wainscot, a rail and wallpaper (or plain
-     * trim on the low front lip); the top and the other faces are the dark cut section. Slabs run
-     * [THICK] past both ends of the tile, so they meet at the corners.
+     * dollhouse. The face into the room carries the painted wall (or its bottom strip, on the low
+     * front lip); the top and the other faces are the cut section. Slabs run [THICK] past both
+     * ends of the tile, so they meet at the corners.
      */
-    private fun Shapes.wallTile(map: TileMap, x: Int, y: Int, h: Float) {
+    private fun wallTile(walls: PaperMesh, section: PaperMesh, map: TileMap, x: Int, y: Int, h: Float, light: Vector3) {
         for ((dx, dy) in SIDES) {
             if (map[x + dx, y + dy] != Terrain.Floor) continue
-            slab(x, y, dx, dy, -THICK, 1 + THICK, THICK, h)
-            if (h < WAINSCOT) {
-                sideSpan(x, y, dx, dy, -THICK, 1 + THICK, 0f, h, TRIM)
-                continue
-            }
-            sideSpan(x, y, dx, dy, -THICK, 1 + THICK, 0f, BASEBOARD, BASE)
-            sideSpan(x, y, dx, dy, -THICK, 1 + THICK, BASEBOARD, WAINSCOT, WAINSCOT_COLOR)
-            sideSpan(x, y, dx, dy, -THICK, 1 + THICK, WAINSCOT, WAINSCOT + RAIL, TRIM)
-            // Wallpaper with two faint stripes a tile.
-            var from = -THICK
-            for ((i, to) in STRIPES.withIndex()) {
-                sideSpan(x, y, dx, dy, from, if (i == STRIPES.lastIndex) 1 + THICK else to, WAINSCOT + RAIL, h, if (i % 2 == 0) WALLPAPER else WALLPAPER_STRIPE)
-                from = to
-            }
+            slab(section, x, y, dx, dy, -THICK, 1 + THICK, THICK, h, light)
+            val f = Face(x, y, dx, dy)
+            val a0 = f.along(-THICK)
+            val a1 = f.along(1 + THICK)
+            val u0 = (if (dx != 0) f.pz(-THICK, 0f) else f.px(-THICK, 0f)) / RoomPaint.WALL_METRES
+            val u1 = (if (dx != 0) f.pz(1 + THICK, 0f) else f.px(1 + THICK, 0f)) / RoomPaint.WALL_METRES
+            val v0 = 1f
+            val v1 = 1 - h / WALL_HEIGHT
+            walls.rect(
+                floatArrayOf(a0[0], 0f, a0[1], a1[0], 0f, a1[1], a1[0], h, a1[1], a0[0], h, a0[1]),
+                floatArrayOf(u0, v0, u1, v0, u1, v1, u0, v1),
+                faceShade(dx.toFloat(), 0f, dy.toFloat(), light),
+            )
         }
     }
 
-    /** Centre x of the back-wall window: the widest stretch of back wall with nothing in it, right of centre. */
-    fun window(map: TileMap): Float = map.width * 0.7f
+    /**
+     * The cut section of a wall slab behind the face of tile (x, y) toward (dx, dy): its top,
+     * back and two ends, [thick] deep, spanning [s0]..[s1] along the face.
+     */
+    private fun slab(m: PaperMesh, x: Int, y: Int, dx: Int, dy: Int, s0: Float, s1: Float, thick: Float, h: Float, light: Vector3) {
+        val f = Face(x, y, dx, dy)
+        val nx = dx.toFloat()
+        val nz = dy.toFloat()
+        val k = 1 / RoomPaint.SECTION_METRES
+        fun px(s: Float, d: Float) = f.px(s, d)
+        fun pz(s: Float, d: Float) = f.pz(s, d)
+        fun top(s: Float, d: Float) = floatArrayOf(px(s, d) * k, pz(s, d) * k)
+        val t00 = top(s0, 0f); val t10 = top(s1, 0f); val t11 = top(s1, thick); val t01 = top(s0, thick)
+        m.rect(
+            floatArrayOf(px(s0, 0f), h, pz(s0, 0f), px(s1, 0f), h, pz(s1, 0f), px(s1, thick), h, pz(s1, thick), px(s0, thick), h, pz(s0, thick)),
+            floatArrayOf(t00[0], t00[1], t10[0], t10[1], t11[0], t11[1], t01[0], t01[1]),
+            faceShade(0f, 1f, 0f, light),
+        )
+        val len = (s1 - s0) * k
+        val hk = h * k
+        val tk = thick * k
+        m.rect(
+            floatArrayOf(px(s1, thick), 0f, pz(s1, thick), px(s0, thick), 0f, pz(s0, thick), px(s0, thick), h, pz(s0, thick), px(s1, thick), h, pz(s1, thick)),
+            floatArrayOf(0f, hk, len, hk, len, 0f, 0f, 0f),
+            faceShade(-nx, 0f, -nz, light),
+        )
+        m.rect(
+            floatArrayOf(px(s1, 0f), 0f, pz(s1, 0f), px(s1, thick), 0f, pz(s1, thick), px(s1, thick), h, pz(s1, thick), px(s1, 0f), h, pz(s1, 0f)),
+            floatArrayOf(0f, hk, tk, hk, tk, 0f, 0f, 0f),
+            faceShade(f.rx, 0f, f.rz, light),
+        )
+        m.rect(
+            floatArrayOf(px(s0, thick), 0f, pz(s0, thick), px(s0, 0f), 0f, pz(s0, 0f), px(s0, 0f), h, pz(s0, 0f), px(s0, thick), h, pz(s0, thick)),
+            floatArrayOf(0f, hk, tk, hk, tk, 0f, 0f, 0f),
+            faceShade(-f.rx, 0f, -f.rz, light),
+        )
+    }
+
+    /** The face of wall tile (x, y) toward (dx, dy): points along it (s, 0..1 left to right from the room) and back into the wall (d). */
+    private class Face(x: Int, y: Int, dx: Int, dy: Int) {
+        val nx = dx.toFloat()
+        val nz = dy.toFloat()
+        val cx = x + 0.5f + nx * 0.5f
+        val cz = y + 0.5f + nz * 0.5f
+        val rx = nz
+        val rz = -nx
+        fun px(s: Float, d: Float) = cx + rx * (s - 0.5f) - nx * d
+        fun pz(s: Float, d: Float) = cz + rz * (s - 0.5f) - nz * d
+        fun along(s: Float) = floatArrayOf(px(s, 0f), pz(s, 0f))
+    }
+
+    /**
+     * The shade a side facing (nx, ny, nz) gets from the world [light]: the crayon shader's two tones,
+     * worked out once per side, since the paper shader does no lighting of its own.
+     */
+    private fun faceShade(nx: Float, ny: Float, nz: Float, light: Vector3): Color {
+        val ndl = nx * light.x + ny * light.y + nz * light.z
+        val t = MathUtils.clamp((ndl + 0.12f + 0.03f) / 0.06f, 0f, 1f)
+        return Color(SHADE).lerp(Color.WHITE, t * t * (3 - 2 * t))
+    }
 
     // --- items ---------------------------------------------------------------------------------
 
-    private fun Shapes.buildItem(id: String, kind: String) {
+    private fun PartList.buildItem(id: String, kind: String) {
+        lump = 0.003f
         when (id) {
             "bed" -> {
-                for (sx in listOf(-0.4f, 0.4f)) for (sz in listOf(-0.42f, 0.42f)) box(WOOD_DARK, sx, 0f, sz, 0.08f, 0.16f, 0.08f)
-                box(WOOD, 0f, 0.12f, 0f, 0.92f, 0.1f, 0.96f)
-                box(SHEET, 0f, 0.22f, 0.01f, 0.86f, 0.1f, 0.9f)
-                box(BLANKET, 0f, 0.24f, 0.17f, 0.9f, 0.1f, 0.6f)
-                box(BLANKET_STRIPE, 0f, 0.245f, -0.1f, 0.92f, 0.12f, 0.06f)
-                sphere(PILLOW, 0f, 0.3f, -0.3f, 0.56f, 0.12f, 0.24f)
-                box(WOOD, 0f, 0f, -0.47f, 0.96f, 0.7f, 0.06f)
-                box(WOOD_LIGHT, 0f, 0.7f, -0.47f, 1.0f, 0.05f, 0.08f)
+                for (sx in listOf(-0.4f, 0.4f)) for (sz in listOf(-0.42f, 0.42f)) box(WOOD_DARK, sx, 0f, sz, 0.085f, 0.16f, 0.085f, round = 0.03f)
+                box(WOOD, 0f, 0.12f, 0f, 0.94f, 0.1f, 0.98f, round = 0.035f)
+                box(SHEET, 0f, 0.2f, 0.01f, 0.88f, 0.12f, 0.92f, round = 0.05f)
+                box(BLANKET, 0f, 0.225f, 0.17f, 0.93f, 0.1f, 0.62f, round = 0.045f, lump = 0.006f)
+                box(BLANKET_STRIPE, 0f, 0.235f, -0.12f, 0.94f, 0.1f, 0.08f, round = 0.04f, lump = 0.006f)
+                sphere(PILLOW, 0f, 0.27f, -0.3f, 0.6f, 0.15f, 0.27f, lump = 0.008f)
+                box(WOOD, 0f, 0f, -0.47f, 0.98f, 0.7f, 0.07f, round = 0.03f)
+                capsule(WOOD_LIGHT, -0.52f, 0.7f, -0.47f, 0.08f, 1.04f, 0.1f, rotZ = -90f)
             }
             "desk" -> {
-                for (sx in listOf(-0.42f, 0.42f)) for (sz in listOf(-0.24f, 0.24f)) box(WOOD_DARK, sx, 0f, sz, 0.06f, 0.5f, 0.06f)
-                box(WOOD, 0f, 0.5f, 0f, 0.96f, 0.06f, 0.6f)
-                box(WOOD_LIGHT, 0.24f, 0.32f, 0f, 0.4f, 0.18f, 0.54f)
-                box(PAPER, -0.12f, 0.56f, 0.04f, 0.28f, 0.01f, 0.2f)
-                cylinder(MUG, 0.18f, 0.56f, 0.12f, 0.09f, 0.1f, 0.09f)
+                for (sx in listOf(-0.42f, 0.42f)) for (sz in listOf(-0.24f, 0.24f)) box(WOOD_DARK, sx, 0f, sz, 0.065f, 0.5f, 0.065f, round = 0.025f)
+                box(WOOD, 0f, 0.5f, 0f, 0.98f, 0.065f, 0.62f, round = 0.03f)
+                box(WOOD_LIGHT, 0.24f, 0.31f, 0f, 0.42f, 0.18f, 0.56f, round = 0.03f)
+                sphere(KNOB, 0.24f, 0.38f, 0.28f, 0.045f, 0.045f, 0.03f)
+                box(PAPER, -0.12f, 0.562f, 0.04f, 0.28f, 0.004f, 0.2f, round = 0.002f, outline = 0f, lump = 0f)
+                cylinder(MUG, 0.18f, 0.565f, 0.12f, 0.09f, 0.1f, 0.09f, round = 0.015f)
+                capsule(MUG, 0.235f, 0.585f, 0.12f, 0.025f, 0.06f, 0.025f)
                 // A little lamp.
-                cylinder(WOOD_DARK, -0.34f, 0.56f, -0.18f, 0.14f, 0.03f, 0.14f)
-                cylinder(WOOD_DARK, -0.34f, 0.56f, -0.18f, 0.025f, 0.3f, 0.025f)
-                cylinder(LAMPSHADE, -0.34f, 0.8f, -0.18f, 0.22f, 0.14f, 0.22f)
+                cylinder(WOOD_DARK, -0.34f, 0.565f, -0.18f, 0.15f, 0.035f, 0.15f, round = 0.015f)
+                cylinder(WOOD_DARK, -0.34f, 0.58f, -0.18f, 0.025f, 0.24f, 0.025f)
+                cylinder(LAMPSHADE, -0.34f, 0.78f, -0.18f, 0.26f, 0.16f, 0.26f, taper = 0.62f, round = 0.025f)
             }
             "chair" -> {
-                for (sx in listOf(-0.16f, 0.16f)) for (sz in listOf(-0.16f, 0.16f)) box(WOOD_DARK, sx, 0f, sz, 0.05f, 0.3f, 0.05f)
-                box(WOOD, 0f, 0.3f, 0f, 0.42f, 0.05f, 0.42f)
-                sphere(CUSHION, 0f, 0.33f, 0f, 0.36f, 0.08f, 0.36f)
-                box(WOOD, -0.19f, 0.3f, 0f, 0.05f, 0.42f, 0.42f)
+                for (sx in listOf(-0.16f, 0.16f)) for (sz in listOf(-0.16f, 0.16f)) box(WOOD_DARK, sx, 0f, sz, 0.055f, 0.3f, 0.055f, round = 0.022f)
+                box(WOOD, 0f, 0.29f, 0f, 0.44f, 0.05f, 0.44f, round = 0.02f)
+                box(CUSHION, 0f, 0.32f, 0f, 0.38f, 0.07f, 0.38f, round = 0.035f, lump = 0.006f)
+                box(WOOD, -0.195f, 0.3f, 0f, 0.05f, 0.44f, 0.42f, round = 0.022f)
             }
             "easel" -> {
-                box(WOOD, -0.22f, 0f, 0.08f, 0.05f, 1.15f, 0.05f, rotZ = -8f)
-                box(WOOD, 0.22f, 0f, 0.08f, 0.05f, 1.15f, 0.05f, rotZ = 8f)
-                box(WOOD_DARK, 0f, 0f, -0.2f, 0.05f, 1.1f, 0.05f, rotX = -14f)
-                box(WOOD, 0f, 0.42f, 0.12f, 0.56f, 0.05f, 0.08f)
-                box(CANVAS, 0f, 0.47f, 0.12f, 0.5f, 0.56f, 0.03f)
-                sphere(POSTER_SUN, -0.08f, 0.72f, 0.14f, 0.16f, 0.16f, 0.02f)
-                box(LEAF, 0.05f, 0.5f, 0.14f, 0.38f, 0.14f, 0.02f)
+                box(WOOD, -0.22f, 0f, 0.08f, 0.05f, 1.15f, 0.05f, rotZ = -8f, round = 0.02f)
+                box(WOOD, 0.22f, 0f, 0.08f, 0.05f, 1.15f, 0.05f, rotZ = 8f, round = 0.02f)
+                box(WOOD_DARK, 0f, 0f, -0.2f, 0.05f, 1.1f, 0.05f, rotX = -14f, round = 0.02f)
+                box(WOOD, 0f, 0.42f, 0.12f, 0.58f, 0.05f, 0.09f, round = 0.02f)
+                box(CANVAS, 0f, 0.47f, 0.12f, 0.5f, 0.56f, 0.03f, round = 0.008f)
+                sphere(POSTER_SUN, -0.08f, 0.72f, 0.135f, 0.15f, 0.15f, 0.02f, outline = 0.006f)
+                box(LEAF, 0.05f, 0.5f, 0.135f, 0.36f, 0.12f, 0.02f, round = 0.01f, outline = 0.006f)
             }
             "record_player" -> {
-                box(WOOD_DARK, 0f, 0f, 0f, 0.8f, 0.5f, 0.46f)
-                box(WOOD, 0f, 0.08f, 0.235f, 0.7f, 0.34f, 0.01f)
-                box(WOOD_LIGHT, 0f, 0.5f, 0f, 0.6f, 0.06f, 0.4f)
-                cylinder(VINYL, -0.06f, 0.56f, 0f, 0.3f, 0.02f, 0.3f)
-                cylinder(RECORD_LABEL, -0.06f, 0.575f, 0f, 0.1f, 0.01f, 0.1f)
-                box(TRIM, 0.2f, 0.56f, -0.08f, 0.03f, 0.03f, 0.22f)
+                box(WOOD_DARK, 0f, 0f, 0f, 0.8f, 0.5f, 0.46f, round = 0.035f)
+                box(WOOD, 0f, 0.08f, 0.225f, 0.68f, 0.32f, 0.03f, round = 0.015f)
+                box(WOOD_LIGHT, 0f, 0.5f, 0f, 0.62f, 0.06f, 0.4f, round = 0.025f)
+                cylinder(VINYL, -0.06f, 0.555f, 0f, 0.3f, 0.02f, 0.3f, round = 0.006f)
+                cylinder(RECORD_LABEL, -0.06f, 0.57f, 0f, 0.1f, 0.012f, 0.1f, round = 0.004f, outline = 0.005f)
+                capsule(TRIM, 0.2f, 0.575f, -0.19f, 0.03f, 0.22f, 0.03f, rotX = 90f)
             }
             "plant" -> {
-                cylinder(POT, 0f, 0f, 0f, 0.32f, 0.28f, 0.32f)
-                cylinder(POT_RIM, 0f, 0.26f, 0f, 0.36f, 0.06f, 0.36f)
-                sphere(LEAF_DARK, 0f, 0.28f, 0f, 0.4f, 0.32f, 0.4f)
-                sphere(LEAF, -0.1f, 0.42f, 0.04f, 0.26f, 0.26f, 0.26f)
-                sphere(LEAF, 0.12f, 0.46f, -0.02f, 0.24f, 0.28f, 0.24f)
-                sphere(LEAF_LIGHT, 0f, 0.58f, 0.03f, 0.2f, 0.22f, 0.2f)
+                cylinder(POT, 0f, 0f, 0f, 0.28f, 0.28f, 0.28f, taper = 1.2f, round = 0.02f)
+                cylinder(POT_RIM, 0f, 0.25f, 0f, 0.37f, 0.07f, 0.37f, round = 0.03f)
+                lump = 0.02f
+                sphere(LEAF_DARK, 0f, 0.27f, 0f, 0.42f, 0.32f, 0.42f)
+                sphere(LEAF, -0.11f, 0.42f, 0.05f, 0.27f, 0.27f, 0.27f)
+                sphere(LEAF, 0.12f, 0.45f, -0.02f, 0.25f, 0.29f, 0.25f)
+                sphere(LEAF_LIGHT, 0f, 0.58f, 0.04f, 0.21f, 0.23f, 0.21f)
             }
-            "rug" -> {
-                cylinder(RUG, 0f, 0f, 0f, 1.9f, 0.015f, 1.3f, divisions = 32)
-                cylinder(RUG_INNER, 0f, 0.01f, 0f, 1.5f, 0.015f, 0.95f, divisions = 32)
-                cylinder(RUG, 0f, 0.02f, 0f, 1.0f, 0.015f, 0.6f, divisions = 32)
-            }
+            "rug" -> cylinder("#ffffff", 0f, 0f, 0f, 1.9f, 0.02f, 1.3f, round = 0.008f, texture = "rug", outline = 0.008f, lump = 0f)
             "mail_hatch" -> {
                 // A brass flap in the wall at hand height, with a little shelf under it for parcels.
-                box(TRIM, 0f, 0.62f, 0.02f, 0.62f, 0.5f, 0.04f)
-                box(WOOD_DARK, 0f, 0.66f, 0.04f, 0.54f, 0.42f, 0.02f)
-                box(KNOB, 0f, 0.74f, 0.06f, 0.46f, 0.28f, 0.03f)
-                box(WOOD_DARK, 0f, 0.94f, 0.08f, 0.34f, 0.03f, 0.02f)
-                box(WOOD_DARK, 0f, 0.8f, 0.08f, 0.14f, 0.03f, 0.03f)
-                box(WOOD, 0f, 0.5f, 0.12f, 0.7f, 0.04f, 0.24f)
-                box(WOOD_DARK, -0.28f, 0.36f, 0.04f, 0.04f, 0.14f, 0.08f)
-                box(WOOD_DARK, 0.28f, 0.36f, 0.04f, 0.04f, 0.14f, 0.08f)
+                box(TRIM, 0f, 0.62f, 0.02f, 0.64f, 0.52f, 0.05f, round = 0.02f)
+                box(WOOD_DARK, 0f, 0.66f, 0.045f, 0.54f, 0.42f, 0.02f, round = 0.01f, outline = 0.007f)
+                box(KNOB, 0f, 0.74f, 0.06f, 0.46f, 0.28f, 0.03f, round = 0.015f)
+                capsule(WOOD_DARK, -0.17f, 0.95f, 0.08f, 0.03f, 0.34f, 0.025f, rotZ = -90f, outline = 0.006f)
+                box(WOOD_DARK, 0f, 0.8f, 0.08f, 0.14f, 0.03f, 0.03f, round = 0.012f, outline = 0.006f)
+                box(WOOD, 0f, 0.5f, 0.12f, 0.72f, 0.045f, 0.24f, round = 0.02f)
+                box(WOOD_DARK, -0.28f, 0.36f, 0.04f, 0.045f, 0.14f, 0.08f, round = 0.018f)
+                box(WOOD_DARK, 0.28f, 0.36f, 0.04f, 0.045f, 0.14f, 0.08f, round = 0.018f)
             }
             // A rail along the wall, a little wider than its tile; the view hangs frames from it.
-            "picture_rail" -> box(WOOD_DARK, RAIL_X, RAIL_Y, 0.03f, RAIL_LENGTH, 0.04f, 0.06f)
+            "picture_rail" -> capsule(WOOD_DARK, RAIL_X - RAIL_LENGTH / 2, RAIL_Y + 0.02f, 0.03f, 0.05f, RAIL_LENGTH, 0.05f, rotZ = -90f)
             "poster" -> {
-                box(POSTER, 0f, 0.95f, 0.01f, 0.62f, 0.82f, 0.02f)
-                sphere(POSTER_SUN, 0.1f, 1.38f, 0.025f, 0.22f, 0.22f, 0.02f)
-                box(POSTER_HILL, 0f, 0.99f, 0.025f, 0.54f, 0.22f, 0.02f)
-                box(TRIM, 0f, 1.71f, 0.03f, 0.05f, 0.05f, 0.02f)
+                box("#ffffff", 0f, 0.95f, 0.01f, 0.62f, 0.82f, 0.02f, round = 0.006f, texture = "poster", lump = 0f)
+                sphere(CURTAIN, 0f, 1.71f, 0.03f, 0.05f, 0.05f, 0.03f)
             }
             else -> when (kind) {
                 "door", "fixture" -> {
-                    box(TRIM, 0f, 0f, 0.02f, 0.92f, 1.66f, 0.04f)
-                    box(DOOR, 0f, 0f, 0.05f, 0.8f, 1.6f, 0.05f)
-                    box(WOOD_DARK, 0f, 0.92f, 0.08f, 0.6f, 0.5f, 0.02f)
-                    box(WOOD_DARK, 0f, 0.22f, 0.08f, 0.6f, 0.55f, 0.02f)
-                    sphere(KNOB, 0.3f, 0.78f, 0.1f, 0.07f, 0.07f, 0.07f)
+                    box(TRIM, 0f, 0f, 0.02f, 0.94f, 1.68f, 0.05f, round = 0.02f)
+                    box(DOOR, 0f, 0f, 0.05f, 0.8f, 1.6f, 0.05f, round = 0.02f)
+                    box(WOOD_DARK, 0f, 0.92f, 0.08f, 0.6f, 0.5f, 0.02f, round = 0.015f, outline = 0.007f)
+                    box(WOOD_DARK, 0f, 0.22f, 0.08f, 0.6f, 0.55f, 0.02f, round = 0.015f, outline = 0.007f)
+                    sphere(KNOB, 0.3f, 0.78f, 0.1f, 0.075f, 0.075f, 0.075f)
                 }
                 "key" -> {
                     cylinder(KNOB, -0.08f, 0.02f, 0f, 0.16f, 0.04f, 0.16f)
@@ -247,105 +365,55 @@ class RoomModels : Disposable {
                     box(KNOB, 0.14f, 0.02f, 0.04f, 0.04f, 0.04f, 0.06f)
                 }
                 "apple" -> {
-                    sphere(APPLE, 0f, 0f, 0f, 0.24f, 0.22f, 0.24f)
-                    box(LEAF, 0.04f, 0.22f, 0f, 0.08f, 0.03f, 0.05f)
+                    sphere(APPLE, 0f, 0f, 0f, 0.24f, 0.22f, 0.24f, lump = 0.006f)
+                    capsule(WOOD_DARK, 0f, 0.2f, 0f, 0.02f, 0.06f, 0.02f, outline = 0.005f)
+                    sphere(LEAF, 0.05f, 0.23f, 0f, 0.09f, 0.025f, 0.05f, outline = 0.005f)
                 }
                 "book" -> {
-                    box(BOOK, 0f, 0f, 0f, 0.3f, 0.07f, 0.4f)
-                    box(PAPER, 0.02f, 0.01f, 0f, 0.27f, 0.05f, 0.38f)
+                    box(BOOK, 0f, 0f, 0f, 0.3f, 0.07f, 0.4f, round = 0.015f)
+                    box(PAPER, 0.02f, 0.01f, 0f, 0.27f, 0.05f, 0.38f, round = 0.01f, outline = 0f)
                 }
-                "exit" -> topQuad(EXIT, -0.45f, -0.45f, 0.45f, 0.45f, 0.01f)
-                else -> box(UNKNOWN, 0f, 0f, 0f, 0.4f, 0.4f, 0.4f)
+                "exit" -> box(EXIT, 0f, 0f, 0f, 0.9f, 0.01f, 0.9f, round = 0.004f, outline = 0.006f, lump = 0f)
+                else -> box(UNKNOWN, 0f, 0f, 0f, 0.4f, 0.4f, 0.4f, round = 0.05f)
             }
         }
     }
 
     override fun dispose() {
-        roomModel?.dispose()
+        built?.dispose()
         items.values.forEach { it.dispose() }
         items.clear()
+        paint.dispose()
     }
 
-    /**
-     * Shapes added to one mesh part, each in its own colour. Positions are the bottom centre of the
-     * shape; rotations (degrees) are about that point.
-     */
-    private class Shapes(private val b: MeshPartBuilder) {
-        private val t = Matrix4()
-        val tmp = Color()
+    /** A flat-shaded mesh being built for the paper shader: position, uv and colour per vertex, quads only. */
+    private class PaperMesh {
+        private val v = ArrayList<Float>()
+        private val idx = ArrayList<Short>()
 
-        fun box(c: Color, x: Float, y: Float, z: Float, w: Float, h: Float, d: Float, rotX: Float = 0f, rotZ: Float = 0f) {
-            place(c, x, y, z, rotX, rotZ, h)
-            BoxShapeBuilder.build(b, 0f, 0f, 0f, w, h, d)
+        /** A quad of corners 00, 10, 11, 01 (counter-clockwise from the front) in [p], with [uv] and one colour. */
+        fun rect(p: FloatArray, uv: FloatArray, c: Color) = rect(p, uv, Array(4) { c })
+
+        fun rect(p: FloatArray, uv: FloatArray, c: Array<Color>) {
+            val base = v.size / STRIDE
+            for (k in 0..3) {
+                v += p[3 * k]; v += p[3 * k + 1]; v += p[3 * k + 2]
+                v += uv[2 * k]; v += uv[2 * k + 1]
+                v += c[k].r; v += c[k].g; v += c[k].b; v += 1f
+            }
+            for (k in intArrayOf(0, 1, 2, 2, 3, 0)) idx += (base + k).toShort()
         }
 
-        fun sphere(c: Color, x: Float, y: Float, z: Float, w: Float, h: Float, d: Float) {
-            place(c, x, y, z, 0f, 0f, h)
-            SphereShapeBuilder.build(b, w, h, d, 14, 10)
+        fun mesh(): Mesh {
+            check(v.size / STRIDE <= 0xffff) { "a paper mesh has more vertices than 16-bit indices reach" }
+            return Mesh(true, v.size / STRIDE, idx.size, VertexAttribute.Position(), VertexAttribute.TexCoords(0), VertexAttribute.ColorUnpacked()).apply {
+                setVertices(v.toFloatArray())
+                setIndices(idx.toShortArray())
+            }
         }
 
-        fun cylinder(c: Color, x: Float, y: Float, z: Float, w: Float, h: Float, d: Float, divisions: Int = 16, rotX: Float = 0f, rotZ: Float = 0f) {
-            place(c, x, y, z, rotX, rotZ, h)
-            CylinderShapeBuilder.build(b, w, h, d, divisions)
-        }
-
-        /** An upward-facing rectangle at height [y]. */
-        fun topQuad(c: Color, x0: Float, z0: Float, x1: Float, z1: Float, y: Float) {
-            b.setColor(c)
-            b.setVertexTransform(t.idt())
-            b.rect(x0, y, z1, x1, y, z1, x1, y, z0, x0, y, z0, 0f, 1f, 0f)
-        }
-
-        /** The side of wall tile (x, y) facing (dx, dy), from height [y0] to [y1]. */
-        fun sideQuad(x: Int, y: Int, dx: Int, dy: Int, y0: Float, y1: Float, c: Color) = sideSpan(x, y, dx, dy, 0f, 1f, y0, y1, c)
-
-        /**
-         * The cut section of a wall slab behind the face of tile (x, y) toward (dx, dy): its top,
-         * back and two ends, [thick] deep, spanning [s0]..[s1] along the face.
-         */
-        fun slab(x: Int, y: Int, dx: Int, dy: Int, s0: Float, s1: Float, thick: Float, h: Float) {
-            b.setColor(SECTION)
-            b.setVertexTransform(t.idt())
-            val nx = dx.toFloat()
-            val nz = dy.toFloat()
-            val cx = x + 0.5f + nx * 0.5f
-            val cz = y + 0.5f + nz * 0.5f
-            val rx = nz
-            val rz = -nx
-            // Points along the face (s) and back into the wall (d).
-            fun px(s: Float, d: Float) = cx + rx * (s - 0.5f) - nx * d
-            fun pz(s: Float, d: Float) = cz + rz * (s - 0.5f) - nz * d
-            b.rect(px(s0, 0f), h, pz(s0, 0f), px(s1, 0f), h, pz(s1, 0f), px(s1, thick), h, pz(s1, thick), px(s0, thick), h, pz(s0, thick), 0f, 1f, 0f)
-            b.rect(px(s1, thick), 0f, pz(s1, thick), px(s0, thick), 0f, pz(s0, thick), px(s0, thick), h, pz(s0, thick), px(s1, thick), h, pz(s1, thick), -nx, 0f, -nz)
-            b.rect(px(s1, 0f), 0f, pz(s1, 0f), px(s1, thick), 0f, pz(s1, thick), px(s1, thick), h, pz(s1, thick), px(s1, 0f), h, pz(s1, 0f), rx, 0f, rz)
-            b.rect(px(s0, thick), 0f, pz(s0, thick), px(s0, 0f), 0f, pz(s0, 0f), px(s0, 0f), h, pz(s0, 0f), px(s0, thick), h, pz(s0, thick), -rx, 0f, -rz)
-        }
-
-        /** Part [s0]..[s1] (0..1 along the face, left to right as seen from the room; may run past either end) of a wall face. */
-        fun sideSpan(x: Int, y: Int, dx: Int, dy: Int, s0: Float, s1: Float, y0: Float, y1: Float, c: Color) {
-            b.setColor(c)
-            b.setVertexTransform(t.idt())
-            // The face's plane and its left-to-right direction, as seen from the neighbouring tile.
-            val nx = dx.toFloat()
-            val nz = dy.toFloat()
-            val cx = x + 0.5f + nx * 0.5f
-            val cz = y + 0.5f + nz * 0.5f
-            val rx = nz
-            val rz = -nx
-            val ax = cx + rx * (s0 - 0.5f)
-            val az = cz + rz * (s0 - 0.5f)
-            val bx = cx + rx * (s1 - 0.5f)
-            val bz = cz + rz * (s1 - 0.5f)
-            b.rect(ax, y0, az, bx, y0, bz, bx, y1, bz, ax, y1, az, nx, 0f, nz)
-        }
-
-        private fun place(c: Color, x: Float, y: Float, z: Float, rotX: Float, rotZ: Float, h: Float) {
-            b.setColor(c)
-            t.setToTranslation(x, y, z)
-            if (rotX != 0f) t.rotate(Vector3.X, rotX)
-            if (rotZ != 0f) t.rotate(Vector3.Z, rotZ)
-            t.translate(0f, h / 2, 0f)
-            b.setVertexTransform(t)
+        private companion object {
+            const val STRIDE = 9
         }
     }
 
@@ -365,59 +433,52 @@ class RoomModels : Disposable {
         const val RAIL_LENGTH = 1.5f
         val FRAME_XS = floatArrayOf(-0.46f, 0f, 0.46f)
         const val FRAME_BOTTOM = 1.2f
+        /** The bands of the painted wall, in metres up from the floor. */
+        const val BASEBOARD = 0.1f
+        const val WAINSCOT = 0.75f
+        const val RAIL_TOP = 0.8f
         private val WALL_ITEMS = setOf("poster", "door", "mail_hatch", "picture_rail")
         private const val THICK = 0.14f
-        private const val PLANKS = 4
-        private const val GAP = 0.012f
-        /** Where the wallpaper switches between plain and stripe, along a tile face. */
-        private val STRIPES = floatArrayOf(0.22f, 0.28f, 0.72f, 0.78f, 1f)
-        private const val BASEBOARD = 0.1f
-        private const val WAINSCOT = 0.75f
-        private const val RAIL = 0.05f
+        private const val FLOOR_GRID = 4
+        /** How far from a wall the floor's corner shade fades out, and what it multiplies by at the wall. */
+        private const val CORNER_SHADE_REACH = 0.4f
+        private val CORNER_SHADE = Color.valueOf("d9c9dcff")
+        /** The shaded side's tone, as the crayon shader's (sRGB). */
+        private val SHADE = Color.valueOf("e2d2ecff")
         /** (dx, dy) to each neighbouring tile. */
         private val SIDES = listOf(0 to 1, 0 to -1, 1 to 0, -1 to 0)
+        private val FULL_UV = floatArrayOf(0f, 1f, 1f, 1f, 1f, 0f, 0f, 0f)
 
-        private val FLOOR_A = Color.valueOf("dcaa78ff")
-        private val FLOOR_B = Color.valueOf("cf9a66ff")
-        private val FLOOR_GAP = Color.valueOf("b98456ff")
-        private val SECTION = Color.valueOf("5b4636ff")
-        private val BASE = Color.valueOf("a8714aff")
-        private val WAINSCOT_COLOR = Color.valueOf("9fcdb5ff")
-        private val WALLPAPER = Color.valueOf("fbe6c4ff")
-        private val WALLPAPER_STRIPE = Color.valueOf("f5d7aaff")
-        val TRIM = Color.valueOf("fff8eeff")
-        private val WOOD = Color.valueOf("c48a55ff")
-        private val WOOD_LIGHT = Color.valueOf("dcaa74ff")
-        private val WOOD_DARK = Color.valueOf("8c5a36ff")
-        private val SHEET = Color.valueOf("fff6e6ff")
-        private val BLANKET = Color.valueOf("6f9de6ff")
-        private val BLANKET_STRIPE = Color.valueOf("f7c94bff")
-        private val PILLOW = Color.valueOf("ffffffff")
-        private val PAPER = Color.valueOf("fbf6eaff")
-        private val MUG = Color.valueOf("e8685aff")
-        private val LAMPSHADE = Color.valueOf("ffd98aff")
-        private val CUSHION = Color.valueOf("e86f7aff")
-        private val CANVAS = Color.valueOf("fbf6eaff")
-        private val VINYL = Color.valueOf("26232bff")
-        private val RECORD_LABEL = Color.valueOf("e8685aff")
-        private val POT = Color.valueOf("d9774fff")
-        private val POT_RIM = Color.valueOf("e8906aff")
-        private val LEAF = Color.valueOf("6cc070ff")
-        private val LEAF_DARK = Color.valueOf("4f9e5aff")
-        private val LEAF_LIGHT = Color.valueOf("8ed884ff")
-        private val RUG = Color.valueOf("e79aa8ff")
-        private val RUG_INNER = Color.valueOf("fbe0b4ff")
-        private val POSTER = Color.valueOf("86b6e8ff")
-        private val POSTER_SUN = Color.valueOf("ffd45cff")
-        private val POSTER_HILL = Color.valueOf("6cc070ff")
-        private val DOOR = Color.valueOf("b77a48ff")
-        private val KNOB = Color.valueOf("f5c542ff")
-        private val APPLE = Color.valueOf("e04848ff")
-        private val BOOK = Color.valueOf("4f7fdcff")
-        private val EXIT = Color.valueOf("4cd18aff")
-        private val CURTAIN = Color.valueOf("f29aa0ff")
-        private val CURTAIN_TIE = Color.valueOf("fbe0b4ff")
-        private val HAND = Color.valueOf("3a2a20ff")
-        private val UNKNOWN = Color.valueOf("c78bd8ff")
+        // Pastels, a little softer than the old flat colours, since ink outlines do the separating now.
+        const val TRIM = "#fff8ee"
+        private const val WOOD = "#dba77c"
+        private const val WOOD_LIGHT = "#edc49c"
+        private const val WOOD_DARK = "#b47e5e"
+        private const val SHEET = "#fff7ea"
+        private const val BLANKET = "#9fc1ef"
+        private const val BLANKET_STRIPE = "#ffe08a"
+        private const val PILLOW = "#fffaf2"
+        private const val PAPER = "#fdf9ef"
+        private const val MUG = "#f2928a"
+        private const val LAMPSHADE = "#ffe3a1"
+        private const val CUSHION = "#f4a3ad"
+        private const val CANVAS = "#fdf8ee"
+        private const val VINYL = "#4a4255"
+        private const val RECORD_LABEL = "#f2928a"
+        private const val POT = "#e9a07c"
+        private const val POT_RIM = "#f2b594"
+        private const val LEAF = "#9fd49a"
+        private const val LEAF_DARK = "#80c088"
+        private const val LEAF_LIGHT = "#c2e6a8"
+        private const val POSTER_SUN = "#ffd86a"
+        private const val DOOR = "#d6a27a"
+        private const val KNOB = "#f5cf6a"
+        private const val APPLE = "#ef7b7b"
+        private const val BOOK = "#8fb0ec"
+        private const val EXIT = "#8fdcaa"
+        private const val CURTAIN = "#f6b2b7"
+        private const val CURTAIN_TIE = "#fde9c6"
+        private const val HAND = "#4a3a4f"
+        private const val UNKNOWN = "#d6aee6"
     }
 }

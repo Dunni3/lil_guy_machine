@@ -1,0 +1,808 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lil Guy Looks</title>
+<!--
+  Style workshop for the little guy: the same rig as app/.../Blob.kt (body radius 0.3, scale 1.25,
+  arms, feet, sprout; 1 unit = 1 m, pivot at his feet, front +Z) drawn in two looks side by side.
+  Open it in a browser; three.js comes from jsDelivr. Everything here is cheap enough for the TV:
+  vertex colours or one texture per part, an inverted-hull outline (one extra draw per part), and
+  for look A a two-tone shader small enough to port to a libGDX ShaderProgram.
+-->
+<style>
+  :root {
+    --bg: #fbf4ea; --card: #fffaf3; --ink: #4a3a4f; --muted: #8b7b8d; --line: #ece0d3;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.45 ui-rounded, "SF Pro Rounded", "Nunito", system-ui, sans-serif; }
+  header { padding: 20px 24px 4px; }
+  h1 { margin: 0; font-size: 22px; letter-spacing: -0.01em; }
+  header p { margin: 4px 0 0; color: var(--muted); }
+  .controls { display: flex; flex-wrap: wrap; gap: 12px 26px; padding: 12px 24px; align-items: center; }
+  .group { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .group > span { color: var(--muted); font-size: 13px; margin-right: 2px; }
+  button.chip { border: 1.5px solid var(--line); background: var(--card); color: var(--ink); border-radius: 999px;
+    padding: 4px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+  button.chip[aria-pressed="true"] { border-color: var(--ink); background: #fff; }
+  button.swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid #fff; padding: 0;
+    box-shadow: 0 0 0 1.5px var(--line); cursor: pointer; }
+  button.swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--ink); }
+  label.toggle { font-size: 13px; display: flex; gap: 5px; align-items: center; cursor: pointer; }
+  main { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 8px 24px 28px; }
+  @media (max-width: 820px) { main { grid-template-columns: 1fr; padding: 8px 16px 24px; } .controls, header { padding-left: 16px; padding-right: 16px; } }
+  .card { background: var(--card); border: 1.5px solid var(--line); border-radius: 18px; overflow: hidden; }
+  .card canvas { display: block; width: 100%; aspect-ratio: 1 / 1; touch-action: none; cursor: grab; }
+  .cap { padding: 10px 16px 14px; border-top: 1.5px solid var(--line); }
+  .cap h2 { margin: 0; font-size: 16px; }
+  .cap p { margin: 3px 0 0; color: var(--muted); font-size: 13px; }
+  main.solo { grid-template-columns: minmax(0, 720px); justify-content: center; }
+  body:not(.shot) .card.retired { display: none; }
+  body.shot header, body.shot .controls, body.shot .cap, body.shot .card:not(.on) { display: none; }
+  body.shot main { display: block; padding: 0; }
+  body.shot .card { border: 0; border-radius: 0; }
+  body.shot .card canvas { width: 100vw; height: 100vh; aspect-ratio: auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Lil guy: hand-drawn</h1>
+  <p>Try body shapes and what sits on his head. Drag to turn the camera.</p>
+</header>
+<div class="controls">
+  <div class="group" id="shapes"><span>Shape</span></div>
+  <div class="group" id="toppers"><span>Topper</span></div>
+  <div class="group" id="faces"><span>Face</span></div>
+  <div class="group" id="swatches"><span>Body</span></div>
+  <div class="group" id="motion"><span>Motion</span></div>
+  <div class="group">
+    <label class="toggle"><input type="checkbox" id="boil" checked> Line boil</label>
+    <label class="toggle"><input type="checkbox" id="spin"> Turntable</label>
+  </div>
+</div>
+<main class="solo">
+  <section class="card">
+    <canvas id="c-crayon"></canvas>
+    <div class="cap">
+      <h2>Wobbly hand-drawn</h2>
+      <p>A pen line that thickens, thins and boils (three outlines swapped 7 times a second), two-tone pastel
+        shading, pencil hatching that cross-hatches in the deepest shadow, crayon grain, face drawn on in ink.</p>
+    </div>
+  </section>
+  <!-- Retired after v1; still reachable as ?shot=paper so the v1 gallery can be re-shot. -->
+  <section class="card retired">
+    <canvas id="c-paper"></canvas>
+    <div class="cap">
+      <h2>B · Ink-outlined papercraft</h2>
+      <p>Faceted paper panels, each a slightly different tint, faint fold lines, a crisp ink outline, and the
+        face cut from paper and stuck on like stickers with white margins.</p>
+    </div>
+  </section>
+</main>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// --- shared rig, matching Blob.kt -------------------------------------------------------------
+
+const R = 0.3, FEET = 0.03, SCALE = 1.25, DEG = Math.PI / 180, SIDES = [-1, 1];
+const BG = '#fbf4ea';
+const INK = '#4a3a4f', PAPER_WHITE = '#fffdf8';
+const LEAF = '#a8dcb0', STEM = '#8ec79c', BLUSH = '#ff9fb4', BLUSH_PAPER = '#ffabbe';
+const MOUTH = '#b05a6e', TONGUE = '#ff9aaa';
+const PALETTES = {
+  apricot: '#ffd8c0', rose: '#f8bfd0', lavender: '#cdbaf0', sky: '#b8d7f4', mint: '#b5e5cd', butter: '#ffe3a1',
+};
+const FACES = ['neutral', 'happy', 'sad', 'tired', 'thinking', 'asleep'];
+const TOPPERS = ['none', 'curl', 'ears', 'beanie', 'sprout'];
+const HAT = '#f4aaa6';
+const state = { shape: 'tater', topper: 'none', face: 'neutral', palette: 'butter', motion: 'idle', boil: true, spin: false };
+
+// ?shot=crayon|paper renders one still for the gallery (tools/workshop/shoot.sh): no UI, a frozen
+// frame, no blink. Also shape=, topper=, face=, palette=, cam=front|quarter, yaw= (radians, turns him).
+const params = new URLSearchParams(location.search);
+const shot = params.get('shot');
+if (shot) {
+  document.body.classList.add('shot');
+  document.getElementById(`c-${shot}`).closest('.card').classList.add('on');
+  for (const k of ['shape', 'topper', 'face', 'palette']) if (params.has(k)) state[k] = params.get(k);
+}
+
+function rng(seed) {
+  return () => {
+    seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Smooth noise on 3D points from a few random sine waves; roughly -1..1. */
+function noise3(seed, waves = 5, freq = 4) {
+  const r = rng(seed), ws = [];
+  for (let i = 0; i < waves; i++) {
+    const d = new THREE.Vector3(r() * 2 - 1, r() * 2 - 1, r() * 2 - 1).normalize();
+    ws.push({ d, f: freq * (0.6 + r() * 0.8) * (1 + i * 0.35), p: r() * Math.PI * 2, a: 1 / (1 + i * 0.6) });
+  }
+  const total = ws.reduce((s, w) => s + w.a, 0);
+  return (x, y, z) => ws.reduce((s, w) => s + w.a * Math.sin((w.d.x * x + w.d.y * y + w.d.z * z) * w.f + w.p), 0) / total;
+}
+
+function shade(hex, dl, ds = 0) {
+  const c = new THREE.Color(hex), hsl = {};
+  c.getHSL(hsl, THREE.SRGBColorSpace);
+  return c.setHSL(hsl.h, Math.min(1, Math.max(0, hsl.s + ds)), Math.min(1, Math.max(0, hsl.l + dl)), THREE.SRGBColorSpace);
+}
+
+function paletteColors(hex) {
+  return { body: new THREE.Color(hex), limb: shade(hex, -0.02), foot: shade(hex, -0.055, 0.02),
+    hair: shade(hex, -0.16, 0.06), leaf: new THREE.Color(LEAF), stem: new THREE.Color(STEM),
+    hat: new THREE.Color(HAT), hatRim: shade(HAT, -0.06) };
+}
+
+/** Normals averaged across every vertex at the same position, so seams and flat faces don't crack a hull. */
+function smoothNormals(geo) {
+  const pos = geo.attributes.position, idx = geo.index;
+  const key = i => `${pos.getX(i).toFixed(4)},${pos.getY(i).toFixed(4)},${pos.getZ(i).toFixed(4)}`;
+  const acc = new Map();
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  const tris = (idx ? idx.count : pos.count) / 3;
+  for (let t = 0; t < tris; t++) {
+    const ids = [0, 1, 2].map(k => idx ? idx.getX(3 * t + k) : 3 * t + k);
+    a.fromBufferAttribute(pos, ids[0]); b.fromBufferAttribute(pos, ids[1]); c.fromBufferAttribute(pos, ids[2]);
+    const n = b.clone().sub(a).cross(c.clone().sub(a));
+    for (const i of ids) { const k = key(i); (acc.get(k) || acc.set(k, new THREE.Vector3()).get(k)).add(n); }
+  }
+  const out = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    const v = acc.get(key(i)).clone().normalize();
+    out[3 * i] = v.x; out[3 * i + 1] = v.y; out[3 * i + 2] = v.z;
+  }
+  geo.setAttribute('normal', new THREE.BufferAttribute(out, 3));
+  return geo;
+}
+
+/** The inverted-hull outline: the part pushed out along its smooth normals, drawn back faces only. */
+function hullGeometry(geo, thickness) {
+  const g = smoothNormals(geo.clone());
+  const p = g.attributes.position, n = g.attributes.normal, v = new THREE.Vector3(), nn = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i); nn.fromBufferAttribute(n, i);
+    v.addScaledVector(nn, typeof thickness === 'function' ? thickness(v, nn) : thickness);
+    p.setXYZ(i, v.x, v.y, v.z);
+  }
+  return g;
+}
+
+function makeRig() {
+  const root = new THREE.Group();
+  root.scale.setScalar(SCALE);
+  const body = new THREE.Group(), sprout = new THREE.Group();
+  const arms = [new THREE.Group(), new THREE.Group()], feet = [new THREE.Group(), new THREE.Group()];
+  root.add(body, sprout, ...arms, ...feet);
+  // Body measurements (see measure()); these are the sphere's. [sprout] holds whatever tops his head.
+  return { root, body, sprout, arms, feet, bottom: R, top: R, armY: -0.045, armX: R, footZ: 0.08, swing: 1 };
+}
+
+/** Breathing, the walk hop and the sprout's bob, as Blob.update does them. */
+function animate(rig, t, motion, yaw) {
+  const walking = motion === 'walk';
+  const phase = t * 11;
+  let squash = 1 + 0.025 * Math.sin(t * 2.3);
+  if (walking) squash -= 0.07 * Math.cos(2 * phase);
+  const sx = 1 / Math.sqrt(squash);
+  const hop = walking ? Math.abs(Math.sin(phase)) * 0.07 : 0;
+  rig.root.position.y = hop * SCALE;
+  rig.root.rotation.y = yaw;
+  rig.body.position.y = FEET + rig.bottom * squash;
+  rig.body.scale.set(sx, squash, sx);
+  SIDES.forEach((s, i) => {
+    const step = walking ? Math.sin(phase + i * Math.PI) * 0.09 : 0;
+    rig.feet[i].position.set(s * 0.13, 0.045 + (step > 0 ? step * 0.3 : 0), rig.footZ + step);
+    rig.arms[i].position.set(s * (rig.armX * sx + 0.015), FEET + (rig.bottom + rig.armY) * squash + (walking ? 0 : 0.008 * Math.sin(t * 2.3 + i)),
+      walking ? -step * 0.8 : 0);
+  });
+  rig.sprout.position.y = FEET + (rig.bottom + rig.top) * squash - 0.015;
+  rig.sprout.rotation.x = rig.swing * (10 + 5 * Math.sin(t * 1.7)) * DEG;
+  return hop;
+}
+
+// --- look A: wobbly hand-drawn ----------------------------------------------------------------
+
+const crayonVertex = /* glsl */`
+  varying vec3 vN; varying vec2 vUv; varying vec3 vP;
+  void main() {
+    vN = normalize(normalMatrix * normal); vUv = uv; vP = position;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }`;
+// Two tones with a wobbly terminator; pencil hatching that starts just inside the light, thickens in
+// shadow and cross-hatches in the deepest part, with breaks so it reads drawn; crayon streaks; paper tooth.
+const crayonFragment = /* glsl */`
+  uniform vec3 color; uniform sampler2D map; uniform float useMap; uniform vec3 lightDir;
+  uniform vec3 shadeTint; uniform vec3 ink; uniform float boil;
+  varying vec3 vN; varying vec2 vUv; varying vec3 vP;
+  void main() {
+    vec3 base = useMap > 0.5 ? texture2D(map, vUv).rgb : color;
+    float ndl = dot(normalize(vN), normalize(lightDir));
+    float wob = 0.08 * sin(vP.x * 47.0 + boil * 2.1) * sin(vP.y * 53.0 - boil * 1.3 + vP.z * 31.0);
+    float lit = smoothstep(-0.03, 0.03, ndl + 0.12 + wob);
+    vec3 c = mix(base * shadeTint, base, lit);
+    float mid = 1.0 - smoothstep(-0.03, 0.03, ndl - 0.32 + wob);
+    float deep = 1.0 - smoothstep(-0.03, 0.03, ndl + 0.3 + wob);
+    float brk = 0.5 + 0.5 * sin(dot(vP, vec3(-0.6, 0.9, 0.4)) * 37.0 + boil);
+    float h1 = smoothstep(0.3, 0.75, sin(dot(vP, vec3(1.0, 0.85, 0.35)) * 190.0 + boil * 2.0));
+    float h2 = smoothstep(0.35, 0.8, sin(dot(vP, vec3(-0.9, 1.0, 0.2)) * 170.0 - boil * 1.7));
+    float hatch = h1 * (0.22 * mid + 0.4 * (1.0 - lit)) + h2 * 0.45 * deep;
+    c = mix(c, ink, clamp(hatch * (0.55 + 0.45 * brk), 0.0, 0.75));
+    float streak = sin(dot(vP, vec3(0.7, -0.5, 0.5)) * 900.0 + 4.0 * sin(dot(vP, vec3(0.2, 0.9, -0.3)) * 70.0));
+    float g = fract(sin(dot(floor(gl_FragCoord.xy / 1.5), vec2(12.9898, 78.233))) * 43758.5453);
+    c *= 0.95 + 0.03 * streak + 0.065 * g;
+    gl_FragColor = vec4(c, 1.0);
+    #include <colorspace_fragment>
+  }`;
+
+function crayonMaterial() {
+  return new THREE.ShaderMaterial({
+    vertexShader: crayonVertex, fragmentShader: crayonFragment,
+    uniforms: {
+      color: { value: new THREE.Color('#ffffff') }, map: { value: null }, useMap: { value: 0 },
+      lightDir: { value: new THREE.Vector3(-0.45, 0.65, 0.6) }, shadeTint: { value: new THREE.Color('#e2d2ec') },
+      ink: { value: new THREE.Color(INK) }, boil: { value: 0 },
+    },
+  });
+}
+
+/** A sphere with lumps, scaled to [radii]; lumps are relative to the radius. */
+function lumpySphere(radii, ws, hs, seed, amp) {
+  const g = new THREE.SphereGeometry(1, ws, hs), nz = noise3(seed, 5, 3.5), p = g.attributes.position, v = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i).normalize().multiplyScalar(1 + amp * nz(v.x, v.y, v.z));
+    p.setXYZ(i, v.x * radii[0], v.y * radii[1], v.z * radii[2]);
+  }
+  return g;
+}
+
+/**
+ * A round silhouette from two superellipse halves: [a] wide, [bTop]/[bBot] tall above and below the
+ * middle, [nTop]/[nBot] how square each half is (2 round, higher flatter), [taper] narrows the top,
+ * [lean] tips it sideways. Maps a point on the unit sphere to the body, in units of R.
+ */
+function profile({ a = 1, bTop = 1, bBot = 1, nTop = 2, nBot = 2, taper = 0, lean = 0 }) {
+  return (x, y, z) => {
+    const rho = Math.hypot(x, z), up = y >= 0, n = up ? nTop : nBot;
+    const Y = (up ? bTop : bBot) * Math.sign(y) * Math.abs(y) ** (2 / n);
+    const k = rho > 1e-6 ? a * (1 - taper * Y) * rho ** (2 / n) / rho : 0;
+    return [x * k + lean * Y, Y, z * k];
+  };
+}
+const SHAPES = {
+  ball: profile({}),
+  mochi: profile({ a: 1.15, bTop: 0.8, bBot: 0.52, nTop: 2.3, nBot: 4.5 }),
+  bean: profile({ a: 0.8, bTop: 1.28, bBot: 1.12, nTop: 2.6, nBot: 2.8, taper: 0.07, lean: 0.06 }),
+  gumdrop: profile({ a: 1.1, bTop: 1.05, bBot: 0.55, nBot: 4, taper: 0.3 }),
+  // A puffy rounded triangle seen from the front (three soft lobes, one up), flatter front to back.
+  onigiri: (x, y, z) => {
+    const r = 1.08 * (1 + 0.15 * Math.cos(3 * (Math.atan2(y, x) - Math.PI / 2)));
+    return [x * r, y * r, z * 0.8];
+  },
+  tater: (x, y, z) => [x * 1.14, y * 0.9, z * 0.96],
+};
+
+function bodyGeometry(shape) {
+  const g = new THREE.SphereGeometry(1, 56, 40), f = SHAPES[shape] || SHAPES.ball, p = g.attributes.position, v = new THREE.Vector3();
+  const nz = noise3(11, 5, 3.5), big = noise3(12, 3, 2), amp = shape === 'tater' ? 0.06 : 0.035, bigAmp = shape === 'tater' ? 0.07 : 0;
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i).normalize();
+    const [sx, sy, sz] = f(v.x, v.y, v.z), k = R * (1 + amp * nz(v.x, v.y, v.z) + bigAmp * big(v.x, v.y, v.z));
+    p.setXYZ(i, sx * k, sy * k, sz * k);
+  }
+  return g;
+}
+
+/**
+ * Where the rig hangs off a body: its extent below and above centre, arm height and reach, head width,
+ * and how far forward the feet go so they peek out from under a wide bottom.
+ */
+function measure(geo) {
+  const p = geo.attributes.position;
+  let lo = Infinity, hi = -Infinity;
+  for (let i = 0; i < p.count; i++) { lo = Math.min(lo, p.getY(i)); hi = Math.max(hi, p.getY(i)); }
+  const bottom = -lo, top = hi, armY = -bottom + 0.42 * (bottom + top);
+  let armX = 0, capW = 0, front = 0;
+  for (let i = 0; i < p.count; i++) {
+    const x = Math.abs(p.getX(i)), y = p.getY(i);
+    if (Math.abs(y - armY) < 0.025) armX = Math.max(armX, x);
+    if (y > top - 0.12) capW = Math.max(capW, x);
+    if (y < lo + 0.05 && Math.abs(p.getX(i)) < 0.15) front = Math.max(front, p.getZ(i));
+  }
+  return { bottom, top, armY, armX, capW, footZ: Math.max(0.08, front - 0.03) };
+}
+
+// Canvas drawing for the body texture: 1024 x 512, wrapped once round him, front (+Z) at u = 0.25.
+function blobPath(x, cx, cy, rx, ry, rand, wob = 0.05, n = 40) {
+  const p1 = rand() * 6.28, p2 = rand() * 6.28;
+  x.beginPath();
+  for (let i = 0; i <= n; i++) {
+    const a = i / n * Math.PI * 2, j = 1 + wob * Math.sin(2 * a + p1) + wob * 0.6 * Math.sin(5 * a + p2);
+    const px = cx + Math.cos(a) * rx * j, py = cy + Math.sin(a) * ry * j;
+    i ? x.lineTo(px, py) : x.moveTo(px, py);
+  }
+  x.closePath();
+}
+function arcPts(cx, cy, r, a0, a1, rand, wob = 0.06, n = 18) {
+  const ph = rand() * 6.28, over = (rand() - 0.3) * 10, out = [];
+  for (let i = 0; i <= n; i++) {
+    const a = (a0 - over / 2 + (a1 - a0 + over) * i / n) * DEG, rr = r * (1 + wob * Math.sin(a * 2.5 + ph));
+    out.push([cx + Math.cos(a) * rr, cy + Math.sin(a) * rr]);
+  }
+  return out;
+}
+function linePts(x0, y0, x1, y1, rand, bow = 3, n = 10) {
+  const b = (rand() - 0.5) * 2 * bow, nx = -(y1 - y0), ny = x1 - x0, l = Math.hypot(nx, ny) || 1, out = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n, k = Math.sin(Math.PI * t) * b;
+    out.push([x0 + (x1 - x0) * t + nx / l * k, y0 + (y1 - y0) * t + ny / l * k]);
+  }
+  return out;
+}
+/** An ink stroke, gone over twice like a pen: a full line and a fainter, slightly offset one. */
+function penStroke(x, pts, width, rand) {
+  x.lineCap = 'round'; x.lineJoin = 'round'; x.strokeStyle = INK;
+  for (let pass = 0; pass < 2; pass++) {
+    const ox = (rand() - 0.5) * 3, oy = (rand() - 0.5) * 3;
+    x.beginPath();
+    pts.forEach(([px, py], i) => {
+      const jx = px + ox + (rand() - 0.5) * 1.4, jy = py + oy + (rand() - 0.5) * 1.4;
+      i ? x.lineTo(jx, jy) : x.moveTo(jx, jy);
+    });
+    x.lineWidth = pass ? width * 0.45 : width; x.globalAlpha = pass ? 0.55 : 1;
+    x.stroke();
+  }
+  x.globalAlpha = 1;
+}
+function crayonFill(x, cx, cy, rx, ry, color, rand, alpha) {
+  x.save(); blobPath(x, cx, cy, rx, ry, rand, 0.09); x.clip();
+  x.strokeStyle = color; x.globalAlpha = alpha; x.lineWidth = 4.5; x.lineCap = 'round';
+  for (let k = -rx * 2; k < rx * 2; k += 7) {
+    x.beginPath();
+    x.moveTo(cx + k - ry, cy + ry + (rand() - 0.5) * 5);
+    x.lineTo(cx + k + ry, cy - ry + (rand() - 0.5) * 5);
+    x.stroke();
+  }
+  x.restore(); x.globalAlpha = 1;
+}
+function inkEye(x, ex, ey, r, rand) {
+  blobPath(x, ex, ey, r * 0.92, r, rand, 0.04); x.fillStyle = INK; x.fill();
+  x.fillStyle = PAPER_WHITE;
+  blobPath(x, ex - r * 0.3, ey - r * 0.34, r * 0.36, r * 0.36, rand, 0.08); x.fill();
+  blobPath(x, ex + r * 0.36, ey + r * 0.38, r * 0.13, r * 0.13, rand); x.fill();
+}
+
+function crayonGrain(hex) {
+  const c = document.createElement('canvas'); c.width = 1024; c.height = 512;
+  const x = c.getContext('2d'), rand = rng(4242);
+  x.fillStyle = hex; x.fillRect(0, 0, 1024, 512); x.lineCap = 'round';
+  const light = shade(hex, 0.05).getStyle(), dark = shade(hex, -0.06, 0.03).getStyle();
+  for (let i = 0; i < 6500; i++) {
+    const px = rand() * 1024, py = rand() * 512, len = 8 + rand() * 20, a = -0.7 + (rand() - 0.5) * 0.5;
+    x.strokeStyle = rand() < 0.5 ? light : dark; x.globalAlpha = 0.3 + rand() * 0.35; x.lineWidth = 1.5 + rand() * 2.2;
+    x.beginPath(); x.moveTo(px, py); x.lineTo(px + Math.cos(a) * len, py + Math.sin(a) * len); x.stroke();
+  }
+  x.globalAlpha = 1;
+  return c;
+}
+
+function paintCrayonFace(x, face, blink, rand) {
+  const cx = 256, ey = 216, gap = 64, er = 29, my = ey + 66;
+  const br = face === 'happy' ? 30 : 25;
+  for (const s of SIDES) crayonFill(x, cx + s * 118, ey + 46, br, br * 0.75, BLUSH, rand, face === 'happy' ? 0.85 : 0.6);
+  const shut = blink || face === 'asleep';
+  for (const s of SIDES) {
+    const ex = cx + s * gap;
+    if (shut) penStroke(x, arcPts(ex, ey - 6, 24, 20, 160, rand), 8, rand);
+    else if (face === 'happy') penStroke(x, arcPts(ex, ey + 12, 24, 200, 340, rand), 9, rand);
+    else if (face === 'thinking') inkEye(x, ex + 8, ey - 12, er, rand);
+    else if (face === 'tired') {
+      x.save(); x.beginPath(); x.rect(ex - 50, ey - 2, 100, 60); x.clip(); inkEye(x, ex, ey, er, rand); x.restore();
+      penStroke(x, linePts(ex - 33, ey - 2, ex + 33, ey - 2, rand, 2), 7, rand);
+    } else if (face === 'sad') {
+      inkEye(x, ex, ey + 6, er * 0.92, rand);
+      penStroke(x, linePts(ex + s * 34, ey - 36, ex - s * 12, ey - 52, rand), 7, rand);
+    } else inkEye(x, ex, ey, er, rand);
+  }
+  switch (face) {
+    case 'happy': {
+      const pts = arcPts(cx, my - 16, 30, 0, 180, rand, 0.03);
+      x.save(); x.beginPath(); pts.forEach(([px, py], i) => i ? x.lineTo(px, py) : x.moveTo(px, py)); x.closePath();
+      x.fillStyle = MOUTH; x.fill(); x.clip();
+      blobPath(x, cx, my + 14, 16, 12, rand); x.fillStyle = TONGUE; x.fill(); x.restore();
+      penStroke(x, [...pts, pts[0]], 6, rand);
+      break;
+    }
+    case 'neutral': penStroke(x, arcPts(cx, my - 24, 24, 35, 145, rand), 7, rand); break;
+    case 'sad': penStroke(x, arcPts(cx, my + 22, 24, 215, 325, rand), 7, rand); break;
+    case 'tired': penStroke(x, linePts(cx - 16, my, cx + 16, my + 4, rand), 6.5, rand); break;
+    case 'thinking': penStroke(x, linePts(cx + 2, my, cx + 32, my - 9, rand), 6.5, rand); break;
+    case 'asleep':
+      blobPath(x, cx, my, 11, 13, rand); x.fillStyle = MOUTH; x.fill();
+      x.lineWidth = 5; x.strokeStyle = INK; x.stroke(); break;
+  }
+}
+
+function crayonShadow() {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 200;
+  const x = c.getContext('2d'), rand = rng(9);
+  x.save(); blobPath(x, 128, 100, 110, 80, rand, 0.06); x.clip();
+  x.strokeStyle = '#9d8db0'; x.globalAlpha = 0.45; x.lineWidth = 3.5; x.lineCap = 'round';
+  for (let k = -260; k < 260; k += 8) {
+    x.beginPath(); x.moveTo(128 + k - 90, 190 + (rand() - 0.5) * 8); x.lineTo(128 + k + 90, 10 + (rand() - 0.5) * 8); x.stroke();
+  }
+  x.restore();
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+function buildCrayon(scene) {
+  const rig = makeRig(); scene.add(rig.root);
+  const inkMat = new THREE.MeshBasicMaterial({ color: INK, side: THREE.BackSide });
+  const parts = [], hulls = [[], [], []];
+  let seed = 1;
+  function outlined(parent, geo, role, base, vary) {
+    smoothNormals(geo);
+    const mat = crayonMaterial(); parts.push({ mat, role });
+    parent.add(new THREE.Mesh(geo, mat));
+    for (let k = 0; k < 3; k++) {
+      const nz = noise3(seed * 31 + k * 7, 4, 4);
+      const h = new THREE.Mesh(hullGeometry(geo, (v, n) => base + vary * nz(n.x, n.y, n.z)), inkMat);
+      parent.add(h); hulls[k].push(h);
+    }
+    seed++;
+    return mat;
+  }
+  const bodyGeo = bodyGeometry(state.shape), m = measure(bodyGeo);
+  Object.assign(rig, m, { swing: state.topper === 'curl' || state.topper === 'sprout' ? 1 : 0 });
+  const bodyMat = outlined(rig.body, bodyGeo, 'body', 0.009, 0.006);
+  bodyMat.uniforms.useMap.value = 1;
+  SIDES.forEach((s, i) => {
+    outlined(rig.arms[i], lumpySphere([0.065, 0.075, 0.065], 16, 12, 20 + i, 0.07), 'limb', 0.008, 0.004);
+    outlined(rig.feet[i], lumpySphere([0.075, 0.045, 0.095], 16, 12, 30 + i, 0.07), 'foot', 0.008, 0.004);
+  });
+
+  // What tops his head; [rig.sprout] sits just under the top of the body.
+  if (state.topper === 'curl') {
+    const curl = new THREE.CatmullRomCurve3([[0, -0.04, 0], [0.006, 0.05, 0.01], [0.05, 0.12, 0.016], [0.1, 0.108, 0.016],
+      [0.11, 0.058, 0.01], [0.074, 0.042, 0.004]].map(q => new THREE.Vector3(...q)));
+    outlined(rig.sprout, new THREE.TubeGeometry(curl, 40, 0.015, 8), 'hair', 0.007, 0.003);
+  } else if (state.topper === 'ears') {
+    SIDES.forEach((s, i) => outlined(rig.sprout,
+      lumpySphere([0.06, 0.075, 0.042], 14, 10, 50 + i, 0.06).rotateZ(-s * 22 * DEG).translate(s * m.capW * 0.62, 0, 0), 'limb', 0.007, 0.004));
+  } else if (state.topper === 'beanie') {
+    const w = m.capW + 0.025;
+    outlined(rig.sprout, lumpySphere([w * 0.92, 0.19, w * 0.9], 28, 18, 60, 0.03).translate(0, -0.05, 0), 'hat', 0.008, 0.004);
+    outlined(rig.sprout, new THREE.TorusGeometry(w * 0.95, 0.026, 8, 32).rotateX(Math.PI / 2).translate(0, -0.07, 0), 'hatRim', 0.007, 0.003);
+    outlined(rig.sprout, lumpySphere([0.05, 0.047, 0.05], 12, 9, 61, 0.14).translate(0, 0.14, 0), 'hatRim', 0.006, 0.003);
+  } else if (state.topper === 'sprout') {
+    outlined(rig.sprout, new THREE.CapsuleGeometry(0.012, 0.12, 4, 8).translate(0, 0.07, 0), 'stem', 0.006, 0.003);
+    outlined(rig.sprout, lumpySphere([0.065, 0.018, 0.04], 14, 10, 40, 0.08).rotateZ(-25 * DEG).translate(0.05, 0.15, 0), 'leaf', 0.006, 0.003);
+    outlined(rig.sprout, lumpySphere([0.045, 0.016, 0.03], 14, 10, 41, 0.08).rotateZ(30 * DEG).translate(-0.04, 0.13, 0), 'leaf', 0.006, 0.003);
+  }
+
+  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.48).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ map: crayonShadow(), transparent: true, depthWrite: false }));
+  shadow.position.y = 0.004; scene.add(shadow);
+
+  let grain = null;
+  const faceTextures = new Map();
+  function faceTexture(face, blink, frame) {
+    const key = `${face}|${blink}|${frame}`;
+    if (!faceTextures.has(key)) {
+      const c = document.createElement('canvas'); c.width = 1024; c.height = 512;
+      const x = c.getContext('2d'); x.drawImage(grain, 0, 0);
+      paintCrayonFace(x, face, blink, rng(1000 + frame * 97 + FACES.indexOf(face) * 13 + (blink ? 5 : 0)));
+      const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+      faceTextures.set(key, t);
+    }
+    return faceTextures.get(key);
+  }
+  const shadowWidth = Math.max(m.armX, 0.25) / R;
+  return {
+    dispose() { scene.remove(rig.root, shadow); },
+    setPalette(hex) {
+      const colors = paletteColors(hex);
+      for (const p of parts) p.mat.uniforms.color.value.copy(colors[p.role]);
+      faceTextures.forEach(t => t.dispose()); faceTextures.clear();
+      grain = crayonGrain(hex);
+    },
+    tick(t, o) {
+      const hop = animate(rig, t, o.motion, o.yaw);
+      bodyMat.uniforms.map.value = faceTexture(state.face, o.blink && state.face !== 'asleep', o.frame);
+      hulls.forEach((hs, k) => hs.forEach(h => { h.visible = k === o.frame; }));
+      for (const p of parts) p.mat.uniforms.boil.value = o.frame;
+      const k = SCALE * (1 - hop * 2);
+      shadow.scale.set(k * shadowWidth, 1, k);
+    },
+  };
+}
+
+// --- look B: ink-outlined papercraft ----------------------------------------------------------
+
+function paperTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const x = c.getContext('2d'), rand = rng(77), img = x.createImageData(256, 256);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = 255 - rand() * 14;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255;
+  }
+  x.putImageData(img, 0, 0);
+  x.globalAlpha = 0.08; x.strokeStyle = '#8a7a70'; x.lineWidth = 0.8;
+  for (let i = 0; i < 220; i++) {
+    const px = rand() * 256, py = rand() * 256;
+    x.beginPath(); x.moveTo(px, py);
+    x.quadraticCurveTo(px + (rand() - 0.5) * 20, py + (rand() - 0.5) * 20, px + (rand() - 0.5) * 30, py + (rand() - 0.5) * 30);
+    x.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(3, 2);
+  return t;
+}
+
+/** A low-poly ball, dented inward a little so it reads hand-folded; never bulges past [radii]. */
+function facetedBall(radii, detail, seed, dent) {
+  const g = new THREE.IcosahedronGeometry(1, detail), nz = noise3(seed, 4, 3), p = g.attributes.position, v = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i).normalize();
+    v.multiplyScalar(1 - dent * (0.5 + 0.5 * nz(v.x, v.y, v.z)));
+    p.setXYZ(i, v.x * radii[0], v.y * radii[1], v.z * radii[2]);
+  }
+  return g;
+}
+
+/** A hand-cut arc, sector or disc in the XY plane; [grow] makes the white margin behind it. */
+function arcGeo({ rIn = 0, rOut, a0 = 0, a1 = 360, grow = 0, seed = 1, cx = 0, cy = 0 }) {
+  const rand = rng(seed), full = a1 - a0 >= 359.9;
+  const ro = rOut + grow, ri = rIn > 0 ? Math.max(0.001, rIn - grow) : 0;
+  const ext = full ? 0 : grow / ((rIn + rOut) / 2) / DEG;
+  const A0 = (a0 - ext) * DEG, A1 = (a1 + ext) * DEG;
+  const n = Math.max(6, Math.round((A1 - A0) / (2 * Math.PI) * 13));
+  const jit = Array.from({ length: n + 1 }, () => 1 + (rand() - 0.5) * 0.07);
+  if (full) jit[n] = jit[0];
+  const shape = new THREE.Shape();
+  for (let i = 0; i <= n; i++) {
+    const a = A0 + (A1 - A0) * i / n, px = cx + Math.cos(a) * ro * jit[i], py = cy + Math.sin(a) * ro * jit[i];
+    i ? shape.lineTo(px, py) : shape.moveTo(px, py);
+  }
+  if (!full) {
+    if (ri > 0) for (let i = n; i >= 0; i--) {
+      const a = A0 + (A1 - A0) * i / n;
+      shape.lineTo(cx + Math.cos(a) * ri * jit[i], cy + Math.sin(a) * ri * jit[i]);
+    } else {
+      const m = (a0 + a1) / 2 * DEG;
+      shape.lineTo(cx - Math.cos(m) * grow, cy - Math.sin(m) * grow);
+    }
+  }
+  return new THREE.ShapeGeometry(shape);
+}
+function barGeo(w, h, grow, rot, cx, cy, seed) {
+  const rand = rng(seed), j = () => (rand() - 0.5) * 0.002, hw = w / 2 + grow, hh = h / 2 + grow;
+  const s = new THREE.Shape();
+  s.moveTo(-hw + j(), -hh + j()); s.lineTo(hw + j(), -hh + j()); s.lineTo(hw + j(), hh + j()); s.lineTo(-hw + j(), hh + j());
+  return new THREE.ShapeGeometry(s).rotateZ(rot).translate(cx, cy, 0);
+}
+
+/** A frame on the body's surface at [yaw], [lat] degrees: +Z out of the skin, +Y up, +X to his left (screen right). */
+function anchor(yaw, lat, lift = 0.003) {
+  const d = new THREE.Vector3(Math.sin(yaw * DEG) * Math.cos(lat * DEG), Math.sin(lat * DEG), Math.cos(yaw * DEG) * Math.cos(lat * DEG));
+  const right = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), d).normalize();
+  const up = new THREE.Vector3().crossVectors(d, right);
+  const o = new THREE.Object3D();
+  o.position.copy(d).multiplyScalar(R + lift);
+  o.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(right, up, d));
+  return o;
+}
+
+function buildPaper(scene) {
+  const rig = makeRig(); scene.add(rig.root);
+  const paper = paperTexture();
+  const inkMat = new THREE.MeshBasicMaterial({ color: INK, side: THREE.BackSide });
+  const foldMat = new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0.16 });
+  const partMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, map: paper });
+  const geos = [];
+  const mats = new Map();
+  const flat = c => mats.get(c) || mats.set(c, new THREE.MeshLambertMaterial({ color: c, map: paper })).get(c);
+
+  function part(parent, geo, role, seed, thickness, folds = false) {
+    const hull = hullGeometry(geo, thickness);
+    geo = geo.index ? geo.toNonIndexed() : geo;
+    geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(geo.attributes.position.count * 3), 3));
+    geo.userData = { role, seed };
+    geos.push(geo);
+    parent.add(new THREE.Mesh(geo, partMat), new THREE.Mesh(hull, inkMat));
+    if (folds) parent.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 1), foldMat));
+  }
+  part(rig.body, facetedBall([R, R, R], 2, 11, 0.025), 'body', 1, 0.009, true);
+  SIDES.forEach((s, i) => {
+    part(rig.arms[i], facetedBall([0.065, 0.075, 0.065], 1, 20 + i, 0.06), 'limb', 2 + i, 0.007);
+    part(rig.feet[i], facetedBall([0.075, 0.045, 0.095], 1, 30 + i, 0.06), 'foot', 4 + i, 0.007);
+  });
+  part(rig.sprout, new THREE.CylinderGeometry(0.011, 0.014, 0.14, 5).translate(0, 0.07, 0), 'stem', 6, 0.006);
+  part(rig.sprout, facetedBall([0.065, 0.016, 0.038], 1, 40, 0.05).rotateZ(-25 * DEG).translate(0.05, 0.15, 0), 'leaf', 7, 0.006, true);
+  part(rig.sprout, facetedBall([0.045, 0.014, 0.03], 1, 41, 0.05).rotateZ(30 * DEG).translate(-0.04, 0.13, 0), 'leaf', 8, 0.006, true);
+
+  // The face: paper stickers on anchors over the skin, each with a white cut margin behind it.
+  const BORDER = 0.006, EYE_YAW = 22, EYE_LAT = 12, EYE_R = 0.05;
+  let shapeSeed = 100;
+  const disc = (r, cx = 0, cy = 0, a0 = 0, a1 = 360) => { const sd = shapeSeed++; return g => arcGeo({ rOut: r, a0, a1, grow: g, seed: sd, cx, cy }); };
+  const ring = (ri, ro, a0, a1, cx = 0, cy = 0) => { const sd = shapeSeed++; return g => arcGeo({ rIn: ri, rOut: ro, a0, a1, grow: g, seed: sd, cx, cy }); };
+  const bar = (w, h, rot = 0, cx = 0, cy = 0) => { const sd = shapeSeed++; return g => barGeo(w, h, g, rot, cx, cy, sd); };
+  function sticker(a, shape, color, { border = true, z = 0 } = {}) {
+    if (border) { const m = new THREE.Mesh(shape(BORDER), flat(PAPER_WHITE)); m.position.z = z; a.add(m); }
+    const m = new THREE.Mesh(shape(0), flat(color)); m.position.z = z + 0.0025; a.add(m);
+  }
+  const at = (g, yaw, lat, fn) => { const a = anchor(yaw, lat); g.add(a); fn(a); };
+  const eyes = (g, fn) => SIDES.forEach(s => at(g, s * EYE_YAW, EYE_LAT, a => fn(a, s)));
+  const mouth = (g, fn) => at(g, 0, -9, fn);
+  const cheeks = (g, r) => SIDES.forEach(s => at(g, s * 40, -3, a => sticker(a, disc(r), BLUSH_PAPER, { border: false })));
+  const roundEye = (a, r = EYE_R, dx = 0, dy = 0) => {
+    sticker(a, disc(r, dx, dy), INK);
+    sticker(a, disc(r * 0.36, dx - r * 0.3, dy + r * 0.34), PAPER_WHITE, { border: false, z: 0.005 });
+    sticker(a, disc(r * 0.13, dx + r * 0.36, dy - r * 0.38), PAPER_WHITE, { border: false, z: 0.005 });
+  };
+  const shutEyes = g => eyes(g, a => sticker(a, ring(EYE_R * 0.52, EYE_R * 0.84, 200, 340, 0, 0.024), INK));
+
+  const faces = {};
+  const group = () => { const g = new THREE.Group(); rig.body.add(g); return g; };
+  for (const f of FACES) faces[f] = { eyes: group(), rest: group() };
+  eyes(faces.neutral.eyes, a => roundEye(a));
+  cheeks(faces.neutral.rest, 0.03);
+  mouth(faces.neutral.rest, a => sticker(a, ring(0.025, 0.036, 205, 335, 0, 0.03), INK));
+  eyes(faces.happy.eyes, a => sticker(a, ring(EYE_R * 0.52, EYE_R * 0.86, 20, 160, 0, -0.022), INK));
+  cheeks(faces.happy.rest, 0.037);
+  mouth(faces.happy.rest, a => {
+    sticker(a, disc(0.036, 0, 0.012, 180, 360), MOUTH);
+    sticker(a, disc(0.014, 0, -0.01), TONGUE, { border: false, z: 0.005 });
+  });
+  eyes(faces.sad.eyes, (a, s) => {
+    roundEye(a, EYE_R * 0.92, 0, -0.008);
+    sticker(a, bar(0.046, 0.009, -s * 16 * DEG, -s * 0.006, 0.062), INK);
+  });
+  cheeks(faces.sad.rest, 0.028);
+  mouth(faces.sad.rest, a => sticker(a, ring(0.021, 0.031, 25, 155, 0, -0.03), INK));
+  eyes(faces.tired.eyes, a => {
+    sticker(a, disc(EYE_R, 0, 0, 180, 360), INK);
+    sticker(a, bar(EYE_R * 2.25, 0.009, 0, 0, 0.002), INK);
+  });
+  cheeks(faces.tired.rest, 0.028);
+  mouth(faces.tired.rest, a => sticker(a, bar(0.032, 0.009, 6 * DEG), INK));
+  eyes(faces.thinking.eyes, a => roundEye(a, EYE_R, 0.008, 0.011));
+  cheeks(faces.thinking.rest, 0.03);
+  mouth(faces.thinking.rest, a => sticker(a, bar(0.036, 0.009, 16 * DEG, 0.012, 0), INK));
+  shutEyes(faces.asleep.eyes);
+  cheeks(faces.asleep.rest, 0.03);
+  mouth(faces.asleep.rest, a => sticker(a, disc(0.013), MOUTH));
+  const blinkEyes = group(); shutEyes(blinkEyes);
+
+  const shadow = new THREE.Mesh(arcGeo({ rOut: 0.24, seed: 5 }).rotateX(-Math.PI / 2).scale(1, 1, 0.78),
+    new THREE.MeshBasicMaterial({ color: '#b6a4c8', transparent: true, opacity: 0.4, depthWrite: false }));
+  shadow.position.y = 0.004; scene.add(shadow);
+
+  return {
+    setPalette(hex) {
+      const colors = paletteColors(hex), c = new THREE.Color();
+      for (const g of geos) {
+        const rand = rng(g.userData.seed * 977), col = g.attributes.color;
+        for (let t = 0; t < col.count / 3; t++) {
+          c.copy(colors[g.userData.role]).multiplyScalar(0.95 + rand() * 0.08);
+          for (let k = 0; k < 3; k++) col.setXYZ(3 * t + k, c.r, c.g, c.b);
+        }
+        col.needsUpdate = true;
+      }
+    },
+    tick(t, o) {
+      const hop = animate(rig, t, o.motion, o.yaw);
+      const blink = o.blink && state.face !== 'asleep';
+      for (const f of FACES) {
+        faces[f].rest.visible = f === state.face;
+        faces[f].eyes.visible = f === state.face && !blink;
+      }
+      blinkEyes.visible = blink;
+      shadow.scale.setScalar(SCALE * (1 - hop * 2));
+    },
+  };
+}
+
+// --- views, controls, loop --------------------------------------------------------------------
+
+function makeView(canvas, build, lights) {
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(BG);
+  const camera = new THREE.PerspectiveCamera(28, 1, 0.05, 50);
+  camera.position.set(0.75, 0.95, 2.55);
+  if (params.get('cam') === 'front') camera.position.set(0, 0.75, 2.7);
+  scene.add(camera);
+  if (lights) {
+    scene.add(new THREE.HemisphereLight('#fff8f0', '#e6dcf0', 3.3));
+    const sun = new THREE.DirectionalLight('#ffffff', 1.3); sun.position.set(-1.4, 1.8, 1.2); camera.add(sun);
+  }
+  const controls = new OrbitControls(camera, canvas);
+  controls.target.set(0, 0.5, 0); controls.enablePan = false; controls.minDistance = 1.1; controls.maxDistance = 5;
+  controls.update();
+  new ResizeObserver(() => {
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+  }).observe(canvas);
+  const view = { renderer, scene, camera, controls, look: build(scene) };
+  view.rebuild = () => { view.look.dispose(); view.look = build(scene); view.look.setPalette(PALETTES[state.palette]); };
+  return view;
+}
+
+// The live page shows the hand-drawn guy; papercraft is only drawn for ?shot=paper.
+const views = [['crayon', buildCrayon, false], ['paper', buildPaper, true]]
+  .filter(([name]) => name === (shot || 'crayon'))
+  .map(([name, build, lights]) => makeView(document.getElementById(`c-${name}`), build, lights));
+for (const v of views) v.controls.addEventListener('change', () => {
+  for (const o of views) if (o !== v) {
+    o.camera.position.copy(v.camera.position); o.camera.quaternion.copy(v.camera.quaternion);
+    o.controls.target.copy(v.controls.target);
+  }
+});
+
+const cap = s => s[0].toUpperCase() + s.slice(1);
+function chips(id, items, key, then = () => {}) {
+  const box = document.getElementById(id);
+  for (const item of items) {
+    const b = document.createElement('button'); b.className = 'chip'; b.textContent = cap(item);
+    b.setAttribute('aria-pressed', state[key] === item);
+    b.onclick = () => { state[key] = item; box.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); then(); };
+    box.append(b);
+  }
+}
+const rebuild = () => views.forEach(v => v.rebuild());
+chips('shapes', Object.keys(SHAPES), 'shape', rebuild);
+chips('toppers', TOPPERS, 'topper', rebuild);
+chips('faces', FACES, 'face');
+chips('motion', ['idle', 'walk'], 'motion');
+const swatches = document.getElementById('swatches');
+for (const [name, hex] of Object.entries(PALETTES)) {
+  const b = document.createElement('button'); b.className = 'swatch'; b.title = name; b.style.background = hex;
+  b.setAttribute('aria-pressed', state.palette === name);
+  b.onclick = () => {
+    state.palette = name; views.forEach(v => v.look.setPalette(hex));
+    swatches.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b));
+  };
+  swatches.append(b);
+}
+document.getElementById('boil').onchange = e => { state.boil = e.target.checked; };
+document.getElementById('spin').onchange = e => { state.spin = e.target.checked; };
+views.forEach(v => v.look.setPalette(PALETTES[state.palette]));
+
+let last = performance.now(), t = 0, yaw = 0, blinkIn = 2.5, blinkLeft = 0, shotFrames = 0;
+function frame(now) {
+  if (shot) {
+    const o = { blink: false, frame: 0, motion: 'idle', yaw: Number(params.get('yaw') || 0) };
+    for (const v of views) { v.look.tick(0, o); v.renderer.render(v.scene, v.camera); }
+    if (++shotFrames < 6) requestAnimationFrame(frame); else document.title = 'ready';
+    return;
+  }
+  const dt = Math.min(0.1, (now - last) / 1000); last = now; t += dt;
+  blinkIn -= dt;
+  if (blinkIn <= 0) { blinkLeft = 0.13; blinkIn = 2.2 + Math.random() * 3.3; }
+  blinkLeft -= dt;
+  if (state.spin) yaw += dt * 0.7;
+  const o = { blink: blinkLeft > 0, frame: state.boil ? Math.floor(t * 7) % 3 : 0, motion: state.motion, yaw };
+  for (const v of views) { v.look.tick(t, o); v.renderer.render(v.scene, v.camera); }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

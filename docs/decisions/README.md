@@ -51,3 +51,5 @@ these hold the outcome. Skim this index before related changes.
 - 2026-10-29 [Run speed is game minutes per second, and a slow decision holds the clock](2026-10-29-run-speed-is-game-minutes-per-second-and-a-slow-decision-hold.md)
 - 2026-10-29 [Art is drawn as validated ops, and reaches the sim through annotate](2026-10-29-art-is-drawn-as-validated-ops-and-reaches-the-sim-through-annotate.md)
 - 2026-10-29 [The whole catalog is visible from day one, and the easel costs $17](2026-10-29-the-whole-catalog-is-visible-from-day-one-and-the-easel-costs-17.md)
+- 2026-10-31 [Models are crayon part lists; big surfaces get painted textures, not the hatching shader](2026-10-31-models-are-crayon-part-lists.md)
+- 2026-10-31 [The part-list format, and one world light for everything](2026-10-31-the-part-list-format-and-one-world-light.md)

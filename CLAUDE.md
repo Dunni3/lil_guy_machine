@@ -68,9 +68,11 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   tokens per game day and the 30-day projection. The CLI and the app (`SimSession`, the TOKENS page) wire it and
   write `tokens-NN.jsonl`; `price_in`/`price_out` on an endpoint add cost.
 - Renderer: `app/.../LilGuyGame.kt`. The first page is the 3D room, `RoomView.kt` (camera, light by
-  game hour, HUD, bubble), with code-built models keyed by item id in `RoomModels.kt` (1 unit = 1 tile,
-  pivot bottom centre, front +Z; a model file can replace one later) and the guy in `Blob.kt` (face
-  textures per expression, animation in code from needs and activity). Then the 2D dev view in
+  game hour, HUD, bubble), with furniture as part lists keyed by item id in `RoomModels.kt` (1 unit = 1 tile,
+  pivot bottom centre, front +Z) and the guy in `Blob.kt` (face textures per expression, animation in
+  code from needs and activity). All of it is drawn in the hand-drawn look by `CrayonRenderer.kt`:
+  `CrayonModel.kt` holds the part-list format (`Part`, `PartList`) and merged meshes, `Crayon.kt` the
+  shape builders and shaders, and `RoomPaint.kt` the floor, wall and item textures painted once with `CrayonCanvas.kt`. Then the 2D dev view in
   `DevView.kt`: map plus Now/Memory/Journal/History/Log/Run pages; run control, decision history and the app's memory in `SimSession.kt`;
   the Run page's knobs (days, speed, how long the clock waits on the model, resolution) in `RunSettings.kt`; remote keys in
   `RemoteInput.kt`: OK start/pause, LEFT/RIGHT pages, UP/DOWN scroll or pick, BACK twice restarts). Launchers: `desktop/`, `android/`.

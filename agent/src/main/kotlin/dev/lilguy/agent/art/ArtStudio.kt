@@ -54,6 +54,9 @@ class ArtStudio(
     /** True while a piece is being drawn or waiting to be matched to its piece. */
     val drawing: Boolean get() = pending?.job?.isActive == true || committing?.isActive == true
 
+    /** True while a piece's activity has ended but its drawing hasn't been handed to the world yet. */
+    val finishing: Boolean get() = committing?.isActive == true
+
     /** The latest drawing failure, if any. */
     @Volatile var lastError: String? = null
         private set
