@@ -24,9 +24,9 @@ class BedroomRunTest {
         val lowestFullnessBy: Map<Int, Double>,
     )
 
-    private fun live(days: Int, journaling: BedroomPolicy.Journaling = BedroomPolicy.Journaling.Spare): Lived {
+    private fun live(days: Int): Lived {
         val decisions = mutableListOf<AgentRuntime.DecisionRecord>()
-        val (world, runtime) = bedroomScenario(BedroomPolicy(journaling = journaling)) { decisions += it }
+        val (world, runtime) = bedroomScenario(BedroomPolicy()) { decisions += it }
         val lowest = Need.entries.associateWith { Double.MAX_VALUE }.toMutableMap()
         val ticksOn = mutableMapOf<Int, MutableMap<String, Long>>()
         val fullnessBy = mutableMapOf<Int, Double>()
@@ -46,14 +46,13 @@ class BedroomRunTest {
     }
 
     @Test
-    fun `the scripted policy lives 14 days without a need reaching 0, journaling in its spare hours`() {
+    fun `the scripted policy lives 14 days without a need reaching 0`() {
         val lived = live(14)
         val w = lived.world
         printDays(w)
         assertEquals(15, w.clock.day(w.tick))
         // The baseline buys nothing to do, so it ends up bored; stimulation at 0 isn't harm.
         lived.lowest.filterKeys { it != Need.Stimulation }.forEach { (need, low) -> assertTrue(low > 0.0, "$need reached $low") }
-        assertTrue(lived.decisions.count { it.intent == Intent.Do("journal") } >= 14, "journaled less than once a day")
         assertTrue(lived.decisions.none { it.fellBack })
         val failed = w.snapshot().events.filter { "failed" in it.text }
         assertTrue(failed.isEmpty(), "failed intents: $failed")
@@ -67,7 +66,7 @@ class BedroomRunTest {
      */
     @Test
     fun `surviving takes most of the day and leaves 3 to 6 spare waking hours`() {
-        val lived = live(6, BedroomPolicy.Journaling.Never)
+        val lived = live(6)
         val w = lived.world
         lived.hours.toSortedMap().forEach { (day, h) -> println("day $day: " + h.entries.sortedBy { it.key }.joinToString { "%s %.1f".format(it.key, it.value) }) }
         val spare = (2..6).map { lived.hours[it].orEmpty()["wait"] ?: 0.0 }
@@ -78,13 +77,6 @@ class BedroomRunTest {
         val richest = w.ledger.transactions.maxOf { it.balance }
         assertTrue(richest < 2 * mealPrice, "saved up $richest")
         lived.lowest.filterKeys { it != Need.Stimulation }.forEach { (need, low) -> assertTrue(low > 0.0, "$need reached $low") }
-    }
-
-    @Test
-    fun `writing as much as he likes leaves him starving by day 3`() {
-        val lived = live(3, BedroomPolicy.Journaling.Always)
-        val low = lived.world.content.needs.low
-        assertTrue(lived.lowestFullnessBy.getValue(3) < low, "lowest fullness by day: ${lived.lowestFullnessBy}")
     }
 
     @Test
@@ -116,13 +108,13 @@ class BedroomRunTest {
             variants.getValue(variant)["properties"]!!.jsonObject[field]!!.jsonObject["enum"]!!.jsonArray.map { it.jsonPrimitive.content }
         // Tier 0: a shop of meals he can't afford yet ($20 for $24), nothing to pick up, and use is for other rooms.
         assertEquals(setOf("do", "move_to", "say", "wait"), variants.keys)
-        // The schema takes every verb the sim would (the scripted baseline journals with no writer); choices only offer what's shown.
-        assertEquals(listOf("eat", "sketch", "journal", "sleep", "think"), enumOf("do", "activity"))
+        // The schema takes every verb the sim would; choices only offer what's shown.
+        assertEquals(listOf("eat", "sketch", "sleep", "think"), enumOf("do", "activity"))
         assertEquals(listOf("meal"), obs.shop.orEmpty().map { it.id })
 
         val choices = BedroomPrompt.choices(obs, emptyList(), world.clock.ticksPerMinute, world.content)
         assertEquals(
-            listOf("do:eat", "do:sketch", "do:journal", "do:sleep", "do:think", "wait:${BedroomPrompt.WAIT_TICKS}"),
+            listOf("do:eat", "do:sketch", "do:sleep", "do:think", "wait:${BedroomPrompt.WAIT_TICKS}"),
             choices.options.map { it.label },
         )
         // Every option's reply passes the same schema a writing model is held to.
@@ -135,15 +127,14 @@ class BedroomRunTest {
     fun `the system prompt opens with the persona and describes only the unlocked world`() {
         val (world, _) = bedroomScenario(BedroomPolicy(), content = smallWorld)
         val system = BedroomPrompt.system(world.content, world.clock.ticksPerMinute)
-        assertTrue(system.startsWith("You are intelligent, aspirational and creative"), system.take(80))
-        assertTrue("the only things you can do are eat, sketch, sell your art, hang your art on the wall, write in your journal, sleep and stop and think." in system)
-        assertTrue(Persona.CREATOR in system)
-        assertTrue("You live in this bedroom. You need money for food, as a means, not the goal." in system)
+        assertTrue(system.startsWith(world.content.personality.core.you), system.take(80))
+        assertTrue("- What you can do: eat, sketch, sell your art, hang your art on the wall, sleep and stop and think." in system)
+        assertTrue("You live in this bedroom. You need money for food." in system)
         assertTrue("a sketch sells for $3" in system)
-        assertTrue("- Journal: writing in your journal takes 1h and costs 10 energy; it's work" in system)
-        assertTrue("what you wrote in your journal" in system)
-        listOf("easel", "canvas", "record", "painting", "decor", "`uses`", "music").forEach { assertTrue(it !in system, "mentions gated '$it'") }
-        assertTrue(Persona.GOAL in system, "his goal is his journal")
+        listOf("easel", "canvas", "record", "painting", "decor", "`uses`", "music", "journal", "restrictive").forEach { assertTrue(it !in system, "mentions '$it'") }
+        assertTrue(Persona.SELF_HEADER !in system, "no self-model unless something revises it")
+        val withSelf = BedroomPrompt.system(world.content, world.clock.ticksPerMinute, self = "- Who I am: someone who sketches.")
+        assertTrue("${Persona.SELF_HEADER}\n- Who I am: someone who sketches." in withSelf)
 
         // Granting brings the gated content into the prompt.
         val grown = BedroomPrompt.system(smallWorld.unlocked(setOf("paint", "easel", "canvas", "painting")), 5)
