@@ -11,7 +11,7 @@ import kotlinx.serialization.Serializable
  *
  * [allowed]: op keys ([Op.key]) it may use. [required]: each set is "at least one of these".
  * [affordance]: it must ask for an item by affordance (in `requires`, `args` or a `consume`),
- * not only by id. [routine]: the kind is upkeep, so its rows neither wear thin nor count as new
+ * not only by id, or hear what another verb plays (a `hear` op). [routine]: the kind is upkeep, so its rows neither wear thin nor count as new
  * whatever their `routine` flag says. The perceptual kind comes when its ops do.
  */
 @Serializable
@@ -27,7 +27,7 @@ enum class VerbKind(
     @SerialName("consumptive")
     Consumptive(
         "consumptive", "does something with an item it asks for by affordance, and changes needs",
-        allowed = setOf("need", "rate", "consume", "background", "enjoy", "progress", "practice", "write"),
+        allowed = setOf("need", "rate", "consume", "background", "enjoy", "hear", "progress", "practice", "write"),
         required = listOf(setOf("need", "rate", "background", "enjoy")),
         affordance = true,
     ),
@@ -87,7 +87,8 @@ enum class VerbKind(
         val used = a.effects.map { it.key }.toSet()
         val article = if (id.first() in "aeiou") "an" else "a"
         val asks = a.requires + a.effects.flatMap { it.asksFor } + a.args.values
-        return listOfNotNull(if (affordance && asks.none { it in affordances }) "$article $id verb needs an affordance in requires, args or a consume" else null) +
+        // Hearing what another verb plays counts: that verb asked for the item.
+        return listOfNotNull(if (affordance && asks.none { it in affordances } && "hear" !in used) "$article $id verb needs an affordance in requires, args or a consume, or a hear" else null) +
             required.filter { it.none { op -> op in used } }.map { "$article $id verb needs ${it.joinToString(" or ")}" } +
             (used - allowed).map { "$article $id verb can't $it" }
     }

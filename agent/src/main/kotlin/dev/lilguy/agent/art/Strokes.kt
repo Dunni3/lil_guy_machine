@@ -23,9 +23,9 @@ import kotlin.random.Random
 object Strokes {
     /**
      * [front]: the subject stage's shapes, drawn in front of everything that isn't, whenever it was
-     * made. [copy]: a detail that is another of the subject's shapes.
+     * made. [copy]: a detail that is another of the subject's shapes. [shape]: the shape it stamps, if any.
      */
-    class Stroke(val label: String, val description: String, val front: Boolean = false, val copy: Boolean = false, val ops: (color: Int) -> List<DrawOp>)
+    class Stroke(val label: String, val description: String, val front: Boolean = false, val copy: Boolean = false, val shape: Shapes.Shape? = null, val ops: (color: Int) -> List<DrawOp>)
 
     enum class Stage(val says: String) {
         Ground("First the background: the sky, the ground, or the whole paper in one color."),
@@ -69,7 +69,7 @@ object Strokes {
                 val side = minOf(s, 2 * radius + 1)
                 val x = (cx - radius).coerceIn(0, s - side)
                 val y = (cy - radius).coerceIn(0, s - side)
-                add(Stroke("shape:${shape.id}:${key(r)}:$sizeName", "${sizeName.replaceFirstChar { it.uppercase() }} ${shape.name}, ${REGIONS[r]}.", front, copy) { c -> one(DrawOp.Stamp(x, y, side, side, shape.rows, c)) })
+                add(Stroke("shape:${shape.id}:${key(r)}:$sizeName", "${sizeName.replaceFirstChar { it.uppercase() }} ${shape.name}, ${REGIONS[r]}.", front, copy, shape) { c -> one(DrawOp.Stamp(x, y, side, side, shape.rows, c)) })
             }
         }
 

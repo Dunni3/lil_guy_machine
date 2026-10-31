@@ -53,6 +53,8 @@ data class Drawing(
     val latency: Duration,
     val error: String? = null,
     val piece: Int? = null,
+    /** The subject's noun when its subject stage drew a shape that shows it ([Shapes.showing]); null when none did. */
+    val shows: String? = null,
 )
 
 /**
@@ -63,7 +65,8 @@ data class Drawing(
  * to draw it in, seeing the picture so far as letters, until the canvas's strokes are spent: two
  * calls a stroke, and every call adds to the picture. The strokes
  * become [DrawOp]s that [Artwork.draw] rasterizes; the model never writes code or coordinates. The
- * title and tags are the subject's words, so a piece drawn for a request is matched honestly.
+ * title and tags are the subject's words, and [Drawing.shows] says whether a shape for its noun was
+ * drawn, so a piece drawn for a request is matched on what it shows.
  *
  * Any [DecisionModel] will do ([Menu]): a text model gets the same options in a prompt.
  */
@@ -140,6 +143,7 @@ class Painter(
                 // changes back and forth until the cap). A stroke already made isn't offered again.
                 val used = mutableSetOf<String>()
                 var copies = 0
+                var shows: String? = null
                 for (strokes in 0 until canvas.strokes) {
                     val stage = Strokes.stage(strokes, canvas.strokes, subject.shapes.isNotEmpty())
                     val seed = tick * 101 + strokes
@@ -170,11 +174,12 @@ class Painter(
                     made += "${stroke.description.trimEnd('.')} in ${palette.crayons[crayon].name}"
                     used += chosen
                     if (stroke.copy) copies++
+                    if (stroke.front && stroke.shape in Shapes.showing(subject.noun)) shows = subject.noun
                 }
                 val ops = back + front
                 val art = Artwork.draw(canvas.size, palette.rgb, ops)
                 if (art.blank()) failed("the piece came out one solid color")
-                else Drawing(tick, day, time, model.id, item, asked, subject.title, subject.tags, art, ops.size, calls, picks.joinToString(" "), usage, started.elapsedNow())
+                else Drawing(tick, day, time, model.id, item, asked, subject.title, subject.tags, art, ops.size, calls, picks.joinToString(" "), usage, started.elapsedNow(), shows = shows)
             }
         } catch (e: TimeoutCancellationException) {
             failed("timed out after $timeout")

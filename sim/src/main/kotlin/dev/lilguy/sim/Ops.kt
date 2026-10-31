@@ -172,6 +172,48 @@ data class BackgroundOp(val name: String, val minutes: Int, val rates: Map<Strin
         if (forSale) emptyList() else listOf("$name for ${GameClock.duration(minutes)}: " + rates.entries.joinToString { (need, d) -> b.shown(need, d) + "/h" })
 }
 
+/**
+ * Listens to whatever another verb's `background` op named [background] is playing, so the verb takes
+ * no item of its own. It's locked unless that background is playing with time left for the whole verb,
+ * and pays the playing item's value to him as mood when it finishes, as [EnjoyOp] does.
+ */
+data class HearOp(val background: String) : Op() {
+    override val key get() = "hear"
+
+    override fun problems(c: BedroomContent, verb: VerbSpec) =
+        if (starters(c).isEmpty()) listOf("hear: no verb starts a background called '$background'") else emptyList()
+
+    /** The verbs whose `background` op starts it. */
+    private fun starters(c: BedroomContent) = c.verbs.filter { v -> v.ops<BackgroundOp>().any { it.name == background } }
+
+    override fun lockReason(w: OpWorld, b: Bound): String? {
+        val start = starters(w.content).filter { w.knows(it.id) }.joinToString(" or ") { it.id }
+        val (item, left) = w.playing(background) ?: return "needs $background playing; $start puts some on"
+        val minutes = b.verb.minutes ?: return null
+        return if (left < minutes) "the ${w.item(item).name} won't last the ${GameClock.duration(minutes)} ${b.verb.id} takes; $start starts it again" else null
+    }
+
+    private fun liking(w: OpWorld, item: String) = w.value(w.item(item)) * w.content.qualityValue.inUse
+
+    override fun finish(w: OpWorld, b: Bound): List<String> {
+        val item = w.playing(background)?.first ?: return listOf("the $background had stopped")
+        val d = liking(w, item)
+        if (d == 0.0) return listOf("listened to the ${w.item(item).name}")
+        return listOf("${if (d > 0) "you like" else "you don't like"} the ${w.item(item).name}: mood ${signed(w.change(Need.Mood, b.paid("mood", d), "liking $item"))}")
+    }
+
+    override fun describe(w: OpWorld, b: Bound, forSale: Boolean): List<String> {
+        if (forSale) return listOf("listens to whatever is playing")
+        val item = w.playing(background)?.first ?: return emptyList()
+        val d = liking(w, item).roundToInt()
+        return listOf("the ${w.item(item).name} that's playing" + when {
+            d > 0 -> ": you like it: " + b.shown("mood", d.toDouble())
+            d < 0 -> ": you don't like it: " + b.shown("mood", d.toDouble())
+            else -> ""
+        })
+    }
+}
+
 /** He's asleep while the verb runs: no awake energy or stimulation drain. */
 data object SleepOp : Op() {
     override val key get() = "sleep"
@@ -323,6 +365,9 @@ internal interface OpWorld {
 
     /** Starts [bg] playing [item] on [on]; returns the event text. */
     fun play(item: String, on: String?, bg: BackgroundOp, fresh: Double): String
+
+    /** The item the background called [name] is playing and its whole minutes left; null when it isn't playing. */
+    fun playing(name: String): Pair<String, Int>?
 }
 
 /**
@@ -365,6 +410,7 @@ internal data class OpEntry(
     val background: Background? = null,
     val sleep: NoParams? = null,
     val enjoy: String? = null,
+    val hear: String? = null,
     val progress: Progress? = null,
     val practice: Map<String, Double>? = null,
     val write: Write? = null,
@@ -395,7 +441,7 @@ internal data class OpEntry(
         val set = listOfNotNull(
             need?.let(::NeedOp), rate?.let(::RateOp), consume?.let(::ConsumeOp), produce?.let(::ProduceOp), sell?.let(::SellOp),
             setState?.let { SetStateOp(it.target, it.state) }, background?.let { BackgroundOp(it.name, it.minutes, it.rates) },
-            sleep?.let { SleepOp }, enjoy?.let(::EnjoyOp), progress?.let { ProgressOp(it.book, it.study) }, practice?.let(::PracticeOp),
+            sleep?.let { SleepOp }, enjoy?.let(::EnjoyOp), hear?.let(::HearOp), progress?.let { ProgressOp(it.book, it.study) }, practice?.let(::PracticeOp),
             write?.let { WriteOp(it.with, it.into, it.timing, it.showsAs, it.optional) }, draw?.let(::DrawOp),
         )
         require(set.size == 1) { "an effect is one op, such as `- need: { mood: 2 }`; this one has ${if (set.isEmpty()) "none" else set.joinToString { it.key }}" }
@@ -413,6 +459,7 @@ internal data class OpEntry(
             is BackgroundOp -> OpEntry(background = Background(op.name, op.minutes, op.rates))
             SleepOp -> OpEntry(sleep = NoParams())
             is EnjoyOp -> OpEntry(enjoy = op.what)
+            is HearOp -> OpEntry(hear = op.background)
             is ProgressOp -> OpEntry(progress = Progress(op.book, op.study))
             is PracticeOp -> OpEntry(practice = op.gains)
             is WriteOp -> OpEntry(write = Write(op.with, op.into, op.timing, op.showsAs, op.optional))

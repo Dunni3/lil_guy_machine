@@ -87,7 +87,7 @@ class BedroomWorldTest {
         assertEquals("needs an easel ($17)", w.activity("paint").locked)
         assertEquals("you have no art to sell; sketch or paint makes some", w.activity("sell_art").locked)
         assertEquals("needs a book ($12)", w.activity("read").locked)
-        assertEquals("needs a record player ($150)", w.activity("listen").locked)
+        assertEquals("needs music playing; play_record puts some on", w.activity("listen").locked)
         assertEquals("not bedtime yet; by day only a nap, when exhausted (energy 80)", w.activity("sleep").locked)
         assertNull(w.activity("sketch").locked)
         assertEquals("1h", w.activity("sketch").takes)
@@ -233,7 +233,6 @@ class BedroomWorldTest {
     fun `a record on the player plays music in the background`() {
         val w = world(money = 500)
         w.run(Intent.Buy("record_player"))
-        assertEquals("needs a record ($20)", w.activity("listen").locked)
         w.run(Intent.Buy("jazz_record"))
         assertEquals(
             ActivityOption("play_record", "jazz_record", "record_player", "1 min", "you like it: mood +2; music for 45 min: mood +2/h, stimulation +6/h; new to you: stimulation +8, mood +3"),
@@ -241,9 +240,13 @@ class BedroomWorldTest {
         )
         assertTrue("do(verb, what, on)" in failure(w.run(Intent.Use("jazz_record", on = "record_player"))))
         assertTrue("isn't one" in failure(w.run(Intent.Do("play_record", what = "bed"))))
+        // Listening is to whatever is on: locked until a record plays, and it takes no record of its own.
+        assertEquals("needs music playing; play_record puts some on", w.activity("listen").locked)
         assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("play_record", what = "jazz_record")).status)
         assertTrue(w.obs().music!!.startsWith("jazz_record, 4"), w.obs().music)
         assertEquals("playing jazz_record", w.obs().nearby.first { it.id == "record_player" }.state)
+        assertEquals(ActivityOption("listen", null, null, "30 min", "the jazz record that's playing: you like it: mood +2; mood +4; stimulation +12; new to you: stimulation +8, mood +3"), w.activity("listen"))
+        assertTrue("takes no `what`" in failure(w.run(Intent.Do("listen", what = "jazz_record"))))
 
         // Music plays while he does something else, and its mood shows in the need log.
         w.run(Intent.Do("sketch"))
@@ -251,6 +254,23 @@ class BedroomWorldTest {
         while (w.clock.minuteOfDay(w.tick) % 60 != 0) w.step()
         assertTrue(w.needs.changes.any { it.reason == "music" && it.delta > 0 })
         assertTrue(w.obs().recentEvents.any { "the jazz record finished" in it } || w.snapshot().events.any { "the jazz record finished" in it.text })
+    }
+
+    @Test
+    fun `a commission pays only for a piece that drew its noun, whatever the title says`() {
+        val w = world(time = "08:59", needs = NeedLevels(80, 70, 80))
+        while (w.obs().commission == null) w.step()
+        val (adjective, noun) = w.obs().commission!!.wants.split(' ').drop(1)
+        val title = "$adjective $noun"
+        // Two sketches for the request, both titled for it; only the second drew the noun's shape.
+        repeat(2) { assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("sketch")).status) }
+        val (first, second) = w.obs().authored.filter { it.handler == "draw" }
+        w.deliver(first.id, AuthoredResult.Drawn(title, listOf(adjective, noun)))
+        w.deliver(second.id, AuthoredResult.Drawn(title, listOf(adjective, noun), shows = noun))
+        w.step()
+        val notes = w.obs().art!!.associate { it.id to it.commission }
+        assertEquals("doesn't match the request: there's no $noun drawn in it", notes[first.piece])
+        assertEquals("matches the request: +$12 when sold", notes[second.piece])
     }
 
     @Test
@@ -293,7 +313,7 @@ class BedroomWorldTest {
         assertTrue("isn't in vocabulary.affords" in broken(withItem("novel") { it.copy(affords = mapOf("edible?" to AffordanceParams())) }))
         assertEquals("item sketch, sellable: needs price from 1 to 10000", broken(withItem("sketch") { it.copy(affords = it.affords + ("sellable" to AffordanceParams())) }))
         assertEquals("verb read: a generative verb needs produce; a generative verb can't progress; a generative verb can't enjoy; a generative verb can't write", broken(withActivity("read") { it.copy(kind = VerbKind.Generative) }))
-        assertEquals("verb listen: a consumptive verb needs an affordance in requires, args or a consume", broken(withActivity("listen") { it.copy(args = mapOf("what" to "jazz_record"), effects = it.effects.take(1)) }))
+        assertEquals("verb listen: a consumptive verb needs an affordance in requires, args or a consume, or a hear", broken(withActivity("listen") { it.copy(requires = listOf("record_player"), effects = it.effects.drop(1)) }))
         // Kinds list what they allow: an op no kind lists for it is refused.
         assertEquals("verb think: an expressive verb can't produce", broken(withActivity("think") { it.copy(effects = it.effects + ProduceOp(mapOf("sketch" to 1))) }))
 

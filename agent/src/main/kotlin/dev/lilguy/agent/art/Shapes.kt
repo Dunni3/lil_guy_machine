@@ -374,13 +374,20 @@ object Shapes {
     /** What goes around a subject: the sky, the weather, a little life. */
     val SCENERY: List<Shape> = listOf("sun", "moon", "star", "cloud", "bird", "tree", "flower", "wave").map(::of)
 
-    /** The shapes a subject's noun is drawn with; none when the noun has no shape. */
-    fun forNoun(noun: String): List<Shape> = when (noun.lowercase()) {
-        "boat" -> listOf(of("sailboat"), of("wave"))
-        "sailboat" -> listOf(of("sailboat"), of("wave"))
-        "lighthouse" -> listOf(of("lighthouse"), of("wave"))
+    /**
+     * The shapes that show [noun] itself: a piece shows its subject only when its subject stage drew
+     * one of these, which is what a commission pays for. None when the noun has no shape.
+     */
+    fun showing(noun: String): List<Shape> = when (noun.lowercase()) {
+        "boat", "sailboat" -> listOf(of("sailboat"))
         "garden" -> listOf(of("flower"), of("tree"))
         "forest" -> listOf(of("tree"))
         else -> listOfNotNull(BY_ID[noun.lowercase()])
+    }
+
+    /** The shapes a subject's noun is drawn with: [showing], and what goes with it (the sea under a boat). */
+    fun forNoun(noun: String): List<Shape> = showing(noun) + when (noun.lowercase()) {
+        "boat", "sailboat", "lighthouse" -> listOf(of("wave"))
+        else -> emptyList()
     }
 }

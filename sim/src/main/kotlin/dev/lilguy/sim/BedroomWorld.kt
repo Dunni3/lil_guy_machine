@@ -23,7 +23,8 @@ import kotlin.random.Random
  *
  * Art is a count like any item, and each carried one is also a numbered piece, so it can be drawn,
  * hung or sold on its own. A drawing model's title and tags arrive later through [deliver]; a
- * daily commission ([CommissionRules]) pays extra for the first sold piece whose drawing matches it.
+ * daily commission ([CommissionRules]) pays extra for the first sold piece whose drawing matches it:
+ * the adjective in its title or tags, and a shape drawn for the noun.
  *
  * Doing the same thing again pays less ([HabituationRules]) and the first time pays more
  * ([NoveltyRules]); both feed stimulation, and low stimulation lowers the mood he settles to.
@@ -92,6 +93,7 @@ class BedroomWorld private constructor(
         var state = PieceState.Held
         var title: String? = null
         var tags: List<String> = emptyList()
+        var shows: String? = null
     }
 
     private class Commission(val id: Int, val adjective: String, val noun: String, val wants: String, val until: Long) {
@@ -169,6 +171,8 @@ class BedroomWorld private constructor(
             version++
             return "${item(item).name} playing for ${GameClock.duration(bg.minutes)}"
         }
+
+        override fun playing(name: String) = music?.takeIf { it.spec.name == name }?.let { it.itemId to ((it.endTick - ticks) / clock.ticksPerMinute).toInt() }
     }
 
     init {
@@ -610,11 +614,12 @@ class BedroomWorld private constructor(
     private fun drawn(p: Piece, d: AuthoredResult.Drawn) {
         p.title = d.title
         p.tags = d.tags
+        p.shows = d.shows
         val c = commission?.takeIf { it.id == p.commission && !it.fulfilled }
         val verdict = when {
             c == null -> ""
             matches(p, c) -> ": it matches the request for ${c.wants}, so it earns $${content.commissions!!.reward} more when sold"
-            else -> ": it doesn't match the request for ${c.wants}"
+            else -> ": it doesn't match the request for ${c.wants}: ${unmet(p, c)}"
         }
         event("${item(p.item).name} ${p.id} is drawn, \"${d.title}\"$verdict")
     }
@@ -625,12 +630,20 @@ class BedroomWorld private constructor(
 
     private fun openCommission(): Commission? = commission?.takeIf { !it.fulfilled && ticks < it.until }
 
-    /** Its drawing names both words of the request it was made for. */
-    private fun matches(p: Piece, c: Commission): Boolean {
-        if (p.commission != c.id) return false
-        val text = ((p.title ?: "") + " " + p.tags.joinToString(" ")).lowercase()
-        return c.adjective.lowercase() in text && c.noun.lowercase() in text
+    /**
+     * Why [p] doesn't meet request [c], or null when it does: it was made for it, its title or tags
+     * name the adjective, and it drew a subject shape for the noun ([AuthoredResult.Drawn.shows]).
+     */
+    private fun unmet(p: Piece, c: Commission): String? {
+        if (p.commission != c.id) return "it wasn't made for it"
+        if (p.title == null) return "it isn't drawn yet"
+        val text = (p.title + " " + p.tags.joinToString(" ")).lowercase()
+        if (c.adjective.lowercase() !in text) return "it isn't ${c.adjective}"
+        if (!c.noun.equals(p.shows, ignoreCase = true)) return "there's no ${c.noun} drawn in it"
+        return null
     }
+
+    private fun matches(p: Piece, c: Commission): Boolean = unmet(p, c) == null
 
     /** The first of [selling] that meets the open request, if any: only one is paid for it. */
     private fun winner(selling: List<Piece>): Piece? = openCommission()?.let { c -> selling.firstOrNull { matches(it, c) } }
@@ -666,7 +679,7 @@ class BedroomWorld private constructor(
                 c == null || p.commission != c.id || p.state != PieceState.Held -> null
                 p.title == null -> "made for the request; not drawn yet"
                 matches(p, c) -> "matches the request: +$${content.commissions!!.reward} when sold"
-                else -> "doesn't match the request"
+                else -> "doesn't match the request: ${unmet(p, c)}"
             }
             PieceView(p.id, p.item, p.title, p.state == PieceState.Hung, prices[p.id], note)
         }
@@ -886,12 +899,18 @@ class BedroomWorld private constructor(
      */
     private val current: Options
         get() {
-            val key = listOf(version, clock.minutes(ticks) / ESTIMATE_MINUTES, needs.levels(), last?.intent ?: Unit)
+            val key = listOf(version, clock.minutes(ticks) / ESTIMATE_MINUTES, needs.levels(), last?.intent ?: Unit, hearable())
             options?.let { if (it.key == key) return it }
             val activities = content.verbs.filter { isKnown(it.id) }.flatMap(::activityOptions)
             val shop = shopItems().map(::shopOption)
             return Options(key, activities, shop, catalog(shop), verbViews(activities)).also { options = it }
         }
+
+    /** For the options' key: which `hear` verbs the music still has time for, which can change between the clock's 10-minute steps. */
+    private fun hearable(): List<Boolean> = music?.let { m ->
+        val left = (m.endTick - ticks) / clock.ticksPerMinute
+        content.verbs.filter { v -> v.ops<HearOp>().any { it.background == m.spec.name } }.map { left >= (it.minutes ?: 0) }
+    }.orEmpty()
 
     /** The book that teaches [id], while he doesn't know it: "the drawing book, \"Drawing What You See\"". */
     private fun taughtBy(id: String): String? = if (isKnown(id)) null else

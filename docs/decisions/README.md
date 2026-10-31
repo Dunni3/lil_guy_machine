@@ -61,3 +61,5 @@ these hold the outcome. Skim this index before related changes.
 - 2026-10-31 [Memory redesign: no journal or wants; outcome events, day memories, a self-model, Jev-scored recall](2026-10-31-memory-redesign-outcomes-days-self-model-scored-recall.md)
 - 2026-10-31 [Knowledge and skill: books are read a chapter a session and teach what they hide; named skills pay off](2026-10-31-knowledge-and-skill-books-teach-skills-pay.md)
 - 2026-10-31 [Night and day: verbs change by day through `by_day`; the clock holds while a `before` call is out](2026-10-31-night-and-day-and-the-clock-holds-for-before-calls.md)
+- 2026-10-31 [Music starts with a record; listen hears whatever is playing (the `hear` op)](2026-10-31-listen-hears-what-is-playing.md)
+- 2026-10-31 [A commission pays for a piece that drew its noun's shape; the drawing reports what it shows](2026-10-31-commissions-are-judged-by-the-shape-drawn.md)

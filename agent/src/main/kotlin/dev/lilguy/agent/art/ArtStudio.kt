@@ -21,8 +21,8 @@ import java.util.concurrent.CopyOnWriteArrayList
  * make. The lifecycle around it (background call, keep only if the verb succeeds, the clock hold)
  * is [dev.lilguy.agent.authored.Authors]'. Kept, the drawing is saved as a PNG in [dir], put in the
  * event stream, and handed to the world for its piece ([BedroomWorld.deliver]) so the sim knows its
- * title and tags. Each day's commission is also worded once, in the customer's voice, when there's
- * a [voice] (a text model) to do it ([word]).
+ * title, tags and what it shows. Each day's commission is also worded once, in the customer's
+ * voice, when there's a [voice] (a text model) to do it ([word]).
  *
  * [connect] it to the world before the run starts.
  */
@@ -78,7 +78,7 @@ class ArtStudio(
         if (piece == null) return onDrawing(drawing)
         dir?.let { runCatching { it.mkdirs(); File(it, "piece-%03d.png".format(piece)).writeBytes(art.png()) } }
         drawn += drawing
-        deliver(AuthoredResult.Drawn(drawing.title!!, drawing.tags))
+        deliver(AuthoredResult.Drawn(drawing.title!!, drawing.tags, drawing.shows))
         val tags = if (drawing.tags.isEmpty()) "" else " (${drawing.tags.joinToString()})"
         if ("events" in call.op.into) store.appendEvent(run, ended.tick, ended.clock?.day, ended.clock?.time, EventKind.Art, "made ${drawing.item} $piece, \"${drawing.title}\"$tags")
         onDrawing(drawing)
