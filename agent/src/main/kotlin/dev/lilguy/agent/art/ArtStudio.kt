@@ -64,6 +64,9 @@ class ArtStudio(
     /** Pieces drawn and kept, oldest first, each with its [Drawing.piece] and artwork. Readable from any thread. */
     fun pieces(): List<Drawing> = drawn.toList()
 
+    /** The drawing for the activity under way, once the model has sent it; not kept yet. Readable from any thread. */
+    fun inProgress(): Drawing? = pending?.result
+
     /** Draws for [world]: its content says what each activity makes, and drawings go back to it. */
     fun connect(world: BedroomWorld) {
         content = world.content

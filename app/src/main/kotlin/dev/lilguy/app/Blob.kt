@@ -41,6 +41,12 @@ class Blob : Disposable {
         var music = false
         /** Height of what he stands or lies on: the floor, or the bed. */
         var standY = 0f
+        /** Where his working hand goes, in world space, while he draws, writes or paints; null otherwise. */
+        var workAt: Vector3? = null
+        /** The work lies flat (a page on the desk) rather than standing up (a canvas facing +Z). */
+        var workFlat = true
+        /** How far he steps or slides toward the work, in metres. */
+        var workSlide = 0f
     }
 
     /** One moving part: its model and where it is this frame. */
@@ -69,6 +75,12 @@ class Blob : Disposable {
     private var blinkIn = 3f
     private var blinkLeft = 0f
     private var lie = 0f
+    /** 0..1, how far he has settled in to the work: slid up to it and leaning over it. */
+    private var settle = 0f
+    /** Toward the work, flat, and the axis he leans on to bend toward it. */
+    private val workDir = Vector3()
+    private val leanAxis = Vector3()
+    private var slideTo = 0f
 
     /** The current expression, after blinking. */
     var expression = Face.Neutral
@@ -79,6 +91,8 @@ class Blob : Disposable {
     val headTop = Vector3()
 
     private val root = Matrix4()
+    private val inverse = Matrix4()
+    private val hold = Vector3()
 
     init {
         val grainCanvas = CrayonCanvas(BODY_W, BODY_H, TEX_SCALE).also { paintGrain(it) }
@@ -127,9 +141,9 @@ class Blob : Disposable {
         val glum = ((45.0 - pose.mood) / 30.0).coerceIn(0.0, 1.0).toFloat()
 
         // Turn toward where he faces, the short way round. Model +Z is compass 270 (south, the camera).
-        // Standing still he turns partway toward the camera, so his face reads while he works.
+        // Standing still he turns partway toward the camera, so his face reads; less with his hands on his work.
         var target = pose.facing + 90f
-        if (!pose.moving) target += angleDiff(0f, target) * PLAY_TO_CAMERA
+        if (!pose.moving) target += angleDiff(0f, target) * if (pose.workAt != null) PLAY_AT_WORK else PLAY_TO_CAMERA
         yaw += MathUtils.clamp(angleDiff(target, yaw), -TURN_SPEED * dt, TURN_SPEED * dt)
 
         // A little landing squash whenever he starts or stops walking.
@@ -171,7 +185,17 @@ class Blob : Disposable {
         // When music plays and he's idle, he sways.
         val sway = if (pose.music && !pose.moving && !asleep) 6f * sin(time * 2.6f) else 0f
 
-        root.setToTranslation(pose.x, pose.standY + hop, pose.z + lie * 0.08f)
+        // At work he slides up to it (off the chair's middle, toward the desk) and leans toward it, more over a page.
+        val work = pose.workAt?.takeIf { !pose.moving && !asleep }
+        settle = MathUtils.lerp(settle, if (work != null) 1f else 0f, (dt * 3f).coerceAtMost(1f))
+        if (work != null) workDir.set(work.x - pose.x, 0f, work.z - pose.z).nor()
+        val stroke = strokeAt(time)
+        if (work != null) slideTo = pose.workSlide
+        val slide = slideTo * settle
+        val lean = settle * (if (pose.workFlat) LEAN_FLAT + 3f * stroke.nod else LEAN_UPRIGHT)
+
+        root.setToTranslation(pose.x + workDir.x * slide, pose.standY + hop, pose.z + workDir.z * slide + lie * 0.08f)
+            .rotate(leanAxis.set(workDir.z, 0f, -workDir.x), lean)
             .rotate(Vector3.Y, if (asleep) MathUtils.lerp(yaw, 0f, lie) else yaw)
             .rotate(Vector3.X, -38f * lie)
             .rotate(Vector3.Z, sway)
@@ -179,6 +203,8 @@ class Blob : Disposable {
         val m = measure
         body.transform.set(root).translate(0f, FEET + m.bottom * squash, 0f).scale(stretchXZ, squash, stretchXZ)
 
+        // At work, the hand nearer the camera does it, so it shows.
+        val hand = if (work == null) -1 else SIDES.indices.maxBy { i -> hold.set(SIDES[i], 0f, 0f).rot(root).z }
         for ((i, side) in SIDES.withIndex()) {
             val step = if (pose.moving) sin(walkPhase + i * MathUtils.PI) * 0.09f else 0f
             feet[i].transform.set(root).translate(side * 0.13f, 0.045f + (if (step > 0) step * 0.3f else 0f), m.footZ + step)
@@ -194,6 +220,12 @@ class Blob : Disposable {
                 "sell_art" -> if (side > 0) { az = 0.22f; ay += 0.2f + 0.04f * sin(time * 6f) }
                 else -> ay += if (pose.music) 0.03f * sin(time * 5.2f + i * MathUtils.PI) else 0.008f * sin(time * 2.3f + i)
             }
+            if (work != null) {
+                workHand(work, pose, stroke, side, i == hand)
+                ax = MathUtils.lerp(ax, hold.x, settle)
+                ay = MathUtils.lerp(ay, hold.y, settle)
+                az = MathUtils.lerp(az, hold.z, settle)
+            }
             arms[i].transform.set(root).translate(ax, ay, az)
         }
 
@@ -201,6 +233,98 @@ class Blob : Disposable {
         shadowTransform.setToTranslation(pose.x, pose.standY + SHADOW_LIFT, pose.z).scale(shrink * shadowWidth * SHADOW_W, 1f, shrink * SHADOW_D)
         headTop.set(0f, FEET + m.bottom + m.top + 0.2f, 0f).mul(root)
         if (asleep) headTop.set(pose.x, pose.standY + 0.6f, pose.z)
+    }
+
+    /** One stroke of the pen or brush: where in it he is (0..1), which stroke it is, and whether his hand is lifted. */
+    private class Stroke {
+        var t = 0f
+        var n = 0
+        var lifted = false
+        /** His head dips with each stroke, -1..1. */
+        var nod = 0f
+    }
+
+    private val strokeNow = Stroke()
+
+    private fun strokeAt(time: Float): Stroke = strokeNow.apply {
+        val cycle = time / STROKE
+        n = cycle.toInt()
+        val f = cycle - n
+        lifted = f > STROKE_DOWN
+        t = if (lifted) 1f else f / STROKE_DOWN
+        nod = if (lifted) -1f else sin(t * MathUtils.PI)
+    }
+
+    /**
+     * Sets [hold] to where hand [side] goes at [work], in his own (root) frame. The [working] hand
+     * goes to the work: scribbling over a sketch, writing lines in the journal, or dabbing at the
+     * canvas with a trip to the palette now and then. The other holds the page down, or the palette.
+     */
+    private fun workHand(work: Vector3, pose: Pose, stroke: Stroke, side: Float, working: Boolean) {
+        val r = Rng(stroke.n * 7919 + 17)
+        if (pose.workFlat) {
+            if (working) {
+                if (pose.doing == "journal") {
+                    // Writing: along a line, left to right, a line at a time.
+                    val line = (time / LINE).toInt()
+                    val along = time / LINE - line
+                    hold.set(work).add(-0.07f + 0.14f * along, 0f, -0.05f + 0.025f * (line % 5))
+                    hold.z += 0.006f * sin(time * 31f)
+                    if (along > 0.9f) hold.y += 0.03f
+                } else {
+                    // Sketching: a short loop somewhere on the page, then lift and move.
+                    val a = stroke.t * MathUtils.PI2 * 1.3f + r() * MathUtils.PI2
+                    hold.set(work).add((r() - 0.5f) * 0.12f + 0.025f * cos(a), 0f, (r() - 0.5f) * 0.08f + 0.018f * sin(1.7f * a))
+                    if (stroke.lifted) hold.y += 0.035f
+                }
+                hold.y += 0.02f
+            } else {
+                // Holding the page down, at its corner nearer that hand.
+                hold.set(work).add(0f, 0.02f, 0f)
+                toLocal(hold)
+                hold.x = side * 0.17f
+                return reach(side)
+            }
+        } else {
+            if (working) {
+                if (stroke.n % PALETTE_EVERY == PALETTE_EVERY - 1) {
+                    // A dip in the paint: his hands meet at the palette.
+                    palette(-side)
+                    hold.x += side * 0.08f
+                    return reach(side)
+                }
+                // A dab: from a spot on the canvas, a short drag, then back off it.
+                val angle = r() * MathUtils.PI2
+                val drag = 0.07f * stroke.t
+                hold.set(work).add((r() - 0.5f) * 0.3f + drag * cos(angle), (r() - 0.5f) * 0.34f + drag * sin(angle), 0f)
+                if (stroke.lifted) hold.z += 0.07f
+            } else {
+                palette(side)
+                return reach(side)
+            }
+        }
+        toLocal(hold)
+        reach(side)
+    }
+
+    /** Where hand [side] holds the palette, out to his side and low, in his own frame. */
+    private fun palette(side: Float) {
+        hold.set(side * (measure.armX + 0.05f), measure.bottom + measure.armY - 0.06f, 0.16f)
+    }
+
+    private fun toLocal(v: Vector3) {
+        v.mul(inverse.set(root).inv())
+    }
+
+    /** Pulls [hold] back within arm's length of shoulder [side]. */
+    private fun reach(side: Float) {
+        val sx = side * measure.armX
+        val sy = FEET + measure.bottom + measure.armY
+        val dx = hold.x - sx
+        val dy = hold.y - sy
+        val dz = hold.z
+        val d = sqrt(dx * dx + dy * dy + dz * dz)
+        if (d > REACH) hold.set(sx + dx / d * REACH, sy + dy / d * REACH, dz / d * REACH)
     }
 
     /** Queues him on [r], between its begin and end: his shadow (not while [asleep]), parts and face. */
@@ -311,6 +435,18 @@ class Blob : Disposable {
         const val SHADOW_D = 0.48f
         const val TURN_SPEED = 600f
         const val PLAY_TO_CAMERA = 0.4f
+        /** At work: how far he leans (degrees), and his arm's reach (his own units). */
+        const val LEAN_FLAT = 8f
+        const val LEAN_UPRIGHT = 3f
+        const val PLAY_AT_WORK = 0.25f
+        const val REACH = 0.48f
+        /** Seconds a stroke takes, and the part of it his hand is down. */
+        const val STROKE = 0.85f
+        const val STROKE_DOWN = 0.8f
+        /** Seconds to write a line. */
+        const val LINE = 1.6f
+        /** Every this many strokes, he dips his brush in the palette. */
+        const val PALETTE_EVERY = 6
         const val WALK_RATE = 13f
         const val SPRING = 160f
         const val DAMPING = 9f

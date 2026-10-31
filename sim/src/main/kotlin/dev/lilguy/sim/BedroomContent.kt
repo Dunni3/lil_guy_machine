@@ -113,6 +113,7 @@ data class BedroomContent(
         require(think.minutes >= 1) { "think needs at least 1 minute" }
         require(think.every == null || think.every >= 1) { "think.every must be at least 1" }
         GameClock.parseHhmm(start.time)
+        require(room.approach.keys.all { it in room.slots.values }) { "room.approach names a slot that isn't in room.slots" }
     }
 }
 
@@ -122,6 +123,8 @@ data class RoomContent(
     /** Map letter to slot name. */
     val slots: Map<String, String>,
     @SerialName("wall_slots") val wallSlots: List<String> = emptyList(),
+    /** Slot name to the side he works it from (N, E, SE, ...), when that tile is free; else the nearest side. */
+    val approach: Map<String, Direction> = emptyMap(),
 )
 
 @Serializable

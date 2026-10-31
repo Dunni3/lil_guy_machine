@@ -26,6 +26,9 @@ room:
   slots: { b: bed, d: desk, c: chair, e: easel, s: shelf, p: plant, o: poster, r: rug, H: hatch, F: rail }
   # Slots in the wall rather than on the floor.
   wall_slots: [poster, hatch, rail]
+  # The side he works a slot from when it's free: at the desk he sits on the chair, and he paints
+  # from beside the easel so he isn't standing between the camera and the canvas.
+  approach: { desk: W, easel: E }
 
 start:
   # Was 40: one day of slack at most.
