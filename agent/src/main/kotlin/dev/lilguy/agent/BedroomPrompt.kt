@@ -204,7 +204,7 @@ object BedroomPrompt {
         val sinking = moodRules(content)?.let { " $it" }.orEmpty()
         val lists = "What you can do: ${Persona.abilities(content)}. `activities` lists all of it, with how long it takes and what it gives, or why it's locked." +
             (if (content.verbs.any { it.args.isNotEmpty() }) " One done with something you own is listed once for each thing you could use, with `what` (and `on`) naming it." else "") +
-            " `shop` is the catalog: everything for sale, its price, whether you can afford it, and what it's for." +
+            " `shop` is what the shop will sell you now: its price, whether you can afford it, and what it's for. Something that's no use without another thing isn't sold to you until you have that thing; the shop says what buying an item opens up." +
             if (decor) " Your room has empty places for furniture and decor, and the catalog is where they come from." else ""
         val options = "activities, shop"
         val hearing = content.verbs.filter { it.ops<HearOp>().isNotEmpty() }.map { it.id }

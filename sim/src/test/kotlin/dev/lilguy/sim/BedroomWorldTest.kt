@@ -93,7 +93,7 @@ class BedroomWorldTest {
         assertEquals("1h", w.activity("sketch").takes)
         assertEquals("1 sketch, sells for $3; art skill +0.1; energy -3; mood -4; stimulation +3; new to you: stimulation +8, mood +3", w.activity("sketch").gives)
         assertEquals("uses a meal (you have 2); fullness +45", w.activity("eat").gives)
-        assertEquals("needs a record ($20)", w.activity("play_record").locked)
+        assertEquals("needs a record player ($150)", w.activity("play_record").locked, "what it happens at first: the shop holds records back until then")
 
         assertEquals("can't paint: needs an easel ($17)", failure(w.run(Intent.Do("paint"))))
         assertTrue("no activity called 'dance'" in failure(w.run(Intent.Do("dance"))))
@@ -143,6 +143,10 @@ class BedroomWorldTest {
         assertEquals(ShopOption("easel", 17, false, "for paint (3h: 1 painting, sells for $30; uses a canvas), which also needs a canvas ($15)"), shop["easel"])
         assertEquals("comfort +4: mood settles 4 higher; natural, calm", shop.getValue("plant").gives)
         assertEquals("the easel costs $17 and you have $10", failure(w.run(Intent.Buy("easel"))))
+        // What's no use without something else isn't sold until he has it; the thing it needs says what it opens up.
+        assertTrue(listOf("canvas", "jazz_record", "folk_record").none { it in shop }, "held back: ${shop.keys}")
+        assertTrue(shop.getValue("record_player").gives.endsWith("then the shop sells you a jazz record ($20), an ambient record ($20), a folk record ($20)"), shop.getValue("record_player").gives)
+        assertEquals("the canvas is no use to you yet, so the shop won't sell it to you until you have an easel ($17)", failure(world(money = 500).run(Intent.Buy("canvas"))))
         assertTrue("isn't for sale" in failure(w.run(Intent.Buy("bed"))))
 
         val rich = world(money = 500)
@@ -240,7 +244,7 @@ class BedroomWorldTest {
 
         // Before it came to that: spending the last of the food money says so.
         val poor = world(money = 21, items = content.start.items - "meal")
-        assertTrue(poor.obs().shop!!.first { it.id == "canvas" }.gives.endsWith("leaves you \$6 with no food, short of a meal (3 for \$24)"))
+        assertTrue(poor.obs().shop!!.first { it.id == "novel" }.gives.endsWith("leaves you \$9 with no food, short of a meal (3 for \$24)"))
     }
 
     @Test

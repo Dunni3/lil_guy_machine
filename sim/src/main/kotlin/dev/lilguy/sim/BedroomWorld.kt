@@ -392,7 +392,8 @@ class BedroomWorld private constructor(
         if (!isKnown(a.id)) return "you don't know how yet"
         if (places.isNotEmpty() && a.at.none { it == VerbSpec.HERE || it in a.args } && places.none { countTag(it, extra) > 0 }) return "needs ${wanted(places.first())}"
         a.requires.firstOrNull { countTag(it, extra) == 0 }?.let { return "needs ${wanted(it)}" }
-        if (args == null) a.args.values.firstOrNull { countTag(it, extra) == 0 }?.let { return "needs ${wanted(it)}" }
+        // The thing it happens at first (the record player before a record), since the shop holds the rest back until he has it.
+        if (args == null) a.args.entries.sortedBy { it.key !in a.at }.firstOrNull { countTag(it.value, extra) == 0 }?.let { return "needs ${wanted(it.value)}" }
         if (a.noRepeat && (justDid as? Intent.Do)?.activity == a.id) return "you just did; do something else first"
         val b = Bound(a, args.orEmpty(), fresh = 1.0, extra = extra)
         a.effects.firstNotNullOfOrNull { it.lockReason(ops, b) }?.let { return it }
@@ -512,6 +513,7 @@ class BedroomWorld private constructor(
         val spec = content.item(id)?.takeIf { isKnown(it.id) }
         val price = spec?.price ?: reject("'$id' isn't for sale; the shop has ${shopItems().joinToString { it.id }}")
         if (!spec.stackable && count(id) > 0) reject("you already have the ${spec.name}")
+        heldBack(spec)?.let { reject("the ${spec.name} is no use to you yet, so the shop won't sell it to you until you have ${wanted(it)}") }
         if (!ledger.canAfford(price)) reject("the ${spec.name} costs $$price and you have $${ledger.balance}")
         return Work.Steps(walkToNearest(listOf(content.shop.at)).first, Work.Timed(clock.ticks(content.shop.minutes)) { purchase(spec, price) })
     }
@@ -794,6 +796,32 @@ class BedroomWorld private constructor(
         return parts.joinToString("; ")
     }
 
+    /**
+     * The verbs [spec] is for: it's where they happen, or what they need or use. A verb it fills every
+     * argument of, but which one of its ops refuses for it (studying a novel), isn't one of them.
+     */
+    private fun usesOf(spec: ItemSpec): List<VerbSpec> = content.verbs.filter { a ->
+        isKnown(a.id) && (spec.id in a.at || (a.requires + a.effects.flatMap { it.asksFor } + a.args.values).any { it in spec.names })
+    }.filterNot { a ->
+        a.args.isNotEmpty() && a.args.values.all { it in spec.names } &&
+            a.effects.any { it.lockReason(ops, Bound(a, a.args.mapValues { spec.id }, 1.0, extra = spec.id)) != null }
+    }
+
+    /** Where [a] happens, as item ids or affordances (an `on` argument by what fills it); empty for `here`. */
+    private fun placesOf(a: VerbSpec): List<String> = if (VerbSpec.HERE in a.at) emptyList() else a.at.map { a.args[it] ?: it }
+
+    /**
+     * What [spec] waits on when it's no use to him yet, so the shop holds it back: every verb it's for
+     * happens at something he doesn't have, and this is the first of those (record_player for a
+     * record). Null when one of them can happen, or when it's for no verb at all (decor). The thing a
+     * verb happens at is never held back itself, so there's always something to buy first.
+     */
+    private fun heldBack(spec: ItemSpec): String? {
+        val missing = usesOf(spec).map { a -> placesOf(a).takeIf { ps -> ps.isNotEmpty() && ps.none { countTag(it, spec.id) > 0 } } }
+        if (missing.isEmpty() || missing.any { it == null }) return null
+        return missing.first()!!.first()
+    }
+
     private fun shopOption(spec: ItemSpec): ShopOption {
         val parts = mutableListOf<String>()
         if (spec.pack > 1) parts += quantity(spec.id, spec.pack)
@@ -803,15 +831,8 @@ class BedroomWorld private constructor(
             if (b.skill.isNotEmpty()) parts += "studying it raises " + b.skill.keys.joinToString(" and ")
             ops.teaching(b.id)?.let { parts += "finishing it teaches you $it" }
         }
-        val unlocks = content.verbs.filter { a ->
-            isKnown(a.id) && (spec.id in a.at || (a.requires + a.effects.flatMap { it.asksFor } + a.args.values).any { it in spec.names })
-        }
         // What it's for. When it's what a locked activity is missing, say so and what that activity gives.
-        // A verb this item fills every argument of, but which one of its ops refuses for it (studying a novel), isn't what it's for.
-        unlocks.filterNot { a ->
-            a.args.isNotEmpty() && a.args.values.all { it in spec.names } &&
-                a.effects.any { it.lockReason(ops, Bound(a, a.args.mapValues { spec.id }, 1.0, extra = spec.id)) != null }
-        }.forEach { a ->
+        usesOf(spec).forEach { a ->
             val locked = lockReason(a)
             val after = lockReason(a, extra = spec.id)
             val what = takes(a) + gives(a, forSale = true).let { if (it.isEmpty()) "" else ": $it" }
@@ -825,6 +846,10 @@ class BedroomWorld private constructor(
         if (comfort > 0) parts += "comfort +$comfort: mood settles $comfort higher"
         if (comfort < 0) parts += "comfort $comfort: you don't like it, so mood settles ${-comfort} lower"
         if (spec.qualities.isNotEmpty()) parts += spec.qualities.keys.joinToString(", ")
+        // What owning it opens up: items the shop holds back until he has this.
+        shopItems().filter { other -> other.id != spec.id && heldBack(other) != null && usesOf(other).any { a -> placesOf(a).any { it in spec.names } } }
+            .map { "${article(it.name)} ($${it.price})" }.filter { o -> parts.none { o in it } }
+            .takeIf { it.isNotEmpty() }?.let { parts += "then the shop sells you " + it.joinToString() }
         // Spending the food money: said when he has no food left and this would leave him short of the cheapest.
         val left = ledger.balance - spec.price!!
         foodTags.filter { tag -> tag !in spec.names && countTag(tag) == 0 }.firstOrNull { tag ->
@@ -916,7 +941,7 @@ class BedroomWorld private constructor(
             val key = listOf(version, clock.minutes(ticks) / ESTIMATE_MINUTES, needs.levels(), last?.intent ?: Unit, hearable())
             options?.let { if (it.key == key) return it }
             val activities = content.verbs.filter { isKnown(it.id) }.flatMap(::activityOptions)
-            val shop = shopItems().map(::shopOption)
+            val shop = shopItems().filter { heldBack(it) == null }.map(::shopOption)
             return Options(key, activities, shop, catalog(shop), verbViews(activities)).also { options = it }
         }
 
@@ -935,7 +960,8 @@ class BedroomWorld private constructor(
         val offered = shop.associateBy { it.id }
         return content.items.filter { it.price != null }.map { spec ->
             val o = offered[spec.id] ?: shopOption(spec)
-            CatalogEntry(spec.id, spec.name, spec.group, spec.price!!, spec.pack, spec.stackable, count(spec.id), o.affordable, o.gives, taughtBy(spec.id))
+            val gives = heldBack(spec)?.takeIf { isKnown(spec.id) }?.let { "not sold to you until you have ${wanted(it)}; ${o.gives}" } ?: o.gives
+            CatalogEntry(spec.id, spec.name, spec.group, spec.price!!, spec.pack, spec.stackable, count(spec.id), o.affordable, gives, taughtBy(spec.id))
         }
     }
 
