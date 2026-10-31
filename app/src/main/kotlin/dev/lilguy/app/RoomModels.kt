@@ -73,6 +73,11 @@ class RoomModels : Disposable {
         }
     }
 
+    /** A blank canvas, pivot at the easel's, standing on its ledge; its face is [CANVAS_Z] out and [CANVAS_Y] up at its centre. */
+    fun canvas(): CrayonModel = items.getOrPut("canvas") {
+        model { box(CANVAS, 0f, 0.47f, 0.12f, 0.5f, 0.56f, 0.03f, round = 0.008f) }
+    }
+
     /** One clock hand, pivot at its base, pointing up (+Y) and facing +Z. */
     fun hand(length: Float): CrayonModel = items.getOrPut("hand/$length") {
         model { box(HAND, 0f, -0.02f, 0f, 0.025f, length, 0.01f, round = 0.005f, outline = 0f) }
@@ -293,7 +298,8 @@ class RoomModels : Disposable {
                 box(WOOD, 0f, 0.5f, 0f, 0.98f, 0.065f, 0.62f, round = 0.03f)
                 box(WOOD_LIGHT, 0.24f, 0.31f, 0f, 0.42f, 0.18f, 0.56f, round = 0.03f)
                 sphere(KNOB, 0.24f, 0.38f, 0.28f, 0.045f, 0.045f, 0.03f)
-                box(PAPER, -0.12f, 0.562f, 0.04f, 0.28f, 0.004f, 0.2f, round = 0.002f, outline = 0f, lump = 0f)
+                // His sketchbook's page, at the end by the chair; the view lays the sketch under way or his newest on it.
+                box(PAPER, SKETCH_X, 0.562f, SKETCH_Z, 0.28f, 0.004f, 0.2f, round = 0.002f, outline = 0f, lump = 0f)
                 cylinder(MUG, 0.18f, 0.565f, 0.12f, 0.09f, 0.1f, 0.09f, round = 0.015f)
                 capsule(MUG, 0.235f, 0.585f, 0.12f, 0.025f, 0.06f, 0.025f)
                 // A little lamp.
@@ -311,10 +317,8 @@ class RoomModels : Disposable {
                 box(WOOD, -0.22f, 0f, 0.08f, 0.05f, 1.15f, 0.05f, rotZ = -8f, round = 0.02f)
                 box(WOOD, 0.22f, 0f, 0.08f, 0.05f, 1.15f, 0.05f, rotZ = 8f, round = 0.02f)
                 box(WOOD_DARK, 0f, 0f, -0.2f, 0.05f, 1.1f, 0.05f, rotX = -14f, round = 0.02f)
+                // The ledge a canvas stands on ([canvas]); the easel is bare without one.
                 box(WOOD, 0f, 0.42f, 0.12f, 0.58f, 0.05f, 0.09f, round = 0.02f)
-                box(CANVAS, 0f, 0.47f, 0.12f, 0.5f, 0.56f, 0.03f, round = 0.008f)
-                sphere(POSTER_SUN, -0.08f, 0.72f, 0.135f, 0.15f, 0.15f, 0.02f, outline = 0.006f)
-                box(LEAF, 0.05f, 0.5f, 0.135f, 0.36f, 0.12f, 0.02f, round = 0.01f, outline = 0.006f)
             }
             "record_player" -> {
                 box(WOOD_DARK, 0f, 0f, 0f, 0.8f, 0.5f, 0.46f, round = 0.035f)
@@ -424,6 +428,11 @@ class RoomModels : Disposable {
         const val WINDOW_BOTTOM = 1.0f
         const val WINDOW_TOP = 1.8f
         const val CLOCK_Y = 1.32f
+        /** Where the desk's page is, from the desk's pivot. */
+        const val SKETCH_X = -0.24f
+        const val SKETCH_Z = 0.06f
+        const val CANVAS_Y = 0.75f
+        const val CANVAS_Z = 0.135f
         const val FRAME = 0.44f
         const val FRAME_ART = 0.34f
         const val FRAME_ART_Z = 0.04f

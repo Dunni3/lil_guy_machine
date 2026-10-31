@@ -16,7 +16,6 @@ import com.badlogic.gdx.math.Vector3
 import com.badlogic.gdx.utils.Align
 import com.badlogic.gdx.utils.Disposable
 import com.badlogic.gdx.utils.viewport.FitViewport
-import dev.lilguy.agent.art.Drawing
 import dev.lilguy.sim.EntitySnapshot
 import dev.lilguy.sim.Intent
 import dev.lilguy.sim.IntentStatus
@@ -32,8 +31,8 @@ import kotlin.math.tan
  * fixed-camera cutaway of the room (no front wall, no ceiling), furniture placed where the snapshot
  * says ([RoomModels]), the guy as an animated [Blob], light and the window's sky following the game
  * clock, and a small HUD with a bubble over his head. His art shows too: hung pieces in frames on
- * the picture rail, and his newest unsold piece on the desk (a sketch) or the easel (a painting),
- * each a small texture from [ArtTextures].
+ * the picture rail, and on the desk (a sketch) or the easel (a painting) the piece he's making or
+ * his newest unsold one, each a small texture from [ArtTextures].
  *
  * Everything is drawn in the hand-drawn look by one [CrayonRenderer]: furniture and the guy with the
  * crayon shader and boiling ink outlines, the floor and walls as painted textures under the cheap
@@ -68,6 +67,7 @@ class RoomView(private val art: ArtTextures) : Disposable {
     private val quads = HashMap<String, Mesh>()
     private val railAt = Matrix4()
     private val at = Matrix4()
+    private val workAt = Vector3()
     private var framed: TileMap? = null
 
     private val shapes = ShapeRenderer()
@@ -119,6 +119,12 @@ class RoomView(private val art: ArtTextures) : Disposable {
         // On the bed's tile he is on the mattress; standing still on a chair's tile, he sits on it.
         val under = now.entities.firstOrNull { it.id.value in SURFACES && it.x.toInt() == guy.x.toInt() && it.y.toInt() == guy.y.toInt() }?.id?.value
         pose.standY = if (under == "chair" && pose.moving) 0f else SURFACES[under] ?: 0f
+        // Drawing, writing or painting, his hand goes to the page or the canvas.
+        val station = WORK[pose.doing]
+        val stand = station?.let { st -> now.entities.firstOrNull { it.id.value == st.id } }
+        pose.workAt = if (station != null && stand != null) workAt.set(stand.x + station.x, station.y, stand.y + station.z) else null
+        pose.workFlat = station?.flat ?: true
+        pose.workSlide = station?.slide ?: 0f
         blob.update(delta, pose)
 
         crayon.begin(camera, tint, delta)
@@ -198,11 +204,14 @@ class RoomView(private val art: ArtTextures) : Disposable {
     }
 
     /**
-     * Hung pieces in frames along the picture rail, oldest at the left; then the newest unsold
-     * piece of each drawn item on its stand ([STANDS]). Pieces not drawn yet show as an empty frame or nothing.
+     * Hung pieces in frames along the picture rail, oldest at the left; then each stand ([STANDS]):
+     * the piece he's making there, filling in as he works, or else his newest unsold piece of its
+     * item. The easel holds a blank canvas while he has one, is painting, or has a painting to show.
+     * Pieces not drawn yet show as an empty frame, a blank page or a blank canvas.
      */
     private fun renderArt(session: SimSession, now: WorldSnapshot) {
-        val pieces = now.life?.art?.takeIf { it.isNotEmpty() } ?: return
+        val life = now.life ?: return
+        val pieces = life.art
         art.sync(session)
         val drawings = art.drawings(session)
         val rail = placedAt["picture_rail"]
@@ -210,20 +219,27 @@ class RoomView(private val art: ArtTextures) : Disposable {
             pieces.filter { it.hung }.take(RoomModels.FRAME_XS.size).forEachIndexed { i, p ->
                 railAt.set(rail).translate(RoomModels.FRAME_XS[i], RoomModels.FRAME_BOTTOM, 0f)
                 crayon.model(models.frame(), railAt)
-                picture(drawings[p.id], RoomModels.FRAME_ART, flat = false, at.set(railAt).translate(0f, RoomModels.FRAME / 2, RoomModels.FRAME_ART_Z))
+                picture(drawings[p.id]?.let(art::of), RoomModels.FRAME_ART, flat = false, at.set(railAt).translate(0f, RoomModels.FRAME / 2, RoomModels.FRAME_ART_Z))
             }
         }
-        for ((item, stand) in STANDS) {
-            val p = pieces.lastOrNull { !it.hung && it.item == item } ?: continue
+        for (stand in STANDS) {
             val e = now.entities.firstOrNull { it.id.value == stand.id } ?: continue
-            picture(drawings[p.id], stand.size, stand.flat, at.setToTranslation(e.x + stand.x, stand.y, e.y + stand.z))
+            val making = life.doing == stand.activity
+            val texture = if (making) {
+                session.memory.studio?.inProgress()?.takeIf { it.item == stand.item }?.let { art.partial(it, life.progress ?: 0f, stand.blank) }
+            } else {
+                pieces.lastOrNull { !it.hung && it.item == stand.item }?.let { p -> drawings[p.id]?.let(art::of) }
+            }
+            if (stand.canvas && (making || texture != null || (life.owns["canvas"] ?: 0) > 0)) {
+                placedAt[stand.id]?.let { crayon.model(models.canvas(), it) }
+            }
+            picture(texture, stand.size, stand.flat, at.setToTranslation(e.x + stand.x, stand.y, e.y + stand.z))
         }
     }
 
-    /** Queues a square of the piece's picture, [size] wide, facing +Z or lying face up when [flat], at [transform]; nothing until it's drawn. */
-    private fun picture(drawing: Drawing?, size: Float, flat: Boolean, transform: Matrix4) {
-        val d = drawing ?: return
-        val texture = art.of(d) ?: return
+    /** Queues a square of a piece's picture, [size] wide, facing +Z or lying face up when [flat], at [transform]; nothing until it's drawn. */
+    private fun picture(texture: Texture?, size: Float, flat: Boolean, transform: Matrix4) {
+        texture ?: return
         crayon.surface(quads.getOrPut("$size/$flat") { models.quad(size, flat) }, texture, transform)
     }
 
@@ -423,13 +439,22 @@ class RoomView(private val art: ArtTextures) : Disposable {
         const val PITCH = 40f
         /** Room beyond the side walls, in tiles, so the walls don't touch the screen edge. */
         const val SIDE_MARGIN = 0.9f
-        /** Where an item's newest unsold piece shows: on which stand, offset from its tile centre, how big, and lying flat or upright. */
-        class Stand(val id: String, val x: Float, val y: Float, val z: Float, val size: Float, val flat: Boolean)
-
-        val STANDS = mapOf(
-            "sketch" to Stand("desk", -0.12f, 0.567f, 0.04f, 0.2f, flat = true),
-            "painting" to Stand("easel", 0f, 0.75f, 0.16f, 0.44f, flat = false),
+        /**
+         * Where [item]s are made ([activity]) and the newest unsold one shows: on which stand, offset
+         * from its tile centre, how big, lying flat or upright, the colour of the blank it's made on
+         * (0xRRGGBB), whether the stand needs a [RoomModels.canvas] for it, and how far he moves in from
+         * his tile to work at it (on the chair at the desk, a little; standing at the easel, a step).
+         */
+        class Stand(
+            val id: String, val item: String, val activity: String,
+            val x: Float, val y: Float, val z: Float, val size: Float, val flat: Boolean, val blank: Int, val canvas: Boolean = false, val slide: Float,
         )
+
+        val SKETCH = Stand("desk", "sketch", "sketch", RoomModels.SKETCH_X, 0.567f, RoomModels.SKETCH_Z, 0.2f, flat = true, blank = 0xfdf9ef, slide = 0.14f)
+        val PAINTING = Stand("easel", "painting", "paint", 0f, RoomModels.CANVAS_Y, RoomModels.CANVAS_Z + 0.025f, 0.44f, flat = false, blank = 0xfdf8ee, canvas = true, slide = 0.38f)
+        val STANDS = listOf(SKETCH, PAINTING)
+        /** Activities done by hand at a stand, and which: his working hand goes to it. */
+        val WORK = mapOf("sketch" to SKETCH, "journal" to SKETCH, "paint" to PAINTING)
 
         /** What he stands, sits or lies on, by item id, and how high its top is. */
         val SURFACES = mapOf("bed" to 0.3f, "chair" to 0.38f)

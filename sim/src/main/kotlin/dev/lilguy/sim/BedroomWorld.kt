@@ -2,9 +2,12 @@ package dev.lilguy.sim
 
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sign
+import kotlin.math.sin
 import kotlin.random.Random
 
 /**
@@ -194,18 +197,29 @@ class BedroomWorld private constructor(
         }
     }
 
-    /** A walk to the nearest of [ids] that he owns; the caller has checked there is one. */
-    private fun walkToNearest(ids: List<String>): Work.Walk {
-        val paths = placed().filter { it.first.id in ids }.mapNotNull { (_, cell) -> pathToward(cell) }
-        val best = paths.minByOrNull { it.cost } ?: reject("there is no way to reach the ${ids.joinToString(" or ")}")
-        return Work.Walk(ArrayDeque(best.cells))
+    /**
+     * A walk to the nearest of [ids] that he owns, and the tile of the one he walks to; the caller
+     * has checked there is one. He goes to the side the room's `approach` names when it's free.
+     */
+    private fun walkToNearest(ids: List<String>): Pair<Work.Walk, Cell> {
+        val paths = placed().filter { it.first.id in ids }.mapNotNull { (spec, cell) ->
+            val side = content.room.approach[spec.slot]?.let { d ->
+                val rad = Math.toRadians(d.degrees.toDouble())
+                Cell(cell.x + cos(rad).roundToInt(), cell.y - sin(rad).roundToInt())
+            }
+            val path = side?.takeIf { passable(it.x, it.y) }?.let { Pathfinder.find(map.width, map.height, guy.cell, it, ::passable) } ?: pathToward(cell)
+            path?.let { it to cell }
+        }
+        val (best, cell) = paths.minByOrNull { it.first.cost } ?: reject("there is no way to reach the ${ids.joinToString(" or ")}")
+        return Work.Walk(ArrayDeque(best.cells)) to cell
     }
 
     private fun planDo(id: String): Work {
         val a = content.activity(id)
             ?: reject("there's no activity called '$id'" + (content.uses.find { it.id == id }?.let { "; it's done with use(${it.item}, on ${it.on})" } ?: "; the activities are ${content.activities.joinToString { it.id }}"))
         lockReason(a)?.let { reject("can't ${a.id}: $it") }
-        return Work.Steps(walkToNearest(a.at), activity(a) { complete(a) })
+        val (walk, at) = walkToNearest(a.at)
+        return Work.Steps(walk, activity(a, at) { complete(a) })
     }
 
     private fun planUse(intent: Intent.Use): Work {
@@ -216,7 +230,8 @@ class BedroomWorld private constructor(
         val on = intent.on ?: reject("use the ${spec.name} on something: ${rules.joinToString(" or ") { it.on!! }}")
         val rule = rules.find { it.on == on } ?: reject("using the ${spec.name} on $on does nothing; try ${rules.joinToString(" or ") { it.on!! }}")
         lockReason(rule)?.let { reject("can't use the ${spec.name} on $on: $it") }
-        return Work.Steps(walkToNearest(rule.at), activity(rule) { complete(rule, usedItem = spec.id) })
+        val (walk, at) = walkToNearest(rule.at)
+        return Work.Steps(walk, activity(rule, at) { complete(rule, usedItem = spec.id) })
     }
 
     private fun planBuy(id: String): Work {
@@ -224,7 +239,7 @@ class BedroomWorld private constructor(
         val price = spec?.price ?: reject("'$id' isn't for sale; the shop has ${shopItems().joinToString { it.id }}")
         if (!spec.stackable && count(id) > 0) reject("you already have the ${spec.name}")
         if (!ledger.canAfford(price)) reject("the ${spec.name} costs $$price and you have $${ledger.balance}")
-        return Work.Steps(walkToNearest(listOf(content.shop.at)), Work.Timed(clock.ticks(content.shop.minutes)) { purchase(spec, price) })
+        return Work.Steps(walkToNearest(listOf(content.shop.at)).first, Work.Timed(clock.ticks(content.shop.minutes)) { purchase(spec, price) })
     }
 
     /** Thinking happens where he stands; the thought itself is the agent loop's. */
@@ -237,13 +252,17 @@ class BedroomWorld private constructor(
         }
     }
 
-    /** The timed part of an activity: sets [doing] when it starts and ends by duration or `until`. */
-    private fun activity(a: ActivitySpec, finish: () -> String?): Work.Until {
+    /**
+     * The timed part of an activity: sets [doing] when it starts and ends by duration or `until`.
+     * [at] is the tile of what he does it at; he turns to face it unless he's on it.
+     */
+    private fun activity(a: ActivitySpec, at: Cell, finish: () -> String?): Work.Until {
         val until = a.until
         val untilNeed = until?.need?.let(::needOf)
         val stops = a.stopBelow.mapKeys { needOf(it.key) }
         return Work.Until(
             start = {
+                if (at != guy.cell) guy.facing = Direction.of(at.x + 0.5f - guy.x, at.y + 0.5f - guy.y)
                 val length = if (until != null) clock.ticksUntil(ticks, GameClock.parseHhmm(until.time)) else clock.ticks(a.minutes!!).toLong()
                 doing = Doing(a, ticks, ticks + length)
             },
