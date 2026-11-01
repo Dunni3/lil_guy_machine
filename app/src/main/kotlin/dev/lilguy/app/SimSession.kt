@@ -127,7 +127,20 @@ class SimSession(
     val thinkingFor: Duration? get() = runtime.decidingSince?.elapsedNow()
 
     /** How far the clock is between [previous] and [current], 0..1. */
-    val alpha: Float get() = if (state == RunState.Running) (accumulator / settings.tickSeconds(ticksPerMinute)).coerceAtMost(1f) else 1f
+    val alpha: Float get() = if (state == RunState.Running) (accumulator / tickSeconds()).coerceAtMost(1f) else 1f
+
+    /**
+     * How many times faster than [RunSettings.speed] the clock runs now: [RunSettings.quiet] while he
+     * is settled into a quiet verb ([RunSettings.QUIET_VERBS]; not on his way to it), else 1.
+     */
+    val fastForward: Int get() {
+        if (state != RunState.Running || current.life?.doing !in RunSettings.QUIET_VERBS) return 1
+        val guy = current.entities.firstOrNull { it.kind == "guy" } ?: return 1
+        val before = previous.entities.firstOrNull { it.id == guy.id } ?: guy
+        return if (before.x == guy.x && before.y == guy.y) settings.quiet else 1
+    }
+
+    private fun tickSeconds(): Float = settings.tickSeconds(ticksPerMinute, fastForward)
 
     private var runScope: CoroutineScope? = null
     private var agent: Job? = null
@@ -203,14 +216,14 @@ class SimSession(
     fun update(delta: Float) {
         collectDecisions()
         if (state != RunState.Running) return
-        val tickSeconds = settings.tickSeconds(ticksPerMinute)
         accumulator += min(delta, MAX_FRAME)
-        while (accumulator >= tickSeconds && state == RunState.Running && !mustHold()) {
+        // Each tick at the rate of the moment: a quiet stretch can start or end partway through a frame.
+        while (accumulator >= tickSeconds() && state == RunState.Running && !mustHold()) {
+            accumulator -= tickSeconds()
             tick()
-            accumulator -= tickSeconds
         }
         holding = state == RunState.Running && mustHold()
-        if (holding) accumulator = accumulator.coerceAtMost(tickSeconds)
+        if (holding) accumulator = accumulator.coerceAtMost(tickSeconds())
     }
 
     /** Runs [ticks] ticks by hand; only while paused, so the clock can't run away. */
