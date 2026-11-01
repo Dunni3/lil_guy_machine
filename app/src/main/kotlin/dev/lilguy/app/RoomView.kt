@@ -609,8 +609,8 @@ class RoomView(private val art: ArtTextures) : Disposable {
     }
 
     /**
-     * Light through the day, interpolated between [KEYS]: cool and dim at night (a warm lamp's worth
-     * of ambient), warm at dawn and dusk, bright and near-flat by day.
+     * Light through the day, interpolated between [KEYS]: warm and dim at night (a lamp's worth of
+     * ambient), warm at dawn and dusk, bright and near-flat by day.
      */
     private class Light {
         val ambient = Color()
@@ -637,15 +637,16 @@ class RoomView(private val art: ArtTextures) : Disposable {
 
         companion object {
             val KEYS = listOf(
-                Key(0f, "6a6488", "1c2038", "141a38"),
-                Key(5.5f, "6a6488", "1c2038", "1c2448"),
+                // Night is lamp-lit: warm and dim inside, the sky dark blue beyond the glass.
+                Key(0f, "7a6670", "2a2028", "141a38"),
+                Key(5.5f, "7a6670", "2a2028", "1c2448"),
                 Key(7f, "c8aaa0", "8a6048", "f6b48c"),
                 // A pale gold between dawn and day, so the sky doesn't pass through grey.
                 Key(8.2f, "c8b8ac", "7a6450", "f8e0a8"),
                 Key(9.5f, "c8c4b8", "6a665e", "9fd4f5"),
                 Key(16.5f, "c8c4b8", "6a665e", "9fd4f5"),
                 Key(19f, "c8a08c", "8a5030", "f08a5d"),
-                Key(21f, "8c7678", "302028", "2a2850"),
+                Key(21f, "947a70", "3a2820", "2a2850"),
             )
         }
     }

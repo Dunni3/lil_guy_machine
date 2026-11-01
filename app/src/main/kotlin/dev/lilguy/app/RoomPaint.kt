@@ -45,9 +45,9 @@ class RoomPaint : Disposable {
     }
 
     /**
-     * Floorboards running east-west, [FLOOR_METRES] square: planks of one to two metres, each a
-     * slightly different wood, grain in short crayon strokes, broken pen lines between the rows,
-     * pen ticks at the joints and the odd knot.
+     * Wide white-oak boards running east-west, [FLOOR_METRES] square: planks of one and a half to
+     * three metres, each a slightly different wood, grain in long faint crayon strokes, soft broken
+     * lines between the rows, ticks at the joints and the odd knot.
      */
     private fun floor(): Texture {
         val n = FLOOR_PX.toFloat()
@@ -60,14 +60,14 @@ class RoomPaint : Disposable {
             var at = rand() * n
             var covered = 0f
             while (covered < n) {
-                var len = 140 + rand() * 120
-                if (n - covered - len < 90) len = n - covered
-                val tone = shade(FLOOR_WOOD, (rand() - 0.5f) * 0.07f, (rand() - 0.5f) * 0.06f)
+                var len = 190 + rand() * 180
+                if (n - covered - len < 120) len = n - covered
+                val tone = shade(FLOOR_WOOD, (rand() - 0.5f) * 0.05f, (rand() - 0.5f) * 0.04f)
                 wrapRect(x, at, y0, len, row, tone, n)
                 // A pen tick at the plank's end, and now and then a knot.
                 val jx = at + (rand() - 0.5f) * 2
-                wrapPen(x, linePts(jx, y0 + 4, jx + (rand() - 0.5f) * 3, y0 + row - 4, rand, 1f, 4), 2.2f, FLOOR_LINE, rand, n, 0.7f)
-                if (rand() < 0.3f) {
+                wrapPen(x, linePts(jx, y0 + 4, jx + (rand() - 0.5f) * 3, y0 + row - 4, rand, 1f, 4), 2f, FLOOR_LINE, rand, n, 0.55f)
+                if (rand() < 0.2f) {
                     val kx = at + 30 + rand() * (len - 60)
                     val ky = y0 + row * (0.35f + rand() * 0.3f)
                     wrapStroke(x, blobPath(kx, ky, 7 + rand() * 5, 2.5f + rand() * 1.5f, rand, 0.12f, 16), 1.6f, shade(FLOOR_WOOD, -0.16f), 0.55f, n)
@@ -76,21 +76,21 @@ class RoomPaint : Disposable {
                 covered += len
             }
             // Grain: short strokes along the boards, a shade either side.
-            val light = shade(FLOOR_WOOD, 0.06f)
-            val dark = shade(FLOOR_WOOD, -0.08f, 0.04f)
+            val light = shade(FLOOR_WOOD, 0.05f)
+            val dark = shade(FLOOR_WOOD, -0.06f, 0.02f)
             repeat(GRAIN_PER_ROW) {
                 val gx = rand() * n
                 val gy = y0 + 4 + rand() * (row - 8)
-                val len = 16 + rand() * 46
-                val tilt = (rand() - 0.5f) * 3
-                wrapStroke(x, floatArrayOf(gx, gy, gx + len, gy + tilt), 1.4f + rand() * 1.8f, if (rand() < 0.5f) light else dark, 0.18f + rand() * 0.22f, n)
+                val len = 30 + rand() * 70
+                val tilt = (rand() - 0.5f) * 2
+                wrapStroke(x, floatArrayOf(gx, gy, gx + len, gy + tilt), 1.4f + rand() * 1.8f, if (rand() < 0.5f) light else dark, 0.14f + rand() * 0.18f, n)
             }
             // The seam above this row, in broken lengths.
             var sx = rand() * 40
             while (sx < n + 40) {
                 val len = 70 + rand() * 150
                 val sy = y0 + (rand() - 0.5f) * 1.5f
-                wrapPen(x, linePts(sx, sy, sx + len, sy + (rand() - 0.5f) * 2, rand, 1.2f, 8), 2.6f, FLOOR_LINE, rand, n, 0.8f)
+                wrapPen(x, linePts(sx, sy, sx + len, sy + (rand() - 0.5f) * 2, rand, 1.2f, 8), 2.2f, FLOOR_LINE, rand, n, 0.6f)
                 sx += len + 4 + rand() * 12
             }
         }
@@ -98,9 +98,9 @@ class RoomPaint : Disposable {
     }
 
     /**
-     * One stretch of wall, [WALL_METRES] wide and the wall's height tall, bottom to top: a wood
-     * baseboard, mint wainscot boards, a cream rail, and cream wallpaper with soft crayon stripes and
-     * little blush sprigs; ink along each edge.
+     * One stretch of wall, [WALL_METRES] wide and the wall's height tall, bottom to top: a slim
+     * baseboard, a clay colour block to [RoomModels.COLOR_BLOCK], and warm limewashed plaster above,
+     * both clouded with broad, faint crayon; ink along the top and the baseboard.
      */
     private fun wall(): Texture {
         val w = WALL_PX.toFloat()
@@ -108,77 +108,62 @@ class RoomPaint : Disposable {
         val x = CrayonCanvas(WALL_PX, WALL_PX)
         val rand = Rng(31)
         fun yAt(m: Float) = (1 - m / RoomModels.WALL_HEIGHT) * h
-        val railTop = yAt(RoomModels.RAIL_TOP)
-        val railBottom = yAt(RoomModels.WAINSCOT)
+        val blockTop = yAt(RoomModels.COLOR_BLOCK)
         val baseTop = yAt(RoomModels.BASEBOARD)
 
-        // Wallpaper.
-        x.fill(Color.valueOf(WALLPAPER))
-        val paperLight = shade(WALLPAPER, 0.03f)
-        val paperDark = shade(WALLPAPER, -0.04f, 0.05f)
-        repeat(900) {
-            val px = rand() * w
-            val py = rand() * railTop
-            val a = -1.2f + (rand() - 0.5f) * 0.4f
-            val len = 8 + rand() * 16
-            wrapStroke(x, floatArrayOf(px, py, px + cos(a) * len, py + sin(a) * len), 1.5f + rand() * 1.5f, if (rand() < 0.5f) paperLight else paperDark, 0.25f + rand() * 0.25f, w)
-        }
-        val stripe = Color.valueOf(WALLPAPER_STRIPE)
-        // Each stripe a pair of crayon lines, drawn in lengths that overlap a little.
-        for (s in 0 until STRIPES) for (side in floatArrayOf(-5f, 5f)) {
-            val cx = (s + 0.5f) * w / STRIPES + side
-            var py = -rand() * 20
-            while (py < railTop) {
-                val len = 30 + rand() * 40
-                x.stroke(linePts(cx + (rand() - 0.5f) * 1.5f, py, cx + (rand() - 0.5f) * 1.5f, min(railTop, py + len), rand, 0.8f, 5), 3.2f, stripe, 0.75f)
-                py += len - 3
-            }
-        }
-        val sprig = Color.valueOf(SPRIG)
-        for (s in 0 until STRIPES) for (k in 0..2) {
-            val cx = s * w / STRIPES + (rand() - 0.5f) * 4
-            val cy = 18 + k * (railTop - 30) / 3 + (s % 2) * (railTop - 30) / 6
-            for (d in 0..2) {
-                val a = d * 2.1f + rand()
-                wrapStroke(x, floatArrayOf(cx + cos(a) * 3.5f, cy + sin(a) * 3.5f), 3.8f, sprig, 0.8f, w)
-            }
-        }
-
-        // The rail, wainscot and baseboard.
-        x.fillRect(0f, railTop, w, railBottom - railTop, Color.valueOf(RAIL))
-        x.fillRect(0f, railBottom, w, baseTop - railBottom, Color.valueOf(WAINSCOT))
-        val mintLight = shade(WAINSCOT, 0.05f)
-        val mintDark = shade(WAINSCOT, -0.06f, 0.04f)
-        repeat(700) {
-            val px = rand() * w
-            val py = railBottom + rand() * (baseTop - railBottom)
-            val len = 10 + rand() * 22
-            x.stroke(floatArrayOf(px, py, px + (rand() - 0.5f) * 2, min(baseTop, py + len)), 1.5f + rand() * 1.6f, if (rand() < 0.5f) mintLight else mintDark, 0.25f + rand() * 0.25f)
-        }
-        val boardLine = shade(WAINSCOT, -0.22f, 0.02f)
-        for (b in 0 until WAINSCOT_BOARDS) {
-            val bx = b * w / WAINSCOT_BOARDS + (rand() - 0.5f) * 2
-            wrapPen(x, linePts(bx, railBottom + 3, bx + (rand() - 0.5f) * 2, baseTop - 2, rand, 1f, 6), 2.2f, boardLine, rand, w, 0.8f)
-        }
+        x.fill(Color.valueOf(PLASTER))
+        limewash(x, PLASTER, 0f, blockTop, w, rand)
+        x.fillRect(0f, blockTop, w, baseTop - blockTop, Color.valueOf(CLAY))
+        limewash(x, CLAY, blockTop, baseTop, w, rand)
         x.fillRect(0f, baseTop, w, h - baseTop, Color.valueOf(BASEBOARD))
-        val baseDark = shade(BASEBOARD, -0.07f)
-        repeat(160) {
+        val baseDark = shade(BASEBOARD, -0.06f)
+        repeat(120) {
             val px = rand() * w
             val py = baseTop + 2 + rand() * (h - baseTop - 4)
             wrapStroke(x, floatArrayOf(px, py, px + 14 + rand() * 24, py + (rand() - 0.5f) * 1.5f), 1.5f, baseDark, 0.3f, w)
         }
 
-        // Ink along the edges: the wall's top, both sides of the rail, the top of the baseboard.
+        // The block's edge is a crisp line of its own colour, a shade down; ink only at the top and the baseboard.
+        val edge = shade(CLAY, -0.1f)
+        var ex = rand() * 30
+        while (ex < w + 30) {
+            val len = 80 + rand() * 120
+            wrapStroke(x, linePts(ex, blockTop + (rand() - 0.5f) * 0.6f, ex + len, blockTop + (rand() - 0.5f) * 0.6f, rand, 0.4f, 8), 2f, edge, 0.6f, w)
+            ex += len + 2 + rand() * 6
+        }
         val ink = Color.valueOf(WALL_INK)
-        for (y in floatArrayOf(1.5f, railTop, railBottom, baseTop)) {
+        for (y in floatArrayOf(1.5f, baseTop)) {
             var sx = rand() * 30
             while (sx < w + 30) {
                 val len = 60 + rand() * 110
-                wrapPen(x, linePts(sx, y + (rand() - 0.5f), sx + len, y + (rand() - 0.5f), rand, 1f, 8), 2.6f, ink, rand, w, 0.85f)
+                wrapPen(x, linePts(sx, y + (rand() - 0.5f), sx + len, y + (rand() - 0.5f), rand, 1f, 8), 2.4f, ink, rand, w, 0.75f)
                 sx += len + 3 + rand() * 8
             }
         }
         return x.texture(repeat = true, mipmaps = true)
+    }
+
+    /** Limewash between rows [y0] and [y1]: broad, faint clouds a shade either side of [base], then fine crayon over them. */
+    private fun limewash(x: CrayonCanvas, base: String, y0: Float, y1: Float, w: Float, rand: Rng) {
+        val light = shade(base, 0.04f)
+        val dark = shade(base, -0.05f, 0.03f)
+        val area = (y1 - y0) * w / (256f * 256f)
+        repeat((260 * area).toInt()) {
+            val px = rand() * w
+            val py = y0 + rand() * (y1 - y0)
+            val a = (rand() - 0.5f) * 1.2f
+            val len = 20 + rand() * 40
+            val pts = floatArrayOf(px, py, px + cos(a) * len, (py + sin(a) * len).coerceIn(y0, y1))
+            wrapStroke(x, pts, 10f + rand() * 14, if (rand() < 0.5f) light else dark, 0.07f + rand() * 0.07f, w)
+        }
+        repeat((700 * area).toInt()) {
+            val px = rand() * w
+            val py = y0 + rand() * (y1 - y0)
+            val a = -1.2f + (rand() - 0.5f) * 0.4f
+            val len = 8 + rand() * 16
+            val pts = floatArrayOf(px, py, px + cos(a) * len, (py + sin(a) * len).coerceIn(y0, y1))
+            wrapStroke(x, pts, 1.5f + rand() * 1.5f, if (rand() < 0.5f) light else dark, 0.18f + rand() * 0.2f, w)
+        }
     }
 
     /** The cut wall's top and ends: a plum-brown, scribbled. */
@@ -199,12 +184,12 @@ class RoomPaint : Disposable {
         return x.texture(repeat = true, mipmaps = true)
     }
 
-    /** An oval rag rug (painted round; the rug's shape stretches it): rose, a cream ring, rose again, stitched rings between. */
+    /** An oval wool rug (painted round; the rug's shape stretches it): an oat border, a cream field ringed in rust, and a thin sage ring inside; stitches round the edge. */
     private fun rug(): Texture {
         val x = CrayonCanvas(256, 256)
         val rand = Rng(61)
         val c = 128f
-        val rings = listOf(1.6f to RUG_ROSE, 0.8f to RUG_CREAM, 0.54f to RUG_ROSE, 0.22f to RUG_CREAM)
+        val rings = listOf(1.6f to RUG_OAT, 0.84f to RUG_RUST, 0.8f to RUG_CREAM, 0.5f to RUG_SAGE, 0.46f to RUG_CREAM)
         for ((r, col) in rings) {
             x.clip(blobPath(c, c, 124 * r, 124 * r, rand, 0.02f, 48))
             x.fillRect(0f, 0f, 256f, 256f, Color.valueOf(col))
@@ -217,8 +202,8 @@ class RoomPaint : Disposable {
             }
             x.unclip()
         }
-        val stitch = shade(RUG_ROSE, -0.2f, 0.05f)
-        for (r in floatArrayOf(0.96f, 0.8f, 0.54f, 0.22f)) {
+        val stitch = shade(RUG_OAT, -0.18f, 0.03f)
+        for (r in floatArrayOf(0.95f)) {
             val steps = (r * 60).toInt().coerceAtLeast(12)
             for (i in 0 until steps) {
                 val a0 = i * 2 * PI.toFloat() / steps
@@ -229,34 +214,33 @@ class RoomPaint : Disposable {
         return x.texture()
     }
 
-    /** A crayon landscape, 128 x 168 (the poster's shape): sky, sun, two hills, a cloud, a cream border. */
+    /** A print, 128 x 168 (the poster's shape): a low sun behind three nested arches on cream, a thin oak frame's worth of border. */
     private fun poster(): Texture {
         val x = CrayonCanvas(128, 168)
         val rand = Rng(23)
-        val ink = Color.valueOf(WALL_INK)
         x.fill(Color.valueOf(POSTER_BORDER))
-        x.clip(floatArrayOf(10f, 10f, 118f, 10f, 118f, 158f, 10f, 158f))
-        x.fillRect(0f, 0f, 128f, 168f, Color.valueOf(POSTER_SKY))
-        scribble(x, POSTER_SKY, 0f, 0f, 128f, 168f, rand)
-        x.unclip()
-        x.crayonFill(84f, 50f, 20f, 20f, Color.valueOf(POSTER_SUN), rand, 1f)
-        x.penStroke(blobPath(84f, 50f, 20f, 20f, rand, 0.04f), 2.2f, ink, rand)
-        for (i in 0 until 8) {
-            val a = i * PI.toFloat() / 4 + 0.2f
-            x.penStroke(linePts(84 + cos(a) * 26, 50 + sin(a) * 26, 84 + cos(a) * 33, 50 + sin(a) * 33, rand, 0.5f, 3), 2f, ink, rand)
-        }
-        x.fillPath(blobPath(40f, 46f, 16f, 7f, rand, 0.1f), Color.valueOf(POSTER_BORDER))
-        for ((hill, col) in listOf(floatArrayOf(10f, 158f, 10f, 116f, 40f, 98f, 76f, 112f, 100f, 158f) to POSTER_HILL, floatArrayOf(44f, 158f, 70f, 120f, 96f, 106f, 118f, 114f, 118f, 158f) to POSTER_HILL_LIGHT)) {
-            x.clip(hill)
+        scribble(x, POSTER_BORDER, 0f, 0f, 128f, 168f, rand)
+        x.crayonFill(84f, 62f, 18f, 18f, Color.valueOf(POSTER_SUN), rand, 1f)
+        // Arches, outermost first, each a band whose inside the next one paints over.
+        val cx = 56f
+        val base = 140f
+        for ((r, col) in listOf(40f to POSTER_RUST, 30f to POSTER_SAND, 20f to POSTER_SAGE, 10f to POSTER_BORDER)) {
+            x.clip(archPath(cx, base, r, rand))
             x.fillRect(0f, 0f, 128f, 168f, Color.valueOf(col))
-            scribble(x, col, 0f, 90f, 128f, 78f, rand)
+            scribble(x, col, cx - r, base - 2 * r, 2 * r, 2 * r, rand)
             x.unclip()
-            x.penStroke(hill.copyOfRange(2, hill.size - 2), 2.2f, ink, rand)
         }
+        x.fillRect(16f, base, 96f, 3f, Color.valueOf(POSTER_RUST))
         return x.texture()
     }
 
-    /** A clock face for a cylinder's cap: a wood rim out to the edge, a cream dial with twelve pen ticks. */
+    /** An arch [r] wide each side of [cx], standing on [base]: straight sides up [r], then a half circle. */
+    private fun archPath(cx: Float, base: Float, r: Float, rand: Rng): FloatArray {
+        val top = arcPts(cx, base - r, r, 180f, 360f, rand, 0.01f, 24)
+        return floatArrayOf(cx - r, base) + top + floatArrayOf(cx + r, base)
+    }
+
+    /** A clock face for a cylinder's cap: a charcoal rim out to the edge, a warm dial, pen ticks at the quarters and dots between. */
     private fun clock(): Texture {
         val x = CrayonCanvas(128, 128)
         val rand = Rng(12)
@@ -271,8 +255,8 @@ class RoomPaint : Disposable {
         x.penStroke(dial, 2.4f, ink, rand)
         for (i in 0 until 12) {
             val a = i * PI.toFloat() / 6
-            val r0 = if (i % 3 == 0) 36f else 41f
-            x.penStroke(linePts(64 + cos(a) * r0, 64 + sin(a) * r0, 64 + cos(a) * 47, 64 + sin(a) * 47, rand, 0.4f, 3), if (i % 3 == 0) 3.2f else 2.2f, ink, rand)
+            if (i % 3 == 0) x.penStroke(linePts(64 + cos(a) * 37, 64 + sin(a) * 37, 64 + cos(a) * 46, 64 + sin(a) * 46, rand, 0.4f, 3), 3f, ink, rand)
+            else x.stroke(floatArrayOf(64 + cos(a) * 43, 64 + sin(a) * 43), 3.4f, ink, 0.7f)
         }
         return x.texture()
     }
@@ -333,30 +317,27 @@ class RoomPaint : Disposable {
         private const val FLOOR_PX = 512
         private const val WALL_PX = 256
         private const val SECTION_PX = 64
-        private const val BOARDS = 16
-        private const val GRAIN_PER_ROW = 110
-        private const val STRIPES = 4
-        private const val WAINSCOT_BOARDS = 8
+        private const val BOARDS = 12
+        private const val GRAIN_PER_ROW = 90
         private const val DEG_PER_RAD = (180 / PI).toFloat()
 
-        const val FLOOR_WOOD = "#ebbf95"
-        private val FLOOR_LINE = Color.valueOf("#a9785e")
-        const val WALLPAPER = "#fcebcf"
-        private const val WALLPAPER_STRIPE = "#f3cfa9"
-        private const val SPRIG = "#f4b9bf"
-        private const val RAIL = "#fff6e8"
-        private const val WAINSCOT = "#b4dcc6"
-        private const val BASEBOARD = "#d29d7b"
-        private const val WALL_INK = "#6e5a66"
-        private const val SECTION_COLOR = "#7d6573"
-        private const val RUG_ROSE = "#f2aebb"
-        private const val RUG_CREAM = "#fde8c4"
-        private const val POSTER_BORDER = "#fffaf0"
-        private const val POSTER_SKY = "#a9cdf0"
-        private const val POSTER_SUN = "#ffd86a"
-        private const val POSTER_HILL = "#8fcf8c"
-        private const val POSTER_HILL_LIGHT = "#b5e2a0"
-        private const val CLOCK_RIM = "#c48d68"
-        private const val CLOCK_DIAL = "#fff8ec"
+        const val FLOOR_WOOD = "#e7cca9"
+        private val FLOOR_LINE = Color.valueOf("#b4977d")
+        private const val PLASTER = "#f3e8da"
+        private const val CLAY = "#e2c2ac"
+        private const val BASEBOARD = "#d4ad95"
+        private const val WALL_INK = "#6e5a5a"
+        private const val SECTION_COLOR = "#8a7268"
+        private const val RUG_OAT = "#e6d5bd"
+        private const val RUG_RUST = "#c9785a"
+        private const val RUG_CREAM = "#f6eee2"
+        private const val RUG_SAGE = "#b3bf9f"
+        private const val POSTER_BORDER = "#f8f1e6"
+        private const val POSTER_SUN = "#e9b65e"
+        private const val POSTER_RUST = "#c9785a"
+        private const val POSTER_SAND = "#e5c7a4"
+        private const val POSTER_SAGE = "#9fae8f"
+        private const val CLOCK_RIM = "#4f4848"
+        private const val CLOCK_DIAL = "#faf4ea"
     }
 }

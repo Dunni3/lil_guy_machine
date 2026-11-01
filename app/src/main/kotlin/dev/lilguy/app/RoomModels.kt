@@ -228,24 +228,23 @@ class RoomModels : Disposable {
     private fun PartList.fixtures(map: TileMap) {
         val wx = window(map)
         val tall = WINDOW_TOP - WINDOW_BOTTOM
-        box(TRIM, wx, WINDOW_BOTTOM - 0.07f, 1.0f, WINDOW_WIDTH + 0.18f, 0.08f, 0.12f)
-        box(TRIM, wx, WINDOW_TOP, 1.0f, WINDOW_WIDTH + 0.12f, 0.07f, 0.05f)
-        box(TRIM, wx - WINDOW_WIDTH / 2 - 0.03f, WINDOW_BOTTOM, 1.0f, 0.07f, tall, 0.05f)
-        box(TRIM, wx + WINDOW_WIDTH / 2 + 0.03f, WINDOW_BOTTOM, 1.0f, 0.07f, tall, 0.05f)
-        box(TRIM, wx, WINDOW_BOTTOM, 1.0f, 0.045f, tall, 0.035f, outline = 0.008f)
-        box(TRIM, wx, WINDOW_BOTTOM + tall / 2 - 0.02f, 1.0f, WINDOW_WIDTH, 0.045f, 0.035f, outline = 0.008f)
-        // Curtains, gathered and tied back, and a rod with knobs on.
-        lump = 0.01f
-        for (side in listOf(-1f, 1f)) {
-            val cx = wx + side * (WINDOW_WIDTH / 2 + 0.1f)
-            box(CURTAIN, cx, WINDOW_BOTTOM - 0.25f, 1.07f, 0.28f, tall + 0.36f, 0.07f, round = 0.03f)
-            capsule(CURTAIN_TIE, cx - 0.16f, WINDOW_BOTTOM + 0.15f, 1.11f, 0.07f, 0.32f, 0.05f, rotZ = -90f)
+        // A slim charcoal frame with one mullion and an oak sill.
+        box(WOOD, wx, WINDOW_BOTTOM - 0.06f, 1.0f, WINDOW_WIDTH + 0.16f, 0.05f, 0.11f, round = 0.015f)
+        box(FRAME_DARK, wx, WINDOW_TOP, 1.0f, WINDOW_WIDTH + 0.08f, 0.04f, 0.04f, round = 0.01f)
+        box(FRAME_DARK, wx, WINDOW_BOTTOM - 0.02f, 1.0f, WINDOW_WIDTH + 0.08f, 0.035f, 0.04f, round = 0.01f)
+        for (side in listOf(-1f, 1f)) box(FRAME_DARK, wx + side * (WINDOW_WIDTH / 2 + 0.02f), WINDOW_BOTTOM, 1.0f, 0.04f, tall, 0.04f, round = 0.01f)
+        box(FRAME_DARK, wx, WINDOW_BOTTOM, 1.0f, 0.03f, tall, 0.03f, round = 0.008f, outline = 0.006f)
+        // Linen curtains, floor to rod, drawn open in soft pleats.
+        lump = 0.008f
+        for (side in listOf(-1f, 1f)) for (k in 0 until CURTAIN_PLEATS) {
+            val cx = wx + side * (WINDOW_WIDTH / 2 + 0.03f + k * 0.075f)
+            capsule(if (k % 2 == 0) CURTAIN else CURTAIN_FOLD, cx, 0.05f, 1.06f + (k % 2) * 0.02f, 0.09f, CURTAIN_TOP - 0.05f, 0.06f, outline = 0.006f)
         }
         lump = 0f
-        cylinder(WOOD_DARK, wx - WINDOW_WIDTH / 2 - 0.35f, WINDOW_TOP + 0.13f, 1.08f, 0.035f, WINDOW_WIDTH + 0.7f, 0.035f, rotZ = -90f)
-        for (side in listOf(-1f, 1f)) sphere(WOOD_DARK, wx + side * (WINDOW_WIDTH / 2 + 0.37f), WINDOW_TOP + 0.1f, 1.08f, 0.07f, 0.07f, 0.07f)
+        cylinder(FRAME_DARK, wx - WINDOW_WIDTH / 2 - 0.45f, CURTAIN_TOP + 0.02f, 1.1f, 0.022f, WINDOW_WIDTH + 0.9f, 0.022f, rotZ = -90f, outline = 0.006f)
+        for (side in listOf(-1f, 1f)) sphere(FRAME_DARK, wx + side * (WINDOW_WIDTH / 2 + 0.46f), CURTAIN_TOP, 1.1f, 0.045f, 0.045f, 0.045f, outline = 0.006f)
         // The clock: a round box whose front cap is the painted dial.
-        cylinder("#ffffff", clockX(map), CLOCK_Y, 1.0f, 0.42f, 0.05f, 0.42f, rotX = 90f, round = 0.015f, texture = "clock")
+        cylinder("#ffffff", clockX(map), CLOCK_Y, 1.0f, 0.42f, 0.04f, 0.42f, rotX = 90f, round = 0.012f, texture = "clock")
     }
 
     /** A floor tile, on a quarter-metre grid so the shade where floor meets wall can be laid on per vertex. */
@@ -378,34 +377,39 @@ class RoomModels : Disposable {
         lump = 0.003f
         when (id) {
             "bed" -> {
-                for (sx in listOf(-0.4f, 0.4f)) for (sz in listOf(-0.42f, 0.42f)) box(WOOD_DARK, sx, 0f, sz, 0.085f, 0.16f, 0.085f, round = 0.03f)
-                box(WOOD, 0f, 0.12f, 0f, 0.94f, 0.1f, 0.98f, round = 0.035f)
-                box(SHEET, 0f, 0.2f, 0.01f, 0.88f, 0.12f, 0.92f, round = 0.05f)
-                box(BLANKET, 0f, 0.225f, 0.17f, 0.93f, 0.1f, 0.62f, round = 0.045f, lump = 0.006f)
-                box(BLANKET_STRIPE, 0f, 0.235f, -0.12f, 0.94f, 0.1f, 0.08f, round = 0.04f, lump = 0.006f)
-                sphere(PILLOW, 0f, 0.27f, -0.3f, 0.6f, 0.15f, 0.27f, lump = 0.008f)
-                box(WOOD, 0f, 0f, -0.47f, 0.98f, 0.7f, 0.07f, round = 0.03f)
-                capsule(WOOD_LIGHT, -0.52f, 0.7f, -0.47f, 0.08f, 1.04f, 0.1f, rotZ = -90f)
+                for (sx in listOf(-0.42f, 0.42f)) for (sz in listOf(-0.4f, 0.4f)) box(WOOD_DARK, sx, 0f, sz, 0.06f, 0.08f, 0.06f, round = 0.02f)
+                box(WOOD, 0f, 0.07f, 0f, 0.98f, 0.12f, 1f, round = 0.03f)
+                box(SHEET, 0f, 0.18f, 0.01f, 0.88f, 0.12f, 0.92f, round = 0.05f)
+                box(BLANKET, 0f, 0.21f, 0.12f, 0.93f, 0.11f, 0.72f, round = 0.05f, lump = 0.008f)
+                box(THROW, 0f, 0.225f, 0.33f, 0.96f, 0.1f, 0.24f, round = 0.045f, lump = 0.008f)
+                sphere(PILLOW, -0.2f, 0.27f, -0.33f, 0.4f, 0.15f, 0.24f, lump = 0.008f)
+                sphere(PILLOW, 0.2f, 0.27f, -0.33f, 0.4f, 0.15f, 0.24f, lump = 0.008f)
+                box(CUSHION_SAGE, 0.05f, 0.27f, -0.24f, 0.28f, 0.2f, 0.08f, rotX = -14f, round = 0.04f, lump = 0.006f)
+                // An upholstered headboard, its top rounded, with stitched channels.
+                box(HEADBOARD, 0f, 0.05f, -0.47f, 1.0f, 0.62f, 0.09f, round = 0.04f, lump = 0.006f)
+                capsule(HEADBOARD, -0.5f, 0.68f, -0.47f, 0.11f, 1.0f, 0.1f, rotZ = -90f, lump = 0.006f)
+                for (k in listOf(-0.25f, 0f, 0.25f)) box(HEADBOARD_SEAM, k, 0.36f, -0.42f, 0.012f, 0.36f, 0.004f, round = 0.002f, outline = 0f, lump = 0f)
             }
             "desk" -> {
-                for (sx in listOf(-0.42f, 0.42f)) for (sz in listOf(-0.24f, 0.24f)) box(WOOD_DARK, sx, 0f, sz, 0.065f, 0.5f, 0.065f, round = 0.025f)
-                box(WOOD, 0f, 0.5f, 0f, 0.98f, 0.065f, 0.62f, round = 0.03f)
-                box(WOOD_LIGHT, 0.24f, 0.31f, 0f, 0.42f, 0.18f, 0.56f, round = 0.03f)
-                sphere(KNOB, 0.24f, 0.38f, 0.28f, 0.045f, 0.045f, 0.03f)
+                for (sx in listOf(-0.42f, 0.42f)) for (sz in listOf(-0.24f, 0.24f)) box(FRAME_DARK, sx, 0f, sz, 0.04f, 0.5f, 0.04f, round = 0.015f)
+                box(WOOD, 0f, 0.5f, 0f, 0.98f, 0.05f, 0.62f, round = 0.025f)
+                box(WOOD_LIGHT, 0.24f, 0.36f, 0f, 0.42f, 0.14f, 0.56f, round = 0.03f)
+                box(BRASS, 0.24f, 0.425f, 0.285f, 0.12f, 0.018f, 0.015f, round = 0.006f, outline = 0.005f)
                 // His sketchbook's page, at the end by the chair; the view lays the sketch under way or his newest on it.
                 box(PAPER, SKETCH_X, 0.562f, SKETCH_Z, 0.28f, 0.004f, 0.2f, round = 0.002f, outline = 0f, lump = 0f)
                 cylinder(MUG, 0.18f, 0.565f, 0.12f, 0.09f, 0.1f, 0.09f, round = 0.015f)
                 capsule(MUG, 0.235f, 0.585f, 0.12f, 0.025f, 0.06f, 0.025f)
-                // A little lamp.
-                cylinder(WOOD_DARK, -0.34f, 0.565f, -0.18f, 0.15f, 0.035f, 0.15f, round = 0.015f)
-                cylinder(WOOD_DARK, -0.34f, 0.58f, -0.18f, 0.025f, 0.24f, 0.025f)
-                cylinder(LAMPSHADE, -0.34f, 0.78f, -0.18f, 0.26f, 0.16f, 0.26f, taper = 0.62f, round = 0.025f)
+                // A little lamp: a glass globe on a brass stem.
+                cylinder(FRAME_DARK, -0.34f, 0.55f, -0.18f, 0.13f, 0.03f, 0.13f, round = 0.012f)
+                cylinder(BRASS, -0.34f, 0.57f, -0.18f, 0.022f, 0.16f, 0.022f)
+                sphere(GLOBE, -0.34f, 0.71f, -0.18f, 0.2f, 0.2f, 0.2f, lump = 0f)
             }
             "chair" -> {
-                for (sx in listOf(-0.16f, 0.16f)) for (sz in listOf(-0.16f, 0.16f)) box(WOOD_DARK, sx, 0f, sz, 0.055f, 0.3f, 0.055f, round = 0.022f)
-                box(WOOD, 0f, 0.29f, 0f, 0.44f, 0.05f, 0.44f, round = 0.02f)
-                box(CUSHION, 0f, 0.32f, 0f, 0.38f, 0.07f, 0.38f, round = 0.035f, lump = 0.006f)
-                box(WOOD, -0.195f, 0.3f, 0f, 0.05f, 0.44f, 0.42f, round = 0.022f)
+                for (sx in listOf(-0.16f, 0.16f)) for (sz in listOf(-0.16f, 0.16f)) box(WOOD_DARK, sx, 0f, sz, 0.04f, 0.3f, 0.04f, round = 0.016f)
+                cylinder(WOOD, 0f, 0.29f, 0f, 0.46f, 0.05f, 0.46f, round = 0.02f)
+                cylinder(CUSHION, 0f, 0.32f, 0f, 0.4f, 0.07f, 0.4f, round = 0.035f, lump = 0.006f)
+                box(WOOD, -0.2f, 0.3f, 0f, 0.05f, 0.4f, 0.4f, round = 0.025f)
+                capsule(WOOD, -0.2f, 0.72f, -0.22f, 0.06f, 0.44f, 0.06f, rotX = 90f)
             }
             "easel" -> {
                 box(WOOD, -0.22f, 0f, 0.08f, 0.05f, 1.15f, 0.05f, rotZ = -8f, round = 0.02f)
@@ -430,7 +434,7 @@ class RoomModels : Disposable {
                 sphere(LEAF, 0.12f, 0.45f, -0.02f, 0.25f, 0.29f, 0.25f)
                 sphere(LEAF_LIGHT, 0f, 0.58f, 0.04f, 0.21f, 0.23f, 0.21f)
             }
-            "rug" -> cylinder("#ffffff", 0f, 0f, 0f, 1.9f, 0.02f, 1.3f, round = 0.008f, texture = "rug", outline = 0.008f, lump = 0f)
+            "rug" -> cylinder("#ffffff", 0f, 0f, 0f, 2.6f, 0.02f, 1.7f, round = 0.008f, texture = "rug", outline = 0.008f, lump = 0f)
             "mail_hatch" -> {
                 // A brass flap in the wall at hand height, with a little shelf under it for parcels.
                 box(TRIM, 0f, 0.62f, 0.02f, 0.64f, 0.52f, 0.05f, round = 0.02f)
@@ -547,9 +551,11 @@ class RoomModels : Disposable {
         private const val SHELF_RECORDS = 3
         const val FRAME_BOTTOM = 1.2f
         /** The bands of the painted wall, in metres up from the floor. */
-        const val BASEBOARD = 0.1f
-        const val WAINSCOT = 0.75f
-        const val RAIL_TOP = 0.8f
+        const val BASEBOARD = 0.08f
+        const val COLOR_BLOCK = 0.9f
+        /** The curtain rod's height and the pleats each side. */
+        private const val CURTAIN_TOP = 2.0f
+        private const val CURTAIN_PLEATS = 4
         private val WALL_ITEMS = setOf("poster", "door", "mail_hatch", "picture_rail")
         private const val THICK = 0.14f
         private const val FLOOR_GRID = 4
@@ -562,39 +568,43 @@ class RoomModels : Disposable {
         private val SIDES = listOf(0 to 1, 0 to -1, 1 to 0, -1 to 0)
         private val FULL_UV = floatArrayOf(0f, 1f, 1f, 1f, 1f, 0f, 0f, 0f)
 
-        // Pastels, a little softer than the old flat colours, since ink outlines do the separating now.
-        const val TRIM = "#fff8ee"
-        private const val WOOD = "#dba77c"
-        private const val WOOD_LIGHT = "#edc49c"
-        private const val WOOD_DARK = "#b47e5e"
-        private const val SHEET = "#fff7ea"
-        private const val BLANKET = "#9fc1ef"
-        private const val BLANKET_STRIPE = "#ffe08a"
-        private const val PILLOW = "#fffaf2"
+        // Warm neutrals: oak, linen and oat, with clay, rust and sage for accents and charcoal for the thin metal.
+        const val TRIM = "#f6eee3"
+        private const val WOOD = "#d8b68f"
+        private const val WOOD_LIGHT = "#e8cfae"
+        private const val WOOD_DARK = "#a9835f"
+        private const val FRAME_DARK = "#4f4848"
+        private const val BRASS = "#d9b46a"
+        private const val GLOBE = "#fff3da"
+        private const val SHEET = "#faf5ec"
+        private const val BLANKET = "#ebdfcd"
+        private const val THROW = "#c9785a"
+        private const val PILLOW = "#fbf7f0"
+        private const val CUSHION_SAGE = "#a9b89a"
+        private const val HEADBOARD = "#e2d3bf"
+        private const val HEADBOARD_SEAM = "#c9b8a2"
         private const val PAPER = "#fdf9ef"
-        private const val MUG = "#f2928a"
-        private const val LAMPSHADE = "#ffe3a1"
-        private const val CUSHION = "#f4a3ad"
+        private const val MUG = "#c9785a"
+        private const val CUSHION = "#e9dccb"
         private const val CANVAS = "#fdf8ee"
         private const val VINYL = "#4a4255"
-        private const val RECORD_LABEL = "#f2928a"
-        private const val POT = "#e9a07c"
-        private const val POT_RIM = "#f2b594"
-        private const val LEAF = "#9fd49a"
-        private const val LEAF_DARK = "#80c088"
-        private const val LEAF_LIGHT = "#c2e6a8"
-        private const val POSTER_SUN = "#ffd86a"
-        private const val DOOR = "#d6a27a"
-        private const val KNOB = "#f5cf6a"
-        private const val APPLE = "#ef7b7b"
-        private const val BOOK = "#8fb0ec"
-        private const val EXIT = "#8fdcaa"
-        private const val CURTAIN = "#f6b2b7"
-        private const val CURTAIN_TIE = "#fde9c6"
-        private const val HAND = "#4a3a4f"
-        private const val UNKNOWN = "#d6aee6"
-        private const val GUITAR = "#f0b46e"
-        private val SPINES = listOf("#8fb0ec", "#f2928a", "#9fd49a", "#ffd86a", "#d6aee6", "#f6b2b7", "#9fd3d9")
-        private val SLEEVES = listOf("#f4a3ad", "#9fc1ef", "#c2e6a8", "#ffe3a1", "#c9b2ec")
+        private const val RECORD_LABEL = "#e9b65e"
+        private const val POT = "#cf9274"
+        private const val POT_RIM = "#dca486"
+        private const val LEAF = "#94b58c"
+        private const val LEAF_DARK = "#769d76"
+        private const val LEAF_LIGHT = "#b4cf9f"
+        private const val DOOR = "#d8b68f"
+        private const val KNOB = "#d9b46a"
+        private const val APPLE = "#e07a6a"
+        private const val BOOK = "#8fa3b8"
+        private const val EXIT = "#a9c9a4"
+        private const val CURTAIN = "#f1e7d8"
+        private const val CURTAIN_FOLD = "#e4d6c2"
+        private const val HAND = "#3e3838"
+        private const val UNKNOWN = "#c9b8d6"
+        private const val GUITAR = "#e2a868"
+        private val SPINES = listOf("#8fa3b8", "#c9785a", "#a9b89a", "#e9b65e", "#b9a1b0", "#d9ab92", "#6f8a7a")
+        private val SLEEVES = listOf("#d9ab92", "#8fa3b8", "#b4cf9f", "#e9c98a", "#b9a1b0")
     }
 }
