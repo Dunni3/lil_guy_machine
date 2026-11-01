@@ -178,7 +178,7 @@
                     "string",
                     "null"
                   ],
-                  "description": "Sells everything carried that answers to the name, at each item's `sellable` price, plus any commission reward. (at the finish)"
+                  "description": "Sells everything carried that answers to the name, at each item's `sellable` price (plus `price_per_level` a level of its skill when the piece was made), plus any commission reward. (at the finish)"
                 },
                 "basket": {
                   "anyOf": [

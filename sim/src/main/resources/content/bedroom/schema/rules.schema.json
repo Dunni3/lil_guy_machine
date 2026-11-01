@@ -202,9 +202,6 @@
         "gain_per_level": {
           "type": "number"
         },
-        "price_per_level": {
-          "type": "number"
-        },
         "affinity_per_level": {
           "type": "number"
         },

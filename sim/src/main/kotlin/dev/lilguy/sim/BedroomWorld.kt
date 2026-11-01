@@ -334,7 +334,7 @@ class BedroomWorld private constructor(
     }
 
     /** What one [spec] sells for, made at [level] in the skill its price grows with. */
-    private fun price(spec: ItemSpec, level: Double): Int? = spec.sellPrice?.let { (it * (1 + content.skills.pricePerLevel * level)).roundToInt() }
+    private fun price(spec: ItemSpec, level: Double): Int? = spec.priceAt(level)
 
     private fun piecePrice(p: Piece): Int = price(item(p.item), p.skill) ?: 0
 
