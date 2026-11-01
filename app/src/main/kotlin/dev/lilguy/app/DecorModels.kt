@@ -9,7 +9,7 @@ import kotlin.math.sqrt
 /**
  * Decor from the shop, as part lists in [RoomModels]' conventions: floor things have their pivot at
  * the bottom centre of their tile and face +Z; [ON_WALL] things have their back at z = 0, x along
- * the wall. Each is the room's pastels with rounded edges, small lumps and ink, like the rest.
+ * the wall. Each is the room's warm neutrals and muted accents with rounded edges, small lumps and ink, like the rest.
  */
 object DecorModels {
     /** Decor that hangs in a wall tile rather than standing on the floor. */
@@ -46,20 +46,20 @@ object DecorModels {
         box(WOOD_LIGHT, 0f, 0f, z, 0.42f, 0.42f, 0.38f, round = 0.03f)
         box(WOOD, 0f, 0.17f, z + 0.19f, 0.34f, 0.15f, 0.02f, round = 0.01f, outline = 0.007f)
         sphere(KNOB, 0f, 0.225f, z + 0.2f, 0.04f, 0.04f, 0.03f)
-        cylinder(LILAC_METAL, 0f, 0.42f, z, 0.17f, 0.11f, 0.17f, taper = 0.62f, round = 0.015f)
+        cylinder(CHARCOAL, 0f, 0.42f, z, 0.17f, 0.11f, 0.17f, taper = 0.62f, round = 0.015f)
         cylinder(LAVA_GLASS, 0f, 0.53f, z, 0.095f, 0.15f, 0.095f, taper = 1.35f, round = 0.01f, lump = 0f)
         cylinder(LAVA_GLASS, 0f, 0.68f, z, 0.128f, 0.17f, 0.128f, taper = 0.5f, round = 0.01f, lump = 0f)
-        cylinder(LILAC_METAL, 0f, 0.84f, z, 0.07f, 0.06f, 0.07f, taper = 0.65f, round = 0.01f)
+        cylinder(CHARCOAL, 0f, 0.84f, z, 0.07f, 0.06f, 0.07f, taper = 0.65f, round = 0.01f)
         sphere(LAVA_BLOB, -0.005f, 0.56f, z + 0.03f, 0.075f, 0.07f, 0.06f, outline = 0.004f, lump = 0.004f)
         sphere(LAVA_BLOB, 0.012f, 0.69f, z + 0.035f, 0.05f, 0.06f, 0.05f, outline = 0.004f, lump = 0.004f)
         sphere(LAVA_BLOB, -0.01f, 0.78f, z + 0.02f, 0.035f, 0.035f, 0.03f, outline = 0.004f)
     }
 
-    /** A jug of three sunflowers against the back wall. */
+    /** A cream ceramic jug of three sunflowers against the back wall. */
     private fun PartList.sunflowers() {
         val z = -0.2f
-        cylinder(TEAL, 0f, 0f, z, 0.21f, 0.26f, 0.21f, taper = 0.7f, round = 0.03f)
-        cylinder(TEAL_LIGHT, 0f, 0.24f, z, 0.16f, 0.045f, 0.16f, round = 0.015f)
+        cylinder(VASE, 0f, 0f, z, 0.21f, 0.26f, 0.21f, taper = 0.7f, round = 0.03f)
+        cylinder(VASE_RIM, 0f, 0.24f, z, 0.16f, 0.045f, 0.16f, round = 0.015f)
         capsule(STEM, 0f, 0.24f, z, 0.026f, 0.48f, 0.026f, outline = 0.006f)
         capsule(STEM, -0.025f, 0.24f, z, 0.024f, 0.4f, 0.024f, rotZ = 15f, outline = 0.006f)
         capsule(STEM, 0.025f, 0.24f, z, 0.024f, 0.35f, 0.024f, rotZ = -17f, outline = 0.006f)
@@ -70,7 +70,7 @@ object DecorModels {
         flower(SUN_PETAL, SEED, 0.127f, 0.58f, z + 0.025f, 0.058f, 0.052f)
     }
 
-    /** A toadstool lamp as tall as the desk: cream stem, rosy cap with white spots and a frilled brim. */
+    /** A toadstool lamp as tall as the desk: cream stem, terracotta cap with cream spots and a frilled brim. */
     private fun PartList.mushroomLamp() {
         val z = -0.12f
         lump = 0.006f
@@ -82,7 +82,7 @@ object DecorModels {
         spots.forEachIndexed { i, (u, v, w) -> onEllipsoid(SPOT, 0f, 0.78f, z, 0.32f, 0.22f, 0.32f, u, v, w, if (i % 2 == 0) 0.1f else 0.075f) }
     }
 
-    /** A slouched lavender beanbag in the corner, its top pushed in. */
+    /** A slouched oat bouclé beanbag in the corner, its top pushed in. */
     private fun PartList.beanbag() {
         sphere(BEANBAG, 0.04f, 0f, -0.04f, 0.74f, 0.5f, 0.68f, lump = 0.022f)
         sphere(BEANBAG_TOP, 0.03f, 0.25f, 0f, 0.5f, 0.24f, 0.44f, lump = 0.012f)
@@ -136,11 +136,11 @@ object DecorModels {
         sphere(BOW, x, 0.212f, z + 0.11f, 0.03f, 0.035f, 0.025f, outline = 0.005f)
     }
 
-    /** A cactus with two arms and a pink flower, in a blue pot. */
+    /** A cactus with two arms and a blush flower, in a terracotta pot. */
     private fun PartList.cactus() {
         val x = 0.08f
-        cylinder(POT_BLUE, x, 0f, 0f, 0.24f, 0.2f, 0.24f, taper = 1.2f, round = 0.02f)
-        cylinder(POT_BLUE_RIM, x, 0.18f, 0f, 0.31f, 0.055f, 0.31f, round = 0.02f)
+        cylinder(POT_CLAY, x, 0f, 0f, 0.24f, 0.2f, 0.24f, taper = 1.2f, round = 0.02f)
+        cylinder(POT_CLAY_RIM, x, 0.18f, 0f, 0.31f, 0.055f, 0.31f, round = 0.02f)
         cylinder(SOIL, x, 0.225f, 0f, 0.25f, 0.02f, 0.25f, round = 0.008f, outline = 0.006f)
         lump = 0.006f
         capsule(CACTUS, x, 0.2f, 0f, 0.15f, 0.52f, 0.15f)
@@ -157,7 +157,7 @@ object DecorModels {
 
     // --- in the wall -----------------------------------------------------------------------------
 
-    /** Fairy lights strung along the top of the wall in two swags, the bulbs in every pastel. */
+    /** Fairy lights strung along the top of the wall in two swags, warm-white bulbs on a dark wire. */
     private fun PartList.stringLights() {
         val y = 2.0f
         val z = 0.03f
@@ -179,19 +179,19 @@ object DecorModels {
         val z = 0.08f
         box(WOOD_LIGHT, cx, y, z, 0.92f, 0.03f, 0.16f, round = 0.01f)
         lump = 0.003f
-        // A rosette in a pink pot.
+        // A rosette in a terracotta pot.
         val a = cx - 0.3f
-        cylinder(POT_PINK, a, y + 0.03f, z, 0.13f, 0.11f, 0.13f, taper = 1.18f, round = 0.015f)
+        cylinder(POT_CLAY, a, y + 0.03f, z, 0.13f, 0.11f, 0.13f, taper = 1.18f, round = 0.015f)
         sphere(LEAF_DARK, a, y + 0.13f, z, 0.16f, 0.07f, 0.14f, outline = 0.006f)
         sphere(LEAF, a, y + 0.16f, z + 0.005f, 0.11f, 0.06f, 0.1f, outline = 0.006f)
         sphere(LEAF_LIGHT, a, y + 0.19f, z + 0.01f, 0.06f, 0.045f, 0.06f, outline = 0.006f)
-        // A tiny cactus in a butter pot.
-        cylinder(POT_BUTTER, cx, y + 0.03f, z, 0.12f, 0.1f, 0.12f, taper = 1.15f, round = 0.015f)
+        // A tiny cactus in a cream pot.
+        cylinder(POT_CREAM, cx, y + 0.03f, z, 0.12f, 0.1f, 0.12f, taper = 1.15f, round = 0.015f)
         capsule(CACTUS, cx, y + 0.11f, z, 0.07f, 0.17f, 0.07f, outline = 0.008f)
         sphere(CACTUS_FLOWER, cx, y + 0.265f, z, 0.04f, 0.03f, 0.04f, outline = 0.005f)
-        // String of pearls spilling over the front of a blue pot.
+        // String of pearls spilling over the front of a charcoal pot.
         val b = cx + 0.3f
-        cylinder(POT_BLUE, b, y + 0.03f, z, 0.13f, 0.11f, 0.13f, taper = 1.18f, round = 0.015f)
+        cylinder(CHARCOAL, b, y + 0.03f, z, 0.13f, 0.11f, 0.13f, taper = 1.18f, round = 0.015f)
         sphere(LEAF, b, y + 0.12f, z, 0.14f, 0.06f, 0.13f, outline = 0.006f)
         for ((i, dx) in listOf(-0.045f, 0f, 0.05f).withIndex()) {
             val len = 3 + i % 2 * 2
@@ -222,13 +222,13 @@ object DecorModels {
         }
     }
 
-    /** A round mirror in a scalloped pink frame, with a glint. */
+    /** A round mirror in a scalloped rattan frame, with a glint. */
     private fun PartList.roundMirror() {
         val y = 1.25f
-        cylinder(FRAME_PINK, 0f, y, 0f, 0.5f, 0.04f, 0.5f, rotX = 90f, round = 0.012f, lump = 0.003f)
+        cylinder(RATTAN, 0f, y, 0f, 0.5f, 0.04f, 0.5f, rotX = 90f, round = 0.012f, lump = 0.003f)
         for (k in 0 until 14) {
             val a = k * TAU / 14
-            sphere(FRAME_PINK, 0.26f * cos(a), y + 0.26f * sin(a) - 0.04f, 0.02f, 0.08f, 0.08f, 0.04f, outline = 0.006f)
+            sphere(if (k % 2 == 0) RATTAN else RATTAN_DARK, 0.26f * cos(a), y + 0.26f * sin(a) - 0.04f, 0.02f, 0.08f, 0.08f, 0.04f, outline = 0.006f)
         }
         cylinder(MIRROR, 0f, y, 0.03f, 0.4f, 0.02f, 0.4f, rotX = 90f, round = 0.006f, outline = 0.006f)
         segment(SHINE, -0.13f, y - 0.03f, -0.04f, y + 0.08f, 0.055f, 0.022f)
@@ -250,7 +250,7 @@ object DecorModels {
             box(NOTES[i], x, ny, 0.04f, w, h, 0.004f, rotZ = tilt, round = 0.003f, outline = 0.004f)
             sphere(PINS[i % PINS.size], x, ny + h - 0.035f, 0.044f, 0.03f, 0.03f, 0.02f, outline = 0.004f)
         }
-        // The photo on the tall white note: sky, a green hill and a sun.
+        // The photo on the tall cream note: sky, a green hill and a sun.
         box(PHOTO_SKY, 0.02f, y + 0.26f, 0.043f, 0.12f, 0.1f, 0.003f, rotZ = 4f, round = 0.002f, outline = 0.003f)
         sphere(LEAF, 0.02f, y + 0.255f, 0.045f, 0.12f, 0.05f, 0.004f, outline = 0f)
         sphere(SUN_PETAL, 0.05f, y + 0.31f, 0.046f, 0.03f, 0.03f, 0.004f, outline = 0f)
@@ -260,7 +260,7 @@ object DecorModels {
         sphere(HEART, -0.16f, y + 0.11f, 0.044f, 0.05f, 0.045f, 0.006f, outline = 0.003f)
     }
 
-    /** A rainbow arch of five crayon bands, its feet in two clouds. */
+    /** A rainbow arch of five bands in the room's muted accents, its feet in two clouds. */
     private fun PartList.rainbow() {
         val y = 1.08f
         BANDS.forEachIndexed { i, color -> arc(color, 0f, y, 0.02f + 0.004f * i, 0.34f - 0.045f * i, 0.05f, 9) }
@@ -290,7 +290,7 @@ object DecorModels {
         box(WALL_PLUG, 0.15f, y - 0.47f, 0.012f, 0.06f, 0.08f, 0.024f, round = 0.008f, outline = 0.005f)
     }
 
-    /** A garland of pastel pennants along the wall, in two swags. */
+    /** A garland of linen, rust, sage and ochre pennants along the wall, in two swags. */
     private fun PartList.bunting() {
         val y = 1.95f
         val z = 0.03f
@@ -354,63 +354,63 @@ object DecorModels {
     private const val TAU = 2 * PI
     private const val RAD_TO_DEG = 180f / PI
 
-    // The room's pastels (RoomModels), and a few of decor's own.
-    private const val WOOD = "#dba77c"
-    private const val WOOD_LIGHT = "#edc49c"
-    private const val WOOD_DARK = "#b47e5e"
-    private const val KNOB = "#f5cf6a"
-    private const val LEAF = "#9fd49a"
-    private const val LEAF_DARK = "#80c088"
-    private const val LEAF_LIGHT = "#c2e6a8"
-    private const val INK = "#4a3a4f"
-    private const val INK_SOFT = "#8a7a96"
-    private const val WIRE = "#6b5a6e"
-    private const val THREAD = "#8a7a96"
-    private const val BLUSH = "#f4a3ad"
-    private const val LILAC_METAL = "#b9b0d6"
-    private const val LAVA_GLASS = "#f7b0cf"
-    private const val LAVA_BLOB = "#ff9e7a"
-    private const val TEAL = "#9fd3d9"
-    private const val TEAL_LIGHT = "#bfe4e8"
-    private const val STEM = "#7fb87a"
-    private const val SUN_PETAL = "#ffd25a"
-    private const val SEED = "#a8724e"
-    private const val MUSHROOM_STEM = "#fff1dc"
-    private const val MUSHROOM_GILL = "#fde2c2"
-    private const val MUSHROOM_CAP = "#f2867f"
-    private const val SPOT = "#fffaf2"
-    private const val BEANBAG = "#c9b2ec"
-    private const val BEANBAG_TOP = "#d8c6f2"
-    private const val BEANBAG_TAG = "#ffe3a1"
-    private const val WATER = "#a9dcef"
-    private const val GLASS_RIM = "#dff3f6"
-    private const val GOLDFISH = "#ff9a5c"
-    private const val GOLDFISH_FIN = "#ffb98a"
+    // The room's warm neutrals (RoomModels), and a few of decor's own in the same muted accents.
+    private const val WOOD = "#d8b68f"
+    private const val WOOD_LIGHT = "#e8cfae"
+    private const val WOOD_DARK = "#a9835f"
+    private const val KNOB = "#d9b46a"
+    private const val LEAF = "#94b58c"
+    private const val LEAF_DARK = "#769d76"
+    private const val LEAF_LIGHT = "#b4cf9f"
+    private const val INK = "#3e3838"
+    private const val INK_SOFT = "#8a7d78"
+    private const val WIRE = "#5a5050"
+    private const val THREAD = "#8a7d78"
+    private const val BLUSH = "#e8a99a"
+    private const val CHARCOAL = "#4f4848"
+    private const val LAVA_GLASS = "#f2c48a"
+    private const val LAVA_BLOB = "#c9785a"
+    private const val VASE = "#efe6d8"
+    private const val VASE_RIM = "#f8f2e8"
+    private const val STEM = "#7f9f72"
+    private const val SUN_PETAL = "#e9b65e"
+    private const val SEED = "#8a6248"
+    private const val MUSHROOM_STEM = "#f6eee3"
+    private const val MUSHROOM_GILL = "#ead9c2"
+    private const val MUSHROOM_CAP = "#d08a6c"
+    private const val SPOT = "#f8f1e6"
+    private const val BEANBAG = "#e6dccd"
+    private const val BEANBAG_TOP = "#eee6da"
+    private const val BEANBAG_TAG = "#c9785a"
+    private const val WATER = "#bcd9dc"
+    private const val GLASS_RIM = "#e4f0f0"
+    private const val GOLDFISH = "#e9965e"
+    private const val GOLDFISH_FIN = "#f0b48a"
     private const val BUBBLE = "#ffffff"
-    private val PEBBLES = listOf("#f4a3ad", "#ffe3a1", "#c9b2ec", "#9fc1ef")
-    private const val TEDDY = "#d9a27a"
-    private const val TEDDY_LIGHT = "#f3d3b0"
-    private const val BOW = "#9fc1ef"
-    private const val POT_BLUE = "#9fc1ef"
-    private const val POT_BLUE_RIM = "#b8d2f4"
-    private const val POT_PINK = "#f4a3ad"
-    private const val POT_BUTTER = "#ffe3a1"
-    private const val SOIL = "#8a6a5a"
-    private const val CACTUS = "#8fcf9a"
-    private const val CACTUS_FLOWER = "#f6a0b8"
-    private val BULBS = listOf("#ffe08a", "#f6a0b8", "#a8e0b8", "#9fc1ef", "#d6aee6", "#ffbf8a")
-    private const val STAR = "#ffe08a"
-    private const val MOON = "#fff0a8"
-    private const val FRAME_PINK = "#f6b2b7"
-    private const val MIRROR = "#d8eef3"
+    private val PEBBLES = listOf("#e2c2ac", "#efe6d8", "#a9b89a", "#8a7d78")
+    private const val TEDDY = "#c9a07c"
+    private const val TEDDY_LIGHT = "#ead2b6"
+    private const val BOW = "#a9b89a"
+    private const val POT_CLAY = "#cf9274"
+    private const val POT_CLAY_RIM = "#dca486"
+    private const val POT_CREAM = "#efe6d8"
+    private const val SOIL = "#7a6050"
+    private const val CACTUS = "#8fae88"
+    private const val CACTUS_FLOWER = "#e8a99a"
+    private val BULBS = listOf("#fff0c8", "#ffe4a8")
+    private const val STAR = "#e9c98a"
+    private const val MOON = "#f8efd8"
+    private const val RATTAN = "#d9b27f"
+    private const val RATTAN_DARK = "#c49a68"
+    private const val MIRROR = "#dfe9e8"
     private const val SHINE = "#ffffff"
-    private const val CORK = "#e3b57f"
-    private val NOTES = listOf("#ffe08a", "#fffaf2", "#a8e0b8", "#f6b2b7")
-    private val PINS = listOf("#ef7b7b", "#8fb0ec", "#f5cf6a")
-    private const val PHOTO_SKY = "#9fc1ef"
-    private const val HEART = "#ef7b7b"
-    private val BANDS = listOf("#f4a3ad", "#ffbf8a", "#ffe08a", "#a8e0b8", "#9fc1ef")
-    private const val CLOUD = "#fffaf2"
-    private const val WALL_PLUG = "#fff8ee"
-    private val PENNANTS = listOf("#f4a3ad", "#ffe08a", "#9fc1ef", "#a8e0b8", "#d6aee6")
+    private const val CORK = "#d9b48a"
+    private val NOTES = listOf("#f2dfb8", "#faf4ea", "#d5dec8", "#ecd2c4")
+    private val PINS = listOf("#c9785a", "#4f4848", "#d9b46a")
+    private const val PHOTO_SKY = "#a9c3cf"
+    private const val HEART = "#c9785a"
+    private val BANDS = listOf("#c9785a", "#d9ab92", "#e9c98a", "#a9b89a", "#8fa3b8")
+    private const val CLOUD = "#faf5ec"
+    private const val WALL_PLUG = "#f6eee3"
+    private val PENNANTS = listOf("#c9785a", "#efe6d8", "#a9b89a", "#e9c98a", "#d9ab92")
 }
