@@ -65,6 +65,7 @@ class AskTest {
         assertTrue("you have stopped to wonder" in question.system && question.messages.last().content.startsWith("Observation:"))
         assertTrue("verb:sketch: verb sketch" in search.system && "item:meal: item meal" in search.system && "How can I make more money?" in search.messages.last().content)
         assertTrue("verb:paint" !in search.system, "the docs leave out what a book hasn't taught him yet")
+        assertTrue("guide:making-art: how a piece of art gets made" in search.system, "and carry the hand-written guide")
         assertTrue("## verb sketch" in answer.system && "## verb sell_art" in answer.system && "## item meal" !in answer.system)
         assertEquals(listOf("verb:sketch", "verb:sell_art"), answers.first().opened)
         // Kept: in the event stream, and in the prompts after it.

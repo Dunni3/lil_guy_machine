@@ -50,10 +50,22 @@ data class DocSection(val id: String, val title: String, val text: String)
 /**
  * The docs the oracle searches: how his world works, one section per rule, verb, item and book,
  * generated from the content as he knows it ([BedroomWorld.knownContent]), so they never drift from
- * the world and never tell him what a book hasn't taught him yet.
+ * the world and never tell him what a book hasn't taught him yet. Then the hand-written [guide]
+ * (resources/docs/bedroom-guide.md) for what lives in code: how art is drawn, what meets a request.
  */
 object WorldDocs {
-    fun of(content: BedroomContent): List<DocSection> = buildList {
+    fun of(content: BedroomContent): List<DocSection> = generated(content) + guide
+
+    /** The hand-written sections: each `## id: title` heading starts one. */
+    val guide: List<DocSection> by lazy {
+        val text = WorldDocs::class.java.getResource("/docs/bedroom-guide.md")?.readText() ?: return@lazy emptyList()
+        text.split(Regex("(?m)^## ")).drop(1).map { block ->
+            val heading = block.substringBefore('\n')
+            DocSection(heading.substringBefore(": ").trim(), heading.substringAfter(": ").trim(), block.substringAfter('\n').trim().replace(Regex("\\s*\n\\s*"), " "))
+        }
+    }
+
+    private fun generated(content: BedroomContent): List<DocSection> = buildList {
         add(DocSection("rules:needs", "how needs move, and when he can't work", enc(content.needs)))
         content.night?.let { add(DocSection("rules:night", "night and day", enc(it))) }
         add(DocSection("rules:shop", "the shop: ordering and delivery, and what it holds back", "$SHOP_RULE ${enc(content.shop)}"))
@@ -76,7 +88,8 @@ object WorldDocs {
     private const val SHOP_RULE =
         "The shop only sells an item he could use: one whose every use happens at something he doesn't own (a canvas without an easel, a record without a record player) isn't sold until he owns that thing."
 
-    private val json = Json { encodeDefaults = false; explicitNulls = false }
+    // Defaults are written out: a rule left at its default (the gallery's comfort) is still a rule.
+    private val json = Json { encodeDefaults = true; explicitNulls = false }
 
     private inline fun <reified T> enc(value: T): String = json.encodeToString(kotlinx.serialization.serializer<T>(), value)
 }
@@ -207,7 +220,7 @@ class Oracle(
         """.trimMargin()
 
         val ANSWER_INSTRUCTIONS = """
-            |You answer questions about how his small world works, from its docs: the sections below are what you opened for his question, generated from the world itself. Answer it plainly and concretely, to him as "you": what to do, in what order, with the prices and numbers that matter, given his situation (his money, needs and what he owns, in the observation). Say only what the docs and his situation support; if they don't say, tell him you don't know. Don't mention docs, JSON, ids or ticks. Under $WORD_CAP words.
+            |You answer questions about how his small world works, from its docs: the sections below are what you opened for his question, generated from the world itself. Answer it plainly and concretely, to him as "you": what to do, in what order, with the prices and numbers that matter, given his situation (his money, needs and what he owns, in the observation). Say only what the docs and his situation support. He can only do what a verb does: if no verb does it, tell him he can't. If it's something a book will teach him, tell him which book to finish. If the docs don't say, tell him you don't know. Don't mention docs, JSON, ids or ticks. Under $WORD_CAP words.
             |
             |Reply with a JSON object {"answer": ...} and nothing else.
         """.trimMargin()
