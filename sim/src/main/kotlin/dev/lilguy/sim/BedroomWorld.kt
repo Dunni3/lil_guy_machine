@@ -419,6 +419,8 @@ class BedroomWorld private constructor(
         val lock = content.habituation?.boredLock ?: return null
         if (needs[Need.Stimulation] >= lock.below || !boring(a)) return null
         if (args == null && a.args.isNotEmpty() && a.wear != Wear.Verb) return null
+        // What he's never done is new, even when it wears with something he's tired of (a new book, read worn thin).
+        if (isNew(a, args.orEmpty())) return null
         return freshness(a, args.orEmpty()).takeIf { 1 - it >= lock.worn }
     }
 

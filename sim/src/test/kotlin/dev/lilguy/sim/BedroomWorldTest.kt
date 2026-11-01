@@ -352,6 +352,13 @@ class BedroomWorldTest {
         val sketch = broke.activity("sketch")
         assertNull(sketch.locked)
         assertTrue("you're bored of it, but you can't afford anything new yet" in sketch.gives!!, sketch.gives)
+
+        // Reading wears as one habit, but a book he's never opened is new, so it stays open.
+        val reader = world(needs = NeedLevels(80, 70, 50, stimulation = 10), items = content.start.items + mapOf("novel" to 1, "poetry_book" to 1))
+        repeat(3) { reader.run(Intent.Do("read", what = "novel")) }
+        val reads = reader.obs().activities!!.filter { it.id == "read" }
+        assertTrue(reads.none { it.what == "novel" }, "the novel is worn thin: $reads")
+        assertNull(reads.single { it.what == "poetry_book" }.locked)
     }
 
     @Test

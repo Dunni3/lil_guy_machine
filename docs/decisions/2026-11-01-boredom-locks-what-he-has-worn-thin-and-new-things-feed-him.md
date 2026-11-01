@@ -23,6 +23,17 @@ in mood. Ian wants boredom to stop him from doing things, and buying things to b
   hasn't done). The option says "you're bored of it, but you can't afford anything new yet, so you
   keep at it". Seen on the TV (`app-bedroom-20261101-151847`): with sketching and his one book both
   locked and $2 left, he could only eat, shop, sleep and think for three hours.
+- **What he's never done never locks,** even when it wears with something he's tired of: reading
+  wears as one habit, but a book he's never opened stays open.
+- **The shopper is told he's bored.** On that TV run the shopper (Gemini, playing him with his
+  decision prompt: who he is, his memories and latest thought) spent his last $19 on an easel he
+  couldn't use without a canvas, "so I can start painting and earning more", with seven
+  decorations he liked in reach. Its instructions opened "Money is scarce and food comes first",
+  and nothing tied his boredom to the catalog. Now, when he's bored, the ask says so first ("You're
+  bored (stimulation 22 of 100) ... sketch and read are off limits until that wears off. Something
+  new for your room that you like lifts your stimulation ..."), and the instructions put food first
+  and then what he'd enjoy and use, now as well as later: money is for living well, not only for
+  earning more. A picking shopper gets the same line as `state.now`.
 - **What never locks:** routine verbs, verbs that feed energy or fullness (the oats and sleep stay
   open, so `no-dead-ends` still holds), and verbs with no mood or stimulation gains (think). A verb
   that wears per item (each record) is judged per item.
