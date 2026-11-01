@@ -554,6 +554,16 @@ data class ItemSpec(
     val canvas: CanvasSpec? get() = affords["drawable"]?.let { CanvasSpec(it.size!!, it.colors!!, it.strokes!!) }
 }
 
+/** See [VerbSpec.wear]. */
+@Serializable
+enum class Wear {
+    /** Each set of bound items wears on its own. */
+    @SerialName("items") Items,
+
+    /** Doing it with anything wears the one habit. */
+    @SerialName("verb") Verb,
+}
+
 @Serializable
 data class VerbSpec(
     val id: String,
@@ -585,6 +595,8 @@ data class VerbSpec(
     @SerialName("no_repeat") val noRepeat: Boolean = false,
     /** Started outside the rules' `night`: these blocks too, and at most these minutes. Null: the same by day. */
     @SerialName("by_day") val byDay: ByDay? = null,
+    /** What repetition wears: each way of filling its arguments on its own (each record), or the verb as a whole (any book). */
+    val wear: Wear = Wear.Items,
 ) {
     /** Marked routine, or of a kind that always is (selling, sleeping). */
     val isRoutine: Boolean get() = routine || kind.routine

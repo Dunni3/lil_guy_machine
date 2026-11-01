@@ -89,13 +89,13 @@ class BedroomRunTest {
         assertEquals(run(), run())
     }
 
-    /** The shipped file gates nothing; the small world and its grants are tested on what used to be tier 1. */
+    /** The shipped file gates nothing; the small world and its grants are tested on what used to be tier 1, and all decor. */
     private val smallWorld = dev.lilguy.sim.BedroomContent.default().let { c ->
         val tier1 = setOf(
             "canvas", "easel", "record_player", "jazz_record", "ambient_record", "folk_record", "novel", "poetry_book",
-            "field_guide", "drawing_book", "music_book", "guitar", "plant", "poster", "rug", "painting", "paint", "read", "study",
+            "field_guide", "drawing_book", "music_book", "guitar", "painting", "paint", "read", "study",
             "listen", "play_record", "play_guitar",
-        )
+        ) + c.items.filter { it.group == "decor" }.map { it.id }
         c.copy(
             items = c.items.map { if (it.id in tier1) it.copy(tier = 1) else it },
             verbs = c.verbs.map { if (it.id in tier1) it.copy(tier = 1) else it },

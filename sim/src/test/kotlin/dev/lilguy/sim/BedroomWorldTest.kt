@@ -8,12 +8,12 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class BedroomWorldTest {
-    /** The shipped file gates nothing; the tier mechanism is tested on what used to be tier 1. */
+    /** The shipped file gates nothing; the tier mechanism is tested on what used to be tier 1, and all decor. */
     private val tier1 = setOf(
         "canvas", "easel", "record_player", "jazz_record", "ambient_record", "folk_record", "novel", "poetry_book",
-        "field_guide", "plant", "poster", "rug", "painting", "paint", "read", "listen", "play_record",
+        "field_guide", "painting", "paint", "read", "listen", "play_record",
         "study", "drawing_book", "music_book", "guitar", "play_guitar",
-    )
+    ) + BedroomContent.default().items.filter { it.group == "decor" }.map { it.id }
     /** Books here teach nothing, so painting and the guitar are there from the start; [shipped] is the file as it is. */
     private val content = BedroomContent.default().let { c ->
         c.copy(
@@ -91,7 +91,7 @@ class BedroomWorldTest {
         assertEquals("not bedtime yet; by day only a nap, when exhausted (energy 80)", w.activity("sleep").locked)
         assertNull(w.activity("sketch").locked)
         assertEquals("1h", w.activity("sketch").takes)
-        assertEquals("1 sketch, sells for $3; art skill +0.1; energy -3; mood -4; stimulation +3; new to you: stimulation +8, mood +3", w.activity("sketch").gives)
+        assertEquals("1 sketch, sells for $3; art skill +0.1; energy -3; mood -1; stimulation +4; new to you: stimulation +8, mood +3", w.activity("sketch").gives)
         assertEquals("uses a meal (you have 2); fullness +45", w.activity("eat").gives)
         assertEquals("needs a record player ($150)", w.activity("play_record").locked, "what it happens at first: the shop holds records back until then")
 
@@ -112,7 +112,7 @@ class BedroomWorldTest {
         assertTrue(desk.inReach)
         // Awake decay over the walk and the hour, plus the sketch's -3.
         assertTrue(obs.needs!!.energy in 72..73, "energy ${obs.needs!!.energy}")
-        assertTrue(obs.recentEvents.last().endsWith("finished sketch: +1 sketch, art skill 0.1 (+0.1), energy -3, mood -4, stimulation +3, new to you: stimulation +8, mood +3"), obs.recentEvents.last())
+        assertTrue(obs.recentEvents.last().endsWith("finished sketch: +1 sketch, art skill 0.1 (+0.1), energy -3, mood -1, stimulation +4, new to you: stimulation +8, mood +3"), obs.recentEvents.last())
         assertEquals("$3 for the 1 sketch you hold", w.activity("sell_art").gives)
     }
 

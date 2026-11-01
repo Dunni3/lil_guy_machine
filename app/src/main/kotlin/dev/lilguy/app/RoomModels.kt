@@ -7,6 +7,7 @@ import com.badlogic.gdx.graphics.VertexAttribute
 import com.badlogic.gdx.math.MathUtils
 import com.badlogic.gdx.math.Vector3
 import com.badlogic.gdx.utils.Disposable
+import dev.lilguy.app.DecorModels.decor
 import dev.lilguy.sim.Terrain
 import dev.lilguy.sim.TileMap
 import kotlin.math.hypot
@@ -56,7 +57,7 @@ class RoomModels : Disposable {
     fun item(id: String, kind: String): CrayonModel = items.getOrPut("$kind/$id") { model { buildItem(id, kind) } }
 
     /** Items that hang in a wall rather than stand on the floor: their back is at z = 0. */
-    fun wallItem(id: String, kind: String): Boolean = id in WALL_ITEMS || kind == "door"
+    fun wallItem(id: String, kind: String): Boolean = id in WALL_ITEMS || id in DecorModels.ON_WALL || kind == "door"
 
     /** Items that lie flat and cast no shadow of their own. */
     fun flat(id: String, kind: String): Boolean = id == "rug" || kind == "exit"
@@ -133,6 +134,65 @@ class RoomModels : Disposable {
             box(WOOD_DARK, 0f, 1.2f, 0.07f, 0.055f, 0.42f, 0.035f, round = 0.01f)
             box(WOOD_DARK, 0f, 1.6f, 0.07f, 0.085f, 0.12f, 0.03f, round = 0.012f)
             capsule(KNOB, 0f, 1.62f, 0.02f, 0.035f, 0.05f, 0.035f, rotX = 90f, outline = 0.005f)
+        }
+    }
+
+    // --- props he holds or works with, in his own units (the guy is scaled up from them) --------------
+
+    /** The colour of book [id]'s spine on the [shelf], so the one in his hands matches; the plain book colour without one. */
+    fun bookColor(id: String?): String = id?.let { SPINES[it.hashCode().mod(SPINES.size)] } ?: BOOK
+
+    /** A book held up in both hands, cover out (+Z), the page block showing along the top; pivot at its bottom centre. */
+    fun heldBook(color: String): CrayonModel = items.getOrPut("held_book/$color") {
+        model {
+            box(color, 0f, 0f, 0f, 0.26f, 0.32f, 0.06f, round = 0.012f)
+            box(PAPER, 0f, 0.012f, -0.004f, 0.24f, 0.3f, 0.045f, round = 0.006f, outline = 0f)
+        }
+    }
+
+    /** A book lying open, face up, spine along z at x = 0; pivot at its bottom centre. */
+    fun openBook(color: String): CrayonModel = items.getOrPut("open_book/$color") {
+        model {
+            lump = 0.001f
+            box(color, 0f, 0f, 0f, 0.27f, 0.012f, 0.19f, round = 0.004f)
+            for (side in listOf(-1f, 1f)) box(PAPER, side * 0.064f, 0.01f, 0f, 0.125f, 0.014f, 0.175f, rotZ = side * 4f, round = 0.003f, outline = 0.004f)
+        }
+    }
+
+    /** One page of an [openBook], lying flat to the spine's right; the view turns it about z to the left. */
+    fun page(): CrayonModel = items.getOrPut("page") {
+        model { box(PAPER, 0.062f, 0f, 0f, 0.124f, 0.003f, 0.17f, round = 0.001f, outline = 0.004f, lump = 0f) }
+    }
+
+    /** His guitar held to play: the body at the origin facing +Z, the neck out along -x. */
+    fun heldGuitar(): CrayonModel = items.getOrPut("held_guitar") {
+        model {
+            lump = 0.002f
+            sphere(GUITAR, 0.04f, -0.15f, 0f, 0.3f, 0.27f, 0.07f)
+            sphere(GUITAR, -0.13f, -0.11f, 0f, 0.22f, 0.2f, 0.07f)
+            cylinder(VINYL, -0.06f, -0.05f, 0.03f, 0.075f, 0.01f, 0.075f, rotX = 90f, round = 0.002f, outline = 0.004f)
+            box(WOOD_DARK, 0.06f, -0.06f, 0.04f, 0.02f, 0.09f, 0.01f, round = 0.004f, outline = 0.004f)
+            box(WOOD_DARK, -0.4f, -0.04f, 0.02f, 0.34f, 0.04f, 0.026f, round = 0.008f)
+            box(WOOD_DARK, -0.62f, -0.055f, 0.02f, 0.1f, 0.065f, 0.024f, round = 0.01f)
+        }
+    }
+
+    /** A music note, its head at the origin, facing +Z. */
+    fun note(color: String): CrayonModel = items.getOrPut("note/$color") {
+        model {
+            lump = 0f
+            sphere(color, 0f, -0.03f, 0f, 0.075f, 0.06f, 0.03f, outline = 0.005f)
+            box(color, 0.03f, -0.005f, 0f, 0.016f, 0.15f, 0.016f, round = 0.004f, outline = 0.005f)
+            box(color, 0.055f, 0.12f, 0f, 0.05f, 0.022f, 0.014f, rotZ = -30f, round = 0.004f, outline = 0.005f)
+        }
+    }
+
+    /** The record on the player, centred on its spindle, with a stripe on the label so it shows turning. */
+    fun disc(): CrayonModel = items.getOrPut("disc") {
+        model {
+            cylinder(VINYL, 0f, 0f, 0f, 0.3f, 0.02f, 0.3f, round = 0.006f)
+            cylinder(RECORD_LABEL, 0f, 0.015f, 0f, 0.1f, 0.012f, 0.1f, round = 0.004f, outline = 0.005f)
+            box(PAPER, 0.025f, 0.026f, 0f, 0.045f, 0.004f, 0.014f, round = 0.002f, outline = 0f, lump = 0f)
         }
     }
 
@@ -372,8 +432,7 @@ class RoomModels : Disposable {
                 box(WOOD_DARK, 0f, 0f, 0f, 0.8f, 0.5f, 0.46f, round = 0.035f)
                 box(WOOD, 0f, 0.08f, 0.225f, 0.68f, 0.32f, 0.03f, round = 0.015f)
                 box(WOOD_LIGHT, 0f, 0.5f, 0f, 0.62f, 0.06f, 0.4f, round = 0.025f)
-                cylinder(VINYL, -0.06f, 0.555f, 0f, 0.3f, 0.02f, 0.3f, round = 0.006f)
-                cylinder(RECORD_LABEL, -0.06f, 0.57f, 0f, 0.1f, 0.012f, 0.1f, round = 0.004f, outline = 0.005f)
+                // The record is its own model ([disc], at [DISC_X], [DISC_Y]), so the view can turn it.
                 capsule(TRIM, 0.2f, 0.575f, -0.19f, 0.03f, 0.22f, 0.03f, rotX = 90f)
             }
             "plant" -> {
@@ -403,7 +462,7 @@ class RoomModels : Disposable {
                 box("#ffffff", 0f, 0.95f, 0.01f, 0.62f, 0.82f, 0.02f, round = 0.006f, texture = "poster", lump = 0f)
                 sphere(CURTAIN, 0f, 1.71f, 0.03f, 0.05f, 0.05f, 0.03f)
             }
-            else -> when (kind) {
+            else -> if (!decor(id)) when (kind) {
                 "door", "fixture" -> {
                     box(TRIM, 0f, 0f, 0.02f, 0.94f, 1.68f, 0.05f, round = 0.02f)
                     box(DOOR, 0f, 0f, 0.05f, 0.8f, 1.6f, 0.05f, round = 0.02f)
@@ -481,6 +540,13 @@ class RoomModels : Disposable {
         const val SKETCH_Z = 0.06f
         const val CANVAS_Y = 0.75f
         const val CANVAS_Z = 0.135f
+        /** The record's spindle on the player, from its pivot. */
+        const val DISC_X = -0.06f
+        const val DISC_Y = 0.555f
+        /** Where the book he studies lies open on the desk, from its pivot: between the sketchbook and the mug. */
+        const val STUDY_BOOK_X = 0.0f
+        const val STUDY_BOOK_Y = 0.565f
+        const val STUDY_BOOK_Z = -0.02f
         const val FRAME = 0.44f
         const val FRAME_ART = 0.34f
         const val FRAME_ART_Z = 0.04f

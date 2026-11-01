@@ -90,6 +90,14 @@ class Blob : Disposable {
     /** The top of his head in world space, for anchoring a bubble. */
     val headTop = Vector3()
 
+    /** What he has in his hands this frame, for the view to draw at [heldAt]. */
+    enum class Held { None, Book, Guitar }
+
+    var held = Held.None
+        private set
+    /** Where the [held] thing goes, in his own (scaled) frame: a book's bottom centre, the guitar's body. */
+    val heldAt = Matrix4()
+
     private val root = Matrix4()
     private val inverse = Matrix4()
     private val hold = Vector3()
@@ -140,10 +148,22 @@ class Blob : Disposable {
         val tired = ((40.0 - pose.energy) / 30.0).coerceIn(0.0, 1.0).toFloat()
         val glum = ((45.0 - pose.mood) / 30.0).coerceIn(0.0, 1.0).toFloat()
 
+        val still = !pose.moving && !asleep
+        held = if (!still) Held.None else when (pose.doing) {
+            "read" -> Held.Book
+            "play_guitar" -> Held.Guitar
+            else -> Held.None
+        }
+
         // Turn toward where he faces, the short way round. Model +Z is compass 270 (south, the camera).
-        // Standing still he turns partway toward the camera, so his face reads; less with his hands on his work.
+        // Standing still he turns partway toward the camera, so his face reads; less with his hands on
+        // his work, more with something in his hands to show.
         var target = pose.facing + 90f
-        if (!pose.moving) target += angleDiff(0f, target) * if (pose.workAt != null) PLAY_AT_WORK else PLAY_TO_CAMERA
+        if (!pose.moving) target += angleDiff(0f, target) * when {
+            pose.workAt != null -> PLAY_AT_WORK
+            held != Held.None -> PLAY_HELD
+            else -> PLAY_TO_CAMERA
+        }
         yaw += MathUtils.clamp(angleDiff(target, yaw), -TURN_SPEED * dt, TURN_SPEED * dt)
 
         // A little landing squash whenever he starts or stops walking.
@@ -165,7 +185,7 @@ class Blob : Disposable {
             pose.thinking || pose.doing == "think" -> Face.Thinking
             pose.energy < 20 -> Face.Tired
             pose.mood < 30 -> Face.Sad
-            pose.mood >= 65 || pose.music -> Face.Happy
+            pose.mood >= 65 || pose.music || pose.doing == "play_guitar" -> Face.Happy
             else -> Face.Neutral
         }
         shut = blinkLeft > 0f && expression != Face.Asleep
@@ -182,8 +202,10 @@ class Blob : Disposable {
 
         // He sleeps propped on his pillow, leaning back far enough that his face still shows.
         lie = MathUtils.lerp(lie, if (asleep) 1f else 0f, (dt * 4f).coerceAtMost(1f))
-        // When music plays and he's idle, he sways.
-        val sway = if (pose.music && !pose.moving && !asleep) 6f * sin(time * 2.6f) else 0f
+        // When music plays and he's idle, or he plays the guitar, he sways; listening, he nods along.
+        val sway = if ((pose.music || held == Held.Guitar) && still) 6f * sin(time * 2.6f) else 0f
+        val listening = still && pose.doing == "listen"
+        val nod = if (listening) 6f * (0.5f + 0.5f * sin(time * BEAT)) else 0f
 
         // At work he slides up to it (off the chair's middle, toward the desk) and leans toward it, more over a page.
         val work = pose.workAt?.takeIf { !pose.moving && !asleep }
@@ -199,15 +221,26 @@ class Blob : Disposable {
             .rotate(Vector3.Y, if (asleep) MathUtils.lerp(yaw, 0f, lie) else yaw)
             .rotate(Vector3.X, -38f * lie)
             .rotate(Vector3.Z, sway)
+            .rotate(Vector3.X, nod)
             .scale(SCALE, SCALE, SCALE)
         val m = measure
         body.transform.set(root).translate(0f, FEET + m.bottom * squash, 0f).scale(stretchXZ, squash, stretchXZ)
+        val shoulder = FEET + (m.bottom + m.armY) * squash
+        val flip = pageTurn(time)
+        when (held) {
+            // Held up in front of his tummy, its top tipped toward him, tipping more as he turns a page.
+            Held.Book -> heldAt.set(root).translate(0f, shoulder + BOOK_Y, BOOK_Z).rotate(Vector3.X, -14f - 8f * flip)
+            // Across his front, the neck up to one side, rocking a little with each strum.
+            Held.Guitar -> heldAt.set(root).translate(GUITAR_X, shoulder + GUITAR_Y, GUITAR_Z).rotate(Vector3.Z, GUITAR_TILT + 2f * sin(time * STRUM))
+            Held.None -> {}
+        }
 
         // At work, the hand nearer the camera does it, so it shows.
         val hand = if (work == null) -1 else SIDES.indices.maxBy { i -> hold.set(SIDES[i], 0f, 0f).rot(root).z }
         for ((i, side) in SIDES.withIndex()) {
             val step = if (pose.moving) sin(walkPhase + i * MathUtils.PI) * 0.09f else 0f
-            feet[i].transform.set(root).translate(side * 0.13f, 0.045f + (if (step > 0) step * 0.3f else 0f), m.footZ + step)
+            val tap = if (listening && side > 0) 0.035f * maxOf(0f, sin(time * BEAT)) else 0f
+            feet[i].transform.set(root).translate(side * 0.13f, 0.045f + (if (step > 0) step * 0.3f else 0f) + tap, m.footZ + step)
 
             // Arms: swing while walking; activity poses otherwise.
             var ax = side * (m.armX * stretchXZ + 0.015f)
@@ -216,7 +249,24 @@ class Blob : Disposable {
             if (!pose.moving && !asleep) when (pose.doing) {
                 "sketch", "journal", "paint" -> if (side > 0) { ax *= 0.75f; az = 0.24f; ay += 0.06f + 0.025f * sin(time * 15f) }
                 "eat" -> if ((time * 2.5f).toInt() % 2 == i) { ax *= 0.6f; az = 0.26f; ay += 0.15f }
-                "read" -> { ax *= 0.65f; az = 0.24f; ay += 0.1f }
+                "read" -> {
+                    // Either side of the book; now and then the near hand reaches over to turn a page.
+                    hold.set(side * BOOK_HAND_X, BOOK_HAND_Y, 0.01f).mul(heldAt)
+                    toLocal(hold)
+                    ax = hold.x - (if (side > 0) 2f * BOOK_HAND_X * sin(flip * MathUtils.PI) else 0f)
+                    ay = hold.y + (if (side > 0) 0.06f * sin(flip * MathUtils.PI) else 0f)
+                    az = hold.z + 0.02f
+                }
+                "play_guitar" -> {
+                    // One hand strums over the sound hole; the other holds a chord up the neck, moving to the next every so often.
+                    if (side > 0) hold.set(0.02f, -0.02f + 0.05f * sin(time * STRUM), 0.06f)
+                    else hold.set(-0.36f - 0.06f * ((time / CHORD).toInt() % 3), 0f, 0.04f)
+                    hold.mul(heldAt)
+                    toLocal(hold)
+                    ax = hold.x
+                    ay = hold.y
+                    az = hold.z
+                }
                 "sell_art" -> if (side > 0) { az = 0.22f; ay += 0.2f + 0.04f * sin(time * 6f) }
                 else -> ay += if (pose.music) 0.03f * sin(time * 5.2f + i * MathUtils.PI) else 0.008f * sin(time * 2.3f + i)
             }
@@ -233,6 +283,12 @@ class Blob : Disposable {
         shadowTransform.setToTranslation(pose.x, pose.standY + SHADOW_LIFT, pose.z).scale(shrink * shadowWidth * SHADOW_W, 1f, shrink * SHADOW_D)
         headTop.set(0f, FEET + m.bottom + m.top + 0.2f, 0f).mul(root)
         if (asleep) headTop.set(pose.x, pose.standY + 0.6f, pose.z)
+    }
+
+    /** 0 most of the time; 0..1 while he turns a page, every [PAGE_EVERY] seconds. */
+    private fun pageTurn(time: Float): Float {
+        val f = (time % PAGE_EVERY) / PAGE_TURN
+        return if (f < 1f) f else 0f
     }
 
     /** One stroke of the pen or brush: where in it he is (0..1), which stroke it is, and whether his hand is lifted. */
@@ -264,7 +320,7 @@ class Blob : Disposable {
         val r = Rng(stroke.n * 7919 + 17)
         if (pose.workFlat) {
             if (working) {
-                if (pose.doing == "journal") {
+                if (pose.doing in WRITING) {
                     // Writing: along a line, left to right, a line at a time.
                     val line = (time / LINE).toInt()
                     val along = time / LINE - line
@@ -435,6 +491,7 @@ class Blob : Disposable {
         const val SHADOW_D = 0.48f
         const val TURN_SPEED = 600f
         const val PLAY_TO_CAMERA = 0.4f
+        const val PLAY_HELD = 0.8f
         /** At work: how far he leans (degrees), and his arm's reach (his own units). */
         const val LEAN_FLAT = 8f
         const val LEAN_UPRIGHT = 3f
@@ -447,6 +504,26 @@ class Blob : Disposable {
         const val LINE = 1.6f
         /** Every this many strokes, he dips his brush in the palette. */
         const val PALETTE_EVERY = 6
+        /** Done by hand at a page, these write in lines rather than sketch: taking notes, the journal. */
+        val WRITING = setOf("study", "journal")
+        /** A held book: from his shoulders, how high and how far out its bottom is, and where his hands hold it. */
+        const val BOOK_Y = -0.12f
+        const val BOOK_Z = 0.31f
+        const val BOOK_HAND_X = 0.15f
+        const val BOOK_HAND_Y = 0.14f
+        /** Seconds between page turns, and how long one takes. */
+        const val PAGE_EVERY = 4.5f
+        const val PAGE_TURN = 0.7f
+        /** The held guitar's body, from his shoulders, and how far its neck tips up (degrees). */
+        const val GUITAR_X = 0.08f
+        const val GUITAR_Y = -0.04f
+        const val GUITAR_Z = 0.3f
+        const val GUITAR_TILT = -28f
+        /** Strums (radians a second), and seconds a chord is held. */
+        const val STRUM = 13f
+        const val CHORD = 1.6f
+        /** The beat he nods and taps to, listening (radians a second). */
+        const val BEAT = 5.2f
         const val WALK_RATE = 13f
         const val SPRING = 160f
         const val DAMPING = 9f

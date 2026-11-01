@@ -340,14 +340,17 @@ class BedroomWorld private constructor(
 
     // --- habituation and novelty -----------------------------------------------------------------
 
-    /** What wears and what counts as new: the verb and the items bound to its arguments, "play_record:jazz_record:record_player". */
+    /** What counts as new: the verb and the items bound to its arguments, "play_record:jazz_record:record_player". */
     private fun habit(a: VerbSpec, args: Map<String, String>): String = (listOf(a.id) + args.values).joinToString(":")
+
+    /** What wears: the [habit], or the verb alone for one that wears as a whole (reading any book wears "read"). */
+    private fun wearKey(a: VerbSpec, args: Map<String, String>): String = if (a.wear == Wear.Verb) a.id else habit(a, args)
 
     /** 1 when fresh, down to 0 when worn out; always 1 for routine verbs or without habituation. */
     private fun freshness(a: VerbSpec, args: Map<String, String> = emptyMap()): Double {
         val h = content.habituation ?: return 1.0
         if (a.isRoutine) return 1.0
-        val (level, since) = wear[habit(a, args)] ?: return 1.0
+        val (level, since) = wear[wearKey(a, args)] ?: return 1.0
         val hours = (ticks - since).toDouble() / clock.ticks(60)
         return 1.0 - (level - h.recoverPerHour * hours).coerceIn(0.0, 1.0)
     }
@@ -369,7 +372,7 @@ class BedroomWorld private constructor(
                 val stale = if (h.staleStimulation < 0) ", stimulation ${signed(needs.change(ticks, Need.Stimulation, h.staleStimulation * worn, "${a.id} again"))}" else ""
                 parts += "done a lot lately, so it paid ${percent(fresh)}$stale"
             }
-            wear[key] = (worn + h.perRepeat).coerceAtMost(1.0) to ticks
+            wear[wearKey(a, args)] = (worn + h.perRepeat).coerceAtMost(1.0) to ticks
             version++
         }
         if (isNew(a, args)) {

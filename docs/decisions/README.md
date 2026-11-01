@@ -65,5 +65,6 @@ these hold the outcome. Skim this index before related changes.
 - 2026-10-31 [A commission pays for a piece that drew its noun's shape; the drawing reports what it shows](2026-10-31-commissions-are-judged-by-the-shape-drawn.md)
 - 2026-10-31 [No dead ends: a free floor under hunger, and a verb isn't offered when it would stop at once](2026-10-31-no-dead-ends-there-is-always-a-way-back-to-food.md)
 - 2026-10-31 [The world is discovered as he goes: the shop holds back what he can't use yet, and he can ask how things work](2026-10-31-the-world-is-discovered-by-asking-and-the-shop-holds-back.md)
+- 2026-10-31 [Watchability: books wear as one habit; the app runs quiet stretches faster](2026-10-31-watchability-books-wear-as-one-quiet-stretches-run-faster.md)
 - 2026-11-01 [Jev walks a menu tree by beam search instead of picking from one flat list](2026-11-01-jev-walks-a-menu-tree-by-beam-search.md)
 - 2026-11-01 [Asking happens while he thinks; there is no ask verb](2026-11-01-asking-happens-while-he-thinks.md)

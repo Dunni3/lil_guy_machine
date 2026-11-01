@@ -51,6 +51,7 @@ class ModelSetup(
     class Prices(val decision: TokenPrice? = null, val memory: TokenPrice? = null, val writer: TokenPrice? = null, val recall: TokenPrice? = null)
 
     fun copy(
+        create: () -> DecisionModel = this.create,
         memoryModel: (() -> DecisionModel)? = this.memoryModel,
         notice: String? = this.notice,
         writerModel: (() -> DecisionModel)? = this.writerModel,

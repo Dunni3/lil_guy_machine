@@ -34,6 +34,21 @@ items:
   - { id: plant, name: plant, group: decor, slot: plant, blocks: true, price: 25, affords: { viewable: {} }, qualities: { natural: 2, calm: 2 } }
   - { id: poster, name: poster, group: decor, slot: poster, blocks: true, price: 15, affords: { viewable: {} }, qualities: { bright: 2, pretty: 1 } }
   - { id: rug, name: rug, group: decor, slot: rug, price: 60, affords: { viewable: {} }, qualities: { cozy: 3, soft: 2, warm: 1 } }
+  - { id: string_lights, name: string lights, group: decor, slot: string_lights, blocks: true, price: 28, affords: { viewable: {} }, qualities: { cozy: 2, pretty: 2, warm: 1 } }
+  - { id: window_succulents, name: windowsill succulents, group: decor, slot: window_succulents, blocks: true, price: 20, affords: { viewable: {} }, qualities: { natural: 2, calm: 1, pretty: 1 } }
+  - { id: moon_mobile, name: moon mobile, group: decor, slot: moon_mobile, blocks: true, price: 18, affords: { viewable: {} }, qualities: { calm: 2, pretty: 1, strange: 1 } }
+  - { id: round_mirror, name: round mirror, group: decor, slot: round_mirror, blocks: true, price: 16, affords: { viewable: {} }, qualities: { bright: 2, pretty: 1 } }
+  - { id: cork_board, name: cork board, group: decor, slot: cork_board, blocks: true, price: 10, affords: { viewable: {} }, qualities: { lively: 2, warm: 1 } }
+  - { id: rainbow, name: rainbow, group: decor, slot: rainbow, blocks: true, price: 18, affords: { viewable: {} }, qualities: { bright: 2, pretty: 1, lively: 1 } }
+  - { id: cloud_light, name: cloud night-light, group: decor, slot: cloud_light, blocks: true, price: 22, affords: { viewable: {} }, qualities: { calm: 2, soft: 1, cozy: 1 } }
+  - { id: bunting, name: bunting, group: decor, slot: bunting, blocks: true, price: 10, affords: { viewable: {} }, qualities: { lively: 2, bright: 1 } }
+  - { id: lava_lamp, name: lava lamp, group: decor, slot: lava_lamp, blocks: true, price: 24, affords: { viewable: {} }, qualities: { strange: 2, warm: 1, lively: 1 } }
+  - { id: sunflowers, name: jug of sunflowers, group: decor, slot: sunflowers, blocks: true, price: 20, affords: { viewable: {} }, qualities: { bright: 2, natural: 1, pretty: 1 } }
+  - { id: mushroom_lamp, name: mushroom lamp, group: decor, slot: mushroom_lamp, blocks: true, price: 30, affords: { viewable: {} }, qualities: { warm: 2, cozy: 1, strange: 1 } }
+  - { id: teddy_bear, name: teddy bear, group: decor, slot: teddy_bear, blocks: true, price: 26, affords: { viewable: {} }, qualities: { soft: 2, cozy: 2, warm: 1 } }
+  - { id: beanbag, name: beanbag, group: decor, slot: beanbag, blocks: true, price: 40, affords: { viewable: {} }, qualities: { soft: 3, cozy: 2 } }
+  - { id: fishbowl, name: fishbowl, group: decor, slot: fishbowl, blocks: true, price: 32, affords: { viewable: {} }, qualities: { calm: 2, natural: 1, lively: 1 } }
+  - { id: cactus, name: cactus, group: decor, slot: cactus, blocks: true, price: 12, affords: { viewable: {} }, qualities: { natural: 2, strange: 1 } }
   # Art is carried until sold or hung. `drawable` is what a piece is drawn on: a square grid `size`
   # wide, up to `colors` crayons and `strokes` strokes, each two picks (which stroke, then which
   # crayon) by the model that decides for him, so strokes is what a piece costs in calls. Painting's

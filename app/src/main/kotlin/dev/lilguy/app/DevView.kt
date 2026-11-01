@@ -63,7 +63,7 @@ class DevView(private val art: ArtTextures) : Disposable {
 
     /** The Run page's rows. */
     private enum class RunRow(val label: String) {
-        Days("Length"), Speed("Speed"), DecideCap("While he decides"), Resolution("Clock resolution"), Restart("Restart"), Replay("Replay");
+        Days("Length"), Speed("Speed"), Quiet("Quiet stretches"), DecideCap("While he decides"), Resolution("Clock resolution"), Restart("Restart"), Replay("Replay");
 
         val isAction: Boolean get() = this == Restart || this == Replay
     }
@@ -85,8 +85,8 @@ class DevView(private val art: ArtTextures) : Disposable {
     var pinned: Int? = null
         private set
 
-    /** Room only: the shop's catalogue card is open over the room; DOWN opens it, UP closes it. */
-    var shopOpen = false
+    /** Room only: the page of the shop's catalogue card open over the room, or null with it closed; DOWN opens it and turns on, UP turns back and closes it. */
+    var shopPage: Int? = null
         private set
 
     /** Art only: the piece shown, as an index into the drawn pieces oldest first; null follows the newest. */
@@ -113,10 +113,16 @@ class DevView(private val art: ArtTextures) : Disposable {
         pinned = null
     }
 
-    /** UP (-1) and DOWN (+1): in the room the catalogue, in History a newer or older decision, in Art a newer or older piece, elsewhere scroll. */
+    /** UP (-1) and DOWN (+1): in the room the catalogue and its pages, in History a newer or older decision, in Art a newer or older piece, elsewhere scroll. */
     fun move(by: Int, session: SimSession) {
         if (page == Page.Room) {
-            shopOpen = by > 0
+            val pages = shopPages(session.current.life?.catalog?.size ?: 0)
+            val page = shopPage
+            shopPage = when {
+                by > 0 -> if (page == null) 0 else (page + 1).coerceAtMost(pages - 1)
+                page == null || page == 0 -> null
+                else -> page - 1
+            }
             return
         }
         if (page == Page.Run) {
@@ -156,6 +162,7 @@ class DevView(private val art: ArtTextures) : Disposable {
                 session.configure(s.copy(days = days?.coerceAtLeast(1)))
             }
             RunRow.Speed -> session.configure(s.copy(speed = RunSettings.SPEEDS.step(s.speed, by)))
+            RunRow.Quiet -> session.configure(s.copy(quiet = RunSettings.QUIETS.step(s.quiet, by)))
             RunRow.DecideCap -> session.configure(s.copy(decideCap = RunSettings.DECIDE_CAPS.step(s.decideCap, by)))
             RunRow.Resolution -> session.configure(s.copy(ticksPerMinute = RunSettings.RESOLUTIONS.step(s.ticksPerMinute, by)))
             RunRow.Replay -> replayPick = ((replayPick ?: session.run) + by).coerceIn(1, session.run).takeIf { it != session.run }
@@ -184,7 +191,7 @@ class DevView(private val art: ArtTextures) : Disposable {
         pinned = null
         replayPick = null
         artPick = null
-        shopOpen = false
+        shopPage = null
         scroll.fill(0)
         confirmRestart = false
         confirmAction = false
@@ -383,7 +390,10 @@ class DevView(private val art: ArtTextures) : Disposable {
                 shapes.color = WOOD_DARK
                 shapes.rect(cx - t * 0.75f, cy - h * 0.15f, t * 1.5f, h * 0.3f)
             }
-            else -> {
+            else -> if (e.kind == "decor") {
+                shapes.color = LEAF
+                shapes.circle(cx, cy, h * 0.4f, 16)
+            } else {
                 shapes.color = Color.MAGENTA
                 shapes.circle(cx, cy, t * 0.15f, 12)
             }
@@ -1007,6 +1017,7 @@ class DevView(private val art: ArtTextures) : Disposable {
         return when (row) {
             RunRow.Days -> s.days?.let { d -> plural(d, "day") + (session.endTick?.let { " · ends ${stamp(it, session.current)}" } ?: "") } ?: "no end"
             RunRow.Speed -> "${s.speed} game min/s · a day in ${RunSettings.realTime(s.secondsPerDay)}"
+            RunRow.Quiet -> quietText(s.quiet)
             RunRow.DecideCap -> capText(s.decideCap)
             RunRow.Resolution -> "${s.ticksPerMinute} ticks/game min" + if (s.ticksPerMinute != session.ticksPerMinute) " · next run (now ${session.ticksPerMinute})" else ""
             RunRow.Restart -> "a fresh run with these settings"
@@ -1019,6 +1030,8 @@ class DevView(private val art: ArtTextures) : Disposable {
         return when (row) {
             RunRow.Days -> "Game days the run lasts, and the next run's. Raising it extends this run; an ended run reopens, paused. It can't go below the days he has lived."
             RunRow.Speed -> "How fast his day passes on screen. Everything speeds up together; ticks per second = speed x resolution, now ${s.speed * session.ticksPerMinute}."
+            RunRow.Quiet -> "While he's settled into something with little to watch (${RunSettings.QUIET_VERBS.joinToString()}), the clock runs this many times faster. " +
+                "He does the same things; the screen spends less time on them. A decision out meanwhile holds the clock sooner in real time."
             RunRow.DecideCap -> "A model's reply takes real seconds whatever the speed, and he stands still meanwhile. The clock runs up to this much game time while a decision is out, " +
                 "then holds until it comes back. Waits: thinking costs no game time (lockstep). Runs: it costs whatever the latency is at this speed." +
                 (s.decideCap?.takeIf { it > 0 }?.let { " Now: ${seconds(it * 60f / s.speed)} s of model time." } ?: "")
@@ -1029,7 +1042,9 @@ class DevView(private val art: ArtTextures) : Disposable {
     }
 
     private fun summary(s: RunSettings): String =
-        "${s.days?.let { plural(it, "day") } ?: "no end"} · ${s.speed} min/s · ${s.ticksPerMinute} ticks/min · ${capText(s.decideCap)}"
+        "${s.days?.let { plural(it, "day") } ?: "no end"} · ${s.speed} min/s · quiet ${quietText(s.quiet)} · ${s.ticksPerMinute} ticks/min · ${capText(s.decideCap)}"
+
+    private fun quietText(quiet: Int): String = if (quiet == 1) "same speed" else "${quiet}x faster"
 
     private fun capText(cap: Int?): String = when (cap) {
         null -> "clock runs"
