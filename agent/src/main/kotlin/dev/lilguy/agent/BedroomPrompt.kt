@@ -160,7 +160,9 @@ object BedroomPrompt {
                 add("Doing the same thing again gives less: each time you finish it, its mood and stimulation gains drop ${num(h.perRepeat * 100)}%, coming back ${num(h.recoverPerHour * 100)}% an hour$stale.")
                 val routine = content.verbs.filter { it.isRoutine }.map { it.phrase ?: it.id }
                 if (routine.isNotEmpty()) add("Routine things (${routine.joinToString(", ")}) don't wear thin.")
+                h.boredLock?.let { add("While you're bored (stimulation below ${num(it.below)}), anything worn ${num(it.worn * 100)}% thin or more is off limits, what it pays included, until it wears off or something else lifts you.") }
             }
+            content.novelty?.things?.let { add("Something new for your room that you like lifts your stimulation for ${num(it.days)} days, fading as you get used to it.") }
         }
         return if (parts.isEmpty()) null else "- Variety: " + parts.joinToString(" ").replaceFirstChar { it.lowercase() }
     }

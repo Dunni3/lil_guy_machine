@@ -207,7 +207,9 @@ data class BedroomContent(
         require(needs.stimulationPerHour <= 0 && needs.boredMood >= 0) { "stimulation_per_hour can't be positive or bored_mood negative" }
         habituation?.let { h ->
             require(h.perRepeat in 0.0..1.0 && h.recoverPerHour > 0 && h.staleStimulation <= 0) { "habituation: per_repeat 0 to 1, recover_per_hour positive, stale_stimulation not positive" }
+            h.boredLock?.let { require(it.worn in 0.0..1.0 && it.below > 0) { "habituation.bored_lock: worn 0 to 1, below positive" } }
         }
+        novelty?.things?.let { require(it.stimulationPerValue >= 0 && it.days > 0) { "novelty.things: stimulation_per_value not negative, days positive" } }
         novelty?.effects?.keys?.forEach { needOf(it) }
         personality.affinities.forEach { (q, w) ->
             require(q in qualities) { "personality likes '$q', which isn't in vocabulary.qualities" }
@@ -360,13 +362,23 @@ data class BookSpec(
  * fades [recoverPerHour] an hour. Its positive mood and stimulation effects are paid at
  * 1 - wear, and finishing one that was already worn costs [staleStimulation] times the wear.
  * Routine verbs (marked, or of a routine [VerbKind]) don't wear. A verb with arguments wears per item (each record on its own).
+ * [boredLock]: when he's bored, what he has worn thin is refused outright; null never refuses.
  */
 @Serializable
 data class HabituationRules(
     @SerialName("per_repeat") val perRepeat: Double,
     @SerialName("recover_per_hour") val recoverPerHour: Double,
     @SerialName("stale_stimulation") val staleStimulation: Double = 0.0,
+    @SerialName("bored_lock") val boredLock: BoredLock? = null,
 )
+
+/**
+ * Below [below] stimulation, a verb worn [worn] or more (0 to 1) is locked, what it pays included,
+ * until he's less bored or it wears off. Verbs that feed energy or fullness, and verbs with no mood
+ * or stimulation gains to wear, never lock, so there's always a way back to food and sleep.
+ */
+@Serializable
+data class BoredLock(val below: Double, val worn: Double)
 
 /**
  * The closed lists items are described in. [affords]: what can be done with an item; verbs
@@ -421,9 +433,19 @@ data class QualityValue(
     }
 }
 
-/** The first time he finishes an activity (or a use with a given item) adds [effects]; routine ones don't count. */
+/**
+ * The first time he finishes an activity (or a use with a given item) adds [effects]; routine ones don't count.
+ * [things]: what a new thing in the room does for him; null for nothing.
+ */
 @Serializable
-data class NoveltyRules(val effects: Map<String, Double>)
+data class NoveltyRules(val effects: Map<String, Double>, val things: NewThings? = null)
+
+/**
+ * A thing he buys that sits in a slot feeds stimulation while he's awake, [stimulationPerValue] an
+ * hour per point of its value to him (so only things he likes), fading to nothing over [days].
+ */
+@Serializable
+data class NewThings(@SerialName("stimulation_per_value") val stimulationPerValue: Double, val days: Double)
 
 /** Refuses an activity when [need] is below [below] or above [above]. */
 @Serializable

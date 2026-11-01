@@ -6,6 +6,9 @@ status: active
 
 # Stimulation, habituation and novelty; mood is the summary
 
+Amended by `2026-11-01-boredom-locks-what-he-has-worn-thin-and-new-things-feed-him.md`: bored, worn
+verbs lock, wear recovers 0.04 an hour, and new things for the room feed stimulation.
+
 Step 1 ("cap fixes") of `research_notes/2026-10-30_1951_world-grammar-consolidated-plan.md`. The
 point is rewards that don't run out, so "earn until the catalog is bought out" stops being the
 whole game.

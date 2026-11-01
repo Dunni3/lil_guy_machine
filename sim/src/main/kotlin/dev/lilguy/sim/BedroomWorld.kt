@@ -60,6 +60,9 @@ class BedroomWorld private constructor(
     /** Habits he has finished at least once, for the novelty bonus. */
     private val tried = mutableSetOf<String>()
 
+    /** Things he bought for the room, to the tick he bought them, while they still feel new ([NewThings]). */
+    private val newThings = LinkedHashMap<String, Long>()
+
     /** Skill name to level, from 0 up. */
     private val skills = LinkedHashMap<String, Double>()
 
@@ -403,6 +406,36 @@ class BedroomWorld private constructor(
     /** The first-time bonus, scaled by his curiosity. */
     private fun novelty(): Map<String, Double> = content.novelty!!.effects.mapValues { it.value * content.personality.curiosity }
 
+    /** Whether [a] is something he can be bored of ([BoredLock]): it wears thin, has mood or stimulation gains to wear, and doesn't feed energy or fullness. */
+    private fun boring(a: VerbSpec): Boolean {
+        if (a.isRoutine) return false
+        val gains = a.needEffects.entries + a.ops<RateOp>().flatMap { it.perHour.entries } + a.ops<BackgroundOp>().flatMap { it.rates.entries }
+        fun gains(n: Need) = gains.any { it.key == n.id && it.value > 0 }
+        return (gains(Need.Mood) || gains(Need.Stimulation)) && !gains(Need.Energy) && !gains(Need.Fullness)
+    }
+
+    /** Why boredom refuses [a] now, or null. Unbound (null [args]), a verb that wears per item leaves it to each binding. */
+    private fun boredLock(a: VerbSpec, args: Map<String, String>?): String? {
+        val lock = content.habituation?.boredLock ?: return null
+        if (needs[Need.Stimulation] >= lock.below || !boring(a)) return null
+        if (args == null && a.args.isNotEmpty() && a.wear != Wear.Verb) return null
+        val fresh = freshness(a, args.orEmpty())
+        if (1 - fresh < lock.worn) return null
+        return "you're bored, and you've done it a lot lately (gains at ${percent(fresh)}, stimulation ${needs.level(Need.Stimulation)})"
+    }
+
+    /** What [spec], bought at [since], feeds stimulation an hour now ([NewThings]): 0 out of sight, once it's old, or if he doesn't like it. */
+    private fun newThingRate(spec: ItemSpec, since: Long = ticks): Double {
+        val t = content.novelty?.things ?: return 0.0
+        if (spec.slot == null) return 0.0
+        val left = 1 - (ticks - since).toDouble() / clock.ticks(60) / 24 / t.days
+        return if (left <= 0) 0.0 else value(spec).coerceAtLeast(0.0) * t.stimulationPerValue * content.personality.curiosity * left
+    }
+
+    /** "stimulation +2/h while you're awake, fading over 3 days". */
+    private fun newThingText(rate: Double): String =
+        "stimulation ${signed((rate * 10).roundToInt() / 10.0)}/h while you're awake, fading over ${signed(content.novelty!!.things!!.days).removePrefix("+")} days"
+
     /** [d] as paid at [fresh]: gains in mood and stimulation shrink with wear; costs and other needs don't. */
     private fun paid(need: Need, d: Double, fresh: Double): Double = if (d > 0 && (need == Need.Mood || need == Need.Stimulation)) d * fresh else d
 
@@ -441,6 +474,7 @@ class BedroomWorld private constructor(
         // The thing it happens at first (the record player before a record), since the shop holds the rest back until he has it.
         if (args == null) a.args.entries.sortedBy { it.key !in a.at }.firstOrNull { countTag(it.value, extra) == 0 }?.let { return "needs ${wanted(it.value)}" }
         if (a.noRepeat && (justDid as? Intent.Do)?.activity == a.id) return "you just did; do something else first"
+        boredLock(a, args)?.let { return it }
         val b = Bound(a, args.orEmpty(), fresh = 1.0, extra = extra)
         a.effects.firstNotNullOfOrNull { it.lockReason(ops, b) }?.let { return it }
         val blocks = a.block + byDay(a)?.block.orEmpty() + if (a.work) content.needs.workFloor else emptyList()
@@ -775,7 +809,8 @@ class BedroomWorld private constructor(
         ledger.debit(ticks, price, "bought $what")
         add(spec.id, spec.pack)
         val comfortNote = if (comfortOf(spec) != 0) "; comfort ${comfort()}, so mood settles toward ${moodTarget().toInt()}" else ""
-        return "bought $what for $$price (money $${ledger.balance})$comfortNote"
+        val newNote = newThingRate(spec).takeIf { it > 0 }?.let { newThings[spec.id] = ticks; "; new: ${newThingText(it)}" } ?: ""
+        return "bought $what for $$price (money $${ledger.balance})$comfortNote$newNote"
     }
 
     private fun quantity(id: String, n: Int): String {
@@ -810,7 +845,9 @@ class BedroomWorld private constructor(
         if (d == null || d.activity.effects.all { it.awake }) {
             rate(Need.Energy, r.awakeEnergyPerHour, "awake")
             rate(Need.Stimulation, r.stimulationPerHour * content.personality.curiosity, "awake")
+            newThings.forEach { (id, since) -> rate(Need.Stimulation, newThingRate(item(id), since), "new: ${item(id).name}") }
         }
+        newThings.entries.removeIf { (id, since) -> count(id) == 0 || newThingRate(item(id), since) <= 0 }
         val asleep = d != null && d.activity.effects.any { !it.awake }
         rate(Need.Fullness, if (asleep) r.asleepFullnessPerHour ?: r.fullnessPerHour else r.fullnessPerHour, "hunger")
         content.frustration?.let { rate(Need.Frustration, it.perHour, "fading") }
@@ -927,6 +964,7 @@ class BedroomWorld private constructor(
         val comfort = comfortOf(spec)
         if (comfort > 0) parts += "comfort +$comfort: mood settles $comfort higher"
         if (comfort < 0) parts += "comfort $comfort: you don't like it, so mood settles ${-comfort} lower"
+        newThingRate(spec).takeIf { it > 0 }?.let { parts += "new to you: ${newThingText(it)}" }
         if (spec.qualities.isNotEmpty()) parts += spec.qualities.keys.joinToString(", ")
         // What owning it opens up: items the shop holds back until he has this.
         shopItems().filter { other -> other.id != spec.id && heldBack(other) != null && usesOf(other).any { a -> placesOf(a).any { it in spec.names } } }

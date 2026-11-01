@@ -141,7 +141,7 @@ class BedroomWorldTest {
         val shop = w.obs().shop!!.associateBy { it.id }
         assertEquals(ShopOption("meal", 24, false, "3 meals; for eat"), shop["meal"])
         assertEquals(ShopOption("easel", 17, false, "for paint (3h: 1 painting, sells for $30; uses a canvas), which also needs a canvas ($15)"), shop["easel"])
-        assertEquals("comfort +4: mood settles 4 higher; natural, calm", shop.getValue("plant").gives)
+        assertEquals("comfort +4: mood settles 4 higher; new to you: stimulation +2/h while you're awake, fading over 3 days; natural, calm", shop.getValue("plant").gives)
         assertEquals("the easel costs $17 and you have $10", failure(w.run(Intent.Buy("easel"))))
         // What's no use without something else isn't sold until he has it; the thing it needs says what it opens up.
         assertTrue(listOf("canvas", "jazz_record", "folk_record").none { it in shop }, "held back: ${shop.keys}")
@@ -332,6 +332,34 @@ class BedroomWorldTest {
     }
 
     @Test
+    fun `bored, what he has worn thin is refused until it wears off`() {
+        val w = world(needs = NeedLevels(80, 70, 50, stimulation = 10))
+        repeat(3) { assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("sketch")).status) }
+        val locked = w.activity("sketch").locked
+        assertTrue(locked!!.startsWith("you're bored, and you've done it a lot lately"), locked)
+        assertTrue(failure(w.run(Intent.Do("sketch"))).startsWith("can't sketch: you're bored"))
+        // Upkeep and the oats never lock, and the sketching wears off within a few hours.
+        assertNull(w.activity("eat").locked)
+        val since = w.tick
+        while (w.activity("sketch").locked != null) {
+            w.step()
+            assertTrue(w.tick - since < w.clock.ticks(6 * 60), "still locked 6h later: ${w.activity("sketch").locked}")
+        }
+    }
+
+    @Test
+    fun `a new thing he likes feeds stimulation for a few days, fading`() {
+        val w = world(money = 500)
+        val bought = w.tick
+        w.run(Intent.Buy("plant"))
+        repeat(w.clock.ticks(4 * 24 * 60).toInt()) { w.step() }
+        val fed = w.needs.changes.filter { it.reason == "new: plant" }
+        assertTrue(fed[1].delta in 1.9..2.0, "first whole hour ${fed[1].delta}")
+        assertTrue(fed.drop(1).zipWithNext().all { (a, b) -> b.delta <= a.delta }, "fades: ${fed.map { it.delta }}")
+        assertTrue(fed.last().tick - bought in w.clock.ticks(71 * 60)..w.clock.ticks(73 * 60), "stops after 3 days, logged on the hour")
+    }
+
+    @Test
     fun `content keeps to the vocabulary and each verb's contract, and his affinities set what things are worth`() {
         fun broken(c: BedroomContent) = assertFailsWith<IllegalArgumentException> { c.unlocked(c.gated) }.message!!
         fun withItem(id: String, change: (ItemSpec) -> ItemSpec) = content.copy(items = content.items.map { if (it.id == id) change(it) else it })
@@ -346,7 +374,7 @@ class BedroomWorldTest {
 
         val fond = content.withPersonality(content.personality.copy(affinities = content.personality.affinities + mapOf("cozy" to 2.0, "lively" to -1.0)))
         val w = BedroomWorld.create(fond.copy(start = fond.start.copy(money = 500)), granted = content.gated)
-        assertEquals("comfort +9: mood settles 9 higher; cozy, soft, warm", w.obs().shop!!.first { it.id == "rug" }.gives)
+        assertEquals("comfort +9: mood settles 9 higher; new to you: stimulation +4.5/h while you're awake, fading over 3 days; cozy, soft, warm", w.obs().shop!!.first { it.id == "rug" }.gives)
         w.run(Intent.Buy("record_player"))
         w.run(Intent.Buy("jazz_record"))
         assertTrue(w.activity("play_record").gives!!.startsWith("you don't like it: mood -1;"), w.activity("play_record").gives)
