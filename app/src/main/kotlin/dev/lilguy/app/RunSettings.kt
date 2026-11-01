@@ -17,7 +17,7 @@ import dev.lilguy.sim.GameClock
  * (latency costs no game time), null lets the clock run (latency costs game time, as in real life).
  *
  * [quiet] is for the viewer: while he settles into something with little to watch ([QUIET_VERBS]:
- * reading, studying, sleeping), the clock runs that many times faster. He does the same things; the
+ * reading, sleeping), the clock runs that many times faster. He does the same things; the
  * screen spends less time on them.
  */
 data class RunSettings(
@@ -45,7 +45,7 @@ data class RunSettings(
         const val DEFAULT_DECIDE_CAP = 15
         const val DEFAULT_QUIET = 4
         /** What's quiet to watch: he sits still with it for an hour or more. */
-        val QUIET_VERBS = setOf("read", "study", "sleep")
+        val QUIET_VERBS = setOf("read", "sleep")
 
         val SPEEDS = listOf(1, 2, 4, 8, 15, 30, 60)
         val RESOLUTIONS = listOf(1, 2, 5, 10)

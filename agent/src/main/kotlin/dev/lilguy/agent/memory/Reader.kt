@@ -21,7 +21,7 @@ import kotlin.time.TimeSource
 data class ReadingReply(val stuck: String)
 
 /**
- * The `reading` handler's model call: after he reads or studies a chapter, a text model writes, in
+ * The `reading` handler's model call: after he reads a chapter, a text model writes, in
  * his words, what stuck with him from it. One call, one short reply, from who he is and what
  * happens in the chapter (not his whole situation, so it stays cheap). The result is a [Thought]
  * with [Thought.thinker] the reader; [ReadingHandler] puts it in the event stream.
@@ -49,10 +49,10 @@ class Reader(
      * [persona] is who he is; [title] the book; [chapter] what happens in the chapter he read, or null
      * when he reread a book he'd finished. Never throws for a model failure: the result says what went wrong.
      */
-    suspend fun read(persona: String, title: String, chapter: String?, studied: Boolean, tick: Long, day: Int?, time: String?): Thought {
+    suspend fun read(persona: String, title: String, chapter: String?, tick: Long, day: Int?, time: String?): Thought {
         val started = TimeSource.Monotonic.markNow()
         val what = if (chapter == null) "You reread \"$title\", which you've finished before." else
-            "You ${if (studied) "studied" else "read"} a chapter of \"$title\". What happens in it: $chapter"
+            "You read a chapter of \"$title\". What happens in it: $chapter"
         val request = DecisionRequest(
             system = persona.trimEnd() + "\n\n" + INSTRUCTIONS,
             messages = listOf(Message(Message.Role.User, "$what\n\n$ASK")),

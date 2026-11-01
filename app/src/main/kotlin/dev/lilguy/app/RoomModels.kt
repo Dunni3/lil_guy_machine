@@ -150,20 +150,6 @@ class RoomModels : Disposable {
         }
     }
 
-    /** A book lying open, face up, spine along z at x = 0; pivot at its bottom centre. */
-    fun openBook(color: String): CrayonModel = items.getOrPut("open_book/$color") {
-        model {
-            lump = 0.001f
-            box(color, 0f, 0f, 0f, 0.27f, 0.012f, 0.19f, round = 0.004f)
-            for (side in listOf(-1f, 1f)) box(PAPER, side * 0.064f, 0.01f, 0f, 0.125f, 0.014f, 0.175f, rotZ = side * 4f, round = 0.003f, outline = 0.004f)
-        }
-    }
-
-    /** One page of an [openBook], lying flat to the spine's right; the view turns it about z to the left. */
-    fun page(): CrayonModel = items.getOrPut("page") {
-        model { box(PAPER, 0.062f, 0f, 0f, 0.124f, 0.003f, 0.17f, round = 0.001f, outline = 0.004f, lump = 0f) }
-    }
-
     /** His guitar held to play: the body at the origin facing +Z, the neck out along -x. */
     fun heldGuitar(): CrayonModel = items.getOrPut("held_guitar") {
         model {
@@ -543,10 +529,6 @@ class RoomModels : Disposable {
         /** The record's spindle on the player, from its pivot. */
         const val DISC_X = -0.06f
         const val DISC_Y = 0.555f
-        /** Where the book he studies lies open on the desk, from its pivot: between the sketchbook and the mug. */
-        const val STUDY_BOOK_X = 0.0f
-        const val STUDY_BOOK_Y = 0.565f
-        const val STUDY_BOOK_Z = -0.02f
         const val FRAME = 0.44f
         const val FRAME_ART = 0.34f
         const val FRAME_ART_Z = 0.04f

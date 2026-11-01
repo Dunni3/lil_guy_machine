@@ -93,7 +93,7 @@ class BedroomRunTest {
     private val smallWorld = dev.lilguy.sim.BedroomContent.default().let { c ->
         val tier1 = setOf(
             "canvas", "easel", "record_player", "jazz_record", "ambient_record", "folk_record", "novel", "poetry_book",
-            "field_guide", "drawing_book", "music_book", "guitar", "painting", "paint", "read", "study",
+            "field_guide", "drawing_book", "music_book", "guitar", "painting", "paint", "read",
             "listen", "play_record", "play_guitar",
         ) + c.items.filter { it.group == "decor" }.map { it.id }
         c.copy(

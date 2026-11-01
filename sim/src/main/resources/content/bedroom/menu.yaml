@@ -25,8 +25,8 @@ menu:
     buys: [record, instrument]
   - id: books
     under: leisure
-    says: books - read or study a chapter of one he owns, or buy a new book
-    verbs: [read, study]
+    says: books - read a chapter of one he owns, or buy a new book
+    verbs: [read]
     buys: [book]
   - id: room
     says: make his room nicer - buy decor or furniture to look at

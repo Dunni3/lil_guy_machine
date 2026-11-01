@@ -103,15 +103,15 @@ object BedroomPrompt {
      * Only what he knows is named: [content] is the known part.
      */
     private fun learningHint(content: BedroomContent): String? {
-        // Only skills something he knows raises: a practice op, or a book's study.
+        // Only skills something he knows raises: a practice op, or reading a book.
         val raised = content.verbs.flatMap { v -> v.ops<PracticeOp>().flatMap { it.gains.keys } } + content.books.flatMap { it.skill.keys }
         val skills = content.vocabulary.skills.filter { it in raised }
         if (skills.isEmpty() && content.books.isEmpty()) return null
         val parts = buildList {
             if (skills.isNotEmpty()) {
                 val practice = content.verbs.filter { it.ops<PracticeOp>().isNotEmpty() }.map { it.id }
-                val study = content.verbs.filter { v -> v.ops<ProgressOp>().any { it.study } }.map { it.id }
-                val by = listOfNotNull(practice.takeIf { it.isNotEmpty() }?.joinToString(", "), study.takeIf { it.isNotEmpty() }?.let { "${it.joinToString(" or ")} a book" }).joinToString(" and ")
+                val reading = content.verbs.filter { v -> v.ops<ProgressOp>().isNotEmpty() }.map { it.id }.takeIf { content.books.any { b -> b.skill.isNotEmpty() } }.orEmpty()
+                val by = listOfNotNull(practice.takeIf { it.isNotEmpty() }?.joinToString(", "), reading.takeIf { it.isNotEmpty() }?.let { "${it.joinToString(" or ")} a book" }).joinToString(" and ")
                 val r = content.skills
                 val pays = listOfNotNull(
                     if (r.gainPerLevel > 0) "what you do with a skill gives ${(r.gainPerLevel * 100).toInt()}% more mood and stimulation per level" else null,
@@ -324,7 +324,7 @@ object BedroomPrompt {
             obs.books?.let { books ->
                 putJsonArray("books") {
                     books.forEach { b ->
-                        add("${b.id} \"${b.title}\": read ${b.read} of ${b.chapters} chapters" + (b.raises?.let { "; studying raises ${it.joinToString(" and ")}" } ?: "") + (b.teaches?.let { "; finishing it teaches you $it" } ?: ""))
+                        add("${b.id} \"${b.title}\": read ${b.read} of ${b.chapters} chapters" + (b.raises?.let { "; reading raises ${it.joinToString(" and ")}" } ?: "") + (b.teaches?.let { "; finishing it teaches you $it" } ?: ""))
                     }
                 }
             }

@@ -163,7 +163,6 @@ class RoomView(private val art: ArtTextures) : Disposable {
             Blob.Held.Guitar -> crayon.model(models.heldGuitar(), blob.heldAt)
             Blob.Held.None -> {}
         }
-        renderStudy(book)
         renderMusic(life, delta)
         crayon.end()
         Gdx.gl.glDisable(GL20.GL_DEPTH_TEST)
@@ -252,9 +251,6 @@ class RoomView(private val art: ArtTextures) : Disposable {
             val making = life.doing == stand.activity
             val texture = if (making) {
                 session.memory.drawingInProgress()?.takeIf { it.item == stand.item }?.let { art.partial(it, life.progress ?: 0f, stand.blank) }
-            } else if (life.doing == "study" && stand === SKETCH) {
-                // A fresh page for his notes.
-                null
             } else {
                 pieces.lastOrNull { !it.hung && it.item == stand.item }?.let { p -> drawings[p.id]?.let(art::of) }
             }
@@ -282,24 +278,11 @@ class RoomView(private val art: ArtTextures) : Disposable {
         if (blob.held != Blob.Held.Guitar) guitar?.let { crayon.model(it, guitarAt.setToTranslation(models.guitarX(map), 0f, 1f)) }
     }
 
-    /** Studying, the book lies open on the desk beside his notes, a page turning over now and then. */
-    private fun renderStudy(color: String) {
-        if (pose.doing != "study" || pose.moving) return
-        val desk = placedAt["desk"] ?: return
-        at.set(desk).translate(RoomModels.STUDY_BOOK_X, RoomModels.STUDY_BOOK_Y, RoomModels.STUDY_BOOK_Z)
-        crayon.model(models.openBook(color), at)
-        val t = (studyClock % STUDY_PAGE_EVERY) / STUDY_PAGE_TURN
-        if (t < 1f) crayon.model(models.page(), at.translate(0f, 0.024f, 0f).rotate(Vector3.Z, 180f * MathUtils.sin(t * MathUtils.HALF_PI)))
-    }
-
-    private var studyClock = 0f
-
     /**
      * The record turns while music plays, and notes rise from the player; more from his guitar while
      * he plays it. Each drifts up, wavering, and shrinks away.
      */
     private fun renderMusic(life: LifeSnapshot?, delta: Float) {
-        studyClock += delta
         val player = placedAt["record_player"]
         val playing = life?.music != null
         if (playing) discTurn = (discTurn + delta * DISC_SPEED) % 360f
@@ -688,11 +671,8 @@ class RoomView(private val art: ArtTextures) : Disposable {
         val PAINTING = Stand("easel", "painting", "paint", 0f, RoomModels.CANVAS_Y, RoomModels.CANVAS_Z + 0.025f, 0.44f, flat = false, blank = 0xfdf8ee, canvas = true, slide = 0.38f)
         val STANDS = listOf(SKETCH, PAINTING)
         /** Activities done by hand at a stand, and which: his working hand goes to it. */
-        val WORK = mapOf("sketch" to SKETCH, "journal" to SKETCH, "study" to SKETCH, "paint" to PAINTING)
+        val WORK = mapOf("sketch" to SKETCH, "journal" to SKETCH, "paint" to PAINTING)
 
-        /** Studying: seconds between page turns of the open book, and how long one takes. */
-        const val STUDY_PAGE_EVERY = 7f
-        const val STUDY_PAGE_TURN = 0.8f
         /** The record's turn (degrees a second), and the notes: seconds apart, how long each lasts, and how fast it rises (metres a second). */
         const val DISC_SPEED = 200f
         const val NOTE_EVERY = 0.9f

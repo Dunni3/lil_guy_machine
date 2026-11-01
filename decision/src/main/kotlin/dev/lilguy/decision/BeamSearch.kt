@@ -5,8 +5,10 @@ package dev.lilguy.decision
  * answers Choice questions with probabilities (Jev), by walking down the tree instead of weighing
  * every option at once. At each depth it asks one batch of questions, one per trajectory still at
  * a group, each over that group's children: groups by what's under them, options by their own
- * descriptions. A trajectory's score is the product of its picks' probabilities, and the [width]
- * best go on. When every one ends at an option, a last question over just those options decides.
+ * descriptions. Each question says every group the trajectory settled on from the top; the caller
+ * sends the whole situation with every batch. A trajectory's score is the product of its picks'
+ * probabilities, and the [width] best go on. When every one ends at an option, a last question over
+ * just those options, each saying the groups it came through, decides.
  *
  * A group with nothing under it is dropped and one with a single child is that child, so no
  * question has one answer.
@@ -63,7 +65,7 @@ class BeamSearch(private val width: Int) {
         val depths = mutableListOf<Map<String, Map<String, Double>>>()
         while (beam.any { it.node is Branch }) {
             val open = beam.filter { it.node is Branch }
-            val questions = open.map { it.node as Branch }.filter { it.children.size > 1 }.associate { b -> b.key to question(set, b) }
+            val questions = open.filter { (it.node as Branch).children.size > 1 }.associate { p -> (p.node as Branch).key to question(set, p) }
             val answers = if (questions.isEmpty()) emptyMap() else ask.ask(questions)
             if (questions.isNotEmpty()) depths += answers
             beam = (beam.filter { it.node is Leaf } + open.flatMap { path ->
@@ -72,20 +74,34 @@ class BeamSearch(private val width: Int) {
             }).sortedByDescending { it.p }.take(width)
         }
         val finalists = beam.map { (it.node as Leaf).option }
-        val last = if (finalists.size == 1) emptyMap() else ask.ask(mapOf(LAST to Question(set.instructions, finalists.associate { it.label to it.description })))[LAST].orEmpty()
+        val last = if (finalists.size == 1) emptyMap() else ask.ask(mapOf(LAST to finalQuestion(set, beam)))[LAST].orEmpty()
         // The beam's order breaks ties, and decides if the last answer is missing.
         val chosen = finalists.maxByOrNull { last[it.label] ?: 0.0 }?.takeIf { last.isNotEmpty() } ?: finalists.first()
         return Result(chosen, beam.map { it.trajectory }, last, depths)
     }
 
-    private fun question(set: ChoiceSet, b: Branch): Question {
+    /** The question at [path]'s branch, saying every group he settled on to get there, from the top down. */
+    private fun question(set: ChoiceSet, path: Path): Question {
+        val b = path.node as Branch
         val ask = if (b.group == null) {
             "First, what kind of thing: each option is one thing he could do, or a group of things described by what's in it. Which does he do next?"
         } else {
-            "He has settled on this: ${b.group.description}. Which of these does he do?"
+            "He has settled on this: ${groupsOf(path).joinToString(", and within that, ") { it.description }}. Which of these does he do?"
         }
         return Question("${set.instructions} $ask", b.children.associate { c -> c.label to describe(c) })
     }
+
+    /** The question over the finalists: each one says the groups it was reached through. */
+    private fun finalQuestion(set: ChoiceSet, beam: List<Path>): Question {
+        val ask = "Last, he has narrowed it down to these, each from the kind of thing he settled on along the way. Which does he do?"
+        return Question("${set.instructions} $ask", beam.associate { p ->
+            val o = (p.node as Leaf).option
+            val from = groupsOf(p).joinToString(" > ") { it.id }
+            o.label to if (from.isEmpty()) o.description else "From $from: ${o.description}"
+        })
+    }
+
+    private fun groupsOf(path: Path): List<ChoiceSet.Group> = path.trail.mapNotNull { (it as? Branch)?.group }
 
     /** An option's own description; a group's, with what's in it right now. */
     private fun describe(node: Node): String = when (node) {

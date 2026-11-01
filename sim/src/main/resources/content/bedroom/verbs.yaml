@@ -16,7 +16,7 @@
 # affordance), `sell` (everything carried with an affordance), `set_state` (hung: onto the
 # picture rail), `background` (keeps going while he does anything else), `sleep`, and `enjoy`
 # (an argument's value to him, as mood), `progress` (the next chapter of the book bound to an
-# argument; `study: true` also raises the book's skills, library.yaml) and `practice` (raises
+# argument, raising the book's skills, library.yaml) and `practice` (raises
 # skills; the verb's mood and stimulation gains grow with them). Where an op names an item it can
 # name an argument instead.
 #
@@ -97,8 +97,8 @@ verbs:
     routine: true
     effects:
       - set_state: { target: what, state: hung }
-  # A chapter a session. Reading is for the story; studying (below) is for the skill. Both wear as
-  # a whole, so a pile of books isn't a pile of fresh hobbies.
+  # A chapter a session: the story, and the book's skill. It wears as a whole, so a pile of books
+  # isn't a pile of fresh hobbies.
   - id: read
     kind: consumptive
     phrase: read a chapter
@@ -108,20 +108,8 @@ verbs:
     wear: verb
     effects:
       - progress: { book: what }
-      - need: { mood: 2, stimulation: 6 }
+      - need: { energy: -2, mood: 2, stimulation: 6 }
       - enjoy: what
-      - write: { with: reading, into: [events], timing: during, optional: true }
-  - id: study
-    kind: study
-    phrase: study a chapter
-    args: { what: readable }
-    at: [desk]
-    minutes: 90
-    wear: verb
-    block: [{ need: mood, below: 20, reason: "too low to concentrate" }]
-    effects:
-      - progress: { book: what, study: true }
-      - need: { energy: -4, stimulation: 8 }
       - write: { with: reading, into: [events], timing: during, optional: true }
   # Taught by music_book.
   - id: play_guitar

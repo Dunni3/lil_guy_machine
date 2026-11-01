@@ -24,6 +24,11 @@ record, though they were offered every time.
   finalists picks the action. An empty group is dropped and a group of one is its option, so no
   question has one answer.
 - `beam` on the TypeSafe endpoint sets the width (default 3); `beam: 0` puts the flat list as before.
+- Every question carries the path to it (amended 2026-11-01). Inside a group, the question names
+  every group settled on from the top ("leisure, and within that, books"); the last question
+  prefixes each finalist with the groups it came through ("From leisure > books: ..."). The whole
+  state (needs, activities with their payoffs, self-model, memories, latest thought) goes with
+  every request, as before.
 
 **Consequences.** A decision is three to five requests instead of one (a few hundred ms each); the
 state is sent with each. Adding content means placing new verbs in `menu.yaml` (unplaced ones sit

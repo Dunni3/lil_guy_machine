@@ -4,6 +4,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class BeamSearchTest {
     private fun option(label: String, group: String?) = ChoiceSet.Option(label, "do $label", JsonObject(emptyMap()), group)
@@ -50,5 +51,8 @@ class BeamSearchTest {
         // leisure > music > guitar is 0.4 * 0.9 * 0.9 = 0.32, ahead of eat's 0.25; greedy would have stayed in upkeep.
         assertEquals(listOf(listOf("group:leisure", "group:music", "guitar"), listOf("group:upkeep", "eat")), result.finalists.map { it.path })
         assertEquals("guitar", result.option.label)
+        // Every question says the path to it: inside music, that it came through leisure; at the end, where each finalist came from.
+        assertTrue("He has settled on this: for fun, and within that, music." in batches[2].getValue("in_music").instructions)
+        assertEquals("From leisure > music: do guitar", batches[3].getValue(BeamSearch.LAST).options["guitar"])
     }
 }
