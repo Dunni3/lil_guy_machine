@@ -72,11 +72,18 @@ class BedroomWorld private constructor(
 
     private var music: Music? = null
 
-    /** Bumped whenever what he owns or plays changes; with the minute and need levels it keys [options]. */
+    /** Bumped whenever what he owns or plays changes; with his last intent it keys [options], and the minute and need levels too between activities. */
     private var version = 0
     private var options: Options? = null
 
-    private class Options(val key: List<Any>, val activities: List<ActivityOption>, val shop: List<ShopOption>, val catalog: List<CatalogEntry>, val verbs: List<VerbView>)
+    private class Options(val key: List<Any>, val moment: List<Any>, val activities: List<ActivityOption>, val shop: List<ShopOption>, val catalog: List<CatalogEntry>, val verbs: List<VerbView>)
+
+    /**
+     * [usesOf] and [heldBack] by item id while [current] is rebuilt: nothing changes during a rebuild, and each
+     * shop option asks them for every other item, which without this made a rebuild quadratic in the shop.
+     */
+    private class Memo(val uses: HashMap<String, List<VerbSpec>> = HashMap(), val held: HashMap<String, String?> = HashMap())
+    private var memo: Memo? = null
 
     /** Verb id to how often he has finished it; replaced rather than changed, so snapshots can share it. */
     private var done: Map<String, VerbTally> = emptyMap()
@@ -803,7 +810,9 @@ class BedroomWorld private constructor(
      * The verbs [spec] is for: it's where they happen, or what they need or use. A verb it fills every
      * argument of, but which one of its ops refuses for it (studying a novel), isn't one of them.
      */
-    private fun usesOf(spec: ItemSpec): List<VerbSpec> = content.verbs.filter { a ->
+    private fun usesOf(spec: ItemSpec): List<VerbSpec> = memo?.uses?.getOrPut(spec.id) { findUses(spec) } ?: findUses(spec)
+
+    private fun findUses(spec: ItemSpec): List<VerbSpec> = content.verbs.filter { a ->
         isKnown(a.id) && (spec.id in a.at || (a.requires + a.effects.flatMap { it.asksFor } + a.args.values).any { it in spec.names })
     }.filterNot { a ->
         a.args.isNotEmpty() && a.args.values.all { it in spec.names } &&
@@ -820,6 +829,11 @@ class BedroomWorld private constructor(
      * verb happens at is never held back itself, so there's always something to buy first.
      */
     private fun heldBack(spec: ItemSpec): String? {
+        val m = memo ?: return findHeldBack(spec)
+        return if (spec.id in m.held) m.held[spec.id] else findHeldBack(spec).also { m.held[spec.id] = it }
+    }
+
+    private fun findHeldBack(spec: ItemSpec): String? {
         val missing = usesOf(spec).map { a -> placesOf(a).takeIf { ps -> ps.isNotEmpty() && ps.none { countTag(it, spec.id) > 0 } } }
         if (missing.isEmpty() || missing.any { it == null }) return null
         return missing.first()!!.first()
@@ -935,17 +949,25 @@ class BedroomWorld private constructor(
     }
 
     /**
-     * The option lists, rebuilt only when their inputs change: what he owns (money moves with it),
-     * the need levels he sees, and the 10-minute step of the clock (sleep's estimate is rounded to it). Building them is most of
-     * a tick's cost, and they change a few times a game hour.
+     * The option lists, rebuilt only when their inputs change: what he owns (money moves with it) and
+     * his last intent at once; the need levels he sees, the 10-minute step of the clock (sleep's
+     * estimate is rounded to it) and the music left only between activities. Only then does a model
+     * read them; during one, the screens keep the lists from its start. Building them is most of a
+     * tick's cost, and the levels change every few game minutes.
      */
     private val current: Options
         get() {
-            val key = listOf(version, clock.minutes(ticks) / ESTIMATE_MINUTES, needs.levels(), last?.intent ?: Unit, hearable())
-            options?.let { if (it.key == key) return it }
-            val activities = content.verbs.filter { isKnown(it.id) }.flatMap(::activityOptions)
-            val shop = shopItems().filter { heldBack(it) == null }.map(::shopOption)
-            return Options(key, activities, shop, catalog(shop), verbViews(activities)).also { options = it }
+            val key = listOf(version, last?.intent ?: Unit)
+            val moment = listOf(clock.minutes(ticks) / ESTIMATE_MINUTES, needs.levels(), hearable())
+            options?.let { if (it.key == key && (it.moment == moment || running != null)) return it }
+            memo = Memo()
+            try {
+                val activities = content.verbs.filter { isKnown(it.id) }.flatMap(::activityOptions)
+                val shop = shopItems().filter { heldBack(it) == null }.map(::shopOption)
+                return Options(key, moment, activities, shop, catalog(shop), verbViews(activities)).also { options = it }
+            } finally {
+                memo = null
+            }
         }
 
     /** For the options' key: which `hear` verbs the music still has time for, which can change between the clock's 10-minute steps. */

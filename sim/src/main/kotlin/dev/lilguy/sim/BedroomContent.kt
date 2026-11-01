@@ -65,7 +65,7 @@ data class BedroomContent(
     fun book(id: String): BookSpec? = books.find { it.id == id }
 
     /** Ids a book teaches: unknown to him, so not in his world, until he finishes that book. */
-    val taught: Set<String> get() = books.flatMap { it.teaches }.toSet()
+    @Transient val taught: Set<String> = books.flatMap { it.teaches }.toSet()
 
     /** The content as he knows it: without what a book teaches that he hasn't learned ([known]). */
     fun known(known: Set<String>): BedroomContent {
@@ -542,7 +542,7 @@ data class ItemSpec(
     val tier: Int = 0,
 ) {
     /** What an activity can ask for it by: its id and its affordances. */
-    val names: Set<String> get() = setOf(id) + affords.keys
+    @Transient val names: Set<String> = setOf(id) + affords.keys
 
     /** What one sells for, when it's `sellable`, before any skill raises it. */
     val sellPrice: Int? get() = affords["sellable"]?.price
