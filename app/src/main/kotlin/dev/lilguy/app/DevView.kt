@@ -85,8 +85,8 @@ class DevView(private val art: ArtTextures) : Disposable {
     var pinned: Int? = null
         private set
 
-    /** Room only: the shop's catalogue card is open over the room; DOWN opens it, UP closes it. */
-    var shopOpen = false
+    /** Room only: the page of the shop's catalogue card open over the room, or null with it closed; DOWN opens it and turns on, UP turns back and closes it. */
+    var shopPage: Int? = null
         private set
 
     /** Art only: the piece shown, as an index into the drawn pieces oldest first; null follows the newest. */
@@ -113,10 +113,16 @@ class DevView(private val art: ArtTextures) : Disposable {
         pinned = null
     }
 
-    /** UP (-1) and DOWN (+1): in the room the catalogue, in History a newer or older decision, in Art a newer or older piece, elsewhere scroll. */
+    /** UP (-1) and DOWN (+1): in the room the catalogue and its pages, in History a newer or older decision, in Art a newer or older piece, elsewhere scroll. */
     fun move(by: Int, session: SimSession) {
         if (page == Page.Room) {
-            shopOpen = by > 0
+            val pages = shopPages(session.current.life?.catalog?.size ?: 0)
+            val page = shopPage
+            shopPage = when {
+                by > 0 -> if (page == null) 0 else (page + 1).coerceAtMost(pages - 1)
+                page == null || page == 0 -> null
+                else -> page - 1
+            }
             return
         }
         if (page == Page.Run) {
@@ -184,7 +190,7 @@ class DevView(private val art: ArtTextures) : Disposable {
         pinned = null
         replayPick = null
         artPick = null
-        shopOpen = false
+        shopPage = null
         scroll.fill(0)
         confirmRestart = false
         confirmAction = false
@@ -383,7 +389,10 @@ class DevView(private val art: ArtTextures) : Disposable {
                 shapes.color = WOOD_DARK
                 shapes.rect(cx - t * 0.75f, cy - h * 0.15f, t * 1.5f, h * 0.3f)
             }
-            else -> {
+            else -> if (e.kind == "decor") {
+                shapes.color = LEAF
+                shapes.circle(cx, cy, h * 0.4f, 16)
+            } else {
                 shapes.color = Color.MAGENTA
                 shapes.circle(cx, cy, t * 0.15f, 12)
             }

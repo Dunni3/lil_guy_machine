@@ -7,6 +7,7 @@ import com.badlogic.gdx.graphics.VertexAttribute
 import com.badlogic.gdx.math.MathUtils
 import com.badlogic.gdx.math.Vector3
 import com.badlogic.gdx.utils.Disposable
+import dev.lilguy.app.DecorModels.decor
 import dev.lilguy.sim.Terrain
 import dev.lilguy.sim.TileMap
 import kotlin.math.hypot
@@ -56,7 +57,7 @@ class RoomModels : Disposable {
     fun item(id: String, kind: String): CrayonModel = items.getOrPut("$kind/$id") { model { buildItem(id, kind) } }
 
     /** Items that hang in a wall rather than stand on the floor: their back is at z = 0. */
-    fun wallItem(id: String, kind: String): Boolean = id in WALL_ITEMS || kind == "door"
+    fun wallItem(id: String, kind: String): Boolean = id in WALL_ITEMS || id in DecorModels.ON_WALL || kind == "door"
 
     /** Items that lie flat and cast no shadow of their own. */
     fun flat(id: String, kind: String): Boolean = id == "rug" || kind == "exit"
@@ -403,7 +404,7 @@ class RoomModels : Disposable {
                 box("#ffffff", 0f, 0.95f, 0.01f, 0.62f, 0.82f, 0.02f, round = 0.006f, texture = "poster", lump = 0f)
                 sphere(CURTAIN, 0f, 1.71f, 0.03f, 0.05f, 0.05f, 0.03f)
             }
-            else -> when (kind) {
+            else -> if (!decor(id)) when (kind) {
                 "door", "fixture" -> {
                     box(TRIM, 0f, 0f, 0.02f, 0.94f, 1.68f, 0.05f, round = 0.02f)
                     box(DOOR, 0f, 0f, 0.05f, 0.8f, 1.6f, 0.05f, round = 0.02f)
