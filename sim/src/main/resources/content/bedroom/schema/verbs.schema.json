@@ -321,7 +321,7 @@
                       "additionalProperties": {
                         "type": "number"
                       },
-                      "description": "Raises skills (vocabulary.yaml). The verb's mood and stimulation gains grow with the skills it practises (rules.yaml `skills`). (at the finish)"
+                      "description": "Raises skills (vocabulary.yaml). The verb's mood gains grow with the skills it practises (rules.yaml `skills`). (at the finish)"
                     },
                     {
                       "type": "null"

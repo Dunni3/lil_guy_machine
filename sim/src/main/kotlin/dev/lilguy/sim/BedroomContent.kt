@@ -327,7 +327,7 @@ data class FrustrationRules(
 
 /**
  * How skills pay off. A skill is a number from 0 up with no cap, raised by `practice` ops and by
- * studying a book. A verb's mood and stimulation gains grow [gainPerLevel] per level of the skills
+ * studying a book. A verb's mood gains grow [gainPerLevel] per level of the skills
  * it practises (the more he can do, the more he gets out of it). What a skill does for a piece
  * (its price and its strokes) is on the item's `sellable` and `drawable`. A skill that [deepens] a
  * quality adds [affinityPerLevel] per level to his affinity for it: knowing about nature, he gets

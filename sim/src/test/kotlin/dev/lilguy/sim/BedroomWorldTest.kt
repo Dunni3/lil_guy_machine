@@ -168,7 +168,7 @@ class BedroomWorldTest {
         val w = world()
         w.run(Intent.Wait(GridWorld.MAX_WAIT)) // 40 game minutes
         while (w.clock.reading(w.tick) != ClockReading(1, "09:00")) w.step()
-        assertEquals(NeedLevels(76, 65, 57, 54), w.obs().needs)
+        assertEquals(NeedLevels(76, 65, 57, 52), w.obs().needs)
         val reasons = w.needs.changes.map { it.need to it.reason }.toSet()
         assertEquals(setOf(Need.Energy to "awake", Need.Stimulation to "awake", Need.Fullness to "hunger", Need.Mood to "drift toward 50"), reasons)
         val sums = w.needs.changes.groupBy { it.need }.mapValues { (_, c) -> c.sumOf { it.delta } }

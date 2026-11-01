@@ -20,7 +20,7 @@ needs:
   # Stimulation (low = bored) drains while he's awake. Hobbies, making things and anything new feed
   # it; repeating the same thing pays less and drains it (habituation, below). Mood is the summary:
   # below `bored`, each missing point lowers the mood he settles to by `bored_mood` (16 at 0).
-  stimulation_per_hour: -5.5
+  stimulation_per_hour: -8
   bored: 40
   bored_mood: 0.4
 
@@ -42,7 +42,7 @@ habituation:
   per_repeat: 0.25
   recover_per_hour: 0.04
   stale_stimulation: -6
-  bored_lock: { below: 25, worn: 0.5 }
+  bored_lock: { below: 40, worn: 0.5 }
 
 # The first time he finishes a verb (with given items: a record, a book) pays this on top. Routine ones don't count.
 # `things`: a new thing for the room feeds stimulation while he's awake, `stimulation_per_value` an
@@ -61,7 +61,7 @@ frustration:
   above: 20
   mood: 0.3
 
-# Skills (vocabulary.yaml) have no cap. A verb's mood and stimulation gains grow `gain_per_level`
+# Skills (vocabulary.yaml) have no cap. A verb's mood gains grow `gain_per_level`
 # per level of the skills it practises. What a skill does for a piece of art (its price and its
 # strokes) is on the item (items.yaml `sellable` and `drawable`). A skill that `deepens` a quality
 # adds `affinity_per_level` per level to his affinity for it.

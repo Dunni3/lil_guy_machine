@@ -294,7 +294,7 @@ data class ProgressOp(val book: String) : Op() {
     }
 }
 
-/** Raises his skills by [gains] when the verb finishes. The verb's mood and stimulation gains grow with these skills ([SkillRules]). */
+/** Raises his skills by [gains] when the verb finishes. The verb's mood gains grow with these skills ([SkillRules]). */
 data class PracticeOp(val gains: Map<String, Double>) : Op() {
     override val key get() = "practice"
 
@@ -405,8 +405,16 @@ internal class Bound(val verb: VerbSpec, val args: Map<String, String>, val fres
     /** The item bound to [name] when it's an argument slot, otherwise [name] itself (an id or affordance); unbound, the slot's type. */
     fun resolve(name: String): String = args[name] ?: verb.args[name] ?: name
 
-    /** [d] as paid at [fresh] and [skilled]: gains in mood and stimulation shrink with wear and grow with skill; costs and other needs don't. */
-    fun paid(need: String, d: Double): Double = if (d > 0 && (need == Need.Mood.id || need == Need.Stimulation.id)) d * fresh * skilled else d
+    /**
+     * [d] as paid at [fresh] and [skilled]: gains in mood and stimulation shrink with wear, and mood gains grow with skill;
+     * costs and other needs don't. Skill doesn't make a thing less boring, so stimulation isn't scaled by it.
+     */
+    fun paid(need: String, d: Double): Double = when {
+        d <= 0 -> d
+        need == Need.Mood.id -> d * fresh * skilled
+        need == Need.Stimulation.id -> d * fresh
+        else -> d
+    }
 
     /** "mood +2", rounded, as paid now. */
     fun shown(need: String, d: Double) = "$need ${signed(paid(need, d).roundToInt().toDouble())}"

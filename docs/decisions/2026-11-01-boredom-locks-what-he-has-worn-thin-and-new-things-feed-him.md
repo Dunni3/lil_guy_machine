@@ -13,7 +13,8 @@ gains but not its pay, and low stimulation only lowered mood, which nothing read
 in mood. Ian wants boredom to stop him from doing things, and buying things to be a way out.
 
 - **Bored, what he has worn thin is refused, pay and all.** `habituation.bored_lock: { below, worn }`:
-  below `below` stimulation (25), a verb worn `worn` or more (0.5) is locked: "you're bored, and
+  below `below` stimulation (40, the same line where boredom starts lowering his mood), a verb worn
+  `worn` or more (0.5) is locked: "you're bored, and
   you've done it a lot lately (gains at 40%, stimulation 6)". It's out of Jev's choice set, and the
   world refuses it from any model. It unlocks when he's less bored or the wear fades.
 - **What never locks:** routine verbs, verbs that feed energy or fullness (the oats and sleep stay
@@ -26,14 +27,20 @@ in mood. Ian wants boredom to stop him from doing things, and buying things to b
   buys that sits in a slot feeds stimulation while he's awake, `stimulation_per_value` (0.5) an
   hour per point of its value to him, fading linearly to nothing over `days` (3). Value is the
   affinity score that comfort already uses, so only things he likes count: a plant (value 4) starts
-  at +2/h and a rug (9 for a cozy-loving guy) at +4.5/h. Two or three new things about cancel the
-  awake drain of 5.5/h. Things out of sight (books, records) already pay the first-time bonus
+  at +2/h and a rug (9 for a cozy-loving guy) at +4.5/h. Three or four new things about cancel the
+  awake drain of 8/h. Things out of sight (books, records) already pay the first-time bonus
   when he uses them, so they don't feed him here.
 - **What models see:** the shop and the shopper's catalog say "new to you: stimulation +2/h while
   you're awake, fading over 3 days"; the purchase event says the same; the variety line of the
   prompt states both rules.
 - **Comes with** `2026-11-01-art-skill-pays-in-dollars-and-strokes.md`: art earns more as his skill
   grows, so he has money for the new things boredom pushes him toward.
+
+- **Boredom has to keep coming back.** The first version locked below 25 with the drain at 5.5/h,
+  and a 3-day Jev run never went below 27 (stimulation 60 to 100 from day 2, 100 on day 3): new
+  books, the guitar and rising skill kept him topped up. So the drain is now 8/h (`needs.
+  stimulation_per_hour`), the lock starts at 40, and **skill no longer raises stimulation gains**,
+  only mood (`Bound.paid`): getting good at something makes it more enjoyable, not new again.
 
 Not done: a forced novelty turn at stimulation 0, consequences for low mood, savings goals that
 expire.

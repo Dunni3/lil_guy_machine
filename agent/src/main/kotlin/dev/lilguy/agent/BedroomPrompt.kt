@@ -140,7 +140,7 @@ object BedroomPrompt {
                 val by = listOfNotNull(practice.takeIf { it.isNotEmpty() }?.joinToString(", "), reading.takeIf { it.isNotEmpty() }?.let { "${it.joinToString(" or ")} a book" }).joinToString(" and ")
                 val r = content.skills
                 val pays = listOfNotNull(
-                    if (r.gainPerLevel > 0) "what you do with a skill gives ${(r.gainPerLevel * 100).toInt()}% more mood and stimulation per level" else null,
+                    if (r.gainPerLevel > 0) "what you do with a skill gives ${(r.gainPerLevel * 100).toInt()}% more mood per level" else null,
                     artPays(content, skills),
                     r.deepens.entries.filter { it.key in skills }.takeIf { r.affinityPerLevel > 0 && it.isNotEmpty() }?.let { d -> "knowing more about " + d.joinToString(" and ") { (s, q) -> "$s makes $q things mean more to you" } },
                 ).joinToString("; ")
