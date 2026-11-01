@@ -303,7 +303,8 @@ object BedroomPrompt {
      * (no map or coordinates), plus his recent actions.
      *
      * Options are ordered activities (in content order), purchases, wait: Jev leans toward
-     * earlier options, so doing comes before spending and waiting is last.
+     * earlier options, so doing comes before spending and waiting is last. Each sits in its node of
+     * the content's `menu` ([menuNode]), so a picker can choose the kind of thing first.
      */
     fun choices(obs: Observation, recent: List<Memory.Entry>, ticksPerMinute: Int, content: BedroomContent): ChoiceSet {
         val thinking = content.reflection?.let { content.verb(it.verb) } != null
@@ -311,10 +312,10 @@ object BedroomPrompt {
         val options = buildList {
             offered.filter { it.locked == null }.forEach { a ->
                 val with = listOfNotNull(a.what?.let { " with the $it" }, a.on?.let { " on the $it" }).joinToString("")
-                add(option(Intent.Do(a.id, a.what, a.on), "Do ${a.id}$with: takes ${a.takes}; gives ${a.gives}."))
+                add(option(Intent.Do(a.id, a.what, a.on), "Do ${a.id}$with: takes ${a.takes}; gives ${a.gives}.", content))
             }
             obs.shop.orEmpty().filter { it.affordable }.forEach { s ->
-                add(option(Intent.Buy(s.id), "Buy ${s.id} for $${s.price}, leaving $${(obs.money ?: 0) - s.price}: ${s.gives}."))
+                add(option(Intent.Buy(s.id), "Buy ${s.id} for $${s.price}, leaving $${(obs.money ?: 0) - s.price}: ${s.gives}.", content))
             }
             add(option(Intent.Wait(WAIT_TICKS), "Wait about ${WAIT_TICKS / ticksPerMinute} minutes and do nothing."))
         }
@@ -386,7 +387,22 @@ object BedroomPrompt {
                 "Read `state.last_action` and `state.recent_actions`: don't repeat an action that just failed.",
             state = state,
             options = options,
+            groups = content.menu.map { ChoiceSet.Group(it.id, it.says, it.under) },
         )
+    }
+
+    /**
+     * The menu node [intent] sits in: an activity's own, a purchase's by the first verb its item is
+     * for, else by the item's group; null for the top.
+     */
+    private fun menuNode(intent: Intent, content: BedroomContent): String? = when (intent) {
+        is Intent.Do -> content.menu.firstOrNull { intent.activity in it.verbs }?.id
+        is Intent.Buy -> content.item(intent.item)?.let { item ->
+            content.verbs.filter { v -> item.id in v.at || (v.requires + v.args.values + v.effects.flatMap { it.asksFor }).any { it in item.names } }
+                .firstNotNullOfOrNull { v -> content.menu.firstOrNull { v.id in it.verbs }?.id }
+                ?: content.menu.firstOrNull { item.group in it.buys }?.id
+        }
+        else -> null
     }
 
     /** "5.5", "3". */
@@ -398,10 +414,11 @@ object BedroomPrompt {
 
     private val json = Json { encodeDefaults = true; explicitNulls = true }
 
-    private fun option(intent: Intent, description: String) = ChoiceSet.Option(
+    private fun option(intent: Intent, description: String, content: BedroomContent? = null) = ChoiceSet.Option(
         label = label(intent),
         description = description,
         reply = json.encodeToJsonElement(AgentReply.serializer(), AgentReply(description, intent)).jsonObject,
+        group = content?.let { menuNode(intent, it) },
     )
 
     /** "do:sketch", "do:play_record:jazz_record:record_player", "buy:canvas", "wait:150". */

@@ -37,11 +37,15 @@ data class DecisionRequest(
  * A decision as a pick from concrete options, for models that choose rather than write.
  * [state] is what they judge the options against; each option carries the exact reply it
  * stands for, which still goes through the schema.
+ *
+ * [groups] put the options in a tree, for pickers that walk down it ([BeamSearch]) rather than
+ * weigh every option at once; empty for a flat list. Others ignore them.
  */
 data class ChoiceSet(
     val instructions: String,
     val state: JsonObject,
     val options: List<Option>,
+    val groups: List<Group> = emptyList(),
 ) {
     data class Option(
         /** Short unique key, such as "pick_up:key". */
@@ -49,7 +53,12 @@ data class ChoiceSet(
         /** What choosing it means, in plain words. */
         val description: String,
         val reply: JsonObject,
+        /** The [Group] it sits in; null (or an unknown id) for the top. */
+        val group: String? = null,
     )
+
+    /** A node of the tree: [description] says what's under it. [parent] null for the top. */
+    data class Group(val id: String, val description: String, val parent: String? = null)
 }
 
 data class Message(val role: Role, val content: String) {

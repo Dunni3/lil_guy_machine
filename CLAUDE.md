@@ -49,7 +49,9 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   of ops (`Ops.kt`: each op owns its checks, lock reason, apply and prompt text); every verb has a
   `kind` that lists the ops it may use (`VerbKind.kt`). Books are `library.yaml`: read or studied a
   chapter a session (the `progress` op); finishing one teaches ids that aren't in his world until then
-  (`BedroomContent.taught`, `BedroomWorld.knownContent()`, which the prompt is built from). Skills
+  (`BedroomContent.taught`, `BedroomWorld.knownContent()`, which the prompt is built from).
+  `menu.yaml` groups his options into a tree for Jev, who walks down it by beam search
+  (`decision/.../BeamSearch.kt`, `beam` on the endpoint) instead of picking from one flat list. Skills
   (`vocabulary.skills`, rules.yaml `skills`) rise with `practice` and study. Needs are energy,
   fullness, mood, stimulation and frustration. `make content-docs` regenerates the content's
   JSON Schemas (`content/bedroom/schema/`, checked by a test) and `build/grammar-reference.html`

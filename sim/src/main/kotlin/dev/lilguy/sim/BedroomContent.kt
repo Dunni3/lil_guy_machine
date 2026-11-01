@@ -53,6 +53,8 @@ data class BedroomContent(
     val books: List<BookSpec> = emptyList(),
     /** The hours that count as night; a verb's `by_day` applies at the others. Null: no difference. */
     val night: NightRules? = null,
+    /** How his options are grouped for a picking model to walk down; empty for one flat list. */
+    val menu: List<MenuNode> = emptyList(),
 ) {
     @Transient private val byId = items.associateBy { it.id }
 
@@ -102,6 +104,7 @@ data class BedroomContent(
             items = items,
             verbs = verbs,
             books = books.filter { it.id in ids }.map { b -> b.copy(teaches = b.teaches.filter { it in ids }) },
+            menu = menu.map { n -> n.copy(verbs = n.verbs.filter { it in ids }) },
         ).also { it.validate() }
     }
 
@@ -117,6 +120,7 @@ data class BedroomContent(
             "items" to listOf("items"),
             "verbs" to listOf("verbs"),
             "library" to listOf("books"),
+            "menu" to listOf("menu"),
         )
 
         /** Content from [files], file name (no extension) to its text. Each file may hold only its own keys ([FILES]). */
@@ -216,6 +220,16 @@ data class BedroomContent(
             require(c.reward > 0 && c.adjectives.isNotEmpty() && c.nouns.isNotEmpty()) { "commissions need a positive reward and at least one adjective and noun" }
         }
         require(gallery.max >= 1 && gallery.comfortEach >= 0) { "gallery.max must be at least 1" }
+        val nodes = mutableSetOf<String>()
+        val placed = mutableSetOf<String>()
+        menu.forEach { n ->
+            require(nodes.add(n.id)) { "menu: node '${n.id}' is listed twice" }
+            require(n.under == null || n.under in nodes - n.id) { "menu: node '${n.id}' is under '${n.under}', which isn't an earlier node" }
+            n.verbs.forEach { v ->
+                require(v in verbIds) { "menu: node '${n.id}' lists '$v', which isn't a verb" }
+                require(placed.add(v)) { "menu: verb '$v' is in more than one node" }
+            }
+        }
         reflection?.let { r -> require(verbs.any { it.id == r.verb } && r.every >= 1) { "reflection: verb '${r.verb}' must be a verb and every at least 1" } }
         val skillNames = vocabulary.skills.toSet()
         items.forEach { item -> item.affords["sellable"]?.skill?.let { require(it in skillNames) { "item ${item.id}: sellable skill '$it' isn't in vocabulary.skills" } } }
@@ -489,6 +503,20 @@ object Affordance {
  * A policy for the decision loop: after [every] decisions without [verb], the agent loop makes him
  * do it without asking the decision model, when it's offered (something writes its result) and not locked.
  */
+/**
+ * A kind of thing he could do, as a picking model sees it before opening it: [says] is what's
+ * under it. Holds [verbs], purchases of items in [buys] groups (when no verb places them), and the
+ * nodes [under] it.
+ */
+@Serializable
+data class MenuNode(
+    val id: String,
+    val says: String,
+    val under: String? = null,
+    val verbs: List<String> = emptyList(),
+    val buys: List<String> = emptyList(),
+)
+
 @Serializable
 data class Reflection(val verb: String, val every: Int)
 

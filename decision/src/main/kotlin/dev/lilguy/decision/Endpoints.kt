@@ -59,6 +59,8 @@ data class EndpointConfig(
     @SerialName("price_in") val priceIn: Double? = null,
     /** Dollars per million output tokens. */
     @SerialName("price_out") val priceOut: Double? = null,
+    /** TypeSafe: how many paths [BeamSearch] keeps when the options come in groups; 0 asks over the flat list. */
+    val beam: Int = 3,
 ) {
     val timeout: Duration get() = (timeoutSeconds * 1000).toLong().milliseconds
 

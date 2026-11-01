@@ -11,6 +11,7 @@
 #   timeout_s          per HTTP call   [30]
 #   max_retries        invalid replies sent back with the error   [2]
 #   tool_choice        for structured_output: tools   [required]
+#   beam               typesafe: paths kept when walking a grouped choice set; 0 for one flat list   [3]
 #   price_in, price_out   dollars per million input / output tokens; the CLI's token report then shows cost
 endpoints:
   # TypeSafe System One (docs.typesafe.ai): Jev picks from a closed set of options rather

@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=schema/menu.schema.json
+# How his options are put to a picking model (Jev): not as one flat list but as a tree it walks
+# down from the top by beam search (decision/.../BeamSearch.kt). Each node is a kind of thing he
+# could do, and `says` is what's under it, which is all the model sees of a node until it opens it.
+#
+# `under`: the node it sits in (an earlier one); the top when left out. `verbs`: the activities in
+# it, each in at most one node. A purchase sits in the node of the first verb the item is for (a
+# record with play_record), else in the node whose `buys` names its item group (decor). Waiting,
+# and anything placed nowhere, stays at the top. A node with nothing on offer is left out, and one
+# with a single option is that option.
+menu:
+  - id: upkeep
+    says: look after his body - eat something or sleep
+    verbs: [eat, eat_oats, sleep]
+    buys: [food]
+  - id: art
+    says: make art to sell or keep - sketch or paint - then sell it or hang it on his wall, or buy what art needs
+    verbs: [sketch, paint, sell_art, hang_art]
+  - id: leisure
+    says: do something for the pleasure of it rather than money - music or books
+  - id: music
+    under: leisure
+    says: music - put a record on, listen to what's playing, play the guitar, or buy records or something to play them on
+    verbs: [play_record, listen, play_guitar]
+    buys: [record, instrument]
+  - id: books
+    under: leisure
+    says: books - read or study a chapter of one he owns, or buy a new book
+    verbs: [read, study]
+    buys: [book]
+  - id: room
+    says: make his room nicer - buy decor or furniture to look at
+    buys: [decor, furniture]
+  - id: mind
+    says: stop to think things over and plan, or ask how something in his world works and find out
+    verbs: [think, ask]
