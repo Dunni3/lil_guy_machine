@@ -29,6 +29,7 @@ fun main() {
     // "none" for off); LILGUY_WRITER_ENDPOINT the writer of his thoughts and self-model, the same way
     // with the config's writer_endpoint (LILGUY_JOURNAL_ENDPOINT is its old name); LILGUY_RECALL_ENDPOINT
     // the typesafe endpoint that scores recall ("none" for keywords); LILGUY_DAYS the bedroom run length (0 for no end).
+    // LILGUY_BEAM sets how many paths Jev keeps walking the menu tree; 0 picks from the flat list.
     // LILGUY_START_ITEMS adds to what he starts with, for screenshots: "novel,folk_record,guitar" or "meal=4".
     val setup = ModelSetup.fromConfig(
         configFile = File(System.getenv("LILGUY_CONFIG") ?: "config/endpoints.yaml"),
@@ -40,6 +41,7 @@ fun main() {
         memoryEndpoint = System.getenv("LILGUY_MEMORY_ENDPOINT")?.takeIf { it.isNotBlank() },
         writerEndpoint = (System.getenv("LILGUY_WRITER_ENDPOINT") ?: System.getenv("LILGUY_JOURNAL_ENDPOINT"))?.takeIf { it.isNotBlank() },
         recallEndpoint = System.getenv("LILGUY_RECALL_ENDPOINT")?.takeIf { it.isNotBlank() },
+        beam = System.getenv("LILGUY_BEAM")?.toIntOrNull(),
         days = System.getenv("LILGUY_DAYS")?.toIntOrNull().let { if (it == null) ModelSetup.DEFAULT_DAYS else it.takeIf { d -> d > 0 } },
     ).let { s ->
         val extra = System.getenv("LILGUY_START_ITEMS").orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }

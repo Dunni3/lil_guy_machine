@@ -68,6 +68,12 @@ data class EndpointConfig(
     val decisionTimeout: Duration get() = timeout * (maxRetries + 1) + JsonHttp.MAX_BACKOFF
 }
 
+/** The config with [endpoint]'s `beam` set to [beam] (0 for the flat list); unchanged when [beam] is null or there's no such endpoint. */
+fun EndpointsFile.withBeam(endpoint: String, beam: Int?): EndpointsFile {
+    val ep = endpoints[endpoint] ?: return this
+    return if (beam == null) this else copy(endpoints = endpoints + (endpoint to ep.copy(beam = beam)))
+}
+
 @Serializable
 enum class StructuredOutput {
     /** `response_format: json_schema`; the server constrains decoding. */

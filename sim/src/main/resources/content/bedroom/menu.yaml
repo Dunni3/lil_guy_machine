@@ -32,5 +32,5 @@ menu:
     says: make his room nicer - buy decor or furniture to look at
     buys: [decor, furniture]
   - id: mind
-    says: stop to think things over and plan, or ask how something in his world works and find out
-    verbs: [think, ask]
+    says: stop to think things over and plan, asking how things in his world work
+    verbs: [think]

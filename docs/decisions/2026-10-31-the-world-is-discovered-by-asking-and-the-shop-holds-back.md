@@ -25,6 +25,8 @@ with no easel. So what he's shown grows as he goes, in two ways.
 
 ## He can ask how his world works (`ask`)
 
+*Superseded 2026-11-01: asking moved inside `think` and the `ask` verb is gone ([2026-11-01-asking-happens-while-he-thinks.md](2026-11-01-asking-happens-while-he-thinks.md)). The oracle and the docs below still stand.*
+
 - **The verb:** `ask` is a verb like `think`.
   - It's expressive, `at: here`, 10 minutes, and can't be done twice in a row.
   - Its op is `write: { with: answer, into: [events, short_term], timing: before, shows_as: answer }`.

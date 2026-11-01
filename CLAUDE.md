@@ -73,7 +73,7 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   self-model at bedtime), `Describe.kt` (event text), `Summarizer.kt` (level-1 memories by significance,
   day memories), `SelfModeler.kt` (the nightly self-model), `MemoryScorer.kt` (Jev Score questions for recall
   relevance and event significance, through `decision/.../Scorer.kt`), `Recall.kt` (candidates and the
-  keyword or ranked rule), `Keywords.kt` (keyword scoring), `Thinker.kt` (the `think` verb's one LLM call),
+  keyword or ranked rule), `Keywords.kt` (keyword scoring), `Thinker.kt` (the `think` verb: a short turn that may ask `Oracle.kt` how the world works, from `WorldDocs`, before the thought),
   `Handlers.kt` (the `thought` and `reading` handlers), `Reader.kt` (what stuck from a chapter). The fixed
   core and the self-model seed are in `personality.yaml`.
 - Authored ops (a model writes the result of a `write` or `draw` op): `agent/.../authored/Authors.kt`, the

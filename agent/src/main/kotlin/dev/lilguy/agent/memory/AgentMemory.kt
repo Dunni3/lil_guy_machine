@@ -66,10 +66,7 @@ class AgentMemory(
     val studio: ArtStudio? = null,
     /** Writes what stuck with him from each chapter; reading works without it. */
     private val reader: Reader? = null,
-    /** Writes the question when he asks how his world works; with [oracle], which answers it. Without both, ask isn't offered. */
-    private val questioner: Questioner? = null,
-    private val oracle: Oracle? = null,
-    /** Every answer, kept or not; called from whichever coroutine wrote it. */
+    /** Every answer to what he asked while thinking, kept or not; called from whichever coroutine wrote it. */
     private val onAnswer: (Answer) -> Unit = {},
 ) {
     /** What authored ops are written from: who he is, his state in the decision prompt's words, and that prompt's system message. */
@@ -98,7 +95,7 @@ class AgentMemory(
     /** Kept thoughts, with their event ids: recall candidates. */
     private val keptThoughts = CopyOnWriteArrayList<Pair<Long, Thought>>()
 
-    /** Kept answers (`shows_as: answer`), oldest first. */
+    /** Answers to what he asked while thinking, from kept thinks, oldest first. */
     private val keptAnswers = CopyOnWriteArrayList<Answer>()
 
     /** His latest kept thought shown as his plan (`shows_as: plan`), or null. */
@@ -109,10 +106,9 @@ class AgentMemory(
 
     private fun authors(): Authors {
         val handlers = mutableListOf<AuthorHandler<*>>()
-        if (thinker != null) handlers += ThoughtHandler(thinker, store, run, onThought = { t -> thoughtLog += t }, onPlan = { t -> plan = t }, onStored = { id, t -> keptThoughts += id to t })
+        if (thinker != null) handlers += ThoughtHandler(thinker, store, run, onThought = { t -> thoughtLog += t; t.asked.forEach(onAnswer) }, onPlan = { t -> plan = t }, onStored = { id, t -> keptThoughts += id to t }) { a -> keptAnswers += a }
         if (studio != null) handlers += studio
         if (reader != null) handlers += ReadingHandler(reader, store, run)
-        if (questioner != null && oracle != null) handlers += AnswerHandler(questioner, oracle, store, run, onAnswer) { a -> keptAnswers += a }
         return Authors(handlers, scope)
     }
 
@@ -161,7 +157,7 @@ class AgentMemory(
     fun connect(world: BedroomWorld) {
         authors.connect(world)
         studio?.connect(world)
-        oracle?.connect(world)
+        thinker?.oracle?.connect(world)
         restVerbs = world.content.verbs.filter { v -> v.effects.any { it is SleepOp } }.map { it.id }.toSet()
         about = world.content.personality.core.he
     }

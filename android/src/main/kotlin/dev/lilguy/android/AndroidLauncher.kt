@@ -31,7 +31,8 @@ class AndroidLauncher : AndroidApplication() {
      * the memory writer (default the config's `memory_endpoint`, "none" for off); `writer_endpoint`
      * the writer of his thoughts and self-model, the same way (`journal_endpoint` is its old name);
      * `recall_endpoint` the typesafe endpoint that scores recall ("none" for keywords); `days` the
-     * bedroom run length (0 for no end).
+     * bedroom run length (0 for no end); `beam` how many paths Jev keeps walking the menu tree (0 for
+     * the flat list).
      */
     private fun modelSetup(): ModelSetup {
         val dir = getExternalFilesDir(null) ?: filesDir
@@ -46,6 +47,7 @@ class AndroidLauncher : AndroidApplication() {
             memoryEndpoint = intent?.getStringExtra("memory_endpoint")?.takeIf { it.isNotBlank() },
             writerEndpoint = (intent?.getStringExtra("writer_endpoint") ?: intent?.getStringExtra("journal_endpoint"))?.takeIf { it.isNotBlank() },
             recallEndpoint = intent?.getStringExtra("recall_endpoint")?.takeIf { it.isNotBlank() },
+            beam = intent?.takeIf { it.hasExtra("beam") }?.getIntExtra("beam", 3),
             days = (intent?.getIntExtra("days", ModelSetup.DEFAULT_DAYS) ?: ModelSetup.DEFAULT_DAYS).takeIf { it > 0 },
         )
     }

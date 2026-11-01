@@ -7,6 +7,7 @@ import dev.lilguy.decision.DecisionModel
 import dev.lilguy.decision.Endpoints
 import dev.lilguy.decision.EndpointsFile
 import dev.lilguy.decision.Scorer
+import dev.lilguy.decision.withBeam
 import dev.lilguy.sim.GameClock
 import java.io.File
 import java.time.LocalDateTime
@@ -86,7 +87,8 @@ class ModelSetup(
          * config's `memory_endpoint`; "none" turns it off), whichever model decides; his thoughts,
          * self-model and commissions by [writerEndpoint] (or `writer_endpoint`) the same way; and
          * recall is scored by [recallEndpoint] (or `recall_endpoint`, else the deciding endpoint when
-         * it's typesafe; "none" for keywords).
+         * it's typesafe; "none" for keywords). [beam] overrides the deciding endpoint's `beam` (0 for
+         * the flat list).
          */
         fun fromConfig(
             configFile: File,
@@ -99,6 +101,7 @@ class ModelSetup(
             days: Int? = DEFAULT_DAYS,
             writerEndpoint: String? = null,
             recallEndpoint: String? = null,
+            beam: Int? = null,
         ): ModelSetup {
             val logDir = logRoot?.let { File(it, "app-${scenario.id}-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))) }
             if (!configFile.isFile) {
@@ -106,7 +109,7 @@ class ModelSetup(
                 return scripted(notice, logDir, scenario, ticksPerMinute, days)
             }
             val config = try {
-                Endpoints.load(configFile)
+                Endpoints.load(configFile).let { it.withBeam(endpoint ?: it.defaultEndpoint ?: "scripted", beam) }
             } catch (e: Exception) {
                 return scripted("${e.message}; using the scripted policy", logDir, scenario, ticksPerMinute, days)
             }

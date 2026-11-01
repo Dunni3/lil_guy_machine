@@ -161,21 +161,10 @@ verbs:
     effects:
       - enjoy: what
       - background: { name: music, minutes: 45, rates: { mood: 2, stimulation: 6 } }
-  # He wonders how something in his world works and finds out: he picks a question (how to get to
-  # something he can't do yet, how to make money, ...) and a model that has read how the world works
-  # answers it. His latest answers show in later prompts. It's how he discovers the world as he goes,
-  # rather than being shown every possibility at once.
-  - id: ask
-    kind: expressive
-    phrase: wonder how something works and find out
-    at: [here]
-    minutes: 10
-    routine: true
-    no_repeat: true
-    effects:
-      - write: { with: answer, into: [events, short_term], timing: before, shows_as: answer }
   # He stops where he is and works out what he wants; the thought is written before he starts, and
-  # his latest one shows in every later prompt as his plan.
+  # his latest one shows in every later prompt as his plan. While he thinks he may ask how something
+  # in his world works, and an oracle that has read the world's docs answers (agent/.../Thinker.kt);
+  # his latest answers show in later prompts. It's how he discovers the world as he goes.
   - id: think
     kind: expressive
     phrase: stop and think

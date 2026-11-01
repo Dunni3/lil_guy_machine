@@ -66,7 +66,7 @@ class BedroomWorldTest {
     fun `tier 0 is the small world, and gated content comes in only when granted`() {
         val w = world(granted = emptySet())
         val obs = w.obs()
-        assertEquals(listOf("eat", "eat_oats", "sketch", "sell_art", "hang_art", "sleep", "ask", "think"), obs.activities!!.map { it.id })
+        assertEquals(listOf("eat", "eat_oats", "sketch", "sell_art", "hang_art", "sleep", "think"), obs.activities!!.map { it.id })
         assertEquals(listOf("meal"), obs.shop!!.map { it.id })
         assertEquals("you have no sketch to sell; sketch makes some", w.activity("sell_art").locked)
         assertTrue("no activity called 'paint'" in failure(w.run(Intent.Do("paint"))))
@@ -76,7 +76,7 @@ class BedroomWorldTest {
 
         // A grant has to bring what it needs with it, and only gated ids can be granted.
         val painting = setOf("paint", "easel", "canvas", "painting")
-        assertEquals(listOf("eat", "eat_oats", "sketch", "paint", "sell_art", "hang_art", "sleep", "ask", "think"), world(money = 500, granted = painting).obs().activities!!.map { it.id })
+        assertEquals(listOf("eat", "eat_oats", "sketch", "paint", "sell_art", "hang_art", "sleep", "think"), world(money = 500, granted = painting).obs().activities!!.map { it.id })
         assertTrue("canvas" in assertFailsWith<IllegalArgumentException> { content.unlocked(setOf("paint", "easel")) }.message!!)
         assertTrue("meal" in assertFailsWith<IllegalArgumentException> { content.unlocked(setOf("meal")) }.message!!)
     }

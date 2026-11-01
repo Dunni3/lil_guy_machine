@@ -18,7 +18,6 @@ import dev.lilguy.agent.memory.AgentMemory
 import dev.lilguy.agent.memory.Answer
 import dev.lilguy.agent.memory.InMemoryStore
 import dev.lilguy.agent.memory.Oracle
-import dev.lilguy.agent.memory.Questioner
 import dev.lilguy.agent.art.ArtStudio
 import dev.lilguy.agent.art.CommissionVoice
 import dev.lilguy.agent.art.Drawing
@@ -37,6 +36,7 @@ import dev.lilguy.decision.DecisionModel
 import dev.lilguy.decision.Endpoints
 import dev.lilguy.decision.Scorer
 import dev.lilguy.decision.StructuredOutput
+import dev.lilguy.decision.withBeam
 import dev.lilguy.sim.BedroomContent
 import dev.lilguy.sim.BedroomWorld
 import dev.lilguy.sim.Personality
@@ -70,6 +70,8 @@ private const val USAGE = """lil guy machine cli: lockstep runs of the key-and-d
   --max-decisions N   decisions per run before giving up (default: key-door 60, bedroom 60 a day)
   --config PATH       endpoint config (default config/endpoints.yaml)
   --strategy S        override the endpoint's structured_output: json_schema, tools or text
+  --beam N            typesafe: walk the menu tree keeping N paths; 0 picks from the flat list
+                      (default: the endpoint's beam, 3)
   --log-dir DIR       where run logs go (default runs/); --no-log to skip
   --replay FILE       play back a decision log instead of calling a model
   --memory FILE       keep long-term memory in this SQLite file: how each action turned out, what
@@ -129,7 +131,7 @@ private class Args(argv: Array<String>) {
     companion object {
         val FLAGS = setOf("--quiet", "--no-log", "--help", "--content-docs")
         val KNOWN = FLAGS + setOf(
-            "--scenario", "--endpoint", "--runs", "--days", "--minute-ticks", "--ticks", "--max-decisions", "--config", "--strategy", "--log-dir", "--replay", "--memory", "--memory-endpoint", "--writer-endpoint", "--journal-endpoint", "--recall-endpoint", "--grant",
+            "--scenario", "--endpoint", "--runs", "--days", "--minute-ticks", "--ticks", "--max-decisions", "--config", "--strategy", "--beam", "--log-dir", "--replay", "--memory", "--memory-endpoint", "--writer-endpoint", "--journal-endpoint", "--recall-endpoint", "--grant",
             "--affinities", "--curiosity",
         )
     }
@@ -299,11 +301,14 @@ fun main(argv: Array<String>) {
                     revisions += r
                     if (!quiet) printSelf(r)
                 },
-                thinker = writerModel?.let { Thinker(ledger.meter(it, TokenPurpose.Think, priceOf(writerEndpoint!!))) },
+                // While he thinks he may ask the oracle (the writer again), which searches the world's docs and answers.
+                thinker = writerModel?.let { w ->
+                    Thinker(
+                        ledger.meter(w, TokenPurpose.Think, priceOf(writerEndpoint!!)),
+                        oracle = Oracle(ledger.meter(w, TokenPurpose.Ask, priceOf(writerEndpoint))).takeIf { scenario == Scenario.Bedroom },
+                    )
+                },
                 reader = writerModel?.takeIf { scenario == Scenario.Bedroom }?.let { Reader(ledger.meter(it, TokenPurpose.Reading, priceOf(writerEndpoint!!))) },
-                // Asking: the writer writes his question, and the oracle (the writer again) searches the world's docs and answers.
-                questioner = writerModel?.takeIf { scenario == Scenario.Bedroom }?.let { Questioner(ledger.meter(it, TokenPurpose.Ask, priceOf(writerEndpoint!!))) },
-                oracle = writerModel?.takeIf { scenario == Scenario.Bedroom }?.let { Oracle(ledger.meter(it, TokenPurpose.Ask, priceOf(writerEndpoint!!))) },
                 onAnswer = { a ->
                     log?.write(a)
                     if (!quiet) printAnswer(a)
@@ -355,9 +360,10 @@ private fun modelSource(scenario: Scenario, endpoint: String, replay: File?, arg
         val ep = config.endpoints[endpoint] ?: throw IllegalArgumentException("no endpoint '$endpoint' in the config")
         config = config.copy(endpoints = config.endpoints + (endpoint to ep.copy(structuredOutput = strategy)))
     }
+    config = config.withBeam(endpoint, args.string("--beam")?.toInt())
     val ep = config.endpoints[endpoint] ?: throw IllegalArgumentException("no endpoint '$endpoint' in the config; have ${config.endpoints.keys.sorted()}")
     Endpoints.create(config, endpoint).let { (it as? AutoCloseable)?.close() } // fail fast on a missing key
-    val label = endpoint + (args.string("--strategy")?.let { "-$it" } ?: "")
+    val label = endpoint + (args.string("--strategy")?.let { "-$it" } ?: "") + (args.string("--beam")?.let { "-beam$it" } ?: "")
     return Triple(label, ep.decisionTimeout) { Endpoints.create(config, endpoint) }
 }
 

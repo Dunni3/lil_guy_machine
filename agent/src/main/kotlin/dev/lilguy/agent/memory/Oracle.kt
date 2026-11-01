@@ -1,7 +1,5 @@
 package dev.lilguy.agent.memory
 
-import dev.lilguy.agent.authored.AuthorCall
-import dev.lilguy.agent.authored.AuthorHandler
 import dev.lilguy.decision.ActionSchema
 import dev.lilguy.decision.DecisionFailed
 import dev.lilguy.decision.DecisionModel
@@ -9,11 +7,8 @@ import dev.lilguy.decision.DecisionRequest
 import dev.lilguy.decision.Message
 import dev.lilguy.decision.SchemaHints
 import dev.lilguy.decision.Usage
-import dev.lilguy.sim.AuthoredResult
-import dev.lilguy.sim.AuthoredView
 import dev.lilguy.sim.BedroomContent
 import dev.lilguy.sim.BedroomWorld
-import dev.lilguy.sim.Observation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
@@ -22,11 +17,6 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
-import kotlin.time.TimeSource
-
-@Serializable
-@SerialName("question")
-data class QuestionReply(val question: String)
 
 @Serializable
 @SerialName("search")
@@ -95,53 +85,8 @@ object WorldDocs {
 }
 
 /**
- * The first half of `ask`: a text model writes the question he wants answered, in his own words,
- * from the decision prompt he was just shown, as [Thinker] writes a thought. A closed-choice model
- * (Jev) decides to ask; it can't write the question.
- */
-class Questioner(private val model: DecisionModel, private val timeout: Duration = 60.seconds) {
-    init {
-        require(!model.capabilities.closedChoice) { "writing a question needs a model that writes text; '${model.id}' only picks from options" }
-    }
-
-    val writer: String get() = model.id
-
-    private val schema = ActionSchema.of(
-        "question",
-        QuestionReply.serializer(),
-        SchemaHints(descriptions = mapOf("question.question" to "One question about how your world works, first person, under $WORD_CAP words.")),
-    ) { null }
-
-    /** His question, or a failure saying why. */
-    suspend fun ask(system: String, situation: String): Result<Pair<String, Usage>> = call(timeout) {
-        val decision = model.decide(
-            DecisionRequest(
-                system = system.trimEnd() + "\n\n" + INSTRUCTIONS,
-                messages = listOf(Message(Message.Role.User, situation.trimEnd() + "\n\n" + ASK)),
-                temperature = TEMPERATURE,
-                timeout = timeout,
-            ),
-            schema,
-        )
-        decision.value.question.trim().ifEmpty { error("the question was empty") } to decision.usage
-    }
-
-    companion object {
-        const val WORD_CAP = 30
-        const val TEMPERATURE = 0.8
-        const val ASK = "What do you want to find out about how your world works?"
-
-        val INSTRUCTIONS = """
-            |Right now you are not choosing an action: you have stopped to wonder how something in your world works, and you will get an answer. Look at your situation: what you can't do yet and why, what you want, what you have tried. Ask the one question whose answer would help you most: how to get to something, what something is for, what you could do that you haven't. Write it in the first person, as yourself, under $WORD_CAP words.
-            |
-            |For this reply only, ignore the reply format above: reply with a JSON object {"question": ...} and nothing else.
-        """.trimMargin()
-    }
-}
-
-/**
- * The second half of `ask`: the oracle gets his question and the world's docs ([WorldDocs]). It
- * searches them, opening the sections it needs from their table of contents (keyword matches on
+ * Answers what he asks while he thinks ([Thinker]): the oracle gets his question and the world's
+ * docs ([WorldDocs]). It searches them, opening the sections it needs from their table of contents (keyword matches on
  * the question if that call fails), then answers from what it opened and his situation.
  *
  * [connect] it to the world before the run starts.
@@ -176,7 +121,7 @@ class Oracle(
 
     /** The sections opened for [question] and the answer text, with what the calls cost; a failure says why. */
     suspend fun answer(question: String, situation: String): Triple<List<String>, Result<String>, Usage> {
-        val docs = world?.knownContent()?.let(WorldDocs::of) ?: return Triple(emptyList(), Result.failure(IllegalStateException("ask: the oracle isn't connected to a world")), Usage())
+        val docs = world?.knownContent()?.let(WorldDocs::of) ?: return Triple(emptyList(), Result.failure(IllegalStateException("the oracle isn't connected to a world")), Usage())
         val byId = docs.associateBy { it.id }
         val contents = docs.joinToString("\n") { "${it.id}: ${it.title}" }
         var usage = Usage()
@@ -224,44 +169,6 @@ class Oracle(
             |
             |Reply with a JSON object {"answer": ...} and nothing else.
         """.trimMargin()
-    }
-}
-
-/**
- * `write: { with: answer }`: he asks, the oracle answers. The [questioner] writes his question from
- * the decision prompt, the [oracle] searches the docs and answers. Kept, it goes into the event
- * stream as an [EventKind.Answer] event, and with `shows_as: answer` into his later prompts ([onKept]).
- * [onAnswer] gets every one as it's written, kept or not.
- */
-class AnswerHandler(
-    private val questioner: Questioner,
-    private val oracle: Oracle,
-    private val store: MemoryStore,
-    private val run: String,
-    private val onAnswer: (Answer) -> Unit = {},
-    private val onKept: (Answer) -> Unit,
-) : AuthorHandler<Answer> {
-    override val name = "answer"
-    override val writer: String get() = oracle.writer
-
-    override suspend fun author(call: AuthorCall): Answer {
-        val obs = call.obs
-        val started = TimeSource.Monotonic.markNow()
-        fun reply(text: String?, usage: Usage, error: String? = null) =
-            Thought(obs.tick, obs.clock?.day, obs.clock?.time, oracle.writer, text, null, usage, started.elapsedNow(), error)
-        val (question, asked) = questioner.ask(call.system, call.situation).getOrElse { e ->
-            return Answer("", emptyList(), reply(null, Usage(), "question: ${e.message ?: e}")).also(onAnswer)
-        }
-        val (opened, text, usage) = oracle.answer(question, call.situation)
-        return Answer(question, opened, reply(text.getOrNull(), asked + usage, text.exceptionOrNull()?.let { "answer: ${it.message ?: it}" })).also(onAnswer)
-    }
-
-    override fun keep(result: Answer, call: AuthorCall, ended: Observation, view: AuthoredView?, deliver: (AuthoredResult) -> Unit) {
-        val text = result.reply.text ?: return
-        val r = result.reply
-        if ("events" in call.op.into) store.appendEvent(run, r.tick, r.day, r.time, EventKind.Answer, "I asked \"${result.question}\": $text")
-        onKept(result)
-        deliver(AuthoredResult.Written(text))
     }
 }
 
