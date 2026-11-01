@@ -15,6 +15,7 @@ import dev.lilguy.agent.memory.MemoryScorer
 import dev.lilguy.agent.memory.SelfModeler
 import dev.lilguy.agent.memory.Reader
 import dev.lilguy.agent.memory.Thinker
+import dev.lilguy.agent.shop.Shopper
 import dev.lilguy.agent.memory.Summarizer
 import dev.lilguy.decision.DecisionModel
 import dev.lilguy.sim.BedroomContent
@@ -283,6 +284,12 @@ class SimSession(
             studio = studio,
             reader = jw?.takeIf { setup.scenario == Scenario.Bedroom }?.let { Reader(ledger.meter(it, TokenPurpose.Reading, setup.prices.writer)) },
             onAnswer = { a -> runCatching { runLog?.write(a) } },
+            // A shopping trip's picks: the writer with reasons, falling back to the deciding model's one pick.
+            shopper = if (setup.scenario != Scenario.Bedroom) null else {
+                val picker = rawModel.takeIf { setup.paints }?.let { ledger.meter(it, TokenPurpose.Shop, setup.prices.decision) }
+                jw?.let { Shopper(ledger.meter(it, TokenPurpose.Shop, setup.prices.writer), fallback = picker) } ?: picker?.let { Shopper(it) }
+            },
+            onTrip = { t -> runCatching { runLog?.write(t) } },
         )
         val (gw, r) = setup.scenario.create(m, setup.timeout, settings.ticksPerMinute, longTerm = memory, startItems = setup.startItems) {
             runCatching { runLog?.write(it) }

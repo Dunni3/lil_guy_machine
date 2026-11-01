@@ -3,6 +3,7 @@ package dev.lilguy.agent
 import dev.lilguy.agent.memory.Answer
 
 import dev.lilguy.agent.art.Drawing
+import dev.lilguy.agent.shop.Trip
 import dev.lilguy.decision.ActionSchema
 import dev.lilguy.decision.Capabilities
 import dev.lilguy.decision.Decision
@@ -112,6 +113,34 @@ data class ArtLogEntry(
     }
 }
 
+/** A shopping trip's picks, logged between the decisions, marked `"kind": "trip"`; what was really bought is the next decision's outcome. */
+@Serializable
+data class TripLogEntry(
+    val kind: String = KIND,
+    val run: String,
+    val shopper: String,
+    val tick: Long,
+    val day: Int?,
+    val time: String?,
+    /** What he was shown, a line an item. */
+    val catalog: List<String>,
+    val buy: List<String>,
+    val why: List<String>,
+    @SerialName("save_for") val saveFor: String?,
+    val note: String?,
+    val raw: String?,
+    @SerialName("latency_ms") val latencyMs: Long,
+    @SerialName("prompt_tokens") val promptTokens: Int,
+    @SerialName("completion_tokens") val completionTokens: Int,
+    val error: String? = null,
+    /** Why the first shopper failed, when [shopper] is the fallback. */
+    @SerialName("fell_back") val fellBack: String? = null,
+) {
+    companion object {
+        const val KIND = "trip"
+    }
+}
+
 /** A question he asked about how his world works and its answer, logged between the decisions, marked `"kind": "answer"`. */
 @Serializable
 data class AnswerLogEntry(
@@ -159,6 +188,18 @@ class DecisionLog(val file: File, private val run: String, private val model: St
                     latencyMs = r.latency.inWholeMilliseconds, promptTokens = r.usage.promptTokens, completionTokens = r.usage.completionTokens, error = r.error,
                 )
             },
+        ),
+    )
+
+    /** Shopping trips go in the same file, marked `"kind": "trip"`. */
+    fun write(t: Trip) = append(
+        json.encodeToString(
+            TripLogEntry.serializer(),
+            TripLogEntry(
+                run = run, shopper = t.shopper, tick = t.tick, day = t.day, time = t.time, catalog = t.catalog, buy = t.buy.map { it.item }, why = t.buy.map { it.why },
+                saveFor = t.saveFor, note = t.note, raw = t.raw, latencyMs = t.latency.inWholeMilliseconds, promptTokens = t.usage.promptTokens,
+                completionTokens = t.usage.completionTokens, error = t.error, fellBack = t.fellBack,
+            ),
         ),
     )
 

@@ -81,7 +81,11 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   succeeds, the clock held while a `before` call is out or a `during` call outlasts its verb, results back to the sim through
   `BedroomWorld.deliver`). The sim side is `sim/.../Authored.kt`. A verb whose `write` has no handler
   isn't offered to models, unless the write is `optional`. Think is a verb; `reflection` in rules.yaml
-  makes him think every few decisions.
+  makes him think every few decisions. Shopping trips: the `shop` verb's `shopping` write
+  (`agent/.../shop/Shopper.kt`: the writer picks from the whole catalog with reasons, or Jev picks one) is
+  staged in the sim before he goes (`AuthorHandler.staged`, `BedroomWorld.stage`) and its `basket` op buys
+  it at the finish; while there's a trip, everything (food too) is bought on trips and models deciding
+  see no `shop` (`BedroomPrompt.deciding`).
 - Art: `agent/.../art/`: `Painter.kt` (the deciding model draws each piece as a run of closed picks:
   subject, crayon box, then a stroke a call; `CommissionVoice` words each day's commission on a text
   model), `Strokes.kt` (the drawing spec as menus of strokes by stage: background, subject,

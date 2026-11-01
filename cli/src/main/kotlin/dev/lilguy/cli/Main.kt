@@ -14,6 +14,8 @@ import dev.lilguy.agent.TokenPrice
 import dev.lilguy.agent.TokenPurpose
 import dev.lilguy.agent.TokenReport
 import dev.lilguy.agent.TokenTotals
+import dev.lilguy.agent.shop.Shopper
+import dev.lilguy.agent.shop.Trip
 import dev.lilguy.agent.memory.AgentMemory
 import dev.lilguy.agent.memory.Answer
 import dev.lilguy.agent.memory.InMemoryStore
@@ -313,6 +315,15 @@ fun main(argv: Array<String>) {
                     log?.write(a)
                     if (!quiet) printAnswer(a)
                 },
+                // A shopping trip's picks: the writer with reasons, falling back to the deciding model's one pick.
+                shopper = if (scenario != Scenario.Bedroom) null else {
+                    val picker = decisionModel.takeIf { painting }?.let { ledger.meter(it, TokenPurpose.Shop, priceOf(endpoint)) }
+                    writerModel?.let { Shopper(ledger.meter(it, TokenPurpose.Shop, priceOf(writerEndpoint!!)), fallback = picker) } ?: picker?.let { Shopper(it) }
+                },
+                onTrip = { t ->
+                    log?.write(t)
+                    if (!quiet) printTrip(t)
+                },
             )
         }
         try {
@@ -503,6 +514,13 @@ private fun printAnswer(a: Answer) {
     val r = a.reply
     val stamp = if (r.day != null) "d%2d %s".format(r.day, r.time) else "t=%4d".format(r.tick)
     println("%s  asked \"%s\" (opened %s): %s".format(stamp, a.question, a.opened.joinToString(), r.text ?: "FAILED: ${r.error}"))
+}
+
+private fun printTrip(t: Trip) {
+    val stamp = if (t.day != null) "d%2d %s".format(t.day, t.time) else "t=%4d".format(t.tick)
+    val what = t.error?.let { "FAILED: $it" }
+        ?: ("picked " + t.buy.joinToString { it.item }.ifEmpty { "nothing" } + (t.saveFor?.let { "; saving for $it" } ?: "") + (t.note?.let { ": $it" } ?: ""))
+    println("%s  shopping trip, %d in the catalog: %s".format(stamp, t.catalog.size, what))
 }
 
 private fun printSelf(r: SelfRevision) {

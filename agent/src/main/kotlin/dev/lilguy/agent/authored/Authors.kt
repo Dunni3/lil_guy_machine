@@ -38,6 +38,12 @@ interface AuthorHandler<R : Any> {
 
     /** The verb failed or was cut short; [result] is null when the call hadn't finished. */
     fun discard(result: R?, call: AuthorCall) {}
+
+    /**
+     * For a `before` op: what the sim needs from [result] before the verb starts, for an op that acts
+     * on it as the verb finishes (a trip's basket, [BedroomWorld.stage]); null for nothing.
+     */
+    fun staged(result: R): AuthoredResult? = null
 }
 
 /**
@@ -58,7 +64,8 @@ class AuthorCall(
 /**
  * The handler registry and the one lifecycle every authored op shares:
  * - **Timing.** A `before` op's call runs inline in [before], after the decision and before the
- *   intent is submitted, so he stands still and lockstep runs stay deterministic. A `during` op's
+ *   intent is submitted, so he stands still and lockstep runs stay deterministic; what the sim
+ *   needs from it at the finish ([AuthorHandler.staged]) is handed over then. A `during` op's
  *   call starts in [acted], when the verb starts, in the background with a [scope] (inline without).
  * - **Keep or throw away.** At the next decision point ([observed]) the result is kept only if the
  *   verb succeeded; otherwise the call is cancelled and the result discarded.
@@ -85,10 +92,13 @@ class Authors(handlers: List<AuthorHandler<*>>, private val scope: CoroutineScop
         fun keep(ended: Observation, view: AuthoredView?, deliver: (AuthoredResult) -> Unit) = handler.keep(result!!, call, ended, view, deliver)
 
         fun discard() = handler.discard(result, call)
+
+        fun staged(): AuthoredResult? = result?.let(handler::staged)
     }
 
     private var content: BedroomContent? = null
     private var deliver: (Int, AuthoredResult) -> Unit = { _, _ -> }
+    private var stage: (String, AuthoredResult) -> Unit = { _, _ -> }
     private val pending = CopyOnWriteArrayList<Pending>()
     /** Kept results still waiting on their call, by handler. */
     private val committing = CopyOnWriteArrayList<Pair<String, Job>>()
@@ -99,6 +109,7 @@ class Authors(handlers: List<AuthorHandler<*>>, private val scope: CoroutineScop
     fun connect(world: BedroomWorld) {
         content = world.content
         deliver = world::deliver
+        stage = world::stage
     }
 
     fun has(handler: String): Boolean = handler in byName
@@ -132,6 +143,7 @@ class Authors(handlers: List<AuthorHandler<*>>, private val scope: CoroutineScop
             } finally {
                 inline.remove(p.handler.name)
             }
+            p.staged()?.let { stage(p.call.verb.id, it) }
             p.result
         }
 

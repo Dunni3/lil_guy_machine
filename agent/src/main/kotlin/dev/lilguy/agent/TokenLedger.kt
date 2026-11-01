@@ -36,6 +36,8 @@ enum class TokenPurpose {
     @SerialName("recall") Recall,
     /** Scoring how significant new events are. */
     @SerialName("significance") Significance,
+    /** A shopping trip's picks. */
+    @SerialName("shop") Shop,
 }
 
 /** Dollars per million tokens, from an endpoint's `price_in` and `price_out`. */

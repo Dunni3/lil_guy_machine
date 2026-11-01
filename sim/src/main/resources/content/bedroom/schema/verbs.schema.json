@@ -180,6 +180,26 @@
                   ],
                   "description": "Sells everything carried that answers to the name, at each item's `sellable` price, plus any commission reward. (at the finish)"
                 },
+                "basket": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "most": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "most"
+                      ],
+                      "additionalProperties": false,
+                      "description": "A shopping trip's checkout: buys up to `most` of what the trip's `write: { with: shopping, timing: before }` picked, in order, each checked as a buy is (held back, owned, too dear), and remembers what he said he's saving for. Its option says how much of the catalog he could buy now and how close he is to what he's saving for. (at the finish)"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "set_state": {
                   "anyOf": [
                     {
@@ -344,7 +364,7 @@
                         "into"
                       ],
                       "additionalProperties": false,
-                      "description": "Authored: a model writes it (handler `thought`, or `reading` for what stuck from a chapter) into the named destinations, kept only if the verb succeeds. `shows_as: plan` makes a short-term result his plan in later prompts. Without a handler the verb isn't offered, unless the write is `optional: true`. (before or during; kept at the finish)"
+                      "description": "Authored: a model writes it (handler `thought`, `reading` for what stuck from a chapter, or `shopping` for a trip's picks) into the named destinations, kept only if the verb succeeds. `shows_as: plan` makes a short-term result his plan in later prompts. Without a handler the verb isn't offered, unless the write is `optional: true`. (before or during; kept at the finish)"
                     },
                     {
                       "type": "null"
