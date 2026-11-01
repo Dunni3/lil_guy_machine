@@ -31,6 +31,9 @@ menu:
   - id: room
     says: make his room nicer - buy decor or furniture to look at
     buys: [decor, furniture]
+  - id: shopping
+    says: go through the shop's catalog and buy food, supplies or things to own - furniture, decor, books, records - or see what to save for
+    verbs: [shop]
   - id: mind
     says: stop to think things over and plan, asking how things in his world work
     verbs: [think]

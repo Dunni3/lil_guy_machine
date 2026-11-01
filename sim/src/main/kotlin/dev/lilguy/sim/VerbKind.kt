@@ -64,12 +64,12 @@ enum class VerbKind(
         required = listOf(setOf("write")),
     ),
 
-    /** Money moves: selling here, buying is the built-in `buy`. Not for inventing. */
+    /** Money moves: selling, or a shopping trip's checkout; a single purchase is the built-in `buy`. Not for inventing. */
     @SerialName("economic")
     Economic(
         "economic", "money moves",
-        allowed = setOf("sell"),
-        required = listOf(setOf("sell")),
+        allowed = setOf("sell", "basket", "write", "need"),
+        required = listOf(setOf("sell", "basket")),
         routine = true,
     ),
 

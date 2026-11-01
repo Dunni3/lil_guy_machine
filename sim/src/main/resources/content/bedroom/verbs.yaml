@@ -88,6 +88,20 @@ verbs:
     minutes: 1
     effects:
       - sell: sellable
+  # A shopping trip, the one way he buys anything while there's a shopper: he looks through the
+  # whole catalog, food included, what he can afford and what he can't, and picks what to buy and
+  # what he's saving for, with his reasons; that's written before he goes (agent/.../shop/Shopper.kt)
+  # and the basket buys it as he finishes, each item checked like a buy.
+  - id: shop
+    kind: economic
+    phrase: go through the shop's catalog
+    at: [mail_hatch]
+    minutes: 20
+    routine: true
+    no_repeat: true
+    effects:
+      - write: { with: shopping, into: [events], timing: before }
+      - basket: { most: 3 }
   - id: hang_art
     kind: transformative
     phrase: hang your art on the wall

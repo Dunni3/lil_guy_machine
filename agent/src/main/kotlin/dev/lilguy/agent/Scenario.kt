@@ -73,10 +73,11 @@ fun bedroomScenario(
         stamp = BedroomPrompt.stamp(world.clock),
         persona = { Persona.text(shown(), self()) },
         self = self,
+        view = { BedroomPrompt.deciding(it, shown()) },
     )
     val runtime = AgentRuntime(
         world, world.agentId, model, prompts,
-        schemaFor = { BedroomPrompt.replySchema(it, ticksPerMinute) },
+        schemaFor = { BedroomPrompt.replySchema(BedroomPrompt.deciding(it, shown()), ticksPerMinute) },
         longTerm = longTerm,
         fallback = { Intent.Wait(BedroomPrompt.WAIT_TICKS) },
         reflection = start.reflection?.takeIf { start.verb(it.verb) != null }?.let { it.verb to it.every },

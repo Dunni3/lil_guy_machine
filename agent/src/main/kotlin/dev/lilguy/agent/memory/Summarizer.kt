@@ -161,6 +161,7 @@ class Summarizer(
         EventKind.Art -> "I made"
         EventKind.Reading -> "I read"
         EventKind.Answer -> "I found out"
+        EventKind.Shopping -> "I shopped"
     }
 
     companion object {

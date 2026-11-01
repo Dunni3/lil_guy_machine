@@ -28,6 +28,7 @@ sealed interface AuthoredOp {
             "thought" to setOf("events", "short_term"),
             "reading" to setOf("events"),
             "draw" to setOf("pieces", "events"),
+            "shopping" to setOf("events"),
         )
 
         /** Where results can go: his event stream, short-term memory, and the sim's art pieces. */
@@ -116,4 +117,12 @@ sealed interface AuthoredResult {
 
     /** Text that went to the agent's own stores (a thought); the sim only marks it delivered. */
     data class Written(val text: String) : AuthoredResult
+
+    /**
+     * A shopping trip's picks, staged before the trip starts ([BedroomWorld.stage]): [items] to buy,
+     * in order, and the item he's [savingFor], null for nothing. [choseSaving]: false when the picker
+     * had no say in it (a picking model, a failed call), so what he was saving for stays. [failed]: why
+     * nothing could be picked (the model's call failed); the trip then fails rather than buying nothing.
+     */
+    data class Basket(val items: List<String>, val savingFor: String? = null, val choseSaving: Boolean = true, val failed: String? = null) : AuthoredResult
 }

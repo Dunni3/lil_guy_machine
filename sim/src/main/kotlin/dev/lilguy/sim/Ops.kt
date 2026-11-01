@@ -137,6 +137,29 @@ data class SellOp(val what: String) : Op() {
 }
 
 /**
+ * A shopping trip's checkout: buys what he picked on the trip, up to [most] items, in order, each
+ * checked as a `buy` is, so what he can't have or afford is turned away and named. What he picked
+ * comes from the trip's `write: { with: shopping, timing: before }` (the agent layer stages it
+ * through [BedroomWorld.stage]), as does what he's saving for, which the trip's option shows.
+ */
+data class BasketOp(val most: Int) : Op() {
+    override val key get() = "basket"
+
+    override fun problems(c: BedroomContent, verb: VerbSpec) = listOfNotNull(
+        if (most < 1) "basket: most must be at least 1" else null,
+        if (verb.effects.none { it is WriteOp && it.with == "shopping" && it.timing == Timing.Before }) "basket: the verb needs a `write: { with: shopping, timing: before }` to pick what goes in it" else null,
+    )
+
+    override fun lockReason(w: OpWorld, b: Bound) = w.tripLock()
+
+    override fun gone(w: OpWorld, b: Bound) = w.tripFailed(b.verb.id)
+
+    override fun finish(w: OpWorld, b: Bound) = w.checkout(b.verb.id, most)
+
+    override fun describe(w: OpWorld, b: Bound, forSale: Boolean) = if (forSale) emptyList() else listOf(w.tripText())
+}
+
+/**
  * Puts an item he holds into a [state]. The one state so far is `hung`: his newest held piece
  * answering to [target] goes on the picture rail ([GalleryRules]).
  */
@@ -351,6 +374,18 @@ internal interface OpWorld {
     /** "$6 for the 2 sketches you hold". */
     fun saleText(tag: String): String
 
+    /** Buys what was staged for [verb]'s trip, up to [most]; returns the event's parts. */
+    fun checkout(verb: String, most: Int): List<String>
+
+    /** What a trip would find: how much of the catalog he can afford, and what he's saving for. */
+    fun tripText(): String
+
+    /** Why a trip is pointless now (nothing left he doesn't have), or null. */
+    fun tripLock(): String?
+
+    /** Why [verb]'s trip came to nothing (its picks couldn't be made), or null; the trip then fails. */
+    fun tripFailed(verb: String): String?
+
     fun hangLock(tag: String): String?
 
     fun hang(tag: String): String
@@ -406,6 +441,7 @@ internal data class OpEntry(
     val consume: Map<String, Int>? = null,
     val produce: Map<String, Int>? = null,
     val sell: String? = null,
+    val basket: Basket? = null,
     @SerialName("set_state") val setState: SetState? = null,
     val background: Background? = null,
     val sleep: NoParams? = null,
@@ -419,6 +455,10 @@ internal data class OpEntry(
     @Serializable
     @SerialName("write")
     data class Write(val with: String, val into: List<String>, val timing: Timing = Timing.During, @SerialName("shows_as") val showsAs: String? = null, val optional: Boolean = false)
+
+    @Serializable
+    @SerialName("basket")
+    data class Basket(val most: Int)
 
     @Serializable
     @SerialName("progress")
@@ -439,7 +479,7 @@ internal data class OpEntry(
 
     fun toOp(): Op {
         val set = listOfNotNull(
-            need?.let(::NeedOp), rate?.let(::RateOp), consume?.let(::ConsumeOp), produce?.let(::ProduceOp), sell?.let(::SellOp),
+            need?.let(::NeedOp), rate?.let(::RateOp), consume?.let(::ConsumeOp), produce?.let(::ProduceOp), sell?.let(::SellOp), basket?.let { BasketOp(it.most) },
             setState?.let { SetStateOp(it.target, it.state) }, background?.let { BackgroundOp(it.name, it.minutes, it.rates) },
             sleep?.let { SleepOp }, enjoy?.let(::EnjoyOp), hear?.let(::HearOp), progress?.let { ProgressOp(it.book, it.study) }, practice?.let(::PracticeOp),
             write?.let { WriteOp(it.with, it.into, it.timing, it.showsAs, it.optional) }, draw?.let(::DrawOp),
@@ -455,6 +495,7 @@ internal data class OpEntry(
             is ConsumeOp -> OpEntry(consume = op.items)
             is ProduceOp -> OpEntry(produce = op.items)
             is SellOp -> OpEntry(sell = op.what)
+            is BasketOp -> OpEntry(basket = Basket(op.most))
             is SetStateOp -> OpEntry(setState = SetState(op.target, op.state))
             is BackgroundOp -> OpEntry(background = Background(op.name, op.minutes, op.rates))
             SleepOp -> OpEntry(sleep = NoParams())

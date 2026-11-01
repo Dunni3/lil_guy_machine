@@ -37,6 +37,8 @@ class PromptBuilder(
     private val stamp: (Long) -> String = { "tick $it" },
     val persona: (() -> String)? = null,
     private val self: () -> String? = { null },
+    /** The observation as the deciding model sees it (what it can choose among); unchanged by default. */
+    private val view: (Observation) -> Observation = { it },
 ) {
     /** A fixed system prompt and persona. */
     constructor(
@@ -63,13 +65,14 @@ class PromptBuilder(
      * [found] is what he found out by asking how his world works, his latest answers ("stamp: I asked ...: ...").
      */
     fun build(
-        obs: Observation,
+        observed: Observation,
         recent: List<Memory.Entry>,
         closedChoice: Boolean = false,
         memories: List<String> = emptyList(),
         thought: String? = null,
         found: List<String> = emptyList(),
     ): DecisionRequest {
+        val obs = view(observed)
         val history = recent.joinToString("\n") { e ->
             "${stamp(e.tick)}: ${json.encodeToString(Intent.serializer(), e.intent)} -> ${e.result?.let(::describe) ?: "running"}" +
                 (e.thought?.let { "; you thought: \"$it\"" } ?: "")

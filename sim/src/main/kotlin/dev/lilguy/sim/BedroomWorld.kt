@@ -111,6 +111,11 @@ class BedroomWorld private constructor(
     private val authored = ArrayDeque<AuthoredView>()
     private var authoredCount = 0
     private val deliveries = ConcurrentLinkedQueue<Pair<Int, AuthoredResult>>()
+    /** Shopping trips' picks as they arrive ([stage]), and as staged for each trip verb until its checkout. */
+    private val staging = ConcurrentLinkedQueue<Pair<String, AuthoredResult.Basket>>()
+    private val baskets = mutableMapOf<String, AuthoredResult.Basket>()
+    /** What he said on his latest trip that he's saving for, until he owns it. */
+    private var savingFor: String? = null
     /** [on]: what it plays on, for the renderer's "playing" state. */
     private class Music(val itemId: String, val on: String?, val spec: BackgroundOp, val endTick: Long, val fresh: Double)
 
@@ -146,6 +151,37 @@ class BedroomWorld private constructor(
             val sale = saleOf(held(tag))
             val bonus = if (winner(sale.map { it.first }) != null) ", $${content.commissions!!.reward} of it for the request" else ""
             return "$${sale.sumOf { it.second }} for the ${counts.entries.joinToString(" and ") { (id, n) -> quantity(id, n) }} you hold$bonus"
+        }
+
+        override fun checkout(verb: String, most: Int): List<String> {
+            val basket = baskets.remove(verb) ?: AuthoredResult.Basket(emptyList(), choseSaving = false)
+            if (basket.choseSaving) savingFor = basket.savingFor?.takeIf { content.item(it)?.price != null }
+            version++
+            val parts = basket.items.take(most).map { id ->
+                val spec = content.item(id)?.takeIf { isKnown(it.id) }
+                (spec?.let { refusal(it) } ?: if (spec == null) "'$id' isn't for sale" else null)?.let { "didn't buy $id: $it" }
+                    ?: bought(spec!!, spec.price!!)
+            }.ifEmpty { listOf("bought nothing") }
+            if (savingFor?.let { count(it) > 0 } == true) savingFor = null
+            return parts + listOfNotNull(savingFor?.let { "saving for ${article(item(it).name)} ($${item(it).price})" })
+        }
+
+        override fun tripText(): String {
+            val sold = tripItems()
+            val within = sold.count { heldBack(it) == null && ledger.canAfford(it.price!!) }
+            val saving = savingFor?.takeIf { count(it) == 0 }?.let(::item)?.let { w ->
+                if (ledger.canAfford(w.price!!)) "; you can afford the ${w.name} you're saving for now"
+                else "; you're saving for ${article(w.name)} ($${w.price}, $${w.price - ledger.balance} to go)"
+            }.orEmpty()
+            val food = if (foodTags.all { countTag(it) == 0 }) "; you have no food" else ""
+            return "look through the whole catalog and buy food, supplies or things to own: $within of the ${sold.size} things in it you could buy now$food$saving"
+        }
+
+        override fun tripLock() = if (tripItems().isEmpty()) "there's nothing in the shop you don't have" else null
+
+        override fun tripFailed(verb: String) = baskets[verb]?.failed?.let {
+            baskets.remove(verb)
+            "you couldn't make up your mind at the catalog, so you bought nothing"
         }
 
         override fun hangLock(tag: String): String? {
@@ -515,9 +551,7 @@ class BedroomWorld private constructor(
     private fun planBuy(id: String): Work {
         val spec = content.item(id)?.takeIf { isKnown(it.id) }
         val price = spec?.price ?: reject("'$id' isn't for sale; the shop has ${shopItems().joinToString { it.id }}")
-        if (!spec.stackable && count(id) > 0) reject("you already have the ${spec.name}")
-        heldBack(spec)?.let { reject("the ${spec.name} is no use to you yet, so the shop won't sell it to you until you have ${wanted(it)}") }
-        if (!ledger.canAfford(price)) reject("the ${spec.name} costs $$price and you have $${ledger.balance}")
+        refusal(spec)?.let(::reject)
         return Work.Steps(walkToNearest(listOf(content.shop.at)).first, Work.Timed(clock.ticks(content.shop.minutes)) { purchase(spec, price) })
     }
 
@@ -607,7 +641,21 @@ class BedroomWorld private constructor(
         deliveries.add(id to result)
     }
 
+    /**
+     * Hands over what a `before` authored op picked for [verb] before the verb starts, for an op
+     * that acts on it when the verb finishes (a trip's [BasketOp]): applied at the end of the next
+     * tick, long before any checkout. A later one for the same verb replaces it; a failed trip's
+     * is replaced by the next trip's.
+     */
+    fun stage(verb: String, result: AuthoredResult) {
+        if (result is AuthoredResult.Basket) staging.add(verb to result)
+    }
+
     private fun applyNotes() {
+        while (true) {
+            val (verb, basket) = staging.poll() ?: break
+            baskets[verb] = basket
+        }
         while (true) {
             when (val note = notes.poll() ?: break) {
                 is ArtNote.CommissionWorded -> commission?.takeIf { it.id == note.commission }?.let { it.request = note.request }
@@ -701,12 +749,26 @@ class BedroomWorld private constructor(
     private fun purchase(spec: ItemSpec, price: Int): String? {
         if (!ledger.canAfford(price)) return "the ${spec.name} costs $$price and you have $${ledger.balance}"
         if (!spec.stackable && count(spec.id) > 0) return "you already have the ${spec.name}"
+        outcome(bought(spec, price))
+        return null
+    }
+
+    /** Why the shop won't sell him [spec] now, or null: it's priced and he knows it. */
+    private fun refusal(spec: ItemSpec): String? = when {
+        spec.price == null -> "the ${spec.name} isn't for sale"
+        !spec.stackable && count(spec.id) > 0 -> "you already have the ${spec.name}"
+        heldBack(spec) != null -> "the ${spec.name} is no use to you yet, so the shop won't sell it to you until you have ${wanted(heldBack(spec)!!)}"
+        !ledger.canAfford(spec.price) -> "the ${spec.name} costs $${spec.price} and you have $${ledger.balance}"
+        else -> null
+    }
+
+    /** Pays for [spec] and adds it; "bought 1 easel for $17 (money $5)". */
+    private fun bought(spec: ItemSpec, price: Int): String {
         val what = quantity(spec.id, spec.pack)
         ledger.debit(ticks, price, "bought $what")
         add(spec.id, spec.pack)
         val comfortNote = if (comfortOf(spec) != 0) "; comfort ${comfort()}, so mood settles toward ${moodTarget().toInt()}" else ""
-        outcome("bought $what for $$price (money $${ledger.balance})$comfortNote")
-        return null
+        return "bought $what for $$price (money $${ledger.balance})$comfortNote"
     }
 
     private fun quantity(id: String, n: Int): String {
@@ -761,6 +823,9 @@ class BedroomWorld private constructor(
     override fun stamp(tick: Long): String = "d${clock.day(tick)} ${GameClock.hhmm(clock.minuteOfDay(tick))}"
 
     private fun shopItems(): List<ItemSpec> = content.items.filter { it.price != null && isKnown(it.id) && (it.stackable || count(it.id) == 0) }
+
+    /** What a shopping trip looks through: everything the shop has for him, held back or not. */
+    private fun tripItems(): List<ItemSpec> = shopItems()
 
     /** One option per way to bind [a]'s arguments that isn't locked, or one locked option saying why. */
     private fun activityOptions(a: VerbSpec): List<ActivityOption> {

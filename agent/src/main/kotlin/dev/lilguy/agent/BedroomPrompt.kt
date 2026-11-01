@@ -4,6 +4,7 @@ import dev.lilguy.decision.ActionSchema
 import dev.lilguy.decision.ChoiceSet
 import dev.lilguy.decision.SchemaHints
 import dev.lilguy.sim.BackgroundOp
+import dev.lilguy.sim.BasketOp
 import dev.lilguy.sim.BedroomContent
 import dev.lilguy.sim.GameClock
 import dev.lilguy.sim.GridWorld
@@ -39,10 +40,20 @@ object BedroomPrompt {
     /** About half an hour of game time at the default scale; the choice set's "wait". */
     const val WAIT_TICKS = 150
 
+    /** True when [content], as shown to models, has a shopping trip: then everything is bought on trips, not with `buy`. */
+    fun trips(content: BedroomContent): Boolean = content.verbs.any { v -> v.effects.any { it is BasketOp } }
+
+    /**
+     * [obs] as models deciding see it in [content] (what's offered to them): only the activities they
+     * can choose, and with a shopping trip no `shop` at all: the catalog is what he sees on a trip.
+     */
+    fun deciding(obs: Observation, content: BedroomContent): Observation =
+        obs.copy(activities = obs.activities?.filter { content.verb(it.id) != null }, shop = if (trips(content)) null else obs.shop)
+
     fun examples(content: BedroomContent, ticksPerMinute: Int): List<Pair<Intent, String>> = buildList {
         val activity = content.verbs.firstOrNull { it.work } ?: content.verbs.first()
         add(Intent.Do(activity.id) to "do an activity from `activities` that isn't locked; the game walks you there")
-        content.items.firstOrNull { it.price != null }?.let { add(Intent.Buy(it.id) to "buy something from `shop` that you can afford; it arrives at the ${content.item(content.shop.at)?.name ?: content.shop.at}") }
+        content.items.firstOrNull { it.price != null }?.takeIf { !trips(content) }?.let { add(Intent.Buy(it.id) to "buy something from `shop` that you can afford; it arrives at the ${content.item(content.shop.at)?.name ?: content.shop.at}") }
         content.verbs.firstOrNull { it.args.isNotEmpty() }?.let { v ->
             val args = v.args.mapValues { content.withName(it.value).first().id }
             add(Intent.Do(v.id, args["what"], args["on"]) to "do an activity with things you own: `what` and `on` name them, as its entry in `activities` does")
@@ -204,7 +215,12 @@ object BedroomPrompt {
         val sinking = moodRules(content)?.let { " $it" }.orEmpty()
         val lists = "What you can do: ${Persona.abilities(content)}. `activities` lists all of it, with how long it takes and what it gives, or why it's locked." +
             (if (content.verbs.any { it.args.isNotEmpty() }) " One done with something you own is listed once for each thing you could use, with `what` (and `on`) naming it." else "") +
-            " `shop` is what the shop will sell you now: its price, whether you can afford it, and what it's for. Something that's no use without another thing isn't sold to you until you have that thing; the shop says what buying an item opens up." +
+            (if (trips(content)) {
+                val trip = content.verbs.first { v -> v.effects.any { it is BasketOp } }
+                " Everything you buy, food included, you buy on a shopping trip (${trip.id} in `activities`): you look through the whole catalog, see what you can and can't afford yet, and choose what to buy and what to save for."
+            } else {
+                " `shop` is what the shop will sell you now: its price, whether you can afford it, and what it's for. Something that's no use without another thing isn't sold to you until you have that thing; the shop says what buying an item opens up."
+            }) +
             if (decor) " Your room has empty places for furniture and decor, and the catalog is where they come from." else ""
         val options = "activities, shop"
         val hearing = content.verbs.filter { it.ops<HearOp>().isNotEmpty() }.map { it.id }
@@ -351,7 +367,7 @@ object BedroomPrompt {
                     })
                 }
             }
-            putJsonArray("shop") {
+            if (obs.shop != null) putJsonArray("shop") {
                 obs.shop.orEmpty().forEach { s ->
                     add(buildJsonObject {
                         put("id", s.id)
