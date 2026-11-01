@@ -47,12 +47,12 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   affordances (what verbs ask for; `sellable` and `drawable` take parameters) and qualities (scored
   by his `personality` affinities into comfort and mood). What a verb does is its `effects`, a list
   of ops (`Ops.kt`: each op owns its checks, lock reason, apply and prompt text); every verb has a
-  `kind` that lists the ops it may use (`VerbKind.kt`). Books are `library.yaml`: read or studied a
-  chapter a session (the `progress` op); finishing one teaches ids that aren't in his world until then
+  `kind` that lists the ops it may use (`VerbKind.kt`). Books are `library.yaml`: read a chapter a
+  session (the `progress` op, which raises the book's skills); finishing one teaches ids that aren't in his world until then
   (`BedroomContent.taught`, `BedroomWorld.knownContent()`, which the prompt is built from).
   `menu.yaml` groups his options into a tree for Jev, who walks down it by beam search
   (`decision/.../BeamSearch.kt`, `beam` on the endpoint) instead of picking from one flat list. Skills
-  (`vocabulary.skills`, rules.yaml `skills`) rise with `practice` and study. Needs are energy,
+  (`vocabulary.skills`, rules.yaml `skills`) rise with `practice` and reading. Needs are energy,
   fullness, mood, stimulation and frustration. `make content-docs` regenerates the content's
   JSON Schemas (`content/bedroom/schema/`, checked by a test) and `build/grammar-reference.html`
   (`agent/.../ContentDocs.kt`).
@@ -106,7 +106,7 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   `DevView.kt`: map plus Now/Shop/Verbs/Memory/Art/Tokens/History/Log/Run pages (Shop and Verbs read `LifeSnapshot.catalog`,
   `verbs` and `done`, built with the world's cached option lists); run control, decision history and the app's memory in `SimSession.kt`;
   the Run page's knobs (days, speed, how much faster quiet stretches run, how long the clock waits on the model, resolution) in
-  `RunSettings.kt` (reading, studying and sleeping are `QUIET_VERBS`: the clock runs `quiet` times faster through them); remote keys in
+  `RunSettings.kt` (reading and sleeping are `QUIET_VERBS`: the clock runs `quiet` times faster through them); remote keys in
   `RemoteInput.kt`: OK start/pause, LEFT/RIGHT pages, UP/DOWN scroll or pick, BACK twice restarts). Launchers: `desktop/`, `android/`.
   `LILGUY_SCREENSHOT=out.png LILGUY_SCREENSHOT_AT=<s> make desktop` saves one frame and quits
   (add `LILGUY_CONFIG=/nonexistent` for the scripted policy, no API calls; `MINUTE_TICKS=1` for a faster clock)

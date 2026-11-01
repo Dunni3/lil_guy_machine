@@ -274,16 +274,13 @@
                       "properties": {
                         "book": {
                           "type": "string"
-                        },
-                        "study": {
-                          "type": "boolean"
                         }
                       },
                       "required": [
                         "book"
                       ],
                       "additionalProperties": false,
-                      "description": "Reads the next chapter of the book bound to the argument (library.yaml). Finishing the last chapter teaches him what the book teaches. `study: true` also raises the book's skills, and is locked once the book is finished or when it has no skill; reading a finished book rereads it. (at the finish)"
+                      "description": "Reads the next chapter of the book bound to the argument (library.yaml), which raises the book's skills. Finishing the last chapter teaches him what the book teaches; reading a finished book rereads it, with no progress or skill. (at the finish)"
                     },
                     {
                       "type": "null"

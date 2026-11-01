@@ -504,8 +504,8 @@ class Blob : Disposable {
         const val LINE = 1.6f
         /** Every this many strokes, he dips his brush in the palette. */
         const val PALETTE_EVERY = 6
-        /** Done by hand at a page, these write in lines rather than sketch: taking notes, the journal. */
-        val WRITING = setOf("study", "journal")
+        /** Done by hand at a page, these write in lines rather than sketch: the journal. */
+        val WRITING = setOf("journal")
         /** A held book: from his shoulders, how high and how far out its bottom is, and where his hands hold it. */
         const val BOOK_Y = -0.12f
         const val BOOK_Z = 0.31f

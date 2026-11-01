@@ -32,7 +32,7 @@ import kotlin.random.Random
  * What an item is worth to him comes from its qualities and his [Personality]: in its slot it adds
  * comfort, and an `enjoy` op adds it as mood ([QualityValue]).
  *
- * He has skills ([SkillRules]), raised by practice and by studying books a chapter at a time
+ * He has skills ([SkillRules]), raised by practice and by reading books a chapter at a time
  * ([BookSpec]). What a book teaches isn't in his world until he finishes it: the shop doesn't list
  * it and he can't do it ([knownContent] is the content as he knows it). Failures frustrate him and
  * successes ease it ([FrustrationRules]).
@@ -132,7 +132,7 @@ class BedroomWorld private constructor(
         override fun priceOf(id: String) = price(item(id), item(id).sellSkill?.let(::skill) ?: 0.0)
         override fun knows(id: String) = isKnown(id)
         override fun chaptersRead(book: String) = chapters[book] ?: 0
-        override fun readChapter(book: String, study: Boolean) = this@BedroomWorld.readChapter(book, study)
+        override fun readChapter(book: String) = this@BedroomWorld.readChapter(book)
         override fun teaching(book: String) = content.book(book)?.teaches?.filter { it !in known }?.takeIf { it.isNotEmpty() }?.let(::taughtText)
         override fun practise(skill: String, d: Double) = this@BedroomWorld.practise(skill, d)
         override fun count(tag: String, extra: String?) = countTag(tag, extra)
@@ -279,12 +279,12 @@ class BedroomWorld private constructor(
 
     private fun isKnown(id: String): Boolean = id !in content.taught || id in known
 
-    /** How much more [a]'s gains pay for the skills it practises (its `practice` ops and a studied book's skills). */
+    /** How much more [a]'s gains pay for the skills it practises (its `practice` ops and the skills of the book it reads). */
     private fun skilled(a: VerbSpec, args: Map<String, String>): Double {
         val per = content.skills.gainPerLevel
         if (per == 0.0) return 1.0
         val used = a.ops<PracticeOp>().flatMap { it.gains.keys } +
-            a.ops<ProgressOp>().filter { it.study }.flatMap { p -> args[p.book]?.let { content.book(it)?.skill?.keys }.orEmpty() }
+            a.ops<ProgressOp>().flatMap { p -> args[p.book]?.let { content.book(it)?.skill?.keys }.orEmpty() }
         if (used.isEmpty()) return 1.0
         return 1.0 + per * used.distinct().map(::skill).average()
     }
@@ -302,14 +302,14 @@ class BedroomWorld private constructor(
 
     private fun piecePrice(p: Piece): Int = price(item(p.item), p.skill) ?: 0
 
-    private fun readChapter(id: String, study: Boolean): List<String> {
+    private fun readChapter(id: String): List<String> {
         val book = content.book(id) ?: return emptyList()
         val read = chapters[id] ?: 0
         if (read >= book.chapters.size) return listOf("reread \"${book.title}\"")
         chapters[id] = read + 1
         version++
         val parts = mutableListOf("chapter ${read + 1} of ${book.chapters.size} of \"${book.title}\": ${book.chapters[read]}")
-        if (study) book.skill.forEach { (s, d) -> parts += practise(s, d) }
+        book.skill.forEach { (s, d) -> parts += practise(s, d) }
         if (read + 1 == book.chapters.size) {
             parts += "finished \"${book.title}\""
             val learned = book.teaches.filter { it !in known }
@@ -808,7 +808,7 @@ class BedroomWorld private constructor(
 
     /**
      * The verbs [spec] is for: it's where they happen, or what they need or use. A verb it fills every
-     * argument of, but which one of its ops refuses for it (studying a novel), isn't one of them.
+     * argument of, but which one of its ops refuses for it, isn't one of them.
      */
     private fun usesOf(spec: ItemSpec): List<VerbSpec> = memo?.uses?.getOrPut(spec.id) { findUses(spec) } ?: findUses(spec)
 
@@ -845,7 +845,7 @@ class BedroomWorld private constructor(
         content.book(spec.id)?.let { b ->
             parts += "\"${b.title}\": ${b.blurb}"
             parts += "${b.chapters.size} chapters, one a session"
-            if (b.skill.isNotEmpty()) parts += "studying it raises " + b.skill.keys.joinToString(" and ")
+            if (b.skill.isNotEmpty()) parts += "reading it raises " + b.skill.keys.joinToString(" and ")
             ops.teaching(b.id)?.let { parts += "finishing it teaches you $it" }
         }
         // What it's for. When it's what a locked activity is missing, say so and what that activity gives.

@@ -37,7 +37,7 @@
             "additionalProperties": {
               "type": "number"
             },
-            "description": "Skill to how much studying one chapter raises it."
+            "description": "Skill to how much reading one new chapter raises it."
           },
           "teaches": {
             "type": "array",
@@ -55,7 +55,7 @@
         ],
         "additionalProperties": false
       },
-      "description": "What the readable items are as books: chapters (one a session), skills studying raises, and what finishing one teaches."
+      "description": "What the readable items are as books: chapters (one a session), skills reading raises, and what finishing one teaches."
     }
   },
   "required": [],

@@ -68,3 +68,4 @@ these hold the outcome. Skim this index before related changes.
 - 2026-10-31 [Watchability: books wear as one habit; the app runs quiet stretches faster](2026-10-31-watchability-books-wear-as-one-quiet-stretches-run-faster.md)
 - 2026-11-01 [Jev walks a menu tree by beam search instead of picking from one flat list](2026-11-01-jev-walks-a-menu-tree-by-beam-search.md)
 - 2026-11-01 [Asking happens while he thinks; there is no ask verb](2026-11-01-asking-happens-while-he-thinks.md)
+- 2026-11-01 [One read verb: a new chapter raises the book's skill; there is no study](2026-11-01-one-read-verb-no-study.md)

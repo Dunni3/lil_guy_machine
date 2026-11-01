@@ -1,8 +1,8 @@
 # yaml-language-server: $schema=schema/library.schema.json
 # What the readable items are as books. `id` is the item (items.yaml has its price and qualities).
 # He reads a book a chapter a session, so it takes as many sessions as it has chapters; each
-# chapter is a sentence of what happens in it, which goes into what he remembers. Studying a
-# chapter raises each `skill` by its number. Finishing the last chapter teaches him `teaches`: verb
+# chapter is a sentence of what happens in it, which goes into what he remembers. Reading a
+# new chapter raises each `skill` by its number. Finishing the last chapter teaches him `teaches`: verb
 # and item ids that aren't in his world until then (the shop doesn't list them, and he can't do them).
 
 books:

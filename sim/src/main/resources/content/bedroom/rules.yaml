@@ -34,7 +34,7 @@ night:
 # runs 0 to 1) and fades `recover_per_hour`. Its mood and stimulation gains are paid at 1 - wear, and
 # finishing one that was already worn costs `stale_stimulation` times the wear. Routine verbs
 # (eating, sleeping, selling, hanging) don't wear. A verb with arguments wears per item, so each
-# record is its own, unless it says `wear: verb` (reading and studying: any book wears the verb).
+# record is its own, unless it says `wear: verb` (reading: any book wears the verb).
 habituation:
   per_repeat: 0.25
   recover_per_hour: 0.015

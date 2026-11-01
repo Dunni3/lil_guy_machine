@@ -63,7 +63,7 @@ class ReadingHandler(
             ?: call.obs.books.orEmpty().firstOrNull()?.id
         val book = call.obs.books.orEmpty().firstOrNull { it.id == id }
         val title = book?.title ?: id ?: "a book"
-        val thought = reader.read(call.persona, title, book?.next, progress?.study == true, call.obs.tick, call.obs.clock?.day, call.obs.clock?.time)
+        val thought = reader.read(call.persona, title, book?.next, call.obs.tick, call.obs.clock?.day, call.obs.clock?.time)
         onRead(thought)
         return title to thought
     }

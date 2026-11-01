@@ -247,24 +247,15 @@ data class EnjoyOp(val what: String) : Op() {
 
 /**
  * Reads the next chapter of the book bound to [book] (an argument slot), when the item is a book
- * ([BookSpec]). [study]: studying it, which raises the book's skills and needs a chapter left to
- * study; reading a finished book again rereads it, with no progress. Finishing the last chapter
- * teaches him what the book teaches.
+ * ([BookSpec]), which raises the book's skills; reading a finished book again rereads it, with no
+ * progress and no skill. Finishing the last chapter teaches him what the book teaches.
  */
-data class ProgressOp(val book: String, val study: Boolean = false) : Op() {
+data class ProgressOp(val book: String) : Op() {
     override val key get() = "progress"
 
     override fun problems(c: BedroomContent, verb: VerbSpec) = if (book in verb.args) emptyList() else listOf("progress names '$book', which isn't an argument of this verb")
 
-    override fun lockReason(w: OpWorld, b: Bound): String? {
-        if (!study) return null
-        val id = b.args[book] ?: return null
-        val spec = w.content.book(id) ?: return "the ${w.item(id).name} is no book to study"
-        if (spec.skill.isEmpty()) return "there's nothing to study in \"${spec.title}\"; read it instead"
-        return if (w.chaptersRead(id) >= spec.chapters.size) "you've finished \"${spec.title}\"" else null
-    }
-
-    override fun finish(w: OpWorld, b: Bound) = b.args[book]?.let { w.readChapter(it, study) }.orEmpty()
+    override fun finish(w: OpWorld, b: Bound) = b.args[book]?.let { w.readChapter(it) }.orEmpty()
 
     override fun describe(w: OpWorld, b: Bound, forSale: Boolean): List<String> {
         val id = b.args[book] ?: return emptyList()
@@ -274,7 +265,7 @@ data class ProgressOp(val book: String, val study: Boolean = false) : Op() {
         val next = read + 1
         return listOfNotNull(
             "chapter $next of ${spec.chapters.size} of \"${spec.title}\"",
-            if (study) spec.skill.entries.joinToString { (skill, d) -> "$skill skill ${signed(d)}" } else null,
+            spec.skill.entries.joinToString { (skill, d) -> "$skill skill ${signed(d)}" }.ifEmpty { null },
             w.teaching(id)?.takeIf { next == spec.chapters.size }?.let { "finishing it teaches you $it" },
         )
     }
@@ -313,7 +304,7 @@ internal interface OpWorld {
     fun chaptersRead(book: String): Int
 
     /** Reads the next chapter of [book] ([ProgressOp]); returns the event's parts. */
-    fun readChapter(book: String, study: Boolean): List<String>
+    fun readChapter(book: String): List<String>
 
     /** "to paint, and about the easel and canvas": what finishing [book] would teach him that he doesn't know; null for nothing. */
     fun teaching(book: String): String?
@@ -422,7 +413,7 @@ internal data class OpEntry(
 
     @Serializable
     @SerialName("progress")
-    data class Progress(val book: String, val study: Boolean = false)
+    data class Progress(val book: String)
 
     @Serializable
     @SerialName("set_state")
@@ -441,7 +432,7 @@ internal data class OpEntry(
         val set = listOfNotNull(
             need?.let(::NeedOp), rate?.let(::RateOp), consume?.let(::ConsumeOp), produce?.let(::ProduceOp), sell?.let(::SellOp),
             setState?.let { SetStateOp(it.target, it.state) }, background?.let { BackgroundOp(it.name, it.minutes, it.rates) },
-            sleep?.let { SleepOp }, enjoy?.let(::EnjoyOp), hear?.let(::HearOp), progress?.let { ProgressOp(it.book, it.study) }, practice?.let(::PracticeOp),
+            sleep?.let { SleepOp }, enjoy?.let(::EnjoyOp), hear?.let(::HearOp), progress?.let { ProgressOp(it.book) }, practice?.let(::PracticeOp),
             write?.let { WriteOp(it.with, it.into, it.timing, it.showsAs, it.optional) }, draw?.let(::DrawOp),
         )
         require(set.size == 1) { "an effect is one op, such as `- need: { mood: 2 }`; this one has ${if (set.isEmpty()) "none" else set.joinToString { it.key }}" }
@@ -460,7 +451,7 @@ internal data class OpEntry(
             SleepOp -> OpEntry(sleep = NoParams())
             is EnjoyOp -> OpEntry(enjoy = op.what)
             is HearOp -> OpEntry(hear = op.background)
-            is ProgressOp -> OpEntry(progress = Progress(op.book, op.study))
+            is ProgressOp -> OpEntry(progress = Progress(op.book))
             is PracticeOp -> OpEntry(practice = op.gains)
             is WriteOp -> OpEntry(write = Write(op.with, op.into, op.timing, op.showsAs, op.optional))
             is DrawOp -> OpEntry(draw = op.what)

@@ -12,7 +12,7 @@ class BedroomWorldTest {
     private val tier1 = setOf(
         "canvas", "easel", "record_player", "jazz_record", "ambient_record", "folk_record", "novel", "poetry_book",
         "field_guide", "painting", "paint", "read", "listen", "play_record",
-        "study", "drawing_book", "music_book", "guitar", "play_guitar",
+        "drawing_book", "music_book", "guitar", "play_guitar",
     ) + BedroomContent.default().items.filter { it.group == "decor" }.map { it.id }
     /** Books here teach nothing, so painting and the guitar are there from the start; [shipped] is the file as it is. */
     private val content = BedroomContent.default().let { c ->
@@ -353,7 +353,7 @@ class BedroomWorldTest {
     }
 
     @Test
-    fun `a book is read a chapter a session, studying raises its skill, and finishing it teaches what it hid`() {
+    fun `a book is read a chapter a session, each new chapter raises its skill, and finishing it teaches what it hid`() {
         val w = BedroomWorld.create(shipped.copy(start = shipped.start.copy(money = 500)))
         assertTrue(w.obs().activities!!.none { it.id == "paint" } && w.obs().shop!!.none { it.id == "easel" }, "painting is unknown until learned")
         assertTrue("isn't for sale" in failure(w.run(Intent.Buy("easel"))))
@@ -365,21 +365,22 @@ class BedroomWorldTest {
         assertEquals("the drawing book, \"Drawing What You See\"", life.verbs.first { it.id == "paint" }.taughtBy)
 
         w.run(Intent.Buy("drawing_book"))
-        assertTrue("chapter 1 of 4 of \"Drawing What You See\"; art skill +0.5" in w.activity("study").gives!!, w.activity("study").gives)
-        repeat(3) { assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("study", what = "drawing_book")).status) }
+        assertTrue("chapter 1 of 4 of \"Drawing What You See\"; art skill +0.5" in w.activity("read").gives!!, w.activity("read").gives)
+        repeat(3) { assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("read", what = "drawing_book")).status) }
         assertEquals(1.5, w.obs().skills!!["art"])
-        assertEquals(3, w.snapshot().life!!.done["study"]?.count)
+        assertEquals(3, w.snapshot().life!!.done["read"]?.count)
         assertEquals(BookView("drawing_book", "Drawing What You See", 3, 4, listOf("art"), "to paint, and about the easel and the canvas", shipped.book("drawing_book")!!.chapters[3]), w.obs().books!!.single())
         w.run(Intent.Do("read", what = "drawing_book"))
         val done = w.obs().recentEvents.last()
         assertTrue("chapter 4 of 4" in done && "finished \"Drawing What You See\", you learned to paint, and about the easel and the canvas" in done, done)
-        assertEquals(1.5, w.obs().skills!!["art"], "reading is for the story; studying raises the skill")
+        assertEquals(2.0, w.obs().skills!!["art"])
 
-        assertEquals("you've finished \"Drawing What You See\"", w.activity("study").locked)
         assertTrue("rereads" in w.activity("read").gives!!)
-        // Painting is in his world now, and his art skill raises what a piece sells for: $30 at 1.5 is $37.
+        w.run(Intent.Do("read", what = "drawing_book"))
+        assertEquals(2.0, w.obs().skills!!["art"], "rereading a finished book raises nothing")
+        // Painting is in his world now, and his art skill raises what a piece sells for: $30 at 2.0 is $39.
         assertEquals("needs an easel ($17)", w.activity("paint").locked)
-        assertEquals("for paint (3h: 1 painting, sells for $37; uses a canvas), which also needs a canvas ($15)", w.obs().shop!!.first { it.id == "easel" }.gives)
+        assertEquals("for paint (3h: 1 painting, sells for $39; uses a canvas), which also needs a canvas ($15)", w.obs().shop!!.first { it.id == "easel" }.gives)
         assertTrue(w.knownContent().verb("paint") != null && shipped.known(emptySet()).verb("paint") == null)
         assertEquals(null, w.snapshot().life!!.catalog.first { it.id == "easel" }.taughtBy)
     }
