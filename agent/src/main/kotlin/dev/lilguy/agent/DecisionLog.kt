@@ -1,5 +1,7 @@
 package dev.lilguy.agent
 
+import dev.lilguy.agent.memory.Answer
+
 import dev.lilguy.agent.art.Drawing
 import dev.lilguy.decision.ActionSchema
 import dev.lilguy.decision.Capabilities
@@ -110,6 +112,30 @@ data class ArtLogEntry(
     }
 }
 
+/** A question he asked about how his world works and its answer, logged between the decisions, marked `"kind": "answer"`. */
+@Serializable
+data class AnswerLogEntry(
+    val kind: String = KIND,
+    val run: String,
+    val answerer: String,
+    val tick: Long,
+    val day: Int?,
+    val time: String?,
+    val question: String,
+    /** The doc sections the oracle opened to answer it. */
+    val opened: List<String>,
+    val answer: String?,
+    val raw: String?,
+    @SerialName("latency_ms") val latencyMs: Long,
+    @SerialName("prompt_tokens") val promptTokens: Int,
+    @SerialName("completion_tokens") val completionTokens: Int,
+    val error: String? = null,
+) {
+    companion object {
+        const val KIND = "answer"
+    }
+}
+
 @Serializable
 data class LoggedAttempt(val raw: String, val error: String? = null)
 
@@ -122,6 +148,19 @@ class DecisionLog(val file: File, private val run: String, private val model: St
     private val out = file.also { it.parentFile?.mkdirs() }.bufferedWriter()
 
     fun write(record: AgentRuntime.DecisionRecord) = append(json.encodeToString(DecisionLogEntry.serializer(), entryOf(run, model, record)))
+
+    /** Answers go in the same file, marked `"kind": "answer"`. */
+    fun write(a: Answer) = append(
+        json.encodeToString(
+            AnswerLogEntry.serializer(),
+            a.reply.let { r ->
+                AnswerLogEntry(
+                    run = run, answerer = r.thinker, tick = r.tick, day = r.day, time = r.time, question = a.question, opened = a.opened, answer = r.text, raw = r.raw,
+                    latencyMs = r.latency.inWholeMilliseconds, promptTokens = r.usage.promptTokens, completionTokens = r.usage.completionTokens, error = r.error,
+                )
+            },
+        ),
+    )
 
     /** Drawings go in the same file, marked `"kind": "art"`. */
     fun write(d: Drawing) = append(

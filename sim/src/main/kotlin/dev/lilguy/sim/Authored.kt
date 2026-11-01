@@ -28,13 +28,14 @@ sealed interface AuthoredOp {
             "thought" to setOf("events", "short_term"),
             "reading" to setOf("events"),
             "draw" to setOf("pieces", "events"),
+            "answer" to setOf("events", "short_term"),
         )
 
         /** Where results can go: his event stream, short-term memory, and the sim's art pieces. */
         val DESTINATIONS = listOf("events", "short_term", "pieces")
 
-        /** How a short-term result can show in later prompts. */
-        val SHOWS_AS = listOf("plan")
+        /** How a short-term result can show in later prompts: as his plan, or among what he found out by asking. */
+        val SHOWS_AS = listOf("plan", "answer")
     }
 }
 

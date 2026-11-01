@@ -24,6 +24,8 @@ enum class TokenPurpose {
     @SerialName("think") Think,
     /** What stuck with him from a chapter. */
     @SerialName("reading") Reading,
+    /** Asking how his world works: the pick of a question and its answer. */
+    @SerialName("ask") Ask,
     /** A memory: a stretch of events (level 1) or a day (level 2). */
     @SerialName("summary") Summary,
     /** A drawing, or the day's commission. */

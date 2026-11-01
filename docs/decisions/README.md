@@ -64,3 +64,4 @@ these hold the outcome. Skim this index before related changes.
 - 2026-10-31 [Music starts with a record; listen hears whatever is playing (the `hear` op)](2026-10-31-listen-hears-what-is-playing.md)
 - 2026-10-31 [A commission pays for a piece that drew its noun's shape; the drawing reports what it shows](2026-10-31-commissions-are-judged-by-the-shape-drawn.md)
 - 2026-10-31 [No dead ends: a free floor under hunger, and a verb isn't offered when it would stop at once](2026-10-31-no-dead-ends-there-is-always-a-way-back-to-food.md)
+- 2026-10-31 [The world is discovered as he goes: the shop holds back what he can't use yet, and he can ask how things work](2026-10-31-the-world-is-discovered-by-asking-and-the-shop-holds-back.md)

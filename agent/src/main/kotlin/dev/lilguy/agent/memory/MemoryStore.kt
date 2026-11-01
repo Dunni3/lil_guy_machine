@@ -53,7 +53,10 @@ enum class EventKind(val id: String) {
     Art("art"),
 
     /** What stuck with him from a chapter he read, in his own words. */
-    Reading("reading");
+    Reading("reading"),
+
+    /** A question he asked about how his world works, and the answer. */
+    Answer("answer");
 
     companion object {
         fun of(id: String): EventKind = entries.first { it.id == id }

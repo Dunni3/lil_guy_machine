@@ -60,6 +60,7 @@ class PromptBuilder(
      * [closedChoice] adds the same decision as a set of options, for models that pick. [memories]
      * are what long-term memory recalled for this decision (memories and earlier thoughts);
      * [thought] is his latest thought ("stamp: text"), shown until the next one replaces it.
+     * [found] is what he found out by asking how his world works, his latest answers ("stamp: I asked ...: ...").
      */
     fun build(
         obs: Observation,
@@ -67,6 +68,7 @@ class PromptBuilder(
         closedChoice: Boolean = false,
         memories: List<String> = emptyList(),
         thought: String? = null,
+        found: List<String> = emptyList(),
     ): DecisionRequest {
         val history = recent.joinToString("\n") { e ->
             "${stamp(e.tick)}: ${json.encodeToString(Intent.serializer(), e.intent)} -> ${e.result?.let(::describe) ?: "running"}" +
@@ -83,6 +85,10 @@ class PromptBuilder(
                 appendLine(THOUGHT_HEADER)
                 appendLine("- $thought")
             }
+            if (found.isNotEmpty()) {
+                appendLine(FOUND_HEADER)
+                found.forEach { appendLine("- $it") }
+            }
             if (history.isNotEmpty()) {
                 appendLine("Your recent actions, oldest first:")
                 appendLine(history)
@@ -93,12 +99,12 @@ class PromptBuilder(
             system = system,
             messages = listOf(Message(Message.Role.User, user)),
             timeout = timeout,
-            choices = if (closedChoice) choices(obs, recent)?.let { withRecall(it, memories, thought, self()) } else null,
+            choices = if (closedChoice) choices(obs, recent)?.let { withRecall(it, memories, thought, self(), found) } else null,
         )
     }
 
     /** Adds how he sees himself, what he remembers and his latest thought to the state a picking model judges the options against. */
-    private fun withRecall(set: ChoiceSet, memories: List<String>, thought: String?, self: String?): ChoiceSet {
+    private fun withRecall(set: ChoiceSet, memories: List<String>, thought: String?, self: String?, found: List<String>): ChoiceSet {
         var state = set.state
         var instructions = set.instructions
         if (self != null) {
@@ -113,6 +119,10 @@ class PromptBuilder(
             state = JsonObject(state + ("latest_thought" to JsonPrimitive(thought)))
             instructions += " `state.latest_thought` is what he decided the last time he stopped to think: his plan for now. Unless his needs won't allow it, choose what carries that plan forward."
         }
+        if (found.isNotEmpty()) {
+            state = JsonObject(state + ("found_out" to JsonArray(found.map(::JsonPrimitive))))
+            instructions += " `state.found_out` is what he found out lately by asking how his world works: questions he asked and their answers, oldest first."
+        }
         return set.copy(state = state, instructions = instructions)
     }
 
@@ -120,6 +130,7 @@ class PromptBuilder(
         private const val OBSERVATION_HEADER = "Observation:"
         const val MEMORY_HEADER = "What you remember from earlier (memories, and thoughts you had), oldest first:"
         const val THOUGHT_HEADER = "What you decided the last time you stopped to think (your plan for now):"
+        const val FOUND_HEADER = "What you found out lately by asking how your world works, oldest first:"
         private const val ASK = "Choose your next action."
 
         /** The user message of [request] without the closing ask: his situation, for authored ops. */

@@ -66,6 +66,11 @@ class AgentMemory(
     val studio: ArtStudio? = null,
     /** Writes what stuck with him from each chapter; reading works without it. */
     private val reader: Reader? = null,
+    /** Writes the question when he asks how his world works; with [oracle], which answers it. Without both, ask isn't offered. */
+    private val questioner: Questioner? = null,
+    private val oracle: Oracle? = null,
+    /** Every answer, kept or not; called from whichever coroutine wrote it. */
+    private val onAnswer: (Answer) -> Unit = {},
 ) {
     /** What authored ops are written from: who he is, his state in the decision prompt's words, and that prompt's system message. */
     class Brief(val persona: String, val situation: String, val system: String)
@@ -93,6 +98,9 @@ class AgentMemory(
     /** Kept thoughts, with their event ids: recall candidates. */
     private val keptThoughts = CopyOnWriteArrayList<Pair<Long, Thought>>()
 
+    /** Kept answers (`shows_as: answer`), oldest first. */
+    private val keptAnswers = CopyOnWriteArrayList<Answer>()
+
     /** His latest kept thought shown as his plan (`shows_as: plan`), or null. */
     @Volatile var plan: Thought? = null
         private set
@@ -104,6 +112,7 @@ class AgentMemory(
         if (thinker != null) handlers += ThoughtHandler(thinker, store, run, onThought = { t -> thoughtLog += t }, onPlan = { t -> plan = t }, onStored = { id, t -> keptThoughts += id to t })
         if (studio != null) handlers += studio
         if (reader != null) handlers += ReadingHandler(reader, store, run)
+        if (questioner != null && oracle != null) handlers += AnswerHandler(questioner, oracle, store, run, onAnswer) { a -> keptAnswers += a }
         return Authors(handlers, scope)
     }
 
@@ -152,9 +161,13 @@ class AgentMemory(
     fun connect(world: BedroomWorld) {
         authors.connect(world)
         studio?.connect(world)
+        oracle?.connect(world)
         restVerbs = world.content.verbs.filter { v -> v.effects.any { it is SleepOp } }.map { it.id }.toSet()
         about = world.content.personality.core.he
     }
+
+    /** His latest [n] kept answers, oldest first: what later prompts show of what he found out. Readable from any thread. */
+    fun answers(n: Int = SHOWN_ANSWERS): List<Answer> = keptAnswers.toList().takeLast(n)
 
     /** Every thought so far, failed ones included, oldest first. Readable from any thread. */
     fun thoughts(): List<Thought> = thoughtLog.toList()
@@ -345,5 +358,8 @@ class AgentMemory(
     private companion object {
         /** Most events scored for significance in one request. */
         const val SCORE_BATCH = 200
+
+        /** How many of his latest answers each prompt shows. */
+        const val SHOWN_ANSWERS = 2
     }
 }

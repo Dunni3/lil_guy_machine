@@ -15,7 +15,10 @@ import dev.lilguy.agent.TokenPurpose
 import dev.lilguy.agent.TokenReport
 import dev.lilguy.agent.TokenTotals
 import dev.lilguy.agent.memory.AgentMemory
+import dev.lilguy.agent.memory.Answer
 import dev.lilguy.agent.memory.InMemoryStore
+import dev.lilguy.agent.memory.Oracle
+import dev.lilguy.agent.memory.Questioner
 import dev.lilguy.agent.art.ArtStudio
 import dev.lilguy.agent.art.CommissionVoice
 import dev.lilguy.agent.art.Drawing
@@ -298,6 +301,13 @@ fun main(argv: Array<String>) {
                 },
                 thinker = writerModel?.let { Thinker(ledger.meter(it, TokenPurpose.Think, priceOf(writerEndpoint!!))) },
                 reader = writerModel?.takeIf { scenario == Scenario.Bedroom }?.let { Reader(ledger.meter(it, TokenPurpose.Reading, priceOf(writerEndpoint!!))) },
+                // Asking: the writer writes his question, and the oracle (the writer again) searches the world's docs and answers.
+                questioner = writerModel?.takeIf { scenario == Scenario.Bedroom }?.let { Questioner(ledger.meter(it, TokenPurpose.Ask, priceOf(writerEndpoint!!))) },
+                oracle = writerModel?.takeIf { scenario == Scenario.Bedroom }?.let { Oracle(ledger.meter(it, TokenPurpose.Ask, priceOf(writerEndpoint!!))) },
+                onAnswer = { a ->
+                    log?.write(a)
+                    if (!quiet) printAnswer(a)
+                },
             )
         }
         try {
@@ -481,6 +491,12 @@ private fun printDrawing(d: Drawing) {
     val what = if (d.artwork == null) "FAILED: ${d.error} (after ${d.calls} picks)" else "${d.item} ${d.piece ?: "?"} \"${d.title}\" (${d.tags.joinToString()}; shows ${d.shows ?: "no subject"}; ${d.ops} ops in ${d.calls} picks, ${d.latency.inWholeSeconds}s)"
     println("%s  drew %s".format(stamp, what))
     d.artwork?.letters()?.forEach { println("        $it") }
+}
+
+private fun printAnswer(a: Answer) {
+    val r = a.reply
+    val stamp = if (r.day != null) "d%2d %s".format(r.day, r.time) else "t=%4d".format(r.tick)
+    println("%s  asked \"%s\" (opened %s): %s".format(stamp, a.question, a.opened.joinToString(), r.text ?: "FAILED: ${r.error}"))
 }
 
 private fun printSelf(r: SelfRevision) {

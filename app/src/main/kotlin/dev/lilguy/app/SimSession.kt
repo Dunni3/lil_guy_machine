@@ -8,6 +8,8 @@ import dev.lilguy.agent.TokenPurpose
 import dev.lilguy.agent.art.ArtStudio
 import dev.lilguy.agent.art.CommissionVoice
 import dev.lilguy.agent.art.Painter
+import dev.lilguy.agent.memory.Oracle
+import dev.lilguy.agent.memory.Questioner
 import dev.lilguy.agent.memory.AgentMemory
 import dev.lilguy.agent.memory.InMemoryStore
 import dev.lilguy.agent.memory.MemoryScorer
@@ -261,6 +263,10 @@ class SimSession(
             onSelf = { r -> if (run == thisRun && r.error != null) writerError = "self-model: ${r.error}" },
             thinker = jw?.let { Thinker(ledger.meter(it, TokenPurpose.Think, setup.prices.writer)) }, studio = studio,
             reader = jw?.takeIf { setup.scenario == Scenario.Bedroom }?.let { Reader(ledger.meter(it, TokenPurpose.Reading, setup.prices.writer)) },
+            // Asking: the writer writes his question, and the oracle (the writer again) searches the world's docs and answers.
+            questioner = jw?.takeIf { setup.scenario == Scenario.Bedroom }?.let { Questioner(ledger.meter(it, TokenPurpose.Ask, setup.prices.writer)) },
+            oracle = jw?.takeIf { setup.scenario == Scenario.Bedroom }?.let { Oracle(ledger.meter(it, TokenPurpose.Ask, setup.prices.writer)) },
+            onAnswer = { a -> runCatching { runLog?.write(a) } },
         )
         val (gw, r) = setup.scenario.create(m, setup.timeout, settings.ticksPerMinute, longTerm = memory, startItems = setup.startItems) {
             runCatching { runLog?.write(it) }

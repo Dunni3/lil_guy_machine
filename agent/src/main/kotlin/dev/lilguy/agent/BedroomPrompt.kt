@@ -162,6 +162,17 @@ object BedroomPrompt {
     }
 
     /**
+     * "- Asking: ask stops you where you are for 10 min ...", for the verb that finds things out
+     * (`shows_as: answer`), or null when he has none.
+     */
+    private fun askHint(content: BedroomContent): String? {
+        val v = content.verbs.firstOrNull { it.ops<WriteOp>().any { w -> w.showsAs == "answer" } } ?: return null
+        val time = v.minutes?.let { " for ${GameClock.duration(it)}" }.orEmpty()
+        val again = if (v.noRepeat) " You can't ${v.id} twice in a row." else ""
+        return "- Asking: ${v.id} stops you where you are$time to ask how something in your world works, and someone who knows its workings answers: how to get to something you can't do yet, what something is for, what you haven't tried. There's more to your world than you can see from here; your latest answers show below the observation.$again"
+    }
+
+    /**
      * "- Thinking: think stops you where you are ... Every 4 decisions you also stop to think on your
      * own.", for the verb that writes his plan, or null when he has none.
      */
@@ -219,6 +230,7 @@ object BedroomPrompt {
             learningHint(content),
             artHint(content),
             reflectionHint(content),
+            askHint(content),
             "- $lists",
             "- Nothing ends the game. An action that can't be done fails at once, and lastResult says why. Read it and choose something else rather than repeating it.",
         ).joinToString("\n")

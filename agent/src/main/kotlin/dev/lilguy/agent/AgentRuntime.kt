@@ -96,7 +96,9 @@ class AgentRuntime(
             val recalled = longTerm?.recall(obs).orEmpty()
             // His latest kept thought, shown in every prompt until the next one replaces it.
             val plan = longTerm?.plan?.let { t -> t.text?.let { "${prompts.stampOf(t.tick)}: $it" } }
-            val request = prompts.build(obs, memory.recent(), closedChoice = model.capabilities.closedChoice, memories = recalled, thought = plan)
+            // His latest answers from asking how his world works.
+            val found = longTerm?.answers().orEmpty().map { a -> "${prompts.stampOf(a.tick)}: I asked \"${a.question}\": ${a.reply.text}" }
+            val request = prompts.build(obs, memory.recent(), closedChoice = model.capabilities.closedChoice, memories = recalled, thought = plan, found = found)
             val schema = schemaFor(obs)
             val started = TimeSource.Monotonic.markNow()
             decidingSince = started
