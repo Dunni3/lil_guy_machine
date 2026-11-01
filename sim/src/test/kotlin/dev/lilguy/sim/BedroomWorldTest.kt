@@ -345,6 +345,13 @@ class BedroomWorldTest {
             w.step()
             assertTrue(w.tick - since < w.clock.ticks(6 * 60), "still locked 6h later: ${w.activity("sketch").locked}")
         }
+
+        // Broke, work stays open however bored he is: it's his way to the money for something new.
+        val broke = world(money = 0, needs = NeedLevels(80, 70, 50, stimulation = 10))
+        repeat(3) { broke.run(Intent.Do("sketch")) }
+        val sketch = broke.activity("sketch")
+        assertNull(sketch.locked)
+        assertTrue("you're bored of it, but you can't afford anything new yet" in sketch.gives!!, sketch.gives)
     }
 
     @Test

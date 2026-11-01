@@ -17,6 +17,12 @@ in mood. Ian wants boredom to stop him from doing things, and buying things to b
   `worn` or more (0.5) is locked: "you're bored, and
   you've done it a lot lately (gains at 40%, stimulation 6)". It's out of Jev's choice set, and the
   world refuses it from any model. It unlocks when he's less bored or the wear fades.
+- **Work stays open while he can't afford anything new.** Buying something new is the way out of
+  boredom and work is the way to the money, so boredom never locks `work` verbs while the shop has
+  nothing new to him that he can afford (a thing for the room he likes, or something for a verb he
+  hasn't done). The option says "you're bored of it, but you can't afford anything new yet, so you
+  keep at it". Seen on the TV (`app-bedroom-20261101-151847`): with sketching and his one book both
+  locked and $2 left, he could only eat, shop, sleep and think for three hours.
 - **What never locks:** routine verbs, verbs that feed energy or fullness (the oats and sleep stay
   open, so `no-dead-ends` still holds), and verbs with no mood or stimulation gains (think). A verb
   that wears per item (each record) is judged per item.

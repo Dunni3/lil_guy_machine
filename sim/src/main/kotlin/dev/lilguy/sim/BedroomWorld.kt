@@ -414,14 +414,27 @@ class BedroomWorld private constructor(
         return (gains(Need.Mood) || gains(Need.Stimulation)) && !gains(Need.Energy) && !gains(Need.Fullness)
     }
 
-    /** Why boredom refuses [a] now, or null. Unbound (null [args]), a verb that wears per item leaves it to each binding. */
-    private fun boredLock(a: VerbSpec, args: Map<String, String>?): String? {
+    /** [a]'s freshness when he's bored and it's worn past [BoredLock.worn], or null. Unbound (null [args]), a verb that wears per item leaves it to each binding. */
+    private fun boredOf(a: VerbSpec, args: Map<String, String>?): Double? {
         val lock = content.habituation?.boredLock ?: return null
         if (needs[Need.Stimulation] >= lock.below || !boring(a)) return null
         if (args == null && a.args.isNotEmpty() && a.wear != Wear.Verb) return null
-        val fresh = freshness(a, args.orEmpty())
-        if (1 - fresh < lock.worn) return null
+        return freshness(a, args.orEmpty()).takeIf { 1 - it >= lock.worn }
+    }
+
+    /**
+     * Why boredom refuses [a] now, or null. Work stays open while he can't afford anything new, since
+     * buying something new is the way out of boredom and work is the way to the money.
+     */
+    private fun boredLock(a: VerbSpec, args: Map<String, String>?): String? {
+        val fresh = boredOf(a, args) ?: return null
+        if (a.work && !canAffordNew()) return null
         return "you're bored, and you've done it a lot lately (gains at ${percent(fresh)}, stimulation ${needs.level(Need.Stimulation)})"
+    }
+
+    /** Whether the shop has something new to him that he can afford: a thing for the room he likes, or something for a verb he hasn't done. */
+    private fun canAffordNew(): Boolean = shopItems().any { spec ->
+        heldBack(spec) == null && ledger.canAfford(spec.price!!) && (newThingRate(spec) > 0 || usesOf(spec).any { isNew(it) })
     }
 
     /** What [spec], bought at [since], feeds stimulation an hour now ([NewThings]): 0 out of sight, once it's old, or if he doesn't like it. */
@@ -905,6 +918,8 @@ class BedroomWorld private constructor(
             parts += "done a lot lately: gains at ${percent(fresh)}" + if (stale < 0) ", and stimulation $stale" else ""
         }
         if (isNew(a, args)) parts += "new to you: " + novelty().entries.joinToString { (need, d) -> "$need ${signed(d.roundToInt().toDouble())}" }
+        // Offered while bored of it: only work, while he can't afford anything new.
+        if (boredOf(a, args) != null) parts += "you're bored of it, but you can't afford anything new yet, so you keep at it"
         return parts.joinToString("; ")
     }
 
