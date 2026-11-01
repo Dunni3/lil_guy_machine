@@ -46,7 +46,7 @@ object ContentDocs {
         "rate" to OpDoc("rate: { energy: 12 }", "each minute", "Changes needs per game hour while the verb runs, scaled the same way. An `until` on a need needs a rate for it."),
         "consume" to OpDoc("consume: { edible: 1 }", "at the finish", "Uses up items, by id or affordance; locked while he has too few."),
         "produce" to OpDoc("produce: { sketch: 1 }", "at the finish", "Makes items. A drawable item made this way is drawn by the drawing model."),
-        "sell" to OpDoc("sell: sellable", "at the finish", "Sells everything carried that answers to the name, at each item's `sellable` price, plus any commission reward."),
+        "sell" to OpDoc("sell: sellable", "at the finish", "Sells everything carried that answers to the name, at each item's `sellable` price (plus `price_per_level` a level of its skill when the piece was made), plus any commission reward."),
         "basket" to OpDoc("basket: { most: 3 }", "at the finish", "A shopping trip's checkout: buys up to `most` of what the trip's `write: { with: shopping, timing: before }` picked, in order, each checked as a buy is (held back, owned, too dear), and remembers what he said he's saving for. Its option says how much of the catalog he could buy now and how close he is to what he's saving for."),
         "set_state" to OpDoc("set_state: { target: hangable, state: hung }", "at the finish", "Puts his newest held piece answering to the target into a state. The one state is `hung`: on the picture rail, adding the gallery's comfort."),
         "background" to OpDoc("background: { name: music, minutes: 45, rates: { mood: 2 } }", "at the finish, then each minute", "Starts something that keeps going while he does anything else, playing the item bound to `what`."),
@@ -216,7 +216,9 @@ object ContentDocs {
             listOf("Affordance", "Parameters", "Items", "Asked for by"),
             c.vocabulary.affords.map { a ->
                 listOf(
-                    code(a), Affordance.PARAMS[a]?.entries?.joinToString(", ") { (p, r) -> "$p ${r.first}–${r.last}" }.orEmpty(),
+                    code(a),
+                    (Affordance.PARAMS[a].orEmpty().map { (p, r) -> "$p ${r.first}–${r.last}" } +
+                        Affordance.OPTIONAL[a].orEmpty().map { (p, r) -> "$p (optional${r?.let { " ${it.first}–${it.last}" }.orEmpty()})" }).joinToString(", "),
                     c.items.filter { a in it.affords }.joinToString(" ") { code(it.id) },
                     verbs.filter { v -> a in v.requires || a in v.args.values || v.effects.any { op -> a in op.asksFor || op.let { o -> o is SellOp && o.what == a || o is SetStateOp && o.target == a } } }.joinToString(" ") { code(it.id) },
                 )

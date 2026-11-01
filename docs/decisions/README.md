@@ -70,3 +70,4 @@ these hold the outcome. Skim this index before related changes.
 - 2026-11-01 [Asking happens while he thinks; there is no ask verb](2026-11-01-asking-happens-while-he-thinks.md)
 - 2026-11-01 [One read verb: a new chapter raises the book's skill; there is no study](2026-11-01-one-read-verb-no-study.md)
 - 2026-11-01 [Everything is bought on a shopping trip](2026-11-01-everything-is-bought-on-a-shopping-trip.md)
+- 2026-11-01 [Art skill pays in dollars and strokes, set per item](2026-11-01-art-skill-pays-in-dollars-and-strokes.md)

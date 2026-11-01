@@ -67,6 +67,11 @@ class BedroomRunTest {
      * The knowledge-and-skill retune (sketch energy 6 to 3, fullness asleep 5 to 2 an hour) left
      * him about 11 spare hours and 4 to 5 sketching; the bounds hold that until a Jev run says
      * whether the economy needs tightening again.
+     *
+     * Art skill paying in dollars ($2 a level on a sketch) means the sketching that feeds him
+     * shrinks as he practises: about 2.6 hours a day over days 2 to 6 (was 4 to 5), with the
+     * spare hours about 13. That's the point (skill buys him time and money for new things), so
+     * the bound records it rather than retuning.
      */
     @Test
     fun `surviving takes part of the day and leaves 8 to 14 spare waking hours`() {
@@ -76,7 +81,7 @@ class BedroomRunTest {
         val spare = (2..6).map { lived.hours[it].orEmpty()["wait"] ?: 0.0 }
         val sketching = (2..6).map { lived.hours[it].orEmpty()["sketch"] ?: 0.0 }
         assertTrue(spare.average() in 8.0..14.0, "spare waking hours a day: $spare")
-        assertTrue(sketching.average() >= 4.0, "sketching hours a day: $sketching")
+        assertTrue(sketching.average() >= 2.0, "sketching hours a day: $sketching")
         val mealPrice = w.content.item("meal")!!.price!!
         val richest = w.ledger.transactions.maxOf { it.balance }
         assertTrue(richest < 2 * mealPrice, "saved up $richest")

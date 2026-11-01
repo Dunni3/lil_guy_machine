@@ -353,6 +353,13 @@ class BedroomWorldTest {
     }
 
     @Test
+    fun `art skill adds dollars to a piece and strokes to its canvas, a whole level at a time, up to its most`() {
+        val sketch = shipped.item("sketch")!!
+        assertEquals(listOf(3, 5, 7, 13), listOf(0.0, 1.0, 2.0, 5.0).map { sketch.priceAt(it) })
+        assertEquals(listOf(6, 6, 8, 12, 16, 16), listOf(0.0, 0.9, 1.0, 3.5, 5.0, 9.0).map { sketch.canvasAt(it)!!.strokes })
+    }
+
+    @Test
     fun `a book is read a chapter a session, each new chapter raises its skill, and finishing it teaches what it hid`() {
         val w = BedroomWorld.create(shipped.copy(start = shipped.start.copy(money = 500)))
         assertTrue(w.obs().activities!!.none { it.id == "paint" } && w.obs().shop!!.none { it.id == "easel" }, "painting is unknown until learned")
@@ -378,9 +385,9 @@ class BedroomWorldTest {
         assertTrue("rereads" in w.activity("read").gives!!)
         w.run(Intent.Do("read", what = "drawing_book"))
         assertEquals(2.0, w.obs().skills!!["art"], "rereading a finished book raises nothing")
-        // Painting is in his world now, and his art skill raises what a piece sells for: $30 at 2.0 is $39.
+        // Painting is in his world now, and his art skill raises what a piece sells for: $30 plus $10 a level at 2.0 is $50.
         assertEquals("needs an easel ($17)", w.activity("paint").locked)
-        assertEquals("for paint (3h: 1 painting, sells for $39; uses a canvas), which also needs a canvas ($15)", w.obs().shop!!.first { it.id == "easel" }.gives)
+        assertEquals("for paint (3h: 1 painting, sells for $50; uses a canvas), which also needs a canvas ($15)", w.obs().shop!!.first { it.id == "easel" }.gives)
         assertTrue(w.knownContent().verb("paint") != null && shipped.known(emptySet()).verb("paint") == null)
         assertEquals(null, w.snapshot().life!!.catalog.first { it.id == "easel" }.taughtBy)
     }
