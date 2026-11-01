@@ -53,16 +53,26 @@ items:
   # wide, up to `colors` crayons and `strokes` strokes, each two picks (which stroke, then which
   # crayon) by the model that decides for him, so strokes is what a piece costs in calls. Painting's
   # bigger canvas is what the easel buys him. Hung art's comfort is the gallery's, since what a piece is like is whatever
-  # he drew. A piece's price grows with his art skill when he made it (`sellable: { skill }`).
+  # he drew. His art skill when he makes a piece pays twice: it sells for `price_per_level` dollars
+  # more a level, and he draws it in `strokes_per_level` more strokes a whole level, up to
+  # `max_strokes` (each stroke two more calls). Reading the drawing book (+2) about doubles a sketch.
   - id: sketch
     name: sketch
     group: art
     carried: true
     stackable: true
-    affords: { sellable: { price: 3, skill: art }, hangable: {}, viewable: {}, drawable: { size: 16, colors: 4, strokes: 6 } }
+    affords:
+      sellable: { price: 3, skill: art, price_per_level: 2 }
+      hangable: {}
+      viewable: {}
+      drawable: { size: 16, colors: 4, strokes: 6, skill: art, strokes_per_level: 2, max_strokes: 16 }
   - id: painting
     name: painting
     group: art
     carried: true
     stackable: true
-    affords: { sellable: { price: 30, skill: art }, hangable: {}, viewable: {}, drawable: { size: 32, colors: 16, strokes: 12 } }
+    affords:
+      sellable: { price: 30, skill: art, price_per_level: 10 }
+      hangable: {}
+      viewable: {}
+      drawable: { size: 32, colors: 16, strokes: 12, skill: art, strokes_per_level: 3, max_strokes: 30 }

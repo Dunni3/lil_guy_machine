@@ -55,12 +55,11 @@ frustration:
   mood: 0.3
 
 # Skills (vocabulary.yaml) have no cap. A verb's mood and stimulation gains grow `gain_per_level`
-# per level of the skills it practises. A piece whose `sellable` names a skill sells for
-# `price_per_level` more per level he had when he made it. A skill that `deepens` a quality adds
-# `affinity_per_level` per level to his affinity for it.
+# per level of the skills it practises. What a skill does for a piece of art (its price and its
+# strokes) is on the item (items.yaml `sellable` and `drawable`). A skill that `deepens` a quality
+# adds `affinity_per_level` per level to his affinity for it.
 skills:
   gain_per_level: 0.1
-  price_per_level: 0.15
   affinity_per_level: 0.25
   deepens: { nature: natural, music: lively }
 

@@ -8,6 +8,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 import java.io.File
+import kotlin.math.roundToInt
 
 /**
  * The bedroom as data: the room, need rules, items and verbs, loaded from the YAML files in
@@ -232,10 +233,10 @@ data class BedroomContent(
         }
         reflection?.let { r -> require(verbs.any { it.id == r.verb } && r.every >= 1) { "reflection: verb '${r.verb}' must be a verb and every at least 1" } }
         val skillNames = vocabulary.skills.toSet()
-        items.forEach { item -> item.affords["sellable"]?.skill?.let { require(it in skillNames) { "item ${item.id}: sellable skill '$it' isn't in vocabulary.skills" } } }
+        items.forEach { item -> item.affords.forEach { (a, p) -> p.skill?.let { require(it in skillNames) { "item ${item.id}: $a skill '$it' isn't in vocabulary.skills" } } } }
         (skills.deepens.keys - skillNames).forEach { throw IllegalArgumentException("skills.deepens names '$it', which isn't in vocabulary.skills") }
         (skills.deepens.values.toSet() - qualities).forEach { throw IllegalArgumentException("skills.deepens names '$it', which isn't in vocabulary.qualities") }
-        require(skills.gainPerLevel >= 0 && skills.pricePerLevel >= 0 && skills.affinityPerLevel >= 0) { "skills: per-level numbers can't be negative" }
+        require(skills.gainPerLevel >= 0 && skills.affinityPerLevel >= 0) { "skills: per-level numbers can't be negative" }
         val bookIds = books.map { it.id }
         require(bookIds.size == bookIds.toSet().size) { "each item can be one book at most: ${bookIds.groupBy { it }.filterValues { it.size > 1 }.keys}" }
         books.forEach { b ->
@@ -325,15 +326,14 @@ data class FrustrationRules(
 /**
  * How skills pay off. A skill is a number from 0 up with no cap, raised by `practice` ops and by
  * studying a book. A verb's mood and stimulation gains grow [gainPerLevel] per level of the skills
- * it practises (the more he can do, the more he gets out of it). A piece whose `sellable` names a
- * skill sells for [pricePerLevel] more per level he had when he made it. A skill that [deepens] a
+ * it practises (the more he can do, the more he gets out of it). What a skill does for a piece
+ * (its price and its strokes) is on the item's `sellable` and `drawable`. A skill that [deepens] a
  * quality adds [affinityPerLevel] per level to his affinity for it: knowing about nature, he gets
  * more out of natural things.
  */
 @Serializable
 data class SkillRules(
     @SerialName("gain_per_level") val gainPerLevel: Double = 0.0,
-    @SerialName("price_per_level") val pricePerLevel: Double = 0.0,
     @SerialName("affinity_per_level") val affinityPerLevel: Double = 0.0,
     val deepens: Map<String, String> = emptyMap(),
 )
@@ -475,10 +475,20 @@ data class AffordanceParams(
     val colors: Int? = null,
     /** drawable: at most this many strokes, each two of the deciding model's picks. */
     val strokes: Int? = null,
-    /** sellable, optional: the skill a piece's price grows with ([SkillRules.pricePerLevel]). */
+    /** sellable and drawable, optional: the skill that raises the price or the strokes, at the level he had when he made the piece. */
     val skill: String? = null,
+    /** sellable, optional: dollars more per level of [skill]. */
+    @SerialName("price_per_level") val pricePerLevel: Int? = null,
+    /** drawable, optional: strokes more per whole level of [skill], up to [maxStrokes]. */
+    @SerialName("strokes_per_level") val strokesPerLevel: Int? = null,
+    /** drawable, optional: the most strokes skill can bring a piece to. */
+    @SerialName("max_strokes") val maxStrokes: Int? = null,
 ) {
-    internal val set: Set<String> get() = listOfNotNull(price?.let { "price" }, size?.let { "size" }, colors?.let { "colors" }, strokes?.let { "strokes" }, skill?.let { "skill" }).toSet()
+    internal val values: Map<String, Int?> get() = mapOf(
+        "price" to price, "size" to size, "colors" to colors, "strokes" to strokes,
+        "price_per_level" to pricePerLevel, "strokes_per_level" to strokesPerLevel, "max_strokes" to maxStrokes,
+    )
+    internal val set: Set<String> get() = values.filterValues { it != null }.keys + listOfNotNull(skill?.let { "skill" })
 }
 
 object Affordance {
@@ -488,14 +498,23 @@ object Affordance {
         "drawable" to mapOf("size" to 4..64, "colors" to 2..32, "strokes" to 1..100),
     )
 
-    /** Parameters an affordance may leave out, which aren't numbers. */
-    val OPTIONAL: Map<String, Set<String>> = mapOf("sellable" to setOf("skill"))
+    /** Parameters an affordance may leave out, with their ranges (null for one that isn't a number). */
+    val OPTIONAL: Map<String, Map<String, IntRange?>> = mapOf(
+        "sellable" to mapOf("skill" to null, "price_per_level" to 0..10_000),
+        "drawable" to mapOf("skill" to null, "strokes_per_level" to 0..100, "max_strokes" to 1..100),
+    )
 
     internal fun problems(affordance: String, p: AffordanceParams): List<String> {
         val wants = PARAMS[affordance].orEmpty()
-        val values = mapOf("price" to p.price, "size" to p.size, "colors" to p.colors, "strokes" to p.strokes)
-        return (p.set - wants.keys - OPTIONAL[affordance].orEmpty()).map { "takes no '$it'" } +
-            wants.mapNotNull { (k, range) -> values[k].let { v -> if (v == null || v !in range) "needs $k from ${range.first} to ${range.last}" else null } }
+        val may = OPTIONAL[affordance].orEmpty()
+        val values = p.values
+        return (p.set - wants.keys - may.keys).map { "takes no '$it'" } +
+            wants.mapNotNull { (k, range) -> values[k].let { v -> if (v == null || v !in range) "needs $k from ${range.first} to ${range.last}" else null } } +
+            may.mapNotNull { (k, range) -> values[k]?.takeIf { range != null && it !in range }?.let { "$k must be from ${range!!.first} to ${range.last}" } } +
+            listOfNotNull(
+                if (p.skill == null && (p.pricePerLevel != null || p.strokesPerLevel != null)) "a per-level number needs a skill" else null,
+                if (p.maxStrokes != null && p.strokes != null && p.maxStrokes < p.strokes) "max_strokes can't be below strokes" else null,
+            )
     }
 }
 
@@ -550,8 +569,23 @@ data class ItemSpec(
     /** The skill its price grows with, if any. */
     val sellSkill: String? get() = affords["sellable"]?.skill
 
-    /** The canvas a drawing model gets, when it's `drawable`. */
-    val canvas: CanvasSpec? get() = affords["drawable"]?.let { CanvasSpec(it.size!!, it.colors!!, it.strokes!!) }
+    /** Dollars more it sells for per level of [sellSkill]. */
+    val pricePerLevel: Int get() = affords["sellable"]?.takeIf { it.skill != null }?.pricePerLevel ?: 0
+
+    /** What one sells for when made at [level] in [sellSkill]: its price plus [pricePerLevel] a level, rounded. */
+    fun priceAt(level: Double): Int? = sellPrice?.let { it + (pricePerLevel * level).roundToInt() }
+
+    /** The canvas a drawing model gets, when it's `drawable`, before any skill adds strokes. */
+    val canvas: CanvasSpec? get() = canvasAt(0.0)
+
+    /** The skill that adds strokes to its canvas, if any. */
+    val drawSkill: String? get() = affords["drawable"]?.skill
+
+    /** The canvas when drawn at [level] in [drawSkill]: `strokes_per_level` more strokes a whole level, up to `max_strokes`. */
+    fun canvasAt(level: Double): CanvasSpec? = affords["drawable"]?.let { p ->
+        val more = if (p.skill == null) 0 else (p.strokesPerLevel ?: 0) * level.toInt()
+        CanvasSpec(p.size!!, p.colors!!, minOf(p.strokes!! + more, p.maxStrokes ?: Affordance.PARAMS.getValue("drawable").getValue("strokes").last))
+    }
 }
 
 /** See [VerbSpec.wear]. */
