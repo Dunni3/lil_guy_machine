@@ -2,8 +2,10 @@ package dev.lilguy.app
 
 import dev.lilguy.agent.AgentRuntime
 import dev.lilguy.agent.DecisionLog
+import dev.lilguy.agent.Recording
 import dev.lilguy.agent.Scenario
 import dev.lilguy.agent.TokenLedger
+import dev.lilguy.agent.TokenPrice
 import dev.lilguy.agent.TokenPurpose
 import dev.lilguy.agent.art.ArtStudio
 import dev.lilguy.agent.art.CommissionVoice
@@ -18,6 +20,9 @@ import dev.lilguy.agent.memory.Thinker
 import dev.lilguy.agent.shop.Shopper
 import dev.lilguy.agent.memory.Summarizer
 import dev.lilguy.decision.DecisionModel
+import dev.lilguy.runlog.JsonlRecorder
+import dev.lilguy.runlog.ModelRole
+import dev.lilguy.runlog.RunRecorder
 import dev.lilguy.sim.BedroomContent
 import dev.lilguy.sim.BedroomWorld
 import dev.lilguy.sim.GameClock
@@ -28,6 +33,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import java.io.File
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.math.min
@@ -151,6 +158,8 @@ class SimSession(
     private var textWriter: DecisionModel? = null
     private var scorerModel: Any? = null
     private var log: DecisionLog? = null
+    /** This run as rows of the run database, in `rows-NNN.jsonl` beside the decision log. */
+    private var recording: Recording? = null
     /** Decisions from the agent coroutine, waiting for the render thread to file them in [history]. */
     private var inbox = ConcurrentLinkedQueue<AgentRuntime.DecisionRecord>()
     /** Recent ticks, to find the world a decision was made in once it arrives. */
@@ -248,9 +257,11 @@ class SimSession(
         val rawModel = setup.create()
         val m = ledger.meter(rawModel, TokenPurpose.Decision, setup.prices.decision)
         val runLog = setup.logFor(run, m.id)
+        val rec = Recording(setup.logDir?.let { JsonlRecorder(File(it, "rows-%03d.jsonl".format(thisRun))) } ?: RunRecorder.None)
+        ledger.onCall = rec::call
         val runInbox = ConcurrentLinkedQueue<AgentRuntime.DecisionRecord>()
         val rs = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job]))
-        val store = InMemoryStore()
+        val store = rec.store(InMemoryStore())
         val runId = "run-$run"
         val w = setup.memoryModel?.invoke()
         val summarizer = w?.let {
@@ -272,7 +283,10 @@ class SimSession(
         val studio = if (drawer == null || setup.scenario != Scenario.Bedroom) null else ArtStudio(
             Painter(ledger.meter(drawer, TokenPurpose.Art, setup.prices.decision)), store, runId, rs, setup.logDir?.let { d -> File(d, "art-%03d".format(thisRun)) },
             voice = jw?.let { CommissionVoice(ledger.meter(it, TokenPurpose.Art, setup.prices.writer)) },
-        ) { drawing -> runCatching { runLog?.write(drawing) } }
+        ) { drawing ->
+            runCatching { runLog?.write(drawing) }
+            rec.drawing(drawing)
+        }
         memory = AgentMemory(
             store, runId, summarizer, scope = rs, scorer = scorer, selfModeler = selfModeler,
             onSelf = { r -> if (run == thisRun && r.error != null) writerError = "self-model: ${r.error}" },
@@ -285,25 +299,56 @@ class SimSession(
             },
             studio = studio,
             reader = jw?.takeIf { setup.scenario == Scenario.Bedroom }?.let { Reader(ledger.meter(it, TokenPurpose.Reading, setup.prices.writer)) },
-            onAnswer = { a -> runCatching { runLog?.write(a) } },
+            onAnswer = { a ->
+                runCatching { runLog?.write(a) }
+                rec.answer(a)
+            },
             // A shopping trip's picks: the writer with reasons, falling back to the deciding model's one pick.
             shopper = if (setup.scenario != Scenario.Bedroom) null else {
                 val picker = rawModel.takeIf { setup.paints }?.let { ledger.meter(it, TokenPurpose.Shop, setup.prices.decision) }
                 jw?.let { Shopper(ledger.meter(it, TokenPurpose.Shop, setup.prices.writer), fallback = picker) } ?: picker?.let { Shopper(it) }
             },
-            onTrip = { t -> runCatching { runLog?.write(t) } },
+            onTrip = { t ->
+                runCatching { runLog?.write(t) }
+                rec.trip(t)
+            },
         )
         val (gw, r) = setup.scenario.create(m, setup.timeout, settings.ticksPerMinute, longTerm = memory, startItems = setup.startItems) {
             runCatching { runLog?.write(it) }
+            rec.decision(it, m.id)
             runInbox.add(it)
         }
         ledger.attach({ gw.tick }, (gw as? BedroomWorld)?.clock)
+        rec.attach({ gw.tick }, (gw as? BedroomWorld)?.clock)
+        fun role(id: String?, price: TokenPrice?) = id?.let { ModelRole(it, price?.inPerMillion, price?.outPerMillion) }
+        rec.start(
+            Recording.RunInfo(
+                setup.scenario, platform = setup.platform, host = setup.host, ticksPerMinute = settings.ticksPerMinute,
+                label = setup.logDir?.name?.let { "$it-$thisRun" }, personality = personality,
+                models = listOfNotNull(
+                    role(rawModel.id, setup.prices.decision)?.let { "decision" to it },
+                    role(jw?.id, setup.prices.writer)?.let { "writer" to it },
+                    role(w?.id, setup.prices.memory)?.let { "memory" to it },
+                    role(rawScorer?.id, setup.prices.recall)?.let { "recall" to it },
+                    role(drawer?.id?.takeIf { studio != null }, setup.prices.decision)?.let { "painter" to it },
+                ).toMap(),
+                settings = buildJsonObject {
+                    put("days", settings.days)
+                    put("speed", settings.speed)
+                    put("decide_cap", settings.decideCap)
+                    put("quiet", settings.quiet)
+                    put("paints", setup.paints)
+                    put("start_items", setup.startItems.entries.joinToString(",") { "${it.key}=${it.value}" })
+                },
+            ),
+        )
         tokens = ledger
         model = rawModel
         writer = w
         textWriter = jw
         scorerModel = rawScorer
         log = runLog
+        recording = rec
         inbox = runInbox
         runScope = rs
         world = gw
@@ -330,6 +375,11 @@ class SimSession(
         (textWriter as? AutoCloseable)?.close()
         (scorerModel as? AutoCloseable)?.close()
         log?.close()
+        recording?.run {
+            end("thrown away")
+            close()
+        }
+        recording = null
         runScope = null
         agent = null
         model = null
@@ -344,6 +394,7 @@ class SimSession(
     private fun tick() {
         if (world.awaitingDecision(world.agentId)) waitTicks++ else waitTicks = 0
         world.step()
+        (world as? BedroomWorld)?.let { recording?.afterTick(it) }
         previous = current
         current = world.snapshot()
         // Decisions are made only at decision points, so only those ticks are kept to file them against.
@@ -395,6 +446,7 @@ class SimSession(
     private fun end(why: String) {
         state = RunState.Ended
         endedBecause = why
+        recording?.end(why)
         agent?.cancel()
         val mem = memory
         runScope?.launch { mem.flush() }

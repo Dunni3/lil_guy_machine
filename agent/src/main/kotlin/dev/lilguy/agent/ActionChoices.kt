@@ -80,13 +80,13 @@ fun actionChoices(obs: Observation, goal: String, recent: List<Memory.Entry>): C
 private val json = Json { encodeDefaults = true; explicitNulls = true }
 
 private fun option(intent: Intent, description: String) = ChoiceSet.Option(
-    label = label(intent),
+    label = intentLabel(intent),
     description = description,
     reply = json.encodeToJsonElement(AgentReply.serializer(), AgentReply(description, intent)).jsonObject,
 )
 
-/** "pick_up:key", "use:key:door", "move_to:exit", "wait:20". */
-private fun label(intent: Intent): String = when (intent) {
+/** "pick_up:key", "use:key:door", "move_to:exit", "wait:20". Also how a recorded decision is grouped. */
+internal fun intentLabel(intent: Intent): String = when (intent) {
     is Intent.MoveTo -> "move_to:" + when (val t = intent.target) {
         is Target.Entity -> t.id
         is Target.Tile -> "${t.x},${t.y}"
@@ -105,7 +105,7 @@ private fun name(e: SeenEntity): String =
 
 private fun reach(e: SeenEntity) = if (e.inReach) "It is in reach." else "It is not in reach: it is ${e.distance} tiles away."
 
-private fun describe(intent: Intent): String = label(intent).replace(':', ' ')
+private fun describe(intent: Intent): String = intentLabel(intent).replace(':', ' ')
 
 private fun result(status: IntentStatus?): String = when (status) {
     null -> "still going"

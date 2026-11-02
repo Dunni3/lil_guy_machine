@@ -6,6 +6,7 @@ import dev.lilguy.agent.ContentDocs
 import dev.lilguy.agent.DaySummary
 import dev.lilguy.agent.DecisionLog
 import dev.lilguy.agent.HourSample
+import dev.lilguy.agent.Recording
 import dev.lilguy.agent.ReplayDecisionModel
 import dev.lilguy.agent.TokenCall
 import dev.lilguy.agent.TokenDay
@@ -32,6 +33,9 @@ import dev.lilguy.agent.memory.Thinker
 import dev.lilguy.agent.memory.MemoryStore
 import dev.lilguy.agent.memory.Summarizer
 import dev.lilguy.memory.SqliteMemoryStore
+import dev.lilguy.runlog.JsonlRecorder
+import dev.lilguy.runlog.ModelRole
+import dev.lilguy.runlog.RunRecorder
 import dev.lilguy.agent.Scenario
 import dev.lilguy.agent.runLockstep
 import dev.lilguy.decision.DecisionModel
@@ -53,6 +57,8 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -105,7 +111,8 @@ lived its days without hitting the decision cap. Bedroom runs also write hours-N
 and needs each game hour), money-NN.jsonl (every transaction) and needs-NN.jsonl (every need
 change) next to the decision log, tokens-NN.jsonl (every model call: sim tick, game day, purpose, tokens, cost when the endpoint has
 price_in/price_out) and self-NN.txt when his self-model is revised. Drawings are
-logged in the decision log too, as lines with "kind": "art"."""
+logged in the decision log too, as lines with "kind": "art". Every run also writes rows-NN.jsonl:
+everything above as rows of the run database, one JSON line each, "table" naming its table."""
 
 private class Args(argv: Array<String>) {
     private val values = mutableMapOf<String, String>()
@@ -253,6 +260,8 @@ fun main(argv: Array<String>) {
         val decisionModel = newModel()
         val model = ledger.meter(decisionModel, TokenPurpose.Decision, if (replay == null && endpoint != "scripted") priceOf(endpoint) else null)
         val log = logDir?.let { DecisionLog(File(it, "run-%02d.jsonl".format(n)), run = "$stamp-$n", model = model.id) }
+        val recording = Recording(logDir?.let { JsonlRecorder(File(it, "rows-%02d.jsonl".format(n))) } ?: RunRecorder.None)
+        ledger.onCall = recording::call
         val summaryEndpoint = args.string("--memory-endpoint")
         val summaryModel = summaryEndpoint?.let { name ->
             requireNotNull(args.string("--memory")) { "--memory-endpoint needs --memory FILE" }
@@ -272,7 +281,30 @@ fun main(argv: Array<String>) {
         val scorerName = recallEndpoint?.takeIf { it != "none" } ?: endpoint
         // The deciding model draws his art, pick by pick, so a picking model can; the scripted policy and a replay can't.
         val painting = scenario == Scenario.Bedroom && replay == null && endpoint != "scripted"
-        val store: MemoryStore? = args.string("--memory")?.let { SqliteMemoryStore(File(it)) } ?: if (writerModel != null || painting || rawScorer != null) InMemoryStore() else null
+        val store: MemoryStore? = (args.string("--memory")?.let { SqliteMemoryStore(File(it)) } ?: if (writerModel != null || painting || rawScorer != null) InMemoryStore() else null)
+            ?.let(recording::store)
+        fun role(m: Any?, endpointName: String?) = (m as? DecisionModel)?.id?.let { id -> ModelRole(id, endpointName?.let(::priceOf)?.inPerMillion, endpointName?.let(::priceOf)?.outPerMillion) }
+        val models = listOfNotNull(
+            role(model, endpoint.takeIf { replay == null && it != "scripted" })?.let { "decision" to it },
+            role(writerModel, writerEndpoint)?.let { "writer" to it },
+            role(summaryModel, summaryEndpoint)?.let { "memory" to it },
+            rawScorer?.let { "recall" to ModelRole(it.id, priceOf(scorerName)?.inPerMillion, priceOf(scorerName)?.outPerMillion) },
+        ).toMap()
+        val info = Recording.RunInfo(
+            scenario, platform = "cli", host = hostName(), ticksPerMinute = minuteTicks, label = label, personality = personality,
+            granted = granted, models = models,
+            settings = buildJsonObject {
+                put("endpoint", endpoint)
+                put("days", days)
+                put("max_decisions", maxDecisions)
+                put("max_ticks", maxTicks)
+                put("paints", painting)
+                put("memory_file", args.string("--memory"))
+                put("replay", replay?.path)
+                put("beam", args.string("--beam"))
+                put("strategy", args.string("--strategy"))
+            },
+        )
         val revisions = mutableListOf<SelfRevision>()
         val core = (personality ?: BedroomContent.default().personality)
         val memory = store?.let { st ->
@@ -282,6 +314,7 @@ fun main(argv: Array<String>) {
                 voice = writerModel?.let { CommissionVoice(ledger.meter(it, TokenPurpose.Art, priceOf(writerEndpoint!!))) },
             ) { d ->
                 log?.write(d)
+                recording.drawing(d)
                 if (!quiet) printDrawing(d)
             }
             val scorer = rawScorer?.let { MemoryScorer(ledger.meter(it, TokenPurpose.Recall, priceOf(scorerName)), ledger.meter(it, TokenPurpose.Significance, priceOf(scorerName)), onFailure = { e -> System.err.println("scoring failed: ${e.message}") }) }
@@ -313,6 +346,7 @@ fun main(argv: Array<String>) {
                 reader = writerModel?.takeIf { scenario == Scenario.Bedroom }?.let { Reader(ledger.meter(it, TokenPurpose.Reading, priceOf(writerEndpoint!!))) },
                 onAnswer = { a ->
                     log?.write(a)
+                    recording.answer(a)
                     if (!quiet) printAnswer(a)
                 },
                 // A shopping trip's picks: the writer with reasons, falling back to the deciding model's one pick.
@@ -322,14 +356,16 @@ fun main(argv: Array<String>) {
                 },
                 onTrip = { t ->
                     log?.write(t)
+                    recording.trip(t)
                     if (!quiet) printTrip(t)
                 },
             )
         }
         try {
-            runOnce(n, scenario, model, timeout, minuteTicks, maxTicks, maxDecisions, quiet, log, logDir, ledger, memory, granted, personality, revisions)
+            runOnce(n, scenario, model, timeout, minuteTicks, maxTicks, maxDecisions, quiet, log, logDir, ledger, recording, info, memory, granted, personality, revisions)
         } finally {
             log?.close()
+            recording.close()
             store?.close()
             (summaryModel as? AutoCloseable)?.close()
             (writerModel as? AutoCloseable)?.close()
@@ -390,6 +426,8 @@ private fun runOnce(
     log: DecisionLog?,
     logDir: File?,
     ledger: TokenLedger,
+    recording: Recording,
+    info: Recording.RunInfo,
     memory: AgentMemory? = null,
     granted: Set<String> = emptySet(),
     personality: Personality? = null,
@@ -400,6 +438,7 @@ private fun runOnce(
     val (world, runtime) = scenario.create(model, timeout, minuteTicks, longTerm = memory, granted = granted, personality = personality) { d ->
         records += d
         log?.write(d)
+        recording.decision(d, model.id)
         if (!quiet) {
             val intent = Json.encodeToString(Intent.serializer(), d.intent)
             val note = if (d.error != null) "FALLBACK: ${d.error}" else d.rationale.orEmpty()
@@ -410,6 +449,8 @@ private fun runOnce(
     }
     val bedroom = world as? BedroomWorld
     ledger.attach({ world.tick }, bedroom?.clock)
+    recording.attach({ world.tick }, bedroom?.clock)
+    recording.start(info)
     stampOf = if (bedroom != null) { t -> bedroom.clock.reading(t).let { "d%2d %s".format(it.day, it.time) } } else { t -> "t=%4d".format(t) }
     if (!quiet) println("--- run $n ---")
 
@@ -429,6 +470,7 @@ private fun runOnce(
             }
             printed = world.tick
             if (bedroom != null) {
+                recording.afterTick(bedroom)
                 Need.entries.forEach { lowest[it] = minOf(lowest.getValue(it), bedroom.needs[it]) }
                 if (Need.entries.any { it != Need.Stimulation && it != Need.Frustration && bedroom.needs[it] <= 0.0 }) ticksAtZero++
                 if (bedroom.clock.isMinuteStart(world.tick) && bedroom.clock.minuteOfDay(world.tick) % 60 == 0) hours += BedroomReport.sample(bedroom)
@@ -439,6 +481,14 @@ private fun runOnce(
     val wall = started.elapsedNow()
     val capped = records.size >= maxDecisions
     val solved = if (bedroom != null) !capped else world.snapshot().completed
+    recording.end(
+        when {
+            capped -> "decision cap"
+            bedroom != null -> "lived %.2f days".format(endTick.toDouble() / (minuteTicks * GameClock.MINUTES_PER_DAY))
+            solved -> "walked out"
+            else -> "out of ticks"
+        },
+    )
     val life = bedroom?.let { b ->
         val days = BedroomReport.days(b, hours)
         logDir?.let { dir ->
@@ -531,6 +581,9 @@ private fun printSelf(r: SelfRevision) {
     }
     println("night %2s  self    %s".format(r.day ?: "-", what))
 }
+
+/** This machine's name for the run row, or null when it can't be had quickly. */
+private fun hostName(): String? = System.getenv("HOSTNAME") ?: runCatching { java.net.InetAddress.getLocalHost().hostName }.getOrNull()
 
 private fun <T> writeJsonl(file: File, rows: List<T>, serializer: kotlinx.serialization.KSerializer<T>) {
     file.parentFile?.mkdirs()

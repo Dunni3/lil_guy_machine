@@ -49,6 +49,9 @@ class ModelSetup(
     val startItems: Map<String, Int> = emptyMap(),
     /** A fresh model for each run that draws his art instead of the deciding one; a dev aid for watching him paint with no endpoint (LILGUY_PAINTER). */
     val painter: (() -> DecisionModel)? = null,
+    /** What the run rows say the app ran on: "desktop" or "android", and the machine's name. */
+    val platform: String = "desktop",
+    val host: String? = null,
 ) {
     class Prices(val decision: TokenPrice? = null, val memory: TokenPrice? = null, val writer: TokenPrice? = null, val recall: TokenPrice? = null)
 
@@ -61,7 +64,9 @@ class ModelSetup(
         recallScorer: (() -> Scorer)? = this.recallScorer,
         startItems: Map<String, Int> = this.startItems,
         painter: (() -> DecisionModel)? = this.painter,
-    ) = ModelSetup(create, scenario, ticksPerMinute, timeout, logDir, notice, memoryModel, days, writerModel, prices, paints, recallScorer, startItems, painter)
+        platform: String = this.platform,
+        host: String? = this.host,
+    ) = ModelSetup(create, scenario, ticksPerMinute, timeout, logDir, notice, memoryModel, days, writerModel, prices, paints, recallScorer, startItems, painter, platform, host)
 
     /** The Run page's starting values; the viewer changes them from there. */
     val settings: RunSettings get() = RunSettings(days, ticksPerMinute = ticksPerMinute)

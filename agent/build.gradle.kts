@@ -9,6 +9,7 @@ kotlin { jvmToolchain(17) }
 dependencies {
     api(project(":sim"))
     api(project(":decision"))
+    api(project(":runlog"))
     testImplementation(kotlin("test"))
 }
 

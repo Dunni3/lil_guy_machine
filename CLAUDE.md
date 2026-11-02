@@ -103,6 +103,13 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   (decision, think, summary, self, recall, significance, art) is recorded with its sim tick and game day; `TokenReport` prints
   tokens per game day and the 30-day projection. The CLI and the app (`SimSession`, the TOKENS page) wire it and
   write `tokens-NN.jsonl`; `price_in`/`price_out` on an endpoint add cost.
+- Run recording (roadmap phase 1, `docs/decisions/2026-11-01-runs-are-recorded-locally-first-*`, design in
+  `research_notes/2026-11-01_2236_run-database-design.md`): `runlog/` (pure Kotlin) holds the rows, one class per table
+  of the run database (`Rows.kt`), `RunRecorder` (`JsonlRecorder` writes off-thread) and UUIDv7 ids; the build stamps
+  the git commit (`BuildInfo`). `agent/.../Recording.kt` turns a run into rows: start and end, decisions (observation
+  and request as blobs), model calls (`TokenLedger.onCall`), answers, trips, drawings, ledger and need changes and
+  the hour (`afterTick`), and memory writes (`store(inner)`). The CLI and `SimSession` write `rows-NN.jsonl` beside
+  the old files. Next: a local SQLite store, checkpoints, the server.
 - Renderer: `app/.../LilGuyGame.kt`. The first page is the 3D room, `RoomView.kt` (camera, light by
   game hour, HUD, bubble, the shop's catalogue card on DOWN), his books, records and guitar on a wall shelf
   (`RoomModels.shelf`, from `LifeSnapshot.catalog`), with furniture as part lists keyed by item id in `RoomModels.kt` (1 unit = 1 tile,

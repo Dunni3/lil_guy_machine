@@ -110,6 +110,9 @@ class TokenLedger {
     @Volatile private var tickNow: () -> Long = { 0L }
     @Volatile private var clock: GameClock? = null
 
+    /** Told of every call as it finishes, from whichever coroutine made it: where [Recording] hears of them. */
+    @Volatile var onCall: ((TokenCall) -> Unit)? = null
+
     /** Stamps calls from here on with [tick] and [clock]'s day and time. */
     fun attach(tick: () -> Long, clock: GameClock? = null) {
         tickNow = tick
@@ -176,11 +179,13 @@ class TokenLedger {
 
     private fun record(tick: Long, purpose: TokenPurpose, model: String, price: TokenPrice?, usage: Usage, attempts: Int, latencyMs: Long, failed: Boolean) {
         val reading = clock?.reading(tick)
-        log += TokenCall(
+        val call = TokenCall(
             tick, reading?.day, reading?.time, purpose, model,
             calls = attempts.coerceAtLeast(1), usage.promptTokens, usage.completionTokens, latencyMs,
             costUsd = price?.cost(usage), failed = failed,
         )
+        log += call
+        onCall?.invoke(call)
     }
 }
 

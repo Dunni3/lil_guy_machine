@@ -58,7 +58,7 @@ fun main() {
     }.let { s ->
         val seconds = System.getenv("LILGUY_PAINTER")?.toDoubleOrNull() ?: return@let s
         s.copy(painter = { RandomPicker(seconds.seconds, seed = System.nanoTime()) })
-    }
+    }.let { s -> s.copy(host = System.getenv("HOSTNAME") ?: runCatching { java.net.InetAddress.getLocalHost().hostName }.getOrNull()) }
     val game = LilGuyGame(setup)
     val shotPath = System.getenv("LILGUY_SCREENSHOT")
     val listener = if (shotPath == null) game else Screenshot(

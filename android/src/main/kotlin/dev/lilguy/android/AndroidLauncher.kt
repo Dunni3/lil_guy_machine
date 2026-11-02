@@ -1,5 +1,6 @@
 package dev.lilguy.android
 
+import android.os.Build
 import android.os.Bundle
 import com.badlogic.gdx.backends.android.AndroidApplication
 import com.badlogic.gdx.backends.android.AndroidApplicationConfiguration
@@ -49,6 +50,6 @@ class AndroidLauncher : AndroidApplication() {
             recallEndpoint = intent?.getStringExtra("recall_endpoint")?.takeIf { it.isNotBlank() },
             beam = intent?.takeIf { it.hasExtra("beam") }?.getIntExtra("beam", 3),
             days = (intent?.getIntExtra("days", ModelSetup.DEFAULT_DAYS) ?: ModelSetup.DEFAULT_DAYS).takeIf { it > 0 },
-        )
+        ).copy(platform = "android", host = Build.DEVICE)
     }
 }
