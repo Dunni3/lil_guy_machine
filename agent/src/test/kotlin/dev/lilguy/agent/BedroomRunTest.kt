@@ -68,7 +68,7 @@ class BedroomRunTest {
      * him about 11 spare hours and 4 to 5 sketching; the bounds hold that until a Jev run says
      * whether the economy needs tightening again.
      *
-     * Art skill paying in dollars ($2 a level on a sketch) means the sketching that feeds him
+     * Art skill paying in dollars ($3 a level on a sketch) means the sketching that feeds him
      * shrinks as he practises: about 2.6 hours a day over days 2 to 6 (was 4 to 5), with the
      * spare hours about 13. That's the point (skill buys him time and money for new things), so
      * the bound records it rather than retuning.
@@ -140,7 +140,7 @@ class BedroomRunTest {
         assertTrue(system.startsWith(world.content.personality.core.you), system.take(80))
         assertTrue("- What you can do: eat, eat plain oats from the cupboard, sketch, sell your art, go through the shop's catalog, hang your art on the wall, sleep and stop and think." in system)
         assertTrue("You live in this bedroom. You need money for food." in system)
-        assertTrue("a sketch sells for $3" in system)
+        assertTrue("a sketch sells for $5" in system)
         listOf("easel", "canvas", "record", "painting", "decor", "`uses`", "music", "journal", "restrictive").forEach { w -> assertTrue(w !in system, "mentions '$w': " + system.lines().filter { w in it }) }
         assertTrue(Persona.SELF_HEADER !in system, "no self-model unless something revises it")
         val withSelf = BedroomPrompt.system(world.content, world.clock.ticksPerMinute, self = "- Who I am: someone who sketches.")
@@ -148,7 +148,7 @@ class BedroomRunTest {
 
         // Granting brings the gated content into the prompt.
         val grown = BedroomPrompt.system(smallWorld.unlocked(setOf("paint", "easel", "canvas", "painting")), 5)
-        assertTrue("sketch and paint make art" in grown && "a painting sells for $30" in grown, grown)
+        assertTrue("sketch and paint make art" in grown && "a painting sells for $40" in grown, grown)
         assertTrue("for food and for anything you want to own" in grown)
     }
 

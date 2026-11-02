@@ -62,7 +62,7 @@ items:
     carried: true
     stackable: true
     affords:
-      sellable: { price: 3, skill: art, price_per_level: 2 }
+      sellable: { price: 5, skill: art, price_per_level: 3 }
       hangable: {}
       viewable: {}
       drawable: { size: 16, colors: 4, strokes: 6, skill: art, strokes_per_level: 2, max_strokes: 16 }
@@ -72,7 +72,7 @@ items:
     carried: true
     stackable: true
     affords:
-      sellable: { price: 30, skill: art, price_per_level: 10 }
+      sellable: { price: 40, skill: art, price_per_level: 12 }
       hangable: {}
       viewable: {}
       drawable: { size: 32, colors: 16, strokes: 12, skill: art, strokes_per_level: 3, max_strokes: 30 }

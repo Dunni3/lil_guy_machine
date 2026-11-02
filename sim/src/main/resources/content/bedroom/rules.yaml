@@ -87,7 +87,7 @@ reflection:
 # earns `reward` on top of its price.
 commissions:
   arrive: "09:00"
-  reward: 12
+  reward: 20
   adjectives: [sleepy, stormy, tiny, golden, lonely, cheerful, ancient, frozen, glowing, secret, upside-down, rainy, busy, quiet, wild, striped]
   nouns: [lighthouse, cat, mountain, teapot, garden, whale, rocket, fox, castle, bicycle, moon, sailboat, owl, cactus, bridge, forest]
 
