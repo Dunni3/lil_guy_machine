@@ -996,6 +996,7 @@ class DevView(private val art: ArtTextures) : Disposable {
         val deciding = session.thinkingFor
         when {
             session.holding && session.waitingOnAuthor.isNotEmpty() -> line("held: waiting on his ${session.waitingOnAuthor.joinToString(" and ") { if (it == "draw") "drawing" else it }}", SMALL_SCALE * 0.9f, INTERRUPTED, maxLines = 1)
+            session.holding && session.lingering -> line("held: he's finishing his piece", SMALL_SCALE * 0.9f, INTERRUPTED, maxLines = 1)
             session.holding -> line("held: waiting on the model (%.1f s)".format((deciding?.inWholeMilliseconds ?: 0) / 1000f), SMALL_SCALE * 0.9f, INTERRUPTED, maxLines = 1)
             deciding != null -> line("the model is deciding (%.1f s); the clock runs".format(deciding.inWholeMilliseconds / 1000f), SMALL_SCALE * 0.9f, ACCENT, maxLines = 1)
         }

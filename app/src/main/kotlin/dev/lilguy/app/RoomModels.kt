@@ -163,6 +163,51 @@ class RoomModels : Disposable {
         }
     }
 
+    /**
+     * A paintbrush loaded with [color] (0xRRGGBB), or a crayon of it when not [brush]: held at the
+     * origin, pointing along +Z, its tip [TOOL_TIP] out.
+     */
+    fun tool(color: Int, brush: Boolean): CrayonModel = items.getOrPut("tool/$brush/$color") {
+        val c = hex(color)
+        model {
+            lump = 0f
+            if (brush) {
+                capsule(WOOD_DARK, 0f, 0f, -0.08f, 0.022f, 0.17f, 0.022f, rotX = 90f, outline = 0.005f)
+                cylinder(FERRULE, 0f, 0f, 0.07f, 0.028f, 0.035f, 0.028f, rotX = 90f, round = 0.004f, outline = 0.005f)
+                cylinder(c, 0f, 0f, 0.1f, 0.032f, TOOL_TIP - 0.1f, 0.032f, rotX = 90f, taper = 0.25f, round = 0.006f, outline = 0.005f)
+            } else {
+                cylinder(c, 0f, 0f, -0.03f, 0.034f, 0.14f, 0.034f, rotX = 90f, round = 0.004f, outline = 0.005f)
+                cylinder(PAPER, 0f, 0f, 0f, 0.037f, 0.07f, 0.037f, rotX = 90f, round = 0.002f, outline = 0f)
+                cylinder(c, 0f, 0f, 0.11f, 0.034f, TOOL_TIP - 0.11f, 0.034f, rotX = 90f, taper = 0.2f, round = 0.004f, outline = 0.005f)
+            }
+        }
+    }
+
+    /** A painter's palette lying flat, pivot at its bottom centre, with a dab of each of [colors] (0xRRGGBB) round its far edge. */
+    fun palette(colors: List<Int>): CrayonModel = items.getOrPut("palette/${colors.joinToString(",")}") {
+        model {
+            lump = 0f
+            cylinder(WOOD_LIGHT, 0f, 0f, 0f, 0.26f, 0.016f, 0.18f, round = 0.006f, outline = 0.006f)
+            cylinder(WOOD_DARK, 0.085f, 0.004f, 0.04f, 0.04f, 0.014f, 0.035f, round = 0.004f, outline = 0.004f)
+            colors.forEachIndexed { i, rgb ->
+                val a = MathUtils.PI * (1.1f + 0.8f * i / maxOf(1, colors.size - 1))
+                sphere(hex(rgb), 0.085f * MathUtils.cos(a), 0.01f, 0.058f * MathUtils.sin(a), 0.048f, 0.022f, 0.044f, outline = 0.004f, lump = 0.003f)
+            }
+        }
+    }
+
+    /** A twinkle, a four-pointed star of two crossed spindles centred on the origin, facing +Z. */
+    fun sparkle(color: Int): CrayonModel = items.getOrPut("sparkle/$color") {
+        val c = hex(color)
+        model {
+            lump = 0f
+            sphere(c, 0f, -0.075f, 0f, 0.035f, 0.15f, 0.014f, outline = 0.004f)
+            sphere(c, 0f, -0.0175f, 0f, 0.15f, 0.035f, 0.014f, outline = 0.004f)
+        }
+    }
+
+    private fun hex(rgb: Int) = "#%06x".format(rgb and 0xffffff)
+
     /** A music note, its head at the origin, facing +Z. */
     fun note(color: String): CrayonModel = items.getOrPut("note/$color") {
         model {
@@ -530,6 +575,8 @@ class RoomModels : Disposable {
         const val SKETCH_Z = 0.06f
         const val CANVAS_Y = 0.75f
         const val CANVAS_Z = 0.135f
+        /** How far a held brush's or crayon's tip is from his grip, in his own units ([tool]). */
+        const val TOOL_TIP = 0.15f
         /** The record's spindle on the player, from its pivot. */
         const val DISC_X = -0.06f
         const val DISC_Y = 0.555f
@@ -584,6 +631,7 @@ class RoomModels : Disposable {
         private const val HEADBOARD = "#e2d3bf"
         private const val HEADBOARD_SEAM = "#c9b8a2"
         private const val PAPER = "#fdf9ef"
+        private const val FERRULE = "#b9b6b0"
         private const val MUG = "#c9785a"
         private const val CUSHION = "#e9dccb"
         private const val CANVAS = "#fdf8ee"

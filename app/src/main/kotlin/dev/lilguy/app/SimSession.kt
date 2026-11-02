@@ -226,6 +226,7 @@ class SimSession(
         }
         holding = state == RunState.Running && mustHold()
         if (holding) accumulator = accumulator.coerceAtMost(tickSeconds())
+        if (lingerUpdates > 0) lingerUpdates--
     }
 
     /** Runs [ticks] ticks by hand; only while paused, so the clock can't run away. */
@@ -267,8 +268,9 @@ class SimSession(
             SelfModeler(ledger.meter(it, TokenPurpose.SelfModel, setup.prices.writer), store, runId, personality.core.you, personality.selfSeed)
         }
         // The deciding model draws his art, pick by pick; the writer writes his thoughts and words each day's request.
-        val studio = if (!setup.paints || setup.scenario != Scenario.Bedroom) null else ArtStudio(
-            Painter(ledger.meter(rawModel, TokenPurpose.Art, setup.prices.decision)), store, runId, rs, setup.logDir?.let { d -> File(d, "art-%03d".format(thisRun)) },
+        val drawer = setup.painter?.invoke() ?: rawModel.takeIf { setup.paints }
+        val studio = if (drawer == null || setup.scenario != Scenario.Bedroom) null else ArtStudio(
+            Painter(ledger.meter(drawer, TokenPurpose.Art, setup.prices.decision)), store, runId, rs, setup.logDir?.let { d -> File(d, "art-%03d".format(thisRun)) },
             voice = jw?.let { CommissionVoice(ledger.meter(it, TokenPurpose.Art, setup.prices.writer)) },
         ) { drawing -> runCatching { runLog?.write(drawing) } }
         memory = AgentMemory(
@@ -363,8 +365,25 @@ class SimSession(
     /** What the clock is held for: handlers whose call has outlasted its verb ([AgentMemory.holding]), such as "draw". */
     val waitingOnAuthor: List<String> get() = memory.holdingFor
 
+    /** Updates left before the view's last [linger] lapses. */
+    private var lingerUpdates = 0
+
+    /**
+     * Holds the clock through the next [LINGER_UPDATES] updates for the view: the room asks every
+     * frame while he finishes a piece on screen after its verb has ended. Counted in updates, not
+     * seconds, so a slow frame can't let a tick slip through; it lapses by itself when the room stops
+     * asking (another page, the piece done).
+     */
+    fun linger() {
+        lingerUpdates = LINGER_UPDATES
+    }
+
+    /** True while the clock waits on the view's [linger]. */
+    val lingering: Boolean get() = lingerUpdates > 0
+
     /** A decision has been out for as many game minutes as [RunSettings.decideCap] allows. */
     private fun mustHold(): Boolean {
+        if (lingering) return true
         // Until a drawing lands its piece has no title or tags, so selling it couldn't meet a request. Every authored call
         // holds the clock the same way.
         if (memory.holding) return true
@@ -396,5 +415,7 @@ class SimSession(
         /** Ticks at decision points: more than a slow decision spans at a fast speed with the clock running. */
         const val MAX_RECENT = 5000
         const val MAX_MOMENTS = 5000
+        /** A [linger] holds the clock this many updates: the one before the view's next frame, and one spare. */
+        const val LINGER_UPDATES = 2
     }
 }

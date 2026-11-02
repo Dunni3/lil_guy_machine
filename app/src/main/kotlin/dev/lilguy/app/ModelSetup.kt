@@ -47,6 +47,8 @@ class ModelSetup(
     val recallScorer: (() -> Scorer)? = null,
     /** Bedroom: items he starts with on top of the content's, id to count; a dev aid for screenshots (LILGUY_START_ITEMS). */
     val startItems: Map<String, Int> = emptyMap(),
+    /** A fresh model for each run that draws his art instead of the deciding one; a dev aid for watching him paint with no endpoint (LILGUY_PAINTER). */
+    val painter: (() -> DecisionModel)? = null,
 ) {
     class Prices(val decision: TokenPrice? = null, val memory: TokenPrice? = null, val writer: TokenPrice? = null, val recall: TokenPrice? = null)
 
@@ -58,7 +60,8 @@ class ModelSetup(
         prices: Prices = this.prices,
         recallScorer: (() -> Scorer)? = this.recallScorer,
         startItems: Map<String, Int> = this.startItems,
-    ) = ModelSetup(create, scenario, ticksPerMinute, timeout, logDir, notice, memoryModel, days, writerModel, prices, paints, recallScorer, startItems)
+        painter: (() -> DecisionModel)? = this.painter,
+    ) = ModelSetup(create, scenario, ticksPerMinute, timeout, logDir, notice, memoryModel, days, writerModel, prices, paints, recallScorer, startItems, painter)
 
     /** The Run page's starting values; the viewer changes them from there. */
     val settings: RunSettings get() = RunSettings(days, ticksPerMinute = ticksPerMinute)

@@ -11,8 +11,10 @@ import dev.lilguy.agent.BedroomPolicy
 import dev.lilguy.app.LilGuyGame
 import dev.lilguy.app.ModelSetup
 import dev.lilguy.agent.Scenario
+import dev.lilguy.decision.RandomPicker
 import dev.lilguy.sim.GameClock
 import java.io.File
+import kotlin.time.Duration.Companion.seconds
 
 fun main() {
     val config = Lwjgl3ApplicationConfiguration().apply {
@@ -33,6 +35,7 @@ fun main() {
     // LILGUY_BEAM sets how many paths Jev keeps walking the menu tree; 0 picks from the flat list.
     // LILGUY_START_ITEMS adds to what he starts with, for screenshots: "novel,folk_record,guitar" or "meal=4".
     // LILGUY_SCRIPT has the scripted policy do these verbs first, in order: "read,play_guitar".
+    // LILGUY_PAINTER=3.5 draws his art with random picks that take that many seconds each, so he paints with no endpoint.
     val setup = ModelSetup.fromConfig(
         configFile = File(System.getenv("LILGUY_CONFIG") ?: "config/endpoints.yaml"),
         endpoint = System.getenv("LILGUY_ENDPOINT")?.takeIf { it.isNotBlank() },
@@ -52,23 +55,38 @@ fun main() {
     }.let { s ->
         val script = System.getenv("LILGUY_SCRIPT").orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
         if (script.isEmpty()) s else s.copy(create = { BedroomPolicy(ModelSetup.THINK_TIME, script = script) })
+    }.let { s ->
+        val seconds = System.getenv("LILGUY_PAINTER")?.toDoubleOrNull() ?: return@let s
+        s.copy(painter = { RandomPicker(seconds.seconds, seed = System.nanoTime()) })
     }
     val game = LilGuyGame(setup)
     val shotPath = System.getenv("LILGUY_SCREENSHOT")
-    val listener = if (shotPath == null) game else Screenshot(game, shotPath, System.getenv("LILGUY_SCREENSHOT_AT")?.toFloatOrNull() ?: 5f, System.getenv("LILGUY_SCREENSHOT_KEYS").orEmpty())
+    val listener = if (shotPath == null) game else Screenshot(
+        game, shotPath, System.getenv("LILGUY_SCREENSHOT_AT")?.toFloatOrNull() ?: 5f, System.getenv("LILGUY_SCREENSHOT_KEYS").orEmpty(),
+        frames = System.getenv("LILGUY_SCREENSHOT_FRAMES")?.toIntOrNull() ?: 1, every = System.getenv("LILGUY_SCREENSHOT_EVERY")?.toFloatOrNull() ?: 0.5f,
+    )
     Lwjgl3Application(listener, config)
 }
 
 /**
  * Dev aid: LILGUY_SCREENSHOT=out.png [LILGUY_SCREENSHOT_AT=seconds] saves one frame, then quits.
  * LILGUY_SCREENSHOT_KEYS presses keys first, a comma-separated list of names as libGDX spells
- * them, `@N` meaning "at second N" (e.g. `Enter,@20,Right,Down`).
+ * them, `@N` meaning "at second N" (e.g. `Enter,@20,Right,Down`). LILGUY_SCREENSHOT_FRAMES=n saves
+ * a burst of n frames instead, LILGUY_SCREENSHOT_EVERY seconds apart (0.5 by default), as
+ * out-001.png, out-002.png and so on, for watching an animation.
  */
-private class Screenshot(private val game: ApplicationListener, private val path: String, private val at: Float, keys: String) :
-    ApplicationListener by game {
+private class Screenshot(
+    private val game: ApplicationListener,
+    private val path: String,
+    private var at: Float,
+    keys: String,
+    private val frames: Int = 1,
+    private val every: Float = 0.5f,
+) : ApplicationListener by game {
     private var elapsed = 0f
     private val script = ArrayDeque(keys.split(',').map { it.trim() }.filter { it.isNotEmpty() })
     private var waitUntil = 0f
+    private var saved = 0
 
     override fun render() {
         while (script.isNotEmpty() && elapsed >= waitUntil) {
@@ -83,10 +101,14 @@ private class Screenshot(private val game: ApplicationListener, private val path
         elapsed += Gdx.graphics.deltaTime
         if (elapsed >= at) {
             val pixmap = Pixmap.createFromFrameBuffer(0, 0, Gdx.graphics.backBufferWidth, Gdx.graphics.backBufferHeight)
-            PixmapIO.writePNG(Gdx.files.absolute(path), pixmap, -1, true)
+            val file = if (frames == 1) path else path.removeSuffix(".png") + "-%03d.png".format(++saved)
+            PixmapIO.writePNG(Gdx.files.absolute(file), pixmap, -1, true)
             pixmap.dispose()
-            Gdx.app.exit()
-            elapsed = Float.NEGATIVE_INFINITY
+            at += every
+            if (frames == 1 || saved >= frames) {
+                Gdx.app.exit()
+                elapsed = Float.NEGATIVE_INFINITY
+            }
         }
     }
 }

@@ -94,7 +94,10 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   handler: saves `art-NN/piece-NNN.png`, delivers title and tags to the piece; commission wording goes
   through `BedroomWorld.annotate`). `agent/.../Menu.kt` puts one pick to any model (a choice set
   for Jev, a prompt plus enum schema for a text model). The sim's pieces, commissions and
-  hanging are in `BedroomWorld.kt`. The app's textures for them are in `ArtTextures.kt`.
+  hanging are in `BedroomWorld.kt`. The app's textures for them are in `ArtTextures.kt`. The piece
+  under way is reported stroke by stroke (`Underway`, `ArtStudio.underway`) and played out in the room
+  by `app/.../PaintScene.kt` (brush on the real cells, dips, stepping back, a flourish), which
+  `RoomView` keeps him posed at through a drawing hold, and lingers the clock (`SimSession.linger`) for.
   SQLite store: `memory-sqlite/` (JVM only; not in the TV build yet).
 - Token accounting: `agent/.../TokenLedger.kt`. `ledger.meter(model, purpose)` wraps a model so every call
   (decision, think, summary, self, recall, significance, art) is recorded with its sim tick and game day; `TokenReport` prints
@@ -115,7 +118,9 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   `LILGUY_SCREENSHOT=out.png LILGUY_SCREENSHOT_AT=<s> make desktop` saves one frame and quits
   (add `LILGUY_CONFIG=/nonexistent` for the scripted policy, no API calls; `MINUTE_TICKS=1` for a faster clock)
   (`LILGUY_SCREENSHOT_KEYS="Enter,@60,Right"` presses keys first; `LILGUY_START_ITEMS=novel,folk_record,guitar` adds to
-  what he starts with, and what a book teaches with it; `LILGUY_SCRIPT=read,play_guitar` has the scripted policy do those first).
+  what he starts with, and what a book teaches with it; `LILGUY_SCRIPT=read,play_guitar` has the scripted policy do those first;
+  `LILGUY_PAINTER=3.5` draws his art with random picks at that latency, so he paints with no endpoint;
+  `LILGUY_SCREENSHOT_FRAMES=n LILGUY_SCREENSHOT_EVERY=0.5` saves a burst as out-001.png and on).
 - Endpoint config example: `config/endpoints.example.yaml` (real one is gitignored). The app's
   model choice: `app/.../ModelSetup.kt`. Run logs go in `runs/` (gitignored).
 - ADB helpers: `tools/adb/`.

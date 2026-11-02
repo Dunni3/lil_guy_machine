@@ -5,7 +5,7 @@ import dev.lilguy.agent.shop.ShoppingHandler
 import dev.lilguy.agent.shop.Trip
 
 import dev.lilguy.agent.art.ArtStudio
-import dev.lilguy.agent.art.Drawing
+import dev.lilguy.agent.art.Underway
 import dev.lilguy.agent.authored.AuthorHandler
 import dev.lilguy.agent.authored.Authors
 import dev.lilguy.sim.BedroomWorld
@@ -159,8 +159,8 @@ class AgentMemory(
     /** True while a piece is being drawn or waiting to be kept. */
     val drawing: Boolean get() = authors.busy("draw")
 
-    /** The drawing for the verb under way, once the model has sent it; not kept yet. Readable from any thread. */
-    fun drawingInProgress(): Drawing? = authors.inProgress("draw") as? Drawing
+    /** The latest piece he started, stroke by stroke, and how it ended ([ArtStudio.underway]). Readable from any thread. */
+    fun underway(): Underway? = studio?.underway
 
     /** Runs authored ops for [world]. Call before the run starts. */
     fun connect(world: BedroomWorld) {
