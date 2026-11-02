@@ -14,14 +14,16 @@ import kotlinx.coroutines.cancel
 /**
  * One run of the room [setup] names, driven by whichever model it names (the scripted policy
  * unless an endpoint is configured), shown in 3D ([RoomView]) or in the 2D dev view's pages
- * ([DevView]); the remote flips between them. Runs start, pause and restart from the remote
- * ([RemoteInput]); nothing starts on its own.
+ * ([DevView]); the remote flips between them. Over the room, OK opens the in-game menu ([GameMenu]):
+ * run controls, the shop, his mind. Runs start, pause and restart from the remote ([RemoteInput]);
+ * nothing starts on its own.
  */
 class LilGuyGame(private val setup: ModelSetup = ModelSetup.scripted()) : ApplicationAdapter() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var session: SimSession
     private lateinit var view: DevView
     private lateinit var room: RoomView
+    private lateinit var menu: GameMenu
     private lateinit var art: ArtTextures
     private lateinit var profiler: GLProfiler
 
@@ -42,15 +44,17 @@ class LilGuyGame(private val setup: ModelSetup = ModelSetup.scripted()) : Applic
         art = ArtTextures()
         view = DevView(art)
         room = RoomView(art)
+        menu = GameMenu(onRestart = { view.reset() })
         profiler = GLProfiler(Gdx.graphics).apply { enable() }
         Gdx.input.setCatchKey(Input.Keys.BACK, true)
-        Gdx.input.inputProcessor = RemoteInput({ session }, view)
+        Gdx.input.inputProcessor = RemoteInput({ session }, view, menu)
     }
 
     override fun resize(width: Int, height: Int) {
         Gdx.app.log(TAG, "resize ${width}x$height; backbuffer ${Gdx.graphics.backBufferWidth}x${Gdx.graphics.backBufferHeight}")
         view.resize(width, height)
         room.resize(width, height)
+        menu.resize(width, height)
     }
 
     override fun render() {
@@ -59,7 +63,10 @@ class LilGuyGame(private val setup: ModelSetup = ModelSetup.scripted()) : Applic
         if (inRoom) ScreenUtils.clear(room.background, true) else ScreenUtils.clear(DevView.BACKGROUND)
         val start = System.nanoTime()
         session.update(delta)
-        if (inRoom) room.render(session, view.banner(session), delta, view.shopPage) else view.render(session, Gdx.graphics.framesPerSecond)
+        if (inRoom) {
+            room.render(session, if (menu.open) null else view.banner(session, inRoom = true), delta, menuOpen = menu.open)
+            menu.render(session)
+        } else view.render(session, Gdx.graphics.framesPerSecond)
         renderNanos += System.nanoTime() - start
         drawCalls += profiler.drawCalls
         profiler.reset()
@@ -84,6 +91,7 @@ class LilGuyGame(private val setup: ModelSetup = ModelSetup.scripted()) : Applic
         scope.cancel()
         view.dispose()
         room.dispose()
+        menu.dispose()
         art.dispose()
         profiler.disable()
     }

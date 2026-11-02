@@ -114,7 +114,11 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   `verbs` and `done`, built with the world's cached option lists); run control, decision history and the app's memory in `SimSession.kt`;
   the Run page's knobs (days, speed, how much faster quiet stretches run, how long the clock waits on the model, resolution) in
   `RunSettings.kt` (reading and sleeping are `QUIET_VERBS`: the clock runs `quiet` times faster through them); remote keys in
-  `RemoteInput.kt`: OK start/pause, LEFT/RIGHT pages, UP/DOWN scroll or pick, BACK twice restarts). Launchers: `desktop/`, `android/`.
+  `RemoteInput.kt`: in the room OK opens the in-game menu, PLAY/PAUSE starts or pauses anywhere, LEFT/RIGHT pages,
+  UP/DOWN scroll or pick, BACK twice restarts). The in-game menu is `GameMenu.kt`: a card over the room with tabs
+  RUN (start/pause, settings, restart, replay; rows and texts shared with the Run page in `RunControls.kt`), SHOP,
+  THOUGHTS, MEMORY, SELF (core, taste, every night's self-model revision) and TRIPS (shopping transcripts, from
+  `AgentMemory.trips()`), each a list with the picked entry in full beside it. Launchers: `desktop/`, `android/`.
   `LILGUY_SCREENSHOT=out.png LILGUY_SCREENSHOT_AT=<s> make desktop` saves one frame and quits
   (add `LILGUY_CONFIG=/nonexistent` for the scripted policy, no API calls; `MINUTE_TICKS=1` for a faster clock)
   (`LILGUY_SCREENSHOT_KEYS="Enter,@60,Right"` presses keys first; `LILGUY_START_ITEMS=novel,folk_record,guitar` adds to

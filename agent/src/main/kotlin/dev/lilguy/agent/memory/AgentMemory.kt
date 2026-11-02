@@ -106,6 +106,9 @@ class AgentMemory(
     /** Answers to what he asked while thinking, from kept thinks, oldest first. */
     private val keptAnswers = CopyOnWriteArrayList<Answer>()
 
+    private val tripLog = CopyOnWriteArrayList<Trip>()
+    private val revisionLog = CopyOnWriteArrayList<SelfRevision>()
+
     /** His latest kept thought shown as his plan (`shows_as: plan`), or null. */
     @Volatile var plan: Thought? = null
         private set
@@ -117,7 +120,7 @@ class AgentMemory(
         if (thinker != null) handlers += ThoughtHandler(thinker, store, run, onThought = { t -> thoughtLog += t; t.asked.forEach(onAnswer) }, onPlan = { t -> plan = t }, onStored = { id, t -> keptThoughts += id to t }) { a -> keptAnswers += a }
         if (studio != null) handlers += studio
         if (reader != null) handlers += ReadingHandler(reader, store, run)
-        if (shopper != null) handlers += ShoppingHandler(shopper, store, run, onTrip)
+        if (shopper != null) handlers += ShoppingHandler(shopper, store, run) { t -> tripLog += t; onTrip(t) }
         return Authors(handlers, scope)
     }
 
@@ -177,6 +180,12 @@ class AgentMemory(
 
     /** Every thought so far, failed ones included, oldest first. Readable from any thread. */
     fun thoughts(): List<Thought> = thoughtLog.toList()
+
+    /** Every shopping trip so far, failed ones included, oldest first. Readable from any thread. */
+    fun trips(): List<Trip> = tripLog.toList()
+
+    /** Every nightly revision of his self-model so far, changed or not, oldest first. Readable from any thread. */
+    fun revisions(): List<SelfRevision> = revisionLog.toList()
 
     /** Most events one memory covers, or null when nothing summarizes. */
     val batchSize: Int? get() = summarizer?.batchSize
@@ -275,6 +284,7 @@ class AgentMemory(
         val thoughts = store.eventsAfter(run, from - 1, (to - from + 1).toInt()).filter { it.kind == EventKind.Thought }.map { it.text }
         val revision = m.revise(memory, thoughts)
         lastRevision = revision
+        revisionLog += revision
         onSelf(revision)
     }
 

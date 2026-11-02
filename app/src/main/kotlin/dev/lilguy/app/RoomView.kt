@@ -40,8 +40,8 @@ import kotlin.math.tan
  * Everything is drawn in the hand-drawn look by one [CrayonRenderer]: furniture and the guy with the
  * crayon shader and boiling ink outlines, the floor and walls as painted textures under the cheap
  * paper shader. Shown as the dev view's first page ([DevView.Page.Room]); the other pages are the 2D
- * dev view. DOWN opens the shop's catalogue over the room (UP closes it), and it opens by itself
- * while he's buying something, that item picked out. Fill rate stays low for the Streamer: one clear, opaque geometry, the per-pixel crayon
+ * dev view. The shop's catalogue opens over the room by itself while he's buying something, that
+ * item picked out (the in-game menu, [GameMenu], has the whole shop). Fill rate stays low for the Streamer: one clear, opaque geometry, the per-pixel crayon
  * shader only on furniture and the guy, no shadow maps or post-processing; the only blended things
  * are the hatched shadows and the HUD's small rectangles.
  */
@@ -112,8 +112,8 @@ class RoomView(private val art: ArtTextures) : Disposable {
 
     fun resize(width: Int, height: Int) = viewport.update(width, height, true)
 
-    /** One frame of the live world; [banner] is the run-state line the dev view would show, if any; [shopPage] shows that page of the catalogue. */
-    fun render(session: SimSession, banner: String?, delta: Float, shopPage: Int? = null) {
+    /** One frame of the live world; [banner] is the run-state line, if any; [menuOpen]: the menu covers the right of the screen, so the catalogue and the hint stay off. */
+    fun render(session: SimSession, banner: String?, delta: Float, menuOpen: Boolean = false) {
         val now = session.current
         val before = session.previous
         val life = now.life
@@ -204,7 +204,7 @@ class RoomView(private val art: ArtTextures) : Disposable {
         val buying = (agent?.intent as? Intent.Buy)?.item?.takeIf { agent.status.let { it == IntentStatus.Executing || it == IntentStatus.Validated || it == IntentStatus.Submitted } }
         // At a piece, the card says how far he has got, and why the clock has stopped if it has.
         val making = piece?.let { p -> scene.piece?.let { "${if (p.canvas) "painting" else "drawing"} · stroke ${scene.shown} of ${it.of}" } }
-        drawHud(session, life, bubble, banner, if (shopPage != null || buying != null) buying ?: "" else null, shopPage ?: 0, making)
+        drawHud(session, life, bubble, banner, buying?.takeIf { !menuOpen }, making, hint = !menuOpen)
     }
 
     /**
@@ -430,11 +430,8 @@ class RoomView(private val art: ArtTextures) : Disposable {
         if (thoughtAge > THOUGHT_SECONDS) thought = null
     }
 
-    /**
-     * [shop]: null with the catalogue closed, else the item he's buying ("" for none); [page] is the
-     * one shown when he isn't. [making] says how far along a piece he's at is, for the card.
-     */
-    private fun drawHud(session: SimSession, life: LifeSnapshot?, bubble: String?, banner: String?, shop: String?, page: Int, making: String?) {
+    /** [shop]: the item he's buying, with the catalogue open at it, or null. [making] says how far along a piece he's at is, for the card. */
+    private fun drawHud(session: SimSession, life: LifeSnapshot?, bubble: String?, banner: String?, shop: String?, making: String?, hint: Boolean) {
         val catalogue = shop?.let { life?.catalog?.takeIf { c -> c.isNotEmpty() } }
         shapes.projectionMatrix = viewport.camera.combined
         batch.projectionMatrix = viewport.camera.combined
@@ -443,20 +440,21 @@ class RoomView(private val art: ArtTextures) : Disposable {
 
         shapes.begin(ShapeRenderer.ShapeType.Filled)
         life?.let { cardShape(it) }
-        catalogue?.let { catalogueShape(it, shop, page) }
+        catalogue?.let { catalogueShape(it, shop, 0) }
         bubble?.let { bubbleShape(it) }
         banner?.let { bannerShape(it) }
         shapes.end()
 
         batch.begin()
         life?.let { cardText(session, it, making) }
-        catalogue?.let { catalogueText(it, life!!.money, shop, page) }
+        catalogue?.let { catalogueText(it, life!!.money, shop, 0) }
         bubble?.let { bubbleText(it) }
         banner?.let { bannerText(it) }
-        font.data.setScale(HINT_SCALE)
-        font.color = HINT
-        val hint = if (catalogue != null) "DOWN turns the page · UP turns back or closes · LEFT/RIGHT for the dev pages" else "DOWN for the shop · LEFT/RIGHT for the dev pages"
-        font.draw(batch, hint, DevView.WIDTH - MARGIN - 700f, DevView.HEIGHT - MARGIN, 700f, Align.right, false)
+        if (hint) {
+            font.data.setScale(HINT_SCALE)
+            font.color = HINT
+            font.draw(batch, "OK for the menu · LEFT/RIGHT for the dev pages", DevView.WIDTH - MARGIN - 700f, DevView.HEIGHT - MARGIN, 700f, Align.right, false)
+        }
         batch.end()
     }
 
