@@ -1,4 +1,5 @@
--- Views for the eval harness and for asking questions. Recreated on every start.
+-- 0002: views for the eval harness and for asking questions. A later change to a view is a new
+-- migration with its CREATE OR REPLACE VIEW.
 --
 -- A run that was resumed has one session per process lifetime; a resume from a checkpoint replays
 -- the ticks after it, so the abandoned branch's rows are still here (sessions.from_checkpoint says

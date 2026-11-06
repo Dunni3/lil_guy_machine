@@ -103,8 +103,9 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   `RoomView` keeps him posed at through a drawing hold, and lingers the clock (`SimSession.linger`) for.
   Memory is stored in the run database (`RunMemoryStore`); `InMemoryStore` only without one (`--no-db`).
 - Run database (roadmap phase 1, the sim host's store; `docs/decisions/2026-11-06-runs-record-locally-*`):
-  `runlog/` (pure Kotlin): `Tables.kt` (every table once; SQLite DDL at runtime, Postgres DDL via
-  `make server-schema` into `server/sql/001_tables.sql`), `Rows.kt` (`@Serializable` rows), `RunStore.kt` (the
+  `runlog/` (pure Kotlin): `Rows.kt` (the `@Serializable` rows, the tables' only definition: `@Pg`, `@Key`), `Tables.kt`
+  (read from their descriptors; the SQLite DDL), `RowSchema.kt` (`make server-schema`: `server/schema/rows.schema.json`, then
+  Pydantic `server/app/rows.py`; checked by `RowSchemaTest` and `server/tests/test_schema.py`), `RunStore.kt` (the
   device's SQLite store, many runs, `_rev`/`_dirty` for sync, prune after 30 days), `RunRecorder.kt` (`record` returns at
   once; an IO coroutine writes; blobs by SHA-256, gzipped), `SyncWorker.kt` (blobs then `POST /v1/ingest`; env
   `LILGUY_SYNC_URL`, `LILGUY_SYNC_TOKEN`). Drivers: `runlog-jdbc/` (JVM), `android/.../AndroidSqlDriver.kt` (TV).
@@ -112,7 +113,7 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   `TokenLedger.record`, ledger, needs, hourly state, authored ops, art) and takes the morning checkpoint around each
   tick (`beforeStep`/`afterStep`; `AgentRuntime.hold`); saves are `BedroomWorld.exportState`/`restore`
   (`sim/.../BedroomState.kt`) plus `AgentState`. CLI: `cli/.../RunDb.kt`, `Importer.kt`. App: `RunDatabase.kt`,
-  `SimSession`. Server: `server/` (FastAPI ingest in `app/main.py`, views in `sql/002_views.sql`, compose, `deploy/`
+  `SimSession`. Server: `server/` (FastAPI ingest and query only, in `app/main.py`; numbered migrations in `sql/migrations/`, compose, `deploy/`
   for its own Lightsail Small box; see `server/README.md`).
 - Token accounting: `agent/.../TokenLedger.kt`. `ledger.meter(model, purpose)` wraps a model so every call
   (decision, think, summary, self, recall, significance, art) is recorded with its sim tick and game day; `TokenReport` prints

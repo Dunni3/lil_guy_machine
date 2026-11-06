@@ -18,14 +18,28 @@ sim host's store is this local store. The design is in
   `runs/lilguy.db`; on the TV it's the app's files dir. Writes never wait on the network. A
   background `SyncWorker` sends the rows to the server. The server's Postgres is the source of
   truth for queries.
-- **One table list, two stores.** `runlog/.../Tables.kt` defines every table once. The SQLite
-  DDL comes from it at runtime. The Postgres DDL is generated into `server/sql/001_tables.sql` by
-  `make server-schema`. Row types are `@Serializable` classes in `:runlog`. `:runlog` is pure
-  Kotlin, and the SQLite driver is passed in: `:runlog-jdbc` on the JVM, `android.database.sqlite`
-  in `:android`, so there are no natives to package for the TV. `:memory-sqlite` is gone. Memory
-  lives in the run store (`RunMemoryStore`).
-- **The ingest service is Python (FastAPI)** (Ian, 2026-11-06), in `server/`. It reads column
-  names and types from Postgres, so its only copy of the schema is the generated SQL.
+- **The Kotlin row classes are the only definition** (Ian, 2026-11-06). Each `@Serializable` row
+  class in `runlog/.../Rows.kt` is a table: its `@SerialName` names the table, its properties are
+  the columns, and nullability gives the NOT NULLs. `@Pg` marks a String that holds a UUID or an
+  instant, and `@Key` gives the primary key. `Tables.kt` reads all of this from the serial
+  descriptors, and the device's SQLite DDL comes from that.
+- **The rows reach the server as a JSON Schema.** `make server-schema` writes
+  `server/schema/rows.schema.json` from the descriptors (`RowSchema`), then generates the Pydantic
+  models in `server/app/rows.py` with datamodel-code-generator (`server/gen_models.sh`). Each check
+  fails when its copy is stale:
+  - `RowSchemaTest` in `make test`, for the schema;
+  - `server/tests/test_schema.py` in `make server-test`, for the models.
+- **Postgres's tables live in one ordered set of numbered SQL migrations**, in
+  `server/sql/migrations/`. The server applies each one once, at startup (`app/migrations.py`,
+  tracked in `schema_migrations`). The same test fails when the migrated tables (columns, types,
+  NOT NULLs, keys) disagree with the schema. Changing a column means changing `Rows.kt`, running
+  `make server-schema`, and adding the next migration. The local SQLite store keeps its own schema.
+- `:runlog` is pure Kotlin, and the SQLite driver is passed in: `:runlog-jdbc` on the JVM,
+  `android.database.sqlite` in `:android`, so there are no natives to package for the TV.
+  `:memory-sqlite` is gone, and memory lives in the run store (`RunMemoryStore`).
+- **The ingest service is Python (FastAPI)** (Ian, 2026-11-06), in `server/`, and does ingest and
+  query only. It validates every row with the generated models. The live control path (the state
+  stream, start, stop and restart) stays in the Kotlin sim host, in a later phase.
 - **Sync keeps the highest `_rev`.** Every row carries `_rev` (how many times it was written on
   its device). Locally it also carries `_dirty` (not yet taken by the server). The server upserts
   on the primary key `WHERE _rev < EXCLUDED._rev`. So a batch sent twice or out of order lands the

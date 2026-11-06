@@ -6,6 +6,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app app
 COPY sql sql
+COPY schema schema
+COPY gen_models.sh .
 COPY tests tests
 COPY pytest.ini .
 RUN useradd --system --uid 10001 lilguy

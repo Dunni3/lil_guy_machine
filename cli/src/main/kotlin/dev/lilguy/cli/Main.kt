@@ -40,7 +40,7 @@ import dev.lilguy.runlog.RowJson
 import dev.lilguy.runlog.RunRecorder
 import dev.lilguy.runlog.RunRow
 import dev.lilguy.runlog.RunStore
-import dev.lilguy.runlog.Tables
+import dev.lilguy.runlog.RowSchema
 import dev.lilguy.runlog.jdbc.JdbcSqlDriver
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -104,7 +104,7 @@ private const val USAGE = """lil guy machine cli: lockstep runs of the key-and-d
                       --days more days; its personality, grants and clock come from the run
   --import-runs DIR   read old run logs under DIR (the CLI's and the TV's layouts) into the run database, then exit
   --sync              send what the run database hasn't synced to the server, then exit
-  --server-schema F   write the server's tables (Postgres DDL) to F, then exit
+  --server-schema F   write the rows' JSON Schema (what the server's Pydantic models are generated from) to F, then exit
   --memory-endpoint N endpoint that writes the memories, of stretches and of whole days (must write
                       text, so not typesafe)
   --writer-endpoint N bedroom: endpoint that writes his thoughts when he thinks, revises his
@@ -238,7 +238,7 @@ fun main(argv: Array<String>) {
         return
     }
     args.string("--server-schema")?.let { path ->
-        File(path).also { it.parentFile?.mkdirs() }.writeText(Tables.postgresDdl())
+        File(path).also { it.parentFile?.mkdirs() }.writeText(RowSchema.text())
         println("wrote $path")
         return
     }

@@ -19,22 +19,30 @@ any order.
 
 | File | What |
 |---|---|
-| `app/main.py` | The ingest and blob endpoints. Column types come from Postgres itself |
-| `sql/001_tables.sql` | The tables, **generated** from `runlog/.../Tables.kt` by `make server-schema`. Don't edit by hand |
-| `sql/002_views.sql` | `v_runs`, `v_cost_by_day`, `v_verb_mix`, `v_needs_hourly`, `v_stuck` |
+| `app/main.py` | The ingest and blob endpoints. Every row is validated by its generated model |
+| `schema/rows.schema.json` | The rows as JSON Schema, **generated** from the Kotlin row classes (`runlog/.../Rows.kt`) |
+| `app/rows.py` | Pydantic models, **generated** from that schema by `gen_models.sh` |
+| `sql/migrations/NNNN_*.sql` | The tables (`0001`) and views (`0002`: `v_runs`, `v_cost_by_day`, `v_verb_mix`, `v_needs_hourly`, `v_stuck`), each applied once, in order (`app/migrations.py`) |
 | `docker-compose.yml` | `db` (Postgres 16), `api`, `caddy` |
 | `docker-compose.dev.yml` | Local overrides: API on `localhost:8787`, Postgres on `localhost:5433`, no Caddy |
 | `deploy/` | `bootstrap-instance.sh` (once per box), `deploy.sh` (`make server-deploy`), `backup.sh` (nightly cron) |
 
-Every `sql/*.sql` file runs at startup. Each one is idempotent: `IF NOT EXISTS`,
-`ADD COLUMN IF NOT EXISTS`, `CREATE OR REPLACE VIEW`. So adding a column is three steps: add it
-to `Tables.kt`, run `make server-schema`, and deploy.
+The Kotlin row classes are the only definition of the rows. Changing a column takes four steps:
+
+1. Change the row class in `Rows.kt`.
+2. Run `make server-schema`, which regenerates the schema and `app/rows.py`.
+3. Add the next numbered migration with the `ALTER TABLE`.
+4. Deploy.
+
+Two checks fail if a step is missed: `make test` when the schema is stale, and `make server-test`
+when the models are stale or the migrated tables don't match the schema. This service is ingest
+and query only; the live control path belongs to the Kotlin sim host.
 
 ## Locally
 
 ```bash
 make server-up      # Postgres + the API; ingest token "dev"
-make server-test    # the idempotent-ingest tests
+make server-test    # idempotent ingest; models and migrations match the rows
 LILGUY_SYNC_URL=http://localhost:8787 LILGUY_SYNC_TOKEN=dev make cli ARGS="--scenario bedroom --days 1"
 make server-psql    # then: select * from v_runs;
 ```

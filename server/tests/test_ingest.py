@@ -11,12 +11,16 @@ from fastapi.testclient import TestClient
 
 os.environ["LILGUY_INGEST_TOKENS"] = "test:secret"
 
-from app.main import app  # noqa: E402
+from app.main import SCHEMA, app  # noqa: E402
+
+COLUMNS = {d["x-table"]: list(d["properties"]) for d in json.loads(SCHEMA.read_text())["$defs"].values()}
 
 AUTH = {"Authorization": "Bearer secret", "Content-Type": "application/json", "Content-Encoding": "gzip"}
 
 
 def post(client, rows):
+    # Writers send every column, the absent ones as null.
+    rows = [{c: row.get(c) for c in COLUMNS[row["table"]]} for row in rows]
     r = client.post("/v1/ingest", content=gzip.compress(json.dumps({"client": "test", "rows": rows}).encode()), headers=AUTH)
     assert r.status_code == 200, r.text
     return r

@@ -49,8 +49,9 @@ test: ## Run all JVM unit tests
 DEV_COMPOSE := POSTGRES_PASSWORD=dev LILGUY_INGEST_TOKENS=dev:dev DOMAIN=localhost ACME_EMAIL=dev@localhost docker compose -f server/docker-compose.yml -f server/docker-compose.dev.yml
 
 .PHONY: server-schema
-server-schema: ## Regenerate server/sql/001_tables.sql from runlog's table list
-	$(GRADLE) -q :cli:run --args="--server-schema server/sql/001_tables.sql"
+server-schema: ## Regenerate the rows' JSON Schema from runlog's row classes, and the server's Pydantic models from it
+	$(GRADLE) -q :cli:run --args="--server-schema server/schema/rows.schema.json"
+	$(DEV_COMPOSE) run --rm --build --no-deps -v $(CURDIR)/server:/srv api sh gen_models.sh
 
 .PHONY: server-up
 server-up: ## Start Postgres and the ingest service locally (http://localhost:8787; token "dev")

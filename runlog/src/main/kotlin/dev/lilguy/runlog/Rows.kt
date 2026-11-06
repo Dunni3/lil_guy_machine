@@ -1,5 +1,9 @@
 package dev.lilguy.runlog
 
+import dev.lilguy.runlog.Tables.Type.Time
+import dev.lilguy.runlog.Tables.Type.Uuid
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.SerialInfo
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -8,7 +12,28 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 
 /**
- * One row of a [Tables] table. Encoded with [RowJson], a row is `{"table": "decisions", ...columns}`:
+ * A column's Postgres type where the Kotlin type doesn't say it: a String that holds a UUID or an
+ * instant. Everything else follows from the property's type ([Tables.typeOf]).
+ */
+@OptIn(ExperimentalSerializationApi::class)
+@SerialInfo
+@Target(AnnotationTarget.PROPERTY)
+annotation class Pg(val type: Tables.Type)
+
+/** A table's primary key, comma-separated column names. */
+@OptIn(ExperimentalSerializationApi::class)
+@SerialInfo
+@Target(AnnotationTarget.CLASS)
+annotation class Key(val columns: String)
+
+/**
+ * The run database's rows: the one definition of its tables. Each class is a table (its
+ * `@SerialName`), each property a column; [Tables] reads them from the serial descriptors for
+ * the device's SQLite store, and [RowSchema] writes them as the JSON Schema the server's Pydantic
+ * models are generated from (`make server-schema`). Postgres's own tables are numbered migrations
+ * in `server/sql/migrations/`, checked against that schema by the server's tests.
+ *
+ * One row of a table. Encoded with [RowJson], a row is `{"table": "decisions", ...columns}`:
  * the shape the local store writes and the server's ingest takes. Field names are the columns.
  */
 @Serializable
@@ -21,18 +46,18 @@ val RowJson = Json { encodeDefaults = true; explicitNulls = true; classDiscrimin
 /** Where a fact row sits: whose life, which process, its place in the run's order, and the game time. */
 data class Stamp(val runId: String, val sessionId: String, val seq: Long, val tick: Long, val day: Int?, val minuteOfDay: Int?)
 
-@Serializable @SerialName("content_versions")
-data class ContentVersionRow(val hash: String, val files: JsonObject, @SerialName("created_at") val createdAt: String) : Row
+@Serializable @SerialName("content_versions") @Key("hash")
+data class ContentVersionRow(val hash: String, val files: JsonObject, @Pg(Time) @SerialName("created_at") val createdAt: String) : Row
 
-@Serializable @SerialName("batches")
-data class BatchRow(val id: String, val name: String?, val spec: JsonElement?, @SerialName("created_at") val createdAt: String, val notes: String? = null) : Row
+@Serializable @SerialName("batches") @Key("id")
+data class BatchRow(@Pg(Uuid) val id: String, val name: String?, val spec: JsonElement?, @Pg(Time) @SerialName("created_at") val createdAt: String, val notes: String? = null) : Row
 
-@Serializable @SerialName("runs")
+@Serializable @SerialName("runs") @Key("id")
 data class RunRow(
-    val id: String,
-    @SerialName("parent_id") val parentId: String? = null,
-    @SerialName("forked_from") val forkedFrom: String? = null,
-    @SerialName("batch_id") val batchId: String? = null,
+    @Pg(Uuid) val id: String,
+    @Pg(Uuid) @SerialName("parent_id") val parentId: String? = null,
+    @Pg(Uuid) @SerialName("forked_from") val forkedFrom: String? = null,
+    @Pg(Uuid) @SerialName("batch_id") val batchId: String? = null,
     val label: String? = null,
     val scenario: String,
     val platform: String,
@@ -47,32 +72,32 @@ data class RunRow(
     /** Per role (decision, memory, writer, recall, painter): endpoint, model id, prices, beam. */
     val models: JsonObject,
     val settings: JsonObject? = null,
-    @SerialName("started_at") val startedAt: String,
-    @SerialName("ended_at") val endedAt: String? = null,
+    @Pg(Time) @SerialName("started_at") val startedAt: String,
+    @Pg(Time) @SerialName("ended_at") val endedAt: String? = null,
     /** 'days reached', 'decision cap', 'stopped', 'restarted', 'crashed'. */
     @SerialName("end_reason") val endReason: String? = null,
     val notes: String? = null,
 ) : Row
 
-@Serializable @SerialName("sessions")
+@Serializable @SerialName("sessions") @Key("id")
 data class SessionRow(
-    val id: String,
-    @SerialName("run_id") val runId: String,
-    @SerialName("from_checkpoint") val fromCheckpoint: String? = null,
+    @Pg(Uuid) val id: String,
+    @Pg(Uuid) @SerialName("run_id") val runId: String,
+    @Pg(Uuid) @SerialName("from_checkpoint") val fromCheckpoint: String? = null,
     @SerialName("git_sha") val gitSha: String?,
     @SerialName("git_dirty") val gitDirty: Boolean?,
     @SerialName("content_hash") val contentHash: String?,
     val platform: String,
     val host: String?,
-    @SerialName("started_at") val startedAt: String,
-    @SerialName("ended_at") val endedAt: String? = null,
+    @Pg(Time) @SerialName("started_at") val startedAt: String,
+    @Pg(Time) @SerialName("ended_at") val endedAt: String? = null,
 ) : Row
 
-@Serializable @SerialName("model_calls")
+@Serializable @SerialName("model_calls") @Key("id")
 data class ModelCallRow(
-    val id: String,
-    @SerialName("run_id") val runId: String,
-    @SerialName("session_id") val sessionId: String,
+    @Pg(Uuid) val id: String,
+    @Pg(Uuid) @SerialName("run_id") val runId: String,
+    @Pg(Uuid) @SerialName("session_id") val sessionId: String,
     val seq: Long,
     val tick: Long,
     val day: Int?,
@@ -100,17 +125,17 @@ data class ModelCallRow(
     @SerialName("response_blob") val responseBlob: String? = null,
 ) : Row
 
-@Serializable @SerialName("decisions")
+@Serializable @SerialName("decisions") @Key("id")
 data class DecisionRow(
-    val id: String,
-    @SerialName("run_id") val runId: String,
-    @SerialName("session_id") val sessionId: String,
+    @Pg(Uuid) val id: String,
+    @Pg(Uuid) @SerialName("run_id") val runId: String,
+    @Pg(Uuid) @SerialName("session_id") val sessionId: String,
     val seq: Long,
     val tick: Long,
     val day: Int?,
     @SerialName("minute_of_day") val minuteOfDay: Int?,
     /** Null for the scripted policy and for a forced reflection. */
-    @SerialName("model_call_id") val modelCallId: String?,
+    @Pg(Uuid) @SerialName("model_call_id") val modelCallId: String?,
     val intent: JsonElement,
     /** 'do:sketch', 'buy:meal': for group by. */
     @SerialName("intent_label") val intentLabel: String,
@@ -124,10 +149,10 @@ data class DecisionRow(
     @SerialName("observation_blob") val observationBlob: String? = null,
 ) : Row
 
-@Serializable @SerialName("ledger_entries")
+@Serializable @SerialName("ledger_entries") @Key("run_id, seq")
 data class LedgerRow(
-    @SerialName("run_id") val runId: String,
-    @SerialName("session_id") val sessionId: String,
+    @Pg(Uuid) @SerialName("run_id") val runId: String,
+    @Pg(Uuid) @SerialName("session_id") val sessionId: String,
     val seq: Long,
     val tick: Long,
     val day: Int?,
@@ -137,10 +162,10 @@ data class LedgerRow(
     val reason: String,
 ) : Row
 
-@Serializable @SerialName("need_changes")
+@Serializable @SerialName("need_changes") @Key("run_id, seq")
 data class NeedRow(
-    @SerialName("run_id") val runId: String,
-    @SerialName("session_id") val sessionId: String,
+    @Pg(Uuid) @SerialName("run_id") val runId: String,
+    @Pg(Uuid) @SerialName("session_id") val sessionId: String,
     val seq: Long,
     val tick: Long,
     val day: Int?,
@@ -151,10 +176,10 @@ data class NeedRow(
     val reason: String,
 ) : Row
 
-@Serializable @SerialName("hourly_state")
+@Serializable @SerialName("hourly_state") @Key("run_id, seq")
 data class HourlyRow(
-    @SerialName("run_id") val runId: String,
-    @SerialName("session_id") val sessionId: String,
+    @Pg(Uuid) @SerialName("run_id") val runId: String,
+    @Pg(Uuid) @SerialName("session_id") val sessionId: String,
     val seq: Long,
     val tick: Long,
     val day: Int?,
@@ -166,10 +191,10 @@ data class HourlyRow(
     val doing: String?,
 ) : Row
 
-@Serializable @SerialName("memory_events")
+@Serializable @SerialName("memory_events") @Key("run_id, id")
 data class MemoryEventRow(
-    @SerialName("run_id") val runId: String,
-    @SerialName("session_id") val sessionId: String,
+    @Pg(Uuid) @SerialName("run_id") val runId: String,
+    @Pg(Uuid) @SerialName("session_id") val sessionId: String,
     val seq: Long,
     val tick: Long,
     val day: Int?,
@@ -182,10 +207,10 @@ data class MemoryEventRow(
     val significance: Double? = null,
 ) : Row
 
-@Serializable @SerialName("memories")
+@Serializable @SerialName("memories") @Key("run_id, id")
 data class MemoryRow(
-    @SerialName("run_id") val runId: String,
-    @SerialName("session_id") val sessionId: String,
+    @Pg(Uuid) @SerialName("run_id") val runId: String,
+    @Pg(Uuid) @SerialName("session_id") val sessionId: String,
     val seq: Long,
     val tick: Long,
     val day: Int?,
@@ -204,11 +229,11 @@ data class MemoryRow(
     val importance: Double? = null,
 ) : Row
 
-@Serializable @SerialName("authored")
+@Serializable @SerialName("authored") @Key("id")
 data class AuthoredRow(
-    val id: String,
-    @SerialName("run_id") val runId: String,
-    @SerialName("session_id") val sessionId: String,
+    @Pg(Uuid) val id: String,
+    @Pg(Uuid) @SerialName("run_id") val runId: String,
+    @Pg(Uuid) @SerialName("session_id") val sessionId: String,
     val seq: Long,
     val tick: Long,
     val day: Int?,
@@ -222,10 +247,10 @@ data class AuthoredRow(
     val error: String? = null,
 ) : Row
 
-@Serializable @SerialName("art_pieces")
+@Serializable @SerialName("art_pieces") @Key("run_id, seq")
 data class ArtPieceRow(
-    @SerialName("run_id") val runId: String,
-    @SerialName("session_id") val sessionId: String,
+    @Pg(Uuid) @SerialName("run_id") val runId: String,
+    @Pg(Uuid) @SerialName("session_id") val sessionId: String,
     val seq: Long,
     val tick: Long,
     val day: Int?,
@@ -245,11 +270,11 @@ data class ArtPieceRow(
     val artist: String?,
 ) : Row
 
-@Serializable @SerialName("checkpoints")
+@Serializable @SerialName("checkpoints") @Key("id")
 data class CheckpointRow(
-    val id: String,
-    @SerialName("run_id") val runId: String,
-    @SerialName("session_id") val sessionId: String,
+    @Pg(Uuid) val id: String,
+    @Pg(Uuid) @SerialName("run_id") val runId: String,
+    @Pg(Uuid) @SerialName("session_id") val sessionId: String,
     val tick: Long,
     val day: Int,
     @SerialName("minute_of_day") val minuteOfDay: Int,
@@ -261,7 +286,7 @@ data class CheckpointRow(
     @SerialName("agent_state") val agentState: JsonElement,
     /** The run's last seq, and the last memory event and memory id, this checkpoint covers. */
     val watermarks: Watermarks,
-    @SerialName("created_at") val createdAt: String,
+    @Pg(Time) @SerialName("created_at") val createdAt: String,
 ) : Row
 
 @Serializable
@@ -271,10 +296,10 @@ data class Watermarks(
     val memory: Long,
 )
 
-@Serializable @SerialName("run_lineage")
+@Serializable @SerialName("run_lineage") @Key("run_id, source_run_id, scope")
 data class LineageRow(
-    @SerialName("run_id") val runId: String,
-    @SerialName("source_run_id") val sourceRunId: String,
+    @Pg(Uuid) @SerialName("run_id") val runId: String,
+    @Pg(Uuid) @SerialName("source_run_id") val sourceRunId: String,
     /** 'memories', 'self_model', 'skills', 'knowledge', 'inventions', 'art'. */
     val scope: String,
     /** 'seed' (copied in at the start) or 'recall' (searchable during the run). */
@@ -282,14 +307,31 @@ data class LineageRow(
     val note: String? = null,
 ) : Row
 
-@Serializable @SerialName("run_records")
+@Serializable @SerialName("run_records") @Key("run_id, seq")
 data class RecordRow(
-    @SerialName("run_id") val runId: String,
-    @SerialName("session_id") val sessionId: String,
+    @Pg(Uuid) @SerialName("run_id") val runId: String,
+    @Pg(Uuid) @SerialName("session_id") val sessionId: String,
     val seq: Long,
     val tick: Long,
     val day: Int?,
     @SerialName("minute_of_day") val minuteOfDay: Int?,
     val kind: String,
     val data: JsonElement,
+) : Row
+
+/** Reserved for the phone and letters (phase 3): nothing writes it yet. */
+@Serializable @SerialName("letters") @Key("id")
+data class LetterRow(
+    @Pg(Uuid) val id: String,
+    @Pg(Uuid) @SerialName("run_id") val runId: String,
+    /** 'to_him' or 'from_him'. */
+    val direction: String,
+    val tick: Long?,
+    val day: Int?,
+    @SerialName("minute_of_day") val minuteOfDay: Int?,
+    val text: String,
+    @Pg(Uuid) @SerialName("reply_to") val replyTo: String? = null,
+    @Pg(Time) @SerialName("written_at") val writtenAt: String? = null,
+    @Pg(Time) @SerialName("delivered_at") val deliveredAt: String? = null,
+    @Pg(Time) @SerialName("read_at") val readAt: String? = null,
 ) : Row

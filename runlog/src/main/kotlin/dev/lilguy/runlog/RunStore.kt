@@ -180,11 +180,10 @@ class RunStore(private val db: SqlDriver) : AutoCloseable {
         private fun sqlValue(type: Tables.Type, e: JsonElement?): Any? {
             if (e == null || e is JsonNull) return null
             return when (type) {
-                Tables.Type.Json, Tables.Type.TextArray, Tables.Type.UuidArray -> e.toString()
+                Tables.Type.Json, Tables.Type.TextArray -> e.toString()
                 Tables.Type.Bool -> if (e.jsonPrimitive.boolean) 1L else 0L
                 Tables.Type.Int, Tables.Type.Long -> e.jsonPrimitive.long
                 Tables.Type.Real -> e.jsonPrimitive.double
-                Tables.Type.Bytes -> error("bytes columns aren't written as rows")
                 else -> e.jsonPrimitive.content
             }
         }
@@ -198,7 +197,7 @@ class RunStore(private val db: SqlDriver) : AutoCloseable {
                         c.name,
                         when {
                             v == null -> JsonNull
-                            c.type == Tables.Type.Json || c.type == Tables.Type.TextArray || c.type == Tables.Type.UuidArray -> RowJson.parseToJsonElement(v as String)
+                            c.type == Tables.Type.Json || c.type == Tables.Type.TextArray -> RowJson.parseToJsonElement(v as String)
                             c.type == Tables.Type.Bool -> JsonPrimitive((v as Long) != 0L)
                             c.type == Tables.Type.Real -> JsonPrimitive((v as Number).toDouble())
                             v is Long -> JsonPrimitive(v)
