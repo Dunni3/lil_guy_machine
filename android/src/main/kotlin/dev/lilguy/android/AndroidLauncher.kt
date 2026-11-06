@@ -4,8 +4,8 @@ import android.os.Bundle
 import com.badlogic.gdx.backends.android.AndroidApplication
 import com.badlogic.gdx.backends.android.AndroidApplicationConfiguration
 import dev.lilguy.app.LilGuyGame
-import dev.lilguy.app.ModelSetup
-import dev.lilguy.app.RunDatabase
+import dev.lilguy.agent.live.ModelSetup
+import dev.lilguy.agent.live.RunDatabase
 import dev.lilguy.runlog.RunStore
 import dev.lilguy.runlog.SyncTarget
 import dev.lilguy.agent.Scenario

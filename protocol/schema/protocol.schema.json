@@ -1,0 +1,2471 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Protocol",
+    "description": "The lil guy machine sim host's wire format. Generated from protocol/.../*.kt; don't edit.",
+    "x-protocol-version": 1,
+    "type": "object",
+    "properties": {
+        "server": {
+            "$ref": "#/$defs/ServerMessage"
+        },
+        "command": {
+            "$ref": "#/$defs/Command"
+        },
+        "result": {
+            "$ref": "#/$defs/CommandResult"
+        }
+    },
+    "required": [
+        "server",
+        "command",
+        "result"
+    ],
+    "additionalProperties": false,
+    "$defs": {
+        "AgentView": {
+            "title": "AgentView",
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "intent": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/IntentView"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "status": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/StatusView"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "inventory": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "path": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/CellView"
+                    }
+                },
+                "saying": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "id",
+                "intent",
+                "status",
+                "inventory",
+                "path",
+                "saying"
+            ],
+            "additionalProperties": false
+        },
+        "AnswerView": {
+            "title": "AnswerView",
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string"
+                },
+                "opened": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "answer": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "question",
+                "opened",
+                "answer"
+            ],
+            "additionalProperties": false
+        },
+        "BookView": {
+            "title": "BookView",
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "read": {
+                    "type": "integer"
+                },
+                "chapters": {
+                    "type": "integer"
+                },
+                "raises": {
+                    "anyOf": [
+                        {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "teaches": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "id",
+                "title",
+                "read",
+                "chapters",
+                "raises",
+                "teaches"
+            ],
+            "additionalProperties": false
+        },
+        "CatalogItem": {
+            "title": "CatalogItem",
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "group": {
+                    "type": "string"
+                },
+                "price": {
+                    "type": "integer"
+                },
+                "pack": {
+                    "type": "integer"
+                },
+                "stackable": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "id",
+                "name",
+                "group",
+                "price",
+                "pack",
+                "stackable"
+            ],
+            "additionalProperties": false
+        },
+        "CatalogState": {
+            "title": "CatalogState",
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "owned": {
+                    "type": "integer"
+                },
+                "affordable": {
+                    "type": "boolean"
+                },
+                "gives": {
+                    "type": "string"
+                },
+                "taught_by": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "id",
+                "owned",
+                "affordable",
+                "gives",
+                "taught_by"
+            ],
+            "additionalProperties": false
+        },
+        "CellView": {
+            "title": "CellView",
+            "type": "object",
+            "properties": {
+                "x": {
+                    "type": "integer"
+                },
+                "y": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "x",
+                "y"
+            ],
+            "additionalProperties": false
+        },
+        "Clock": {
+            "title": "Clock",
+            "type": "object",
+            "properties": {
+                "day": {
+                    "type": "integer"
+                },
+                "time": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "day",
+                "time"
+            ],
+            "additionalProperties": false
+        },
+        "Command": {
+            "title": "Command",
+            "oneOf": [
+                {
+                    "$ref": "#/$defs/Configure"
+                },
+                {
+                    "$ref": "#/$defs/Pause"
+                },
+                {
+                    "$ref": "#/$defs/Replay"
+                },
+                {
+                    "$ref": "#/$defs/Restart"
+                },
+                {
+                    "$ref": "#/$defs/Resume"
+                },
+                {
+                    "$ref": "#/$defs/Start"
+                },
+                {
+                    "$ref": "#/$defs/Step"
+                }
+            ]
+        },
+        "CommandResult": {
+            "title": "CommandResult",
+            "type": "object",
+            "properties": {
+                "ok": {
+                    "type": "boolean"
+                },
+                "error": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "seq": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "state": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/RunState"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "ok",
+                "error",
+                "seq",
+                "state"
+            ],
+            "additionalProperties": false
+        },
+        "CommissionView": {
+            "title": "CommissionView",
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "wants": {
+                    "type": "string"
+                },
+                "request": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "reward": {
+                    "type": "integer"
+                },
+                "until": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "id",
+                "wants",
+                "request",
+                "reward",
+                "until"
+            ],
+            "additionalProperties": false
+        },
+        "Configure": {
+            "title": "Configure",
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "const": "configure"
+                },
+                "settings": {
+                    "$ref": "#/$defs/Settings"
+                }
+            },
+            "required": [
+                "type",
+                "settings"
+            ],
+            "additionalProperties": false
+        },
+        "Content": {
+            "title": "Content",
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "const": "content"
+                },
+                "hash": {
+                    "type": "string"
+                },
+                "scenario": {
+                    "type": "string"
+                },
+                "map": {
+                    "$ref": "#/$defs/MapView"
+                },
+                "catalog": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/CatalogItem"
+                    }
+                },
+                "verbs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/VerbInfo"
+                    }
+                }
+            },
+            "required": [
+                "type",
+                "hash",
+                "scenario",
+                "map",
+                "catalog",
+                "verbs"
+            ],
+            "additionalProperties": false
+        },
+        "DecisionView": {
+            "title": "DecisionView",
+            "type": "object",
+            "properties": {
+                "seq": {
+                    "type": "integer"
+                },
+                "tick": {
+                    "type": "integer"
+                },
+                "intent": {
+                    "$ref": "#/$defs/IntentView"
+                },
+                "rationale": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "error": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "latency_ms": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "seq",
+                "tick",
+                "intent",
+                "rationale",
+                "error",
+                "latency_ms"
+            ],
+            "additionalProperties": false
+        },
+        "Delta": {
+            "title": "Delta",
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "const": "delta"
+                },
+                "life": {
+                    "type": "string"
+                },
+                "seq": {
+                    "type": "integer"
+                },
+                "run": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/RunInfo"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "fast": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/FastState"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "easel": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/Easel"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "wallet": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/Wallet"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "growth": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/Growth"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "gallery": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/Gallery"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "shop": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/ShopState"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "mind": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/Mind"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "tokens": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/Tokens"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "logs": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/Logs"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "type",
+                "life",
+                "seq",
+                "run",
+                "fast",
+                "easel",
+                "wallet",
+                "growth",
+                "gallery",
+                "shop",
+                "mind",
+                "tokens",
+                "logs"
+            ],
+            "additionalProperties": false
+        },
+        "DrawingView": {
+            "title": "DrawingView",
+            "type": "object",
+            "properties": {
+                "seq": {
+                    "type": "integer"
+                },
+                "piece": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "tick": {
+                    "type": "integer"
+                },
+                "day": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "time": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "item": {
+                    "type": "string"
+                },
+                "title": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "commission": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "shows": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "palette": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "size": {
+                    "type": "integer"
+                },
+                "rows": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            },
+            "required": [
+                "seq",
+                "piece",
+                "tick",
+                "day",
+                "time",
+                "item",
+                "title",
+                "tags",
+                "commission",
+                "shows",
+                "palette",
+                "size",
+                "rows"
+            ],
+            "additionalProperties": false
+        },
+        "Easel": {
+            "title": "Easel",
+            "type": "object",
+            "properties": {
+                "underway": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/UnderwayView"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "phase": {
+                    "type": "string"
+                },
+                "phase_seconds": {
+                    "type": "number"
+                },
+                "shown": {
+                    "type": "integer"
+                },
+                "drawn": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "underway",
+                "phase",
+                "phase_seconds",
+                "shown",
+                "drawn"
+            ],
+            "additionalProperties": false
+        },
+        "Entity": {
+            "title": "Entity",
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "x": {
+                    "type": "number"
+                },
+                "y": {
+                    "type": "number"
+                },
+                "height": {
+                    "type": "number"
+                },
+                "facing_degrees": {
+                    "type": "number"
+                },
+                "state": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "carried_by": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "id",
+                "kind",
+                "x",
+                "y",
+                "height",
+                "facing_degrees",
+                "state",
+                "carried_by"
+            ],
+            "additionalProperties": false
+        },
+        "EventView": {
+            "title": "EventView",
+            "type": "object",
+            "properties": {
+                "seq": {
+                    "type": "integer"
+                },
+                "tick": {
+                    "type": "integer"
+                },
+                "text": {
+                    "type": "string"
+                },
+                "outcome": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "seq",
+                "tick",
+                "text",
+                "outcome"
+            ],
+            "additionalProperties": false
+        },
+        "FastState": {
+            "title": "FastState",
+            "type": "object",
+            "properties": {
+                "tick": {
+                    "type": "integer"
+                },
+                "clock": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/Clock"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "needs": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/Needs"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "doing": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "progress": {
+                    "anyOf": [
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "music": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "entities": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/Entity"
+                    }
+                },
+                "agents": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/AgentView"
+                    }
+                },
+                "completed": {
+                    "type": "boolean"
+                },
+                "held": {
+                    "type": "boolean"
+                },
+                "held_for": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "fast_forward": {
+                    "type": "integer"
+                },
+                "thinking_ms": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "easel_time": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "tick",
+                "clock",
+                "needs",
+                "doing",
+                "progress",
+                "music",
+                "entities",
+                "agents",
+                "completed",
+                "held",
+                "held_for",
+                "fast_forward",
+                "thinking_ms",
+                "easel_time"
+            ],
+            "additionalProperties": false
+        },
+        "Gallery": {
+            "title": "Gallery",
+            "type": "object",
+            "properties": {
+                "art": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/PieceView"
+                    }
+                },
+                "commission": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/CommissionView"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "art",
+                "commission"
+            ],
+            "additionalProperties": false
+        },
+        "Growth": {
+            "title": "Growth",
+            "type": "object",
+            "properties": {
+                "skills": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "number"
+                    }
+                },
+                "books": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/BookView"
+                    }
+                },
+                "done": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/$defs/Tally"
+                    }
+                }
+            },
+            "required": [
+                "skills",
+                "books",
+                "done"
+            ],
+            "additionalProperties": false
+        },
+        "IntentView": {
+            "title": "IntentView",
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string"
+                },
+                "text": {
+                    "type": "string"
+                },
+                "activity": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "item": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "type",
+                "text",
+                "activity",
+                "item"
+            ],
+            "additionalProperties": false
+        },
+        "LifeState": {
+            "title": "LifeState",
+            "type": "object",
+            "properties": {
+                "life": {
+                    "type": "string"
+                },
+                "seq": {
+                    "type": "integer"
+                },
+                "content": {
+                    "type": "string"
+                },
+                "run": {
+                    "$ref": "#/$defs/RunInfo"
+                },
+                "fast": {
+                    "$ref": "#/$defs/FastState"
+                },
+                "easel": {
+                    "$ref": "#/$defs/Easel"
+                },
+                "wallet": {
+                    "$ref": "#/$defs/Wallet"
+                },
+                "growth": {
+                    "$ref": "#/$defs/Growth"
+                },
+                "gallery": {
+                    "$ref": "#/$defs/Gallery"
+                },
+                "shop": {
+                    "$ref": "#/$defs/ShopState"
+                },
+                "mind": {
+                    "$ref": "#/$defs/Mind"
+                },
+                "tokens": {
+                    "$ref": "#/$defs/Tokens"
+                },
+                "logs": {
+                    "$ref": "#/$defs/Logs"
+                }
+            },
+            "required": [
+                "life",
+                "seq",
+                "content",
+                "run",
+                "fast",
+                "easel",
+                "wallet",
+                "growth",
+                "gallery",
+                "shop",
+                "mind",
+                "tokens",
+                "logs"
+            ],
+            "additionalProperties": false
+        },
+        "LifeSummary": {
+            "title": "LifeSummary",
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "scenario": {
+                    "type": "string"
+                },
+                "run_id": {
+                    "type": "string"
+                },
+                "state": {
+                    "$ref": "#/$defs/RunState"
+                }
+            },
+            "required": [
+                "id",
+                "scenario",
+                "run_id",
+                "state"
+            ],
+            "additionalProperties": false
+        },
+        "Logs": {
+            "title": "Logs",
+            "type": "object",
+            "properties": {
+                "transactions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/TransactionView"
+                    }
+                },
+                "events": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/EventView"
+                    }
+                },
+                "decisions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/DecisionView"
+                    }
+                },
+                "thoughts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/ThoughtView"
+                    }
+                },
+                "memories": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/MemoryView"
+                    }
+                },
+                "revisions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/RevisionView"
+                    }
+                },
+                "trips": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/TripView"
+                    }
+                },
+                "drawings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/DrawingView"
+                    }
+                }
+            },
+            "required": [
+                "transactions",
+                "events",
+                "decisions",
+                "thoughts",
+                "memories",
+                "revisions",
+                "trips",
+                "drawings"
+            ],
+            "additionalProperties": false
+        },
+        "MapView": {
+            "title": "MapView",
+            "type": "object",
+            "properties": {
+                "width": {
+                    "type": "integer"
+                },
+                "height": {
+                    "type": "integer"
+                },
+                "rows": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            },
+            "required": [
+                "width",
+                "height",
+                "rows"
+            ],
+            "additionalProperties": false
+        },
+        "MemoryView": {
+            "title": "MemoryView",
+            "type": "object",
+            "properties": {
+                "seq": {
+                    "type": "integer"
+                },
+                "level": {
+                    "type": "integer"
+                },
+                "span": {
+                    "type": "string"
+                },
+                "from_day": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "to_day": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "text": {
+                    "type": "string"
+                },
+                "importance": {
+                    "anyOf": [
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "seq",
+                "level",
+                "span",
+                "from_day",
+                "to_day",
+                "text",
+                "importance"
+            ],
+            "additionalProperties": false
+        },
+        "Mind": {
+            "title": "Mind",
+            "type": "object",
+            "properties": {
+                "plan": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/ThoughtView"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "self_text": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "self_model": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/SelfModelView"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "summarizing": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "plan",
+                "self_text",
+                "self_model",
+                "summarizing"
+            ],
+            "additionalProperties": false
+        },
+        "Models": {
+            "title": "Models",
+            "type": "object",
+            "properties": {
+                "decision": {
+                    "type": "string"
+                },
+                "memory": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "thoughts": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "self": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "scorer": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "artist": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "decision",
+                "memory",
+                "thoughts",
+                "self",
+                "scorer",
+                "artist"
+            ],
+            "additionalProperties": false
+        },
+        "Needs": {
+            "title": "Needs",
+            "type": "object",
+            "properties": {
+                "energy": {
+                    "type": "number"
+                },
+                "fullness": {
+                    "type": "number"
+                },
+                "mood": {
+                    "type": "number"
+                },
+                "stimulation": {
+                    "type": "number"
+                },
+                "frustration": {
+                    "type": "number"
+                },
+                "mood_target": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "energy",
+                "fullness",
+                "mood",
+                "stimulation",
+                "frustration",
+                "mood_target"
+            ],
+            "additionalProperties": false
+        },
+        "Pause": {
+            "title": "Pause",
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "const": "pause"
+                }
+            },
+            "required": [
+                "type"
+            ],
+            "additionalProperties": false
+        },
+        "PickView": {
+            "title": "PickView",
+            "type": "object",
+            "properties": {
+                "item": {
+                    "type": "string"
+                },
+                "why": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "item",
+                "why"
+            ],
+            "additionalProperties": false
+        },
+        "PieceView": {
+            "title": "PieceView",
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "item": {
+                    "type": "string"
+                },
+                "title": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "hung": {
+                    "type": "boolean"
+                },
+                "sells_for": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "commission": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "id",
+                "item",
+                "title",
+                "hung",
+                "sells_for",
+                "commission"
+            ],
+            "additionalProperties": false
+        },
+        "Refused": {
+            "title": "Refused",
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "const": "refused"
+                },
+                "version": {
+                    "type": "integer"
+                },
+                "reason": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "type",
+                "version",
+                "reason"
+            ],
+            "additionalProperties": false
+        },
+        "Replay": {
+            "title": "Replay",
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "const": "replay"
+                },
+                "run": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "type",
+                "run"
+            ],
+            "additionalProperties": false
+        },
+        "Restart": {
+            "title": "Restart",
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "const": "restart"
+                }
+            },
+            "required": [
+                "type"
+            ],
+            "additionalProperties": false
+        },
+        "Resume": {
+            "title": "Resume",
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "const": "resume"
+                },
+                "run": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "type",
+                "run"
+            ],
+            "additionalProperties": false
+        },
+        "RevisionView": {
+            "title": "RevisionView",
+            "type": "object",
+            "properties": {
+                "seq": {
+                    "type": "integer"
+                },
+                "day": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "changed": {
+                    "type": "boolean"
+                },
+                "note": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "self": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/SelfModelView"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "error": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "seq",
+                "day",
+                "changed",
+                "note",
+                "self",
+                "error"
+            ],
+            "additionalProperties": false
+        },
+        "RunInfo": {
+            "title": "RunInfo",
+            "type": "object",
+            "properties": {
+                "run_id": {
+                    "type": "string"
+                },
+                "run": {
+                    "type": "integer"
+                },
+                "scenario": {
+                    "type": "string"
+                },
+                "state": {
+                    "$ref": "#/$defs/RunState"
+                },
+                "settings": {
+                    "$ref": "#/$defs/Settings"
+                },
+                "starts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/Settings"
+                    }
+                },
+                "ticks_per_minute": {
+                    "type": "integer"
+                },
+                "end_tick": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "min_days": {
+                    "type": "integer"
+                },
+                "ended_because": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "notices": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "models": {
+                    "$ref": "#/$defs/Models"
+                }
+            },
+            "required": [
+                "run_id",
+                "run",
+                "scenario",
+                "state",
+                "settings",
+                "starts",
+                "ticks_per_minute",
+                "end_tick",
+                "min_days",
+                "ended_because",
+                "notices",
+                "models"
+            ],
+            "additionalProperties": false
+        },
+        "RunState": {
+            "title": "RunState",
+            "type": "string",
+            "enum": [
+                "ready",
+                "running",
+                "paused",
+                "ended"
+            ]
+        },
+        "SelfModelView": {
+            "title": "SelfModelView",
+            "type": "object",
+            "properties": {
+                "who": {
+                    "type": "string"
+                },
+                "cares": {
+                    "type": "string"
+                },
+                "believes": {
+                    "type": "string"
+                },
+                "working_toward": {
+                    "type": "string"
+                },
+                "learned": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "who",
+                "cares",
+                "believes",
+                "working_toward",
+                "learned"
+            ],
+            "additionalProperties": false
+        },
+        "ServerMessage": {
+            "title": "ServerMessage",
+            "oneOf": [
+                {
+                    "$ref": "#/$defs/Content"
+                },
+                {
+                    "$ref": "#/$defs/Delta"
+                },
+                {
+                    "$ref": "#/$defs/Refused"
+                },
+                {
+                    "$ref": "#/$defs/Snapshot"
+                },
+                {
+                    "$ref": "#/$defs/Welcome"
+                }
+            ]
+        },
+        "Settings": {
+            "title": "Settings",
+            "type": "object",
+            "properties": {
+                "days": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "speed": {
+                    "type": "integer"
+                },
+                "ticks_per_minute": {
+                    "type": "integer"
+                },
+                "decide_cap": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "quiet": {
+                    "type": "integer"
+                },
+                "quiet_verbs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "hold_for_art": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "days",
+                "speed",
+                "ticks_per_minute",
+                "decide_cap",
+                "quiet",
+                "quiet_verbs",
+                "hold_for_art"
+            ],
+            "additionalProperties": false
+        },
+        "ShopState": {
+            "title": "ShopState",
+            "type": "object",
+            "properties": {
+                "catalog": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/CatalogState"
+                    }
+                },
+                "verbs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/VerbState"
+                    }
+                }
+            },
+            "required": [
+                "catalog",
+                "verbs"
+            ],
+            "additionalProperties": false
+        },
+        "Snapshot": {
+            "title": "Snapshot",
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "const": "snapshot"
+                },
+                "state": {
+                    "$ref": "#/$defs/LifeState"
+                }
+            },
+            "required": [
+                "type",
+                "state"
+            ],
+            "additionalProperties": false
+        },
+        "Start": {
+            "title": "Start",
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "const": "start"
+                }
+            },
+            "required": [
+                "type"
+            ],
+            "additionalProperties": false
+        },
+        "StatusView": {
+            "title": "StatusView",
+            "type": "object",
+            "properties": {
+                "state": {
+                    "type": "string"
+                },
+                "reason": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "state",
+                "reason"
+            ],
+            "additionalProperties": false
+        },
+        "Step": {
+            "title": "Step",
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "const": "step"
+                },
+                "ticks": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "type",
+                "ticks"
+            ],
+            "additionalProperties": false
+        },
+        "Tally": {
+            "title": "Tally",
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "first_tick": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "count",
+                "first_tick"
+            ],
+            "additionalProperties": false
+        },
+        "ThoughtView": {
+            "title": "ThoughtView",
+            "type": "object",
+            "properties": {
+                "seq": {
+                    "type": "integer"
+                },
+                "tick": {
+                    "type": "integer"
+                },
+                "day": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "time": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "thinker": {
+                    "type": "string"
+                },
+                "text": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "error": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "asked": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/AnswerView"
+                    }
+                }
+            },
+            "required": [
+                "seq",
+                "tick",
+                "day",
+                "time",
+                "thinker",
+                "text",
+                "error",
+                "asked"
+            ],
+            "additionalProperties": false
+        },
+        "TokenDay": {
+            "title": "TokenDay",
+            "type": "object",
+            "properties": {
+                "day": {
+                    "type": "integer"
+                },
+                "total": {
+                    "$ref": "#/$defs/TokenTotals"
+                },
+                "by_purpose": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/$defs/TokenTotals"
+                    }
+                }
+            },
+            "required": [
+                "day",
+                "total",
+                "by_purpose"
+            ],
+            "additionalProperties": false
+        },
+        "TokenTotals": {
+            "title": "TokenTotals",
+            "type": "object",
+            "properties": {
+                "decides": {
+                    "type": "integer"
+                },
+                "calls": {
+                    "type": "integer"
+                },
+                "prompt_tokens": {
+                    "type": "integer"
+                },
+                "completion_tokens": {
+                    "type": "integer"
+                },
+                "latency_ms": {
+                    "type": "integer"
+                },
+                "cost_usd": {
+                    "anyOf": [
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "decides",
+                "calls",
+                "prompt_tokens",
+                "completion_tokens",
+                "latency_ms",
+                "cost_usd"
+            ],
+            "additionalProperties": false
+        },
+        "Tokens": {
+            "title": "Tokens",
+            "type": "object",
+            "properties": {
+                "total": {
+                    "$ref": "#/$defs/TokenTotals"
+                },
+                "by_purpose": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/$defs/TokenTotals"
+                    }
+                },
+                "days": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/TokenDay"
+                    }
+                }
+            },
+            "required": [
+                "total",
+                "by_purpose",
+                "days"
+            ],
+            "additionalProperties": false
+        },
+        "TransactionView": {
+            "title": "TransactionView",
+            "type": "object",
+            "properties": {
+                "seq": {
+                    "type": "integer"
+                },
+                "tick": {
+                    "type": "integer"
+                },
+                "day": {
+                    "type": "integer"
+                },
+                "time": {
+                    "type": "string"
+                },
+                "amount": {
+                    "type": "integer"
+                },
+                "balance": {
+                    "type": "integer"
+                },
+                "reason": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "seq",
+                "tick",
+                "day",
+                "time",
+                "amount",
+                "balance",
+                "reason"
+            ],
+            "additionalProperties": false
+        },
+        "TripView": {
+            "title": "TripView",
+            "type": "object",
+            "properties": {
+                "seq": {
+                    "type": "integer"
+                },
+                "tick": {
+                    "type": "integer"
+                },
+                "day": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "time": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "shopper": {
+                    "type": "string"
+                },
+                "catalog": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "buy": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/PickView"
+                    }
+                },
+                "save_for": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "chose_saving": {
+                    "type": "boolean"
+                },
+                "note": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "error": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "fell_back": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "seq",
+                "tick",
+                "day",
+                "time",
+                "shopper",
+                "catalog",
+                "buy",
+                "save_for",
+                "chose_saving",
+                "note",
+                "error",
+                "fell_back"
+            ],
+            "additionalProperties": false
+        },
+        "UnderwayView": {
+            "title": "UnderwayView",
+            "type": "object",
+            "properties": {
+                "tick": {
+                    "type": "integer"
+                },
+                "item": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "verb": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "palette": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "strokes": {
+                    "type": "integer"
+                },
+                "of": {
+                    "type": "integer"
+                },
+                "crayon": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "state": {
+                    "type": "string"
+                },
+                "size": {
+                    "type": "integer"
+                },
+                "rows": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            },
+            "required": [
+                "tick",
+                "item",
+                "title",
+                "verb",
+                "palette",
+                "strokes",
+                "of",
+                "crayon",
+                "state",
+                "size",
+                "rows"
+            ],
+            "additionalProperties": false
+        },
+        "VerbInfo": {
+            "title": "VerbInfo",
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "phrase": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "id",
+                "phrase"
+            ],
+            "additionalProperties": false
+        },
+        "VerbState": {
+            "title": "VerbState",
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "locked": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "gives": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "taught_by": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "id",
+                "locked",
+                "gives",
+                "taught_by"
+            ],
+            "additionalProperties": false
+        },
+        "Wallet": {
+            "title": "Wallet",
+            "type": "object",
+            "properties": {
+                "money": {
+                    "type": "integer"
+                },
+                "holding": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "owns": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer"
+                    }
+                }
+            },
+            "required": [
+                "money",
+                "holding",
+                "owns"
+            ],
+            "additionalProperties": false
+        },
+        "Welcome": {
+            "title": "Welcome",
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "const": "welcome"
+                },
+                "version": {
+                    "type": "integer"
+                },
+                "lives": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/LifeSummary"
+                    }
+                },
+                "caps": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer"
+                    }
+                }
+            },
+            "required": [
+                "type",
+                "version",
+                "lives",
+                "caps"
+            ],
+            "additionalProperties": false
+        }
+    }
+}

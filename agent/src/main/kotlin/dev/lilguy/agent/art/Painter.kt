@@ -73,6 +73,8 @@ data class Underway(
     val art: Artwork,
     val crayon: Int? = null,
     val state: State = State.Drawing,
+    /** The verb making it, once the studio has said. */
+    val verb: String? = null,
 ) {
     enum class State { Drawing, Done, Dropped }
 }

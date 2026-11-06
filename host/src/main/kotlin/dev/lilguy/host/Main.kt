@@ -1,0 +1,78 @@
+package dev.lilguy.host
+
+import dev.lilguy.agent.live.ModelSetup
+import dev.lilguy.agent.live.RunDatabase
+import dev.lilguy.decision.RandomPicker
+import dev.lilguy.runlog.SyncTarget
+import dev.lilguy.runlog.SyncWorker
+import dev.lilguy.runlog.jdbc.JdbcSqlDriver
+import io.ktor.server.cio.CIO
+import io.ktor.server.engine.embeddedServer
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
+import java.io.File
+import java.net.InetAddress
+import kotlin.time.Duration.Companion.seconds
+
+/**
+ * The sim host: runs one life (`main`) in real time and serves its state stream, the command
+ * endpoint and the debug page. Configured from the environment:
+ * - `LILGUY_HOST_PORT` (8790) and `LILGUY_HOST_BIND` (127.0.0.1; 0.0.0.0 on a server);
+ * - `LILGUY_ADMIN_TOKEN`: the dev admin token commands must carry; unset, every command is refused;
+ * - `LILGUY_ENDPOINT` names the deciding endpoint in `LILGUY_CONFIG` (config/endpoints.yaml), with
+ *   `LILGUY_MEMORY_ENDPOINT`, `LILGUY_WRITER_ENDPOINT`, `LILGUY_RECALL_ENDPOINT` and `LILGUY_BEAM` as for
+ *   the desktop; unset, the scripted policy runs and nothing calls a model;
+ * - `LILGUY_PAINTER=<seconds>` draws his art with random picks at that latency, so he paints with no endpoint;
+ * - `LILGUY_DAYS` (0 for no end), `LILGUY_AUTOSTART=1` to start the first run at once;
+ * - `LILGUY_DB` (runs/lilguy.db; "none" for off), `LILGUY_RESUME` (a run id or "latest"), and
+ *   `LILGUY_SYNC_URL` / `LILGUY_SYNC_TOKEN` to sync the store to the server, one worker for the process.
+ */
+fun main() {
+    val env: (String) -> String? = { System.getenv(it) }
+    fun get(name: String) = env(name)?.takeIf { it.isNotBlank() }
+    val port = get("LILGUY_HOST_PORT")?.toInt() ?: 8790
+    val bind = get("LILGUY_HOST_BIND") ?: "127.0.0.1"
+    val days = get("LILGUY_DAYS")?.toIntOrNull().let { if (it == null) ModelSetup.DEFAULT_DAYS else it.takeIf { d -> d > 0 } }
+    val endpoint = get("LILGUY_ENDPOINT")
+    val setup = (if (endpoint == null) ModelSetup.scripted(days = days) else ModelSetup.fromConfig(
+        configFile = File(get("LILGUY_CONFIG") ?: "config/endpoints.yaml"),
+        endpoint = endpoint,
+        env = env,
+        logRoot = null,
+        memoryEndpoint = get("LILGUY_MEMORY_ENDPOINT"),
+        writerEndpoint = get("LILGUY_WRITER_ENDPOINT"),
+        recallEndpoint = get("LILGUY_RECALL_ENDPOINT"),
+        beam = get("LILGUY_BEAM")?.toIntOrNull(),
+        days = days,
+    )).let { s -> get("LILGUY_PAINTER")?.toDoubleOrNull()?.let { secs -> s.copy(painter = { RandomPicker(secs.seconds, seed = System.nanoTime()) }) } ?: s }
+    val hostName = runCatching { InetAddress.getLocalHost().hostName }.getOrNull()
+    val store = (get("LILGUY_DB") ?: "runs/lilguy.db").takeIf { it != "none" }?.let { JdbcSqlDriver.store(File(it)) }
+    // One sync worker for the whole process; the sessions record but don't sync.
+    val db = store?.let { RunDatabase(it, sync = null, platform = "host", host = hostName, gitSha = git("rev-parse", "HEAD")?.trim(), gitDirty = git("status", "--porcelain")?.isNotBlank(), resume = get("LILGUY_RESUME")) }
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val sync = store?.let { s -> SyncTarget.fromEnv(env)?.let { SyncWorker(s, it, client = "host@${hostName ?: "?"}") } }
+    sync?.start(scope)
+
+    val auth = DevTokenAuth(get("LILGUY_ADMIN_TOKEN"))
+    val life = Life("main", setup, db)
+    runBlocking { life.start(scope, autostart = get("LILGUY_AUTOSTART") == "1") }
+    println(
+        "lil guy host on http://$bind:$port/ (protocol ${dev.lilguy.protocol.PROTOCOL_VERSION}): life 'main', model ${setup.notice ?: if (endpoint == null) "scripted" else endpoint}" +
+            "${if (setup.painter != null) ", painting with random picks" else ""}; " +
+            "run database ${if (store == null) "off" else if (sync == null) "local only" else "syncing"}; commands ${if (auth.enabled) "need the admin token" else "refused (no LILGUY_ADMIN_TOKEN)"}",
+    )
+    Runtime.getRuntime().addShutdownHook(Thread {
+        life.stop()
+        if (sync != null) runBlocking { withTimeoutOrNull(10.seconds) { sync.syncAll() } }
+    })
+    embeddedServer(CIO, port = port, host = bind) { host(mapOf(life.id to life), auth) }.start(wait = true)
+}
+
+private fun git(vararg args: String): String? = runCatching {
+    val p = ProcessBuilder(listOf("git") + args).redirectErrorStream(true).start()
+    val out = p.inputStream.bufferedReader().readText()
+    if (p.waitFor() == 0) out else null
+}.getOrNull()

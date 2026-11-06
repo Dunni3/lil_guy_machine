@@ -1,5 +1,7 @@
 package dev.lilguy.app
 
+import dev.lilguy.agent.live.SimSession
+
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.GL20
@@ -18,7 +20,7 @@ import dev.lilguy.agent.memory.SelfVersion
 import dev.lilguy.agent.memory.StoredMemory
 import dev.lilguy.agent.memory.Thought
 import dev.lilguy.agent.shop.Trip
-import dev.lilguy.app.SimSession.RunState
+import dev.lilguy.agent.live.SimSession.RunState
 import dev.lilguy.decision.Usage
 import dev.lilguy.sim.BedroomWorld
 import dev.lilguy.sim.CatalogEntry

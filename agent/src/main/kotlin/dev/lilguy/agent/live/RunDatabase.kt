@@ -1,4 +1,4 @@
-package dev.lilguy.app
+package dev.lilguy.agent.live
 
 import dev.lilguy.runlog.RunStore
 import dev.lilguy.runlog.SyncTarget

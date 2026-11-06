@@ -41,6 +41,27 @@ content-docs: ## Regenerate the bedroom content's JSON Schemas and build/grammar
 test: ## Run all JVM unit tests
 	$(GRADLE) test
 
+# --- sim host ------------------------------------------------------------------
+# The headless host runs a life in real time and streams its state over WebSocket
+# (http://127.0.0.1:8790/ is its debug page). Commands need LILGUY_ADMIN_TOKEN, a dev token
+# from the secrets file above; without one every command is refused. Never commit or print it.
+
+NODE_IMAGE := node:22-alpine
+
+.PHONY: host
+host: ## Run the sim host (ENDPOINT=<name>, else the scripted policy; PAINTER=<s> paints with random picks; START=0 waits for a start command; PORT=8790; DAYS=<n>; RESUME=<run id|latest>)
+	LILGUY_ENDPOINT=$(ENDPOINT) LILGUY_MEMORY_ENDPOINT=$(MEMORY_ENDPOINT) LILGUY_WRITER_ENDPOINT=$(WRITER_ENDPOINT) LILGUY_RECALL_ENDPOINT=$(RECALL_ENDPOINT) LILGUY_PAINTER=$(PAINTER) LILGUY_AUTOSTART=$(or $(START),1) LILGUY_HOST_PORT=$(PORT) LILGUY_DAYS=$(DAYS) LILGUY_RESUME=$(RESUME) $(GRADLE) -q :host:run
+
+.PHONY: protocol-types
+protocol-types: ## Regenerate the protocol's JSON Schema from its Kotlin types, and the TypeScript types from it
+	$(GRADLE) -q :protocol:writeProtocolSchema
+	docker run --rm -v $(CURDIR)/protocol:/p -w /p $(NODE_IMAGE) sh gen_types.sh
+
+.PHONY: protocol-check
+protocol-check: ## Fail when protocol/ts/protocol.ts isn't what the generator makes from the current schema (make test checks the hash only)
+	$(GRADLE) -q :protocol:checkProtocolTypes
+	docker run --rm -v $(CURDIR)/protocol:/p -w /p $(NODE_IMAGE) sh -c 'sh gen_types.sh /tmp/protocol.ts && cmp /tmp/protocol.ts ts/protocol.ts || { echo "protocol/ts/protocol.ts is stale: run make protocol-types"; exit 1; }'
+
 # --- run database --------------------------------------------------------------
 # Every run records into runs/lilguy.db and syncs to the server when LILGUY_SYNC_URL and
 # LILGUY_SYNC_TOKEN are set (put them in the secrets file above). The server is server/:

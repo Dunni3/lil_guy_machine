@@ -1,5 +1,8 @@
 package dev.lilguy.app
 
+import dev.lilguy.agent.live.SimSession
+import dev.lilguy.agent.live.RunSettings
+
 import dev.lilguy.sim.GameClock
 import dev.lilguy.sim.WorldSnapshot
 
@@ -78,7 +81,7 @@ internal object RunControls {
             }
             RunRow.Days -> "Game days the run lasts, and the next run's. Raising it extends this run; an ended run reopens, paused. It can't go below the days he has lived."
             RunRow.Speed -> "How fast his day passes on screen. Everything speeds up together; ticks per second = speed x resolution, now ${s.speed * session.ticksPerMinute}."
-            RunRow.Quiet -> "While he's settled into something with little to watch (${RunSettings.QUIET_VERBS.joinToString()}), the clock runs this many times faster. " +
+            RunRow.Quiet -> "While he's settled into something with little to watch (${session.settings.quietVerbs.joinToString()}), the clock runs this many times faster. " +
                 "He does the same things; the screen spends less time on them. A decision out meanwhile holds the clock sooner in real time."
             RunRow.DecideCap -> "A model's reply takes real seconds whatever the speed, and he stands still meanwhile. The clock runs up to this much game time while a decision is out, " +
                 "then holds until it comes back. Waits: thinking costs no game time (lockstep). Runs: it costs whatever the latency is at this speed." +
@@ -94,7 +97,7 @@ internal object RunControls {
         val deciding = session.thinkingFor
         return when {
             session.holding && session.waitingOnAuthor.isNotEmpty() -> "held: waiting on his ${session.waitingOnAuthor.joinToString(" and ") { if (it == "draw") "drawing" else it }}"
-            session.holding && session.lingering -> "held: he's finishing his piece"
+            session.holding && session.presenting -> "held: he's finishing his piece"
             session.holding -> "held: waiting on the model (%.1f s)".format((deciding?.inWholeMilliseconds ?: 0) / 1000f)
             deciding != null -> "the model is deciding (%.1f s); the clock runs".format(deciding.inWholeMilliseconds / 1000f)
             else -> null

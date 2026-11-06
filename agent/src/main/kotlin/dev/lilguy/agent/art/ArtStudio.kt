@@ -78,7 +78,7 @@ class ArtStudio(
         // More skill, more strokes: the canvas at the level he has as he starts it.
         val canvas = made.canvasAt(made.drawSkill?.let { obs.skills?.get(it) } ?: 0.0)!!
         underway = null
-        return painter.draw(call.persona, call.situation, made.name, canvas, obs.commission, subjects, obs.tick, obs.clock?.day, obs.clock?.time, drawn.mapNotNull { it.title }) { underway = it }
+        return painter.draw(call.persona, call.situation, made.name, canvas, obs.commission, subjects, obs.tick, obs.clock?.day, obs.clock?.time, drawn.mapNotNull { it.title }) { underway = it.copy(verb = call.intent.activity) }
             .also { d ->
                 d.error?.let { lastError = it }
                 if (d.artwork == null) onDrawing(d)

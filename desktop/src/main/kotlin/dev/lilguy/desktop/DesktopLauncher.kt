@@ -9,10 +9,10 @@ import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration
 import com.badlogic.gdx.graphics.Pixmap
 import dev.lilguy.agent.BedroomPolicy
 import dev.lilguy.app.LilGuyGame
-import dev.lilguy.app.RunDatabase
+import dev.lilguy.agent.live.RunDatabase
 import dev.lilguy.runlog.SyncTarget
 import dev.lilguy.runlog.jdbc.JdbcSqlDriver
-import dev.lilguy.app.ModelSetup
+import dev.lilguy.agent.live.ModelSetup
 import dev.lilguy.agent.Scenario
 import dev.lilguy.decision.RandomPicker
 import dev.lilguy.sim.GameClock

@@ -1,5 +1,7 @@
 package dev.lilguy.app
 
+import dev.lilguy.agent.live.SimSession
+
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.GL20
@@ -15,7 +17,7 @@ import com.badlogic.gdx.utils.viewport.FitViewport
 import dev.lilguy.agent.TokenReport
 import dev.lilguy.agent.memory.Describe
 import dev.lilguy.agent.memory.StoredMemory
-import dev.lilguy.app.SimSession.RunState
+import dev.lilguy.agent.live.SimSession.RunState
 import dev.lilguy.sim.EntitySnapshot
 import dev.lilguy.sim.GameClock
 import dev.lilguy.sim.Intent
