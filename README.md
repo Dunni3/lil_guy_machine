@@ -42,8 +42,15 @@ reshuffled), and [docs/decisions/](docs/decisions/README.md) records the design 
 :android ─┐
 :desktop ─┴─> :app (libGDX) ─> :agent ─┬─> :sim       (pure Kotlin world)
 :cli ────────────────────────> :agent  ├─> :decision  (models and their typed replies)
-                                       └─> :memory-sqlite (his long-term memory)
+                                       └─> :runlog    (the run database: rows, local store, sync)
+                                              │
+                           SQLite on each device ──sync──> server/ (Postgres + FastAPI ingest)
 ```
+
+Every run is recorded into a SQLite file on the device it runs on (`runs/lilguy.db` on the Mac),
+his memory included, with a checkpoint each morning so a life can be carried on (`--resume`).
+A background worker syncs the rows to one Postgres ([server/](server/README.md)), where every
+run on every device can be queried.
 
 The sim knows nothing about models or graphics; the agent layer joins them, and model calls never
 block the world. The world's numbers (prices, verbs, items) live in the content files in

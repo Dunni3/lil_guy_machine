@@ -18,7 +18,7 @@ import kotlinx.coroutines.cancel
  * run controls, the shop, his mind. Runs start, pause and restart from the remote ([RemoteInput]);
  * nothing starts on its own.
  */
-class LilGuyGame(private val setup: ModelSetup = ModelSetup.scripted()) : ApplicationAdapter() {
+class LilGuyGame(private val setup: ModelSetup = ModelSetup.scripted(), private val db: RunDatabase? = null) : ApplicationAdapter() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var session: SimSession
     private lateinit var view: DevView
@@ -39,7 +39,7 @@ class LilGuyGame(private val setup: ModelSetup = ModelSetup.scripted()) : Applic
         Gdx.app.log(TAG, "GL ${Gdx.gl.glGetString(GL20.GL_RENDERER)}; " +
             "backbuffer ${Gdx.graphics.backBufferWidth}x${Gdx.graphics.backBufferHeight}")
         setup.notice?.let { Gdx.app.error(TAG, it) }
-        session = SimSession(scope, setup)
+        session = SimSession(scope, setup, db)
         Gdx.app.log(TAG, "model ${session.runtime.modelId}; memory ${session.memory.writer ?: "off"}; decision logs ${setup.logDir?.path ?: "off"}")
         art = ArtTextures()
         view = DevView(art)

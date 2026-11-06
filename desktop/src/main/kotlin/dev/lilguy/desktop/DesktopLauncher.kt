@@ -9,6 +9,9 @@ import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration
 import com.badlogic.gdx.graphics.Pixmap
 import dev.lilguy.agent.BedroomPolicy
 import dev.lilguy.app.LilGuyGame
+import dev.lilguy.app.RunDatabase
+import dev.lilguy.runlog.SyncTarget
+import dev.lilguy.runlog.jdbc.JdbcSqlDriver
 import dev.lilguy.app.ModelSetup
 import dev.lilguy.agent.Scenario
 import dev.lilguy.decision.RandomPicker
@@ -59,7 +62,17 @@ fun main() {
         val seconds = System.getenv("LILGUY_PAINTER")?.toDoubleOrNull() ?: return@let s
         s.copy(painter = { RandomPicker(seconds.seconds, seed = System.nanoTime()) })
     }
-    val game = LilGuyGame(setup)
+    // Runs are recorded in runs/lilguy.db (LILGUY_DB; "none" for off) and synced when LILGUY_SYNC_URL and LILGUY_SYNC_TOKEN are set.
+    // LILGUY_RESUME carries a run on from its latest checkpoint: a run id, or "latest".
+    val db = System.getenv("LILGUY_DB").let { it ?: "runs/lilguy.db" }.takeIf { it != "none" }?.let { path ->
+        RunDatabase(
+            JdbcSqlDriver.store(File(path)), SyncTarget.fromEnv(), platform = "desktop",
+            host = runCatching { java.net.InetAddress.getLocalHost().hostName }.getOrNull(),
+            gitSha = git("rev-parse", "HEAD")?.trim(), gitDirty = git("status", "--porcelain")?.isNotBlank(),
+            resume = System.getenv("LILGUY_RESUME")?.takeIf { it.isNotBlank() },
+        )
+    }
+    val game = LilGuyGame(setup, db)
     val shotPath = System.getenv("LILGUY_SCREENSHOT")
     val listener = if (shotPath == null) game else Screenshot(
         game, shotPath, System.getenv("LILGUY_SCREENSHOT_AT")?.toFloatOrNull() ?: 5f, System.getenv("LILGUY_SCREENSHOT_KEYS").orEmpty(),
@@ -112,3 +125,9 @@ private class Screenshot(
         }
     }
 }
+
+private fun git(vararg args: String): String? = runCatching {
+    val p = ProcessBuilder(listOf("git") + args).redirectErrorStream(true).start()
+    val out = p.inputStream.bufferedReader().readText()
+    if (p.waitFor() == 0) out else null
+}.getOrNull()

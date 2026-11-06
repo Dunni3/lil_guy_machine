@@ -15,11 +15,14 @@ memory and personality (`research_notes/2026-10-29_0313_bedroom-proposal-and-roa
 ```bash
 make test        # JVM unit tests (all modules)
 make cli         # headless runner (ARGS="--scenario bedroom --days 3 --endpoint typesafe")
-                 # add --memory runs/mem.db [--memory-endpoint NAME] for long-term memory,
+                 # every run records into runs/lilguy.db (--db FILE, --no-db; --resume RUN|latest
+                 # carries a run on from its latest checkpoint); add --memory-endpoint NAME for memories,
                  # --writer-endpoint NAME for thoughts and the self-model, --recall-endpoint NAME (typesafe)
                  # for scored recall, --grant paint,easel,... to unlock tiers,
                  # --affinities calm=2,loud=-1 / --curiosity 1.5 for another personality
-make desktop     # LWJGL3 window
+make server-up   # local Postgres + the ingest API (token "dev"); make server-test, server-psql
+make import-runs # old JSONL run logs into runs/lilguy.db; make sync sends unsynced rows
+make desktop     # LWJGL3 window (RESUME=<run id|latest> carries a run on)
 make tv-connect IP=10.0.0.51   # wireless adb to the Streamer
 make tv-run      # build + install + launch debug APK (ENDPOINT=<name>, MEMORY_ENDPOINT=<name|none>, WRITER_ENDPOINT=, RECALL_ENDPOINT=,
                  # SCENARIO=key-door, MINUTE_TICKS=<n>, DAYS=<n>); runs wait for OK on the remote
@@ -98,7 +101,19 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   under way is reported stroke by stroke (`Underway`, `ArtStudio.underway`) and played out in the room
   by `app/.../PaintScene.kt` (brush on the real cells, dips, stepping back, a flourish), which
   `RoomView` keeps him posed at through a drawing hold, and lingers the clock (`SimSession.linger`) for.
-  SQLite store: `memory-sqlite/` (JVM only; not in the TV build yet).
+  Memory is stored in the run database (`RunMemoryStore`); `InMemoryStore` only without one (`--no-db`).
+- Run database (roadmap phase 1, the sim host's store; `docs/decisions/2026-11-06-runs-record-locally-*`):
+  `runlog/` (pure Kotlin): `Tables.kt` (every table once; SQLite DDL at runtime, Postgres DDL via
+  `make server-schema` into `server/sql/001_tables.sql`), `Rows.kt` (`@Serializable` rows), `RunStore.kt` (the
+  device's SQLite store, many runs, `_rev`/`_dirty` for sync, prune after 30 days), `RunRecorder.kt` (`record` returns at
+  once; an IO coroutine writes; blobs by SHA-256, gzipped), `SyncWorker.kt` (blobs then `POST /v1/ingest`; env
+  `LILGUY_SYNC_URL`, `LILGUY_SYNC_TOKEN`). Drivers: `runlog-jdbc/` (JVM), `android/.../AndroidSqlDriver.kt` (TV).
+  `agent/.../LifeRecorder.kt` turns a run into rows (decisions with outcomes, model calls with prompts via
+  `TokenLedger.record`, ledger, needs, hourly state, authored ops, art) and takes the morning checkpoint around each
+  tick (`beforeStep`/`afterStep`; `AgentRuntime.hold`); saves are `BedroomWorld.exportState`/`restore`
+  (`sim/.../BedroomState.kt`) plus `AgentState`. CLI: `cli/.../RunDb.kt`, `Importer.kt`. App: `RunDatabase.kt`,
+  `SimSession`. Server: `server/` (FastAPI ingest in `app/main.py`, views in `sql/002_views.sql`, compose, `deploy/`
+  for its own Lightsail Small box; see `server/README.md`).
 - Token accounting: `agent/.../TokenLedger.kt`. `ledger.meter(model, purpose)` wraps a model so every call
   (decision, think, summary, self, recall, significance, art) is recorded with its sim tick and game day; `TokenReport` prints
   tokens per game day and the 30-day projection. The CLI and the app (`SimSession`, the TOKENS page) wire it and

@@ -17,7 +17,10 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.json.JsonObject
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.time.Duration
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
@@ -83,13 +86,41 @@ class AgentRuntime(
     /** Decisions since he last did the [reflection] verb. */
     private var sinceReflection = 0
 
+    /** What a checkpoint keeps of the loop: his short-term memory and the count toward the next reflection. */
+    @Serializable
+    data class State(val recent: List<Memory.Entry>, @SerialName("since_reflection") val sinceReflection: Int)
+
+    /** [WAITING] while the loop waits for a decision point and nothing else; [EXPORTING] while another thread reads its state. */
+    private val phase = AtomicInteger(BUSY)
+
+    /**
+     * Holds the loop at its wait for a decision point, so another thread (the sim thread) can read
+     * its [state] and the world's at the same moment: a loop woken meanwhile waits for [release].
+     * False when the loop is busy deciding; try again later. Cheap enough to call every tick.
+     */
+    fun hold(): Boolean = phase.compareAndSet(WAITING, EXPORTING)
+
+    fun release() = phase.set(WAITING)
+
+    /** What a checkpoint keeps of the loop. Only while [hold]ing it, or before [run]. */
+    fun state() = State(memory.recent(), sinceReflection)
+
+    /** Puts back a checkpoint's [State]. Call before [run]. */
+    fun restore(s: State) {
+        memory.restore(s.recent)
+        recent = memory.recent()
+        sinceReflection = s.sinceReflection
+    }
+
     /** When the in-flight decide() started, or null when the agent isn't waiting on the model. */
     @Volatile var decidingSince: TimeMark? = null
         private set
 
     suspend fun run() = coroutineScope {
         while (isActive) {
+            phase.set(WAITING)
             world.awaitDecisionPoint(id)
+            while (!phase.compareAndSet(WAITING, BUSY)) kotlinx.coroutines.yield()
             val obs = world.observe(id)
             memory.settle(obs.lastIntent, obs.lastResult)
             longTerm?.observed(obs)
@@ -154,5 +185,11 @@ class AgentRuntime(
             onDecision(done)
             world.submit(id, record.intent)
         }
+    }
+
+    private companion object {
+        const val BUSY = 0
+        const val WAITING = 1
+        const val EXPORTING = 2
     }
 }

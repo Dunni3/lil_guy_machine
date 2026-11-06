@@ -104,6 +104,7 @@ data class DrawOp(val what: String) : Op(), AuthoredOp {
  * An authored op whose verb succeeded, waiting for its result: [id] is what [BedroomWorld.deliver]
  * takes. [piece]: for a drawing, the piece it is for. [tick]: when the verb finished.
  */
+@kotlinx.serialization.Serializable
 data class AuthoredView(val id: Int, val verb: String, val handler: String, val tick: Long, val piece: Int? = null, val delivered: Boolean = false)
 
 /** What the agent layer hands back for an authored op ([BedroomWorld.deliver]). */

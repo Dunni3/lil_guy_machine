@@ -3,6 +3,7 @@ package dev.lilguy.agent
 import dev.lilguy.agent.memory.AgentMemory
 import dev.lilguy.decision.DecisionModel
 import dev.lilguy.sim.BedroomContent
+import dev.lilguy.sim.BedroomState
 import dev.lilguy.sim.BedroomWorld
 import dev.lilguy.sim.Personality
 import dev.lilguy.sim.GameClock
@@ -49,12 +50,16 @@ fun bedroomScenario(
     granted: Set<String> = emptySet(),
     /** Picks the commissions. */
     seed: Long = 0,
+    /** A checkpoint to carry on from, in place of a fresh room; what the content no longer has goes to [dropped]. */
+    from: BedroomState? = null,
+    dropped: (List<String>) -> Unit = {},
     onDecision: (AgentRuntime.DecisionRecord) -> Unit = {},
 ): Pair<BedroomWorld, AgentRuntime> {
     // A verb whose result nothing writes (no thinker) isn't offered to models. The sim still has it, and the reply schema
     // still takes it.
     fun offered(v: VerbSpec): Boolean = longTerm?.offers(v) ?: v.authored.none { it.essential }
-    val world = BedroomWorld.create(content, ticksPerMinute, granted = granted, seed = seed)
+    val world = from?.let { BedroomWorld.restore(it, content, ticksPerMinute, granted = granted, seed = seed).also { r -> dropped(r.dropped) }.world }
+        ?: BedroomWorld.create(content, ticksPerMinute, granted = granted, seed = seed)
     longTerm?.connect(world)
     // What he's told about is what he knows: a book can teach him a verb mid-run, so it's rebuilt when that changes.
     var lastKnown: Pair<BedroomContent, BedroomContent>? = null
@@ -108,6 +113,9 @@ enum class Scenario(val id: String) {
         personality: Personality? = null,
         /** Bedroom: items he starts with on top of the content's, id to count (a dev aid for screenshots); he knows them and what's taught with them, so no book teaches those. */
         startItems: Map<String, Int> = emptyMap(),
+        /** Bedroom: a checkpoint to carry on from ([bedroomScenario]). */
+        from: BedroomState? = null,
+        dropped: (List<String>) -> Unit = {},
         onDecision: (AgentRuntime.DecisionRecord) -> Unit = {},
     ): Pair<GridWorld, AgentRuntime> = when (this) {
         KeyDoor -> keyDoorScenario(model, timeout, longTerm, onDecision)
@@ -118,7 +126,7 @@ enum class Scenario(val id: String) {
                     if (startItems.isEmpty()) c
                     else c.copy(start = c.start.copy(items = c.start.items + startItems), books = c.books.map { b -> if (b.teaches.any { it in startItems }) b.copy(teaches = emptyList()) else b })
                 }
-            bedroomScenario(model, timeout, ticksPerMinute, content, longTerm = longTerm, granted = granted, onDecision = onDecision)
+            bedroomScenario(model, timeout, ticksPerMinute, content, longTerm = longTerm, granted = granted, from = from, dropped = dropped, onDecision = onDecision)
         }
     }
 
@@ -150,14 +158,15 @@ enum class Scenario(val id: String) {
  * whatever it was deciding. Deterministic, and as fast as the model allows: for the CLI and
  * tests. Run it on a single-threaded dispatcher (runBlocking is one). A network model suspends
  * rather than blocks, so it works here too; ticks still only advance between decisions. Stops when the room is solved, at
- * [maxTicks], or when [shouldStop] says so (checked before each tick). [afterStep] runs after
- * every tick. Returns the tick it stopped on.
+ * [maxTicks], or when [shouldStop] says so (checked before each tick). [beforeStep] and [afterStep]
+ * run around every tick. Returns the tick it stopped on.
  */
 suspend fun runLockstep(
     world: GridWorld,
     runtime: AgentRuntime,
     maxTicks: Long,
     shouldStop: () -> Boolean = { false },
+    beforeStep: () -> Unit = {},
     afterStep: () -> Unit = {},
 ): Long = coroutineScope {
     val agent = launch { runtime.run() }
@@ -167,6 +176,7 @@ suspend fun runLockstep(
             if (world.awaitingDecision(world.agentId)) delay(2) // a network model: wait without spinning
         }
         if (shouldStop()) break
+        beforeStep()
         world.step()
         afterStep()
     }

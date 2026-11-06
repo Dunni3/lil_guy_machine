@@ -142,13 +142,14 @@ data class BedroomContent(
         fun load(dir: File): BedroomContent = parse(FILES.keys.associateWith { File(dir, "$it.yaml").readText() })
 
         /** The content shipped with the sim. */
-        fun default(): BedroomContent = parse(
-            FILES.keys.associateWith { name ->
-                val stream = BedroomContent::class.java.getResourceAsStream("/content/bedroom/$name.yaml")
-                    ?: error("content/bedroom/$name.yaml is missing from the classpath")
-                stream.bufferedReader().use { it.readText() }
-            },
-        )
+        fun default(): BedroomContent = parse(defaultFiles())
+
+        /** The text of each content file shipped with the sim, by name (no extension): what a run's content hash is taken over. */
+        fun defaultFiles(): Map<String, String> = FILES.keys.associateWith { name ->
+            val stream = BedroomContent::class.java.getResourceAsStream("/content/bedroom/$name.yaml")
+                ?: error("content/bedroom/$name.yaml is missing from the classpath")
+            stream.bufferedReader().use { it.readText() }
+        }
     }
 
     private fun validate() {

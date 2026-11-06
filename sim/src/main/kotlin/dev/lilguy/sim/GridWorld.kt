@@ -312,6 +312,36 @@ abstract class GridWorld protected constructor(
         else -> null
     }
 
+    // --- checkpoints ---------------------------------------------------------------------------
+
+    /** True when nothing is running or queued, so the world can be saved ([GridState]). */
+    protected val atRest: Boolean get() = running == null && inbox.isEmpty()
+
+    /** What this class holds of the world, for a subclass's checkpoint. Only [atRest]. */
+    protected fun gridState(): GridState {
+        check(atRest) { "can't save the world while an intent is running or queued" }
+        return GridState(
+            tick = ticks, x = guy.x, y = guy.y, facing = guy.facing,
+            events = events.map { GridState.Event(it.tick, it.text, it.outcome) },
+            last = last?.let { GridState.Last(it.intent, it.status, it.outcome) },
+            saying = saying, sayUntil = sayUntil,
+        )
+    }
+
+    /** Puts [s] back, then publishes, so the next observation is the saved one. Call once, before the first [step]. */
+    protected fun restoreGrid(s: GridState) {
+        ticks = s.tick
+        guy.x = s.x
+        guy.y = s.y
+        guy.facing = s.facing
+        events.clear()
+        s.events.forEach { events.addLast(WorldEvent(it.tick, it.text, it.outcome)) }
+        last = s.last?.let { l -> Handle(l.intent).also { it.status = l.status ?: IntentStatus.Submitted; it.outcome = l.outcome } }
+        saying = s.saying
+        sayUntil = s.sayUntil
+        published = publish()
+    }
+
     // --- internals ---------------------------------------------------------------------------
 
     protected class Character(val id: EntityId, var x: Float, var y: Float) {

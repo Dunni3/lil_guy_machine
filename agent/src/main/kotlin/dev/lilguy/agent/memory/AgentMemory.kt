@@ -21,6 +21,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -164,6 +166,71 @@ class AgentMemory(
 
     /** The latest piece he started, stroke by stroke, and how it ended ([ArtStudio.underway]). Readable from any thread. */
     fun underway(): Underway? = studio?.underway
+
+    /**
+     * What a checkpoint keeps of this object: the bookkeeping between observations, the recall
+     * ranking, and the thoughts and answers his prompts show. The memories themselves are rows in
+     * the store, and the self-model is the latest level-3 memory there.
+     */
+    @Serializable
+    data class State(
+        @SerialName("last_news") val lastNews: List<String>,
+        val chosen: Intent?,
+        @SerialName("chosen_day") val chosenDay: Int?,
+        @SerialName("chosen_time") val chosenTime: String?,
+        @SerialName("snapshot_day") val snapshotDay: Int?,
+        @SerialName("scored_through") val scoredThrough: Long,
+        val relevance: Map<String, Double>,
+        /** Kept thoughts with their event ids: recall candidates. */
+        val thoughts: List<SavedThought>,
+        val answers: List<SavedAnswer>,
+        val plan: SavedThought?,
+    )
+
+    @Serializable
+    data class SavedThought(val event: Long = 0, val tick: Long, val day: Int?, val time: String?, val thinker: String, val text: String?) {
+        fun thought() = Thought(tick, day, time, thinker, text, raw = null, usage = dev.lilguy.decision.Usage(), latency = kotlin.time.Duration.ZERO)
+
+        companion object {
+            fun of(t: Thought, event: Long = 0) = SavedThought(event, t.tick, t.day, t.time, t.thinker, t.text)
+        }
+    }
+
+    @Serializable
+    data class SavedAnswer(val question: String, val opened: List<String>, val reply: SavedThought)
+
+    /** True when nothing runs in the background (scoring, a summary, an authored call): its [state] is whole. */
+    val quiet: Boolean get() = summaryJob?.isActive != true && scoringJob?.isActive != true && authors.quiet
+
+    /** Only when [quiet], and while the agent loop is held ([dev.lilguy.agent.AgentRuntime.hold]). */
+    fun state() = State(
+        lastNews = lastNews.toList(),
+        chosen = chosen?.intent,
+        chosenDay = chosen?.at?.day,
+        chosenTime = chosen?.at?.time,
+        snapshotDay = snapshotDay,
+        scoredThrough = scoredThrough,
+        relevance = relevance,
+        thoughts = keptThoughts.map { (id, t) -> SavedThought.of(t, id) },
+        answers = keptAnswers.map { SavedAnswer(it.question, it.opened, SavedThought.of(it.reply)) },
+        plan = plan?.let { SavedThought.of(it) },
+    )
+
+    /** Puts back a checkpoint's [State]. Call before the run starts, after [connect]. */
+    fun restore(s: State) {
+        lastNews = s.lastNews.toSet()
+        chosen = s.chosen?.let { Chosen(it, if (s.chosenDay != null && s.chosenTime != null) ClockReading(s.chosenDay, s.chosenTime) else null) }
+        snapshotDay = s.snapshotDay
+        scoredThrough = s.scoredThrough
+        relevance = s.relevance
+        keptThoughts.clear()
+        s.thoughts.forEach { keptThoughts += it.event to it.thought() }
+        thoughtLog.clear()
+        thoughtLog.addAll(keptThoughts.map { it.second })
+        keptAnswers.clear()
+        s.answers.forEach { keptAnswers += Answer(it.question, it.opened, it.reply.thought()) }
+        plan = s.plan?.thought()
+    }
 
     /** Runs authored ops for [world]. Call before the run starts. */
     fun connect(world: BedroomWorld) {

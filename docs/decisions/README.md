@@ -73,3 +73,4 @@ these hold the outcome. Skim this index before related changes.
 - 2026-11-01 [Art skill pays in dollars and strokes, set per item](2026-11-01-art-skill-pays-in-dollars-and-strokes.md)
 - 2026-11-01 [Boredom locks what he has worn thin, and new things feed him](2026-11-01-boredom-locks-what-he-has-worn-thin-and-new-things-feed-him.md)
 - 2026-11-01 [A piece plays out stroke by stroke as the model draws it, and the clock waits for it to finish on screen](2026-11-01-a-piece-plays-out-stroke-by-stroke-and-the-clock-waits-for-it.md)
+- 2026-11-06 [Runs record into a local SQLite store and sync to one Postgres; saves are checkpoints](2026-11-06-runs-record-locally-and-sync-to-one-postgres-saves-are-checkpoints.md)

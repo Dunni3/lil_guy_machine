@@ -151,6 +151,7 @@ data class CatalogEntry(
 data class VerbView(val id: String, val phrase: String?, val locked: String?, val gives: String?, val taughtBy: String? = null)
 
 /** How often he has finished a verb this run, and when he first did. */
+@Serializable
 data class VerbTally(val count: Int, val firstTick: Long)
 
 @Serializable

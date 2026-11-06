@@ -877,6 +877,93 @@ class BedroomWorld private constructor(
         }
     }
 
+    // --- checkpoints ----------------------------------------------------------------------------
+
+    /**
+     * True when the world can be saved: nothing running or queued, no activity, no authored result,
+     * basket or commission wording on its way in. A decision point after waking is such a moment.
+     * Authored views still waiting are saved as they are: whether a result is still coming is the
+     * agent side's to say (with no handler for an op, none ever is).
+     */
+    val canExport: Boolean
+        get() = atRest && doing == null && notes.isEmpty() && deliveries.isEmpty() && staging.isEmpty() && baskets.isEmpty()
+
+    /** Everything a [restore] needs to carry on from here. Only when [canExport]; call on the sim thread. */
+    fun exportState(): BedroomState {
+        check(canExport) { "can't save the bedroom with something in flight" }
+        return BedroomState(
+            grid = gridState(),
+            money = ledger.balance,
+            needs = Need.entries.associate { it.id to needs[it] },
+            needsPending = needs.pending().map { (k, d) -> BedroomState.PendingNeed(k.first.id, k.second, d) },
+            owned = LinkedHashMap(owned),
+            skills = LinkedHashMap(skills),
+            chapters = chapters.toMap(),
+            known = known.sorted(),
+            wear = wear.mapValues { (_, w) -> BedroomState.Wear(w.first, w.second) },
+            tried = tried.sorted(),
+            newThings = LinkedHashMap(newThings),
+            done = done,
+            music = music?.let { BedroomState.Music(it.itemId, it.on, it.spec.name, it.endTick, it.fresh) },
+            savingFor = savingFor,
+            pieces = pieces.map { BedroomState.Piece(it.id, it.item, it.commission, it.skill, it.state.name.lowercase(), it.title, it.tags, it.shows) },
+            commission = commission?.let { BedroomState.Commission(it.id, it.adjective, it.noun, it.wants, it.until, it.request, it.fulfilled) },
+            commissions = commissions,
+            authored = authored.toList(),
+            authoredCount = authoredCount,
+        )
+    }
+
+    /** Overwrites this fresh world with [s]; returns what it had to drop because the content no longer has it. */
+    private fun load(s: BedroomState): List<String> {
+        val dropped = mutableListOf<String>()
+        fun has(id: String, what: String) = (content.item(id) != null).also { if (!it) dropped += "$what '$id' is no longer in the content" }
+        owned.clear()
+        pieces.clear()
+        s.owned.forEach { (id, n) -> if (has(id, "item")) owned[id] = n }
+        s.pieces.forEach { p ->
+            if (has(p.item, "piece ${p.id}'s item")) pieces += Piece(p.id, p.item, p.commission, p.skill).also {
+                it.state = PieceState.valueOf(p.state.replaceFirstChar(Char::uppercase))
+                it.title = p.title
+                it.tags = p.tags
+                it.shows = p.shows
+            }
+        }
+        ledger.restore(s.money)
+        needs.restore(
+            Need.entries.associateWith { n -> s.needs[n.id] ?: needs[n] },
+            s.needsPending.mapNotNull { p -> Need.entries.firstOrNull { it.id == p.need }?.let { (it to p.reason) to p.delta } }.toMap(),
+        )
+        skills.clear(); skills.putAll(s.skills)
+        chapters.clear()
+        s.chapters.forEach { (id, n) -> if (content.book(id) != null) chapters[id] = n else dropped += "book '$id' is no longer in the content" }
+        known = s.known.filter { (it in content.taught).also { ok -> if (!ok) dropped += "taught '$it' is no longer taught" } }.toSet()
+        knownCache = null
+        wear.clear(); s.wear.forEach { (k, w) -> wear[k] = w.level to w.tick }
+        tried.clear(); tried.addAll(s.tried)
+        newThings.clear(); s.newThings.forEach { (id, t) -> if (has(id, "new thing")) newThings[id] = t }
+        done = s.done
+        music = s.music?.let { m ->
+            val op = content.verbs.flatMap { it.effects }.filterIsInstance<BackgroundOp>().firstOrNull { it.name == m.op }
+            if (op == null || content.item(m.item) == null) null.also { dropped += "music '${m.op}' of '${m.item}' is no longer in the content" }
+            else Music(m.item, m.on, op, m.endTick, m.fresh)
+        }
+        savingFor = s.savingFor?.takeIf { has(it, "saving for") }
+        commission = s.commission?.let { Commission(it.id, it.adjective, it.noun, it.wants, it.until).also { c -> c.request = it.request; c.fulfilled = it.fulfilled } }
+        commissions = s.commissions
+        authored.clear(); authored.addAll(s.authored)
+        authoredCount = s.authoredCount
+        lastPlanned = s.grid.last?.intent
+        version++
+        options = null
+        syncHolding()
+        restoreGrid(s.grid)
+        return dropped
+    }
+
+    /** A world [restore]d from a checkpoint, and what of it the content no longer has. */
+    class Restored(val world: BedroomWorld, val dropped: List<String>)
+
     // --- what the agent and the renderer see ----------------------------------------------------
 
     override fun stamp(tick: Long): String = "d${clock.day(tick)} ${GameClock.hhmm(clock.minuteOfDay(tick))}"
@@ -1184,6 +1271,27 @@ class BedroomWorld private constructor(
             /** Picks the commissions; the same seed gives the same requests. */
             seed: Long = 0,
         ): BedroomWorld = build(content.unlocked(granted), ticksPerMinute, characterId, seed)
+
+        /**
+         * A world made as [create] makes it, then set to [state]: a checkpoint carried on. Ids the
+         * content no longer has are dropped and listed ([Restored.dropped]); with [strict], any drop
+         * is refused instead.
+         */
+        fun restore(
+            state: BedroomState,
+            content: BedroomContent = BedroomContent.default(),
+            ticksPerMinute: Int = GameClock.DEFAULT_TICKS_PER_MINUTE,
+            characterId: String = "guy",
+            granted: Set<String> = emptySet(),
+            seed: Long = 0,
+            strict: Boolean = false,
+        ): Restored {
+            require(state.version == BedroomState.VERSION) { "checkpoint is version ${state.version}; this build reads ${BedroomState.VERSION}" }
+            val world = create(content, ticksPerMinute, characterId, granted, seed)
+            val dropped = world.load(state)
+            require(!strict || dropped.isEmpty()) { "checkpoint doesn't match the content: ${dropped.joinToString("; ")}" }
+            return Restored(world, dropped)
+        }
 
         private fun build(content: BedroomContent, ticksPerMinute: Int, characterId: String, seed: Long): BedroomWorld {
             val rows = content.room.rows
