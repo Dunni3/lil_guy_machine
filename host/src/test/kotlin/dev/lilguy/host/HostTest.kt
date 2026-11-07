@@ -94,7 +94,7 @@ class HostTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val life = Life("main", ModelSetup({ Scenario.KeyDoor.scriptedPolicy(0.milliseconds) }, Scenario.KeyDoor), db = null)
         runBlocking { life.start(scope) }
-        application { host(mapOf(life.id to life), DevTokenAuth("test-admin-token")) }
+        application { host(mapOf(life.id to life), HostAuth(DevTokenAuth("test-admin-token"), github = null)) }
         val start = Wire.encode(Command.Start)
         suspend fun post(auth: String?) = client.post("/v1/lives/main/commands") {
             auth?.let { header(HttpHeaders.Authorization, it) }

@@ -32,7 +32,7 @@ object ProtocolSchema {
     private val pretty = Json { prettyPrint = true }
 
     /** The roots: everything a client reads or sends is reachable from these. */
-    private val roots = listOf(ServerMessage.serializer().descriptor, Command.serializer().descriptor, CommandResult.serializer().descriptor)
+    private val roots = listOf(ServerMessage.serializer().descriptor, Command.serializer().descriptor, CommandResult.serializer().descriptor, Viewer.serializer().descriptor)
 
     fun generate(): JsonObject {
         val defs = sortedMapOf<String, JsonObject>()
@@ -47,8 +47,9 @@ object ProtocolSchema {
                 put("server", ref(ServerMessage.serializer().descriptor))
                 put("command", ref(Command.serializer().descriptor))
                 put("result", ref(CommandResult.serializer().descriptor))
+                put("viewer", ref(Viewer.serializer().descriptor))
             }
-            putJsonArray("required") { listOf("server", "command", "result").forEach { add(JsonPrimitive(it)) } }
+            putJsonArray("required") { listOf("server", "command", "result", "viewer").forEach { add(JsonPrimitive(it)) } }
             put("additionalProperties", false)
             put("\$defs", JsonObject(defs))
         }

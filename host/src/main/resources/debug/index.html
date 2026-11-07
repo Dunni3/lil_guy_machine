@@ -7,8 +7,9 @@
 <!--
   The sim host's debug page: plain JS, no framework, no build. It joins a life's stream, keeps the
   state the way any client must (snapshot, then deltas in seq order, logs merged by seq and cut to
-  the caps the welcome sends) and shows it, with run controls that POST commands with the admin
-  token. It's for checking the protocol, not the renderer.
+  the caps the welcome sends) and shows it. The admin (signed in with GitHub, or holding the dev
+  token) also gets run controls that POST commands; everyone else only watches. It's for checking
+  the protocol, not the renderer.
 -->
 <style>
   :root { --bg: #f6f4ef; --fg: #222; --dim: #777; --line: #ddd8cc; --card: #fffdf8; --accent: #3b6ea5; --warn: #a5543b; }
@@ -36,6 +37,8 @@
   canvas { image-rendering: pixelated; background: var(--bg); border: 1px solid var(--line); max-width: 100%; }
   pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 300px; overflow: auto; margin: 0; }
   details summary { cursor: pointer; color: var(--dim); }
+  a { color: var(--accent); }
+  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
@@ -45,8 +48,12 @@
     <h2>Run</h2>
     <div class="kv" id="run"></div>
     <div class="row" style="margin-top:8px">
-      <input id="token" type="password" class="wide" placeholder="admin token" autocomplete="off">
+      <span id="who" class="dim"></span>
+      <a id="sign-in" href="/auth/login" hidden>sign in with GitHub</a>
+      <button id="sign-out" hidden>sign out</button>
+      <input id="token" type="password" class="wide" placeholder="dev admin token" autocomplete="off" hidden>
     </div>
+    <div id="controls" hidden>
     <div class="row">
       <button data-cmd="start">start</button><button data-cmd="pause">pause</button>
       <button data-cmd="restart">restart</button><button id="step">step 20</button>
@@ -64,6 +71,7 @@
     <div class="row">
       <input id="resume" class="wide" placeholder="run id or latest"><button id="do-resume">resume</button>
       <select id="replay"></select><button id="do-replay">replay</button>
+    </div>
     </div>
     <div id="result" class="dim"></div>
   </div>
@@ -159,20 +167,38 @@ function connect() {
   socket.onclose = () => { $("conn").textContent = "disconnected; retrying…"; $("conn").className = "warn"; state = null; setTimeout(connect, 1000); };
 }
 
-// ---- commands ---------------------------------------------------------------------------
+// ---- who's watching ----------------------------------------------------------------------
+// GitHub sign-in sets an HttpOnly session cookie the page never sees; /auth/me says who it is.
+// The dev token (only when the host has one) rides in an Authorization header instead.
+function auth() { const t = $("token").value.trim(); return t ? { Authorization: "Bearer " + t } : {}; }
+async function whoami() {
+  let me = { admin: false, login: null, sign_in: false, dev_token: false };
+  try { me = await (await fetch("/auth/me", { headers: auth() })).json(); } catch (e) {}
+  $("who").textContent = me.login ? `signed in as ${me.login}${me.admin ? " (admin)" : " (not the admin: watching)"}` : me.admin ? "admin (dev token)" : "watching";
+  $("sign-in").hidden = !me.sign_in || !!me.login;
+  $("sign-out").hidden = !me.login;
+  $("token").hidden = !me.dev_token;
+  $("controls").hidden = !me.admin;
+}
 try { $("token").value = localStorage.getItem("lilguy-admin-token") || ""; } catch (e) {}
-$("token").addEventListener("change", () => { try { localStorage.setItem("lilguy-admin-token", $("token").value); } catch (e) {} });
+$("token").addEventListener("change", () => { try { localStorage.setItem("lilguy-admin-token", $("token").value); } catch (e) {} whoami(); });
+$("sign-out").onclick = async () => { await fetch("/auth/logout", { method: "POST" }); whoami(); };
+whoami();
+
+// ---- commands ---------------------------------------------------------------------------
 async function send(command) {
   $("result").textContent = "…";
   try {
     const r = await fetch(`/v1/lives/${encodeURIComponent(LIFE)}/commands`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + $("token").value },
+      // The header is the CSRF check: a page on another origin can't send it to the host.
+      headers: { "Content-Type": "application/json", "X-Lilguy-Csrf": "1", ...auth() },
       body: JSON.stringify(command),
     });
     const body = await r.json();
     $("result").textContent = `${command.type}: ${r.status} ${body.ok ? "ok" : body.error}`;
     $("result").className = body.ok ? "dim" : "warn";
+    if (r.status === 401 || r.status === 403) whoami(); // signed out or expired: hide the controls
   } catch (e) { $("result").textContent = command.type + ": " + e; $("result").className = "warn"; }
 }
 document.querySelectorAll("[data-cmd]").forEach((b) => b.addEventListener("click", () => send({ type: b.dataset.cmd })));
