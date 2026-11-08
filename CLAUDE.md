@@ -117,7 +117,8 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   tick (`beforeStep`/`afterStep`; `AgentRuntime.hold`); saves are `BedroomWorld.exportState`/`restore`
   (`sim/.../BedroomState.kt`) plus `AgentState`. CLI: `cli/.../RunDb.kt`, `Importer.kt`. App: `RunDatabase.kt`,
   `SimSession`. Server: `server/` (FastAPI ingest and query only, in `app/main.py`; numbered migrations in `sql/migrations/`, compose, `deploy/`
-  for its own Lightsail Small box; see `server/README.md`).
+  for its own Lightsail Small box; see `server/README.md`; `server/host/` is the sim host's image, on its own subdomain,
+  `docs/decisions/2026-11-08-the-host-runs-in-*`).
 - The run loop both the app and the sim host drive: `agent/.../live/` (`SimSession`: start, pause, restart, replay,
   resume, configure, `update(delta)` from one thread; `RunSettings` with the per-life presentation timing: `quiet`,
   `quietVerbs`, `holdForArt`; `ArtShow`, how a piece plays out on screen and when the clock waits for it; `ModelSetup`,

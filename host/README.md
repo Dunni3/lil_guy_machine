@@ -38,11 +38,11 @@ curl -X POST 127.0.0.1:8790/v1/lives/main/commands -H "Authorization: Bearer $LI
 
 If it leaks, change it and restart the host. The old one stops working at once.
 
-## On a server (not set up yet)
+## On a server
 
-The host can't run on the server yet: `server/` has no image, compose service or Caddy route for it.
-When it does, it has to be served over https, because the password travels with every command. Use
-a different password from the one on your Mac.
+The host runs in the server's Docker stack, on its own https address. Its settings are in
+`.env.host` on the box, with a different password from the one on your Mac. Setup steps are in
+`server/README.md`. Nothing is deployed yet.
 
 ## GitHub sign-in (not in use)
 

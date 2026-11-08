@@ -1,6 +1,6 @@
 # The lil guy machine server on its own Lightsail box (Small, 2 GB): Postgres, the ingest service,
-# and Caddy in front for TLS. The sim host joins this stack in the next phase.
-# Secrets live in server/.env on the box (see .env.example) and never leave it.
+# the sim host, and Caddy in front for TLS.
+# Secrets live in server/.env and server/.env.host on the box (see the .example files) and never leave it.
 services:
   db:
     image: postgres:16-alpine
@@ -32,6 +32,26 @@ services:
       db:
         condition: service_healthy
 
+  # Built from server/host/dist/, which deploy.sh stages first. No published port: only Caddy reaches it.
+  host:
+    build: ./host
+    restart: unless-stopped
+    env_file:
+      - path: .env.host
+        required: false
+    environment:
+      LILGUY_HOST_BIND: 0.0.0.0
+      LILGUY_DB: /data/lilguy.db
+      LILGUY_SYNC_URL: http://api:8787
+      JAVA_OPTS: -Xmx512m
+    mem_limit: 800m
+    volumes:
+      - host-data:/data
+    # Time for the last rows to sync on the way down.
+    stop_grace_period: 30s
+    depends_on:
+      - api
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -41,6 +61,7 @@ services:
       - "443:443/udp"
     environment:
       DOMAIN: ${DOMAIN:?set DOMAIN in server/.env}
+      HOST_DOMAIN: ${HOST_DOMAIN:?set HOST_DOMAIN in server/.env}
       ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in server/.env}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
@@ -48,8 +69,10 @@ services:
       - caddy-config:/config
     depends_on:
       - api
+      - host
 
 volumes:
   db-data:
+  host-data:
   caddy-data:
   caddy-config:
