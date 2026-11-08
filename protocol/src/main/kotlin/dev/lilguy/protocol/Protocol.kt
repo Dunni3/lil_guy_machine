@@ -140,15 +140,6 @@ sealed interface Command {
 @Serializable
 data class CommandResult(val ok: Boolean, val error: String? = null, val seq: Long? = null, val state: RunState? = null)
 
-/**
- * Who is asking, from `GET /auth/me`: whether the caller may send commands ([admin]), the GitHub
- * login they signed in as (null when not signed in), and which ways in the host offers: GitHub
- * sign-in at `/auth/login` ([signIn]) and the dev token ([devToken], a bearer header).
- */
+/** Who is asking, from `GET /auth/me`: whether the caller's credentials may send commands. */
 @Serializable
-data class Viewer(
-    val admin: Boolean,
-    val login: String?,
-    @SerialName("sign_in") val signIn: Boolean,
-    @SerialName("dev_token") val devToken: Boolean,
-)
+data class Viewer(val admin: Boolean)

@@ -22,11 +22,8 @@ import kotlin.time.Duration.Companion.seconds
  * The sim host: runs one life (`main`) in real time and serves its state stream, the command
  * endpoint and the debug page. Configured from the environment:
  * - `LILGUY_HOST_PORT` (8790) and `LILGUY_HOST_BIND` (127.0.0.1; 0.0.0.0 on a server);
- * - admin sign-in with GitHub (all four or none): `LILGUY_GITHUB_CLIENT_ID` and `LILGUY_GITHUB_CLIENT_SECRET`
- *   (the OAuth app's), `LILGUY_ADMIN_GITHUB_ID` (the admin's numeric GitHub user id) and `LILGUY_SESSION_KEY`
- *   (the cookie signing key, hex); `LILGUY_PUBLIC_URL` is where browsers reach the host (http://localhost:<port>);
- * - `LILGUY_ADMIN_TOKEN`: dev only, a bearer token for curl and local runs; off unless set.
- *   With neither, every command is refused;
+ * - `LILGUY_ADMIN_PASSWORD`: the admin password commands must carry (at least [AdminPassword.MIN_LENGTH]
+ *   characters); unset, every command is refused;
  * - `LILGUY_ENDPOINT` names the deciding endpoint in `LILGUY_CONFIG` (config/endpoints.yaml), with
  *   `LILGUY_MEMORY_ENDPOINT`, `LILGUY_WRITER_ENDPOINT`, `LILGUY_RECALL_ENDPOINT` and `LILGUY_BEAM` as for
  *   the desktop; unset, the scripted policy runs and nothing calls a model;
@@ -61,24 +58,19 @@ fun main() {
     val sync = store?.let { s -> SyncTarget.fromEnv(env)?.let { SyncWorker(s, it, client = "host@${hostName ?: "?"}") } }
     sync?.start(scope)
 
-    val github = runCatching { GitHubSignIn.fromEnv(::get, defaultPublicUrl = "http://localhost:$port") }.getOrElse { e ->
-        System.err.println("lil guy host: ${e.message}")
+    val password = get("LILGUY_ADMIN_PASSWORD")?.trim()
+    if (password != null && password.length < AdminPassword.MIN_LENGTH) {
+        System.err.println("lil guy host: LILGUY_ADMIN_PASSWORD must be at least ${AdminPassword.MIN_LENGTH} characters: openssl rand -hex 24")
         exitProcess(2)
     }
-    val auth = HostAuth(DevTokenAuth(get("LILGUY_ADMIN_TOKEN")), github)
+    val auth = AdminPassword(password)
     val life = Life("main", setup, db)
     runBlocking { life.start(scope, autostart = get("LILGUY_AUTOSTART") == "1") }
     println(
         "lil guy host on http://$bind:$port/ (protocol ${dev.lilguy.protocol.PROTOCOL_VERSION}): life 'main', model ${setup.notice ?: if (endpoint == null) "scripted" else endpoint}" +
             "${if (setup.painter != null) ", painting with random picks" else ""}; " +
-            "run database ${if (store == null) "off" else if (sync == null) "local only" else "syncing"}",
+            "run database ${if (store == null) "off" else if (sync == null) "local only" else "syncing"}; commands ${if (auth.enabled) "need the admin password" else "refused (no LILGUY_ADMIN_PASSWORD)"}",
     )
-    println(
-        if (github != null) "admin sign-in: GitHub user ${github.adminId}, at ${github.publicUrl}/ (callback ${github.callbackUrl})"
-        else "admin sign-in: off (no LILGUY_GITHUB_CLIENT_ID and the rest)",
-    )
-    if (auth.devToken.enabled) println("DEV: LILGUY_ADMIN_TOKEN is set, so commands with that bearer token are admin. Dev only; leave it unset on a server.")
-    if (github == null && !auth.devToken.enabled) println("commands: all refused (no GitHub sign-in, no dev token)")
     Runtime.getRuntime().addShutdownHook(Thread {
         life.stop()
         if (sync != null) runBlocking { withTimeoutOrNull(10.seconds) { sync.syncAll() } }

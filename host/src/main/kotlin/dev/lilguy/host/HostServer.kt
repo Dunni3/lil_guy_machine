@@ -8,6 +8,7 @@ import dev.lilguy.protocol.PROTOCOL_VERSION
 import dev.lilguy.protocol.Refused
 import dev.lilguy.protocol.ServerMessage
 import dev.lilguy.protocol.Snapshot
+import dev.lilguy.protocol.Viewer
 import dev.lilguy.protocol.Welcome
 import dev.lilguy.protocol.Wire
 import io.ktor.http.ContentType
@@ -39,20 +40,17 @@ import kotlinx.serialization.builtins.ListSerializer
  * - `WS /v1/lives/{life}/stream?v=<version>&have=<content hash>`: the state stream, open to
  *   anyone, read-only (anything a client sends is ignored);
  * - `POST /v1/lives/{life}/commands`: one [dev.lilguy.protocol.Command], for admins only ([auth]);
- * - `GET /auth/me`: who the caller is, as a [dev.lilguy.protocol.Viewer], and with GitHub sign-in
- *   configured, its `/auth/login`, `/auth/callback` and `/auth/logout` ([GitHubSignIn]).
+ * - `GET /auth/me`: whether the caller's `Authorization` header is an admin's, as a [Viewer].
  */
-fun Application.host(lives: Map<String, Life>, auth: HostAuth) {
+fun Application.host(lives: Map<String, Life>, auth: AdminAuth) {
     install(WebSockets) {
         pingPeriodMillis = 15_000
         timeoutMillis = 30_000
     }
-    auth.github?.install(this)
     val page = Life::class.java.getResource("/debug/index.html")?.readText() ?: "<p>debug page missing from the build</p>"
     routing {
         get("/") { call.respondText(page, ContentType.Text.Html) }
-        get("/auth/me") { call.respondText(Wire.encode(auth.viewer(call)), ContentType.Application.Json) }
-        auth.github?.routes(this)
+        get("/auth/me") { call.respondText(Wire.encode(Viewer(auth.admits(call.request.headers[HttpHeaders.Authorization]))), ContentType.Application.Json) }
         get("/v1/lives") {
             call.respondText(Wire.json.encodeToString(ListSerializer(LifeSummary.serializer()), lives.values.mapNotNull { it.summary }), ContentType.Application.Json)
         }
@@ -62,10 +60,9 @@ fun Application.host(lives: Map<String, Life>, auth: HostAuth) {
         }
         webSocket("/v1/lives/{life}/stream") { stream(lives) }
         post("/v1/lives/{life}/commands") {
-            val admission = auth.admit(call)
-            if (admission is Admission.Refused) {
-                if (admission.status == HttpStatusCode.Unauthorized) call.response.header(HttpHeaders.WWWAuthenticate, "Bearer")
-                return@post call.respondText(Wire.encode(CommandResult(ok = false, error = admission.reason)), ContentType.Application.Json, admission.status)
+            if (!auth.admits(call.request.headers[HttpHeaders.Authorization])) {
+                call.response.header(HttpHeaders.WWWAuthenticate, "Bearer")
+                return@post call.respondText(Wire.encode(CommandResult(ok = false, error = "admin only")), ContentType.Application.Json, HttpStatusCode.Unauthorized)
             }
             val life = lives[call.parameters["life"]]
                 ?: return@post call.respondText(Wire.encode(CommandResult(ok = false, error = "no such life")), ContentType.Application.Json, HttpStatusCode.NotFound)

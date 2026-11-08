@@ -88,26 +88,26 @@ class HostTest {
         assertEquals(host, rebuilt)
     }
 
-    /** Commands need the admin token: none, or a wrong one, is refused before the command is read. */
+    /** Commands need the admin password: none, or a wrong one, is refused before the command is read. */
     @Test
-    fun `the command endpoint rejects requests without a valid admin token`() = testApplication {
+    fun `the command endpoint rejects requests without the admin password`() = testApplication {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val life = Life("main", ModelSetup({ Scenario.KeyDoor.scriptedPolicy(0.milliseconds) }, Scenario.KeyDoor), db = null)
         runBlocking { life.start(scope) }
-        application { host(mapOf(life.id to life), HostAuth(DevTokenAuth("test-admin-token"), github = null)) }
+        application { host(mapOf(life.id to life), AdminPassword("test-admin-password")) }
         val start = Wire.encode(Command.Start)
         suspend fun post(auth: String?) = client.post("/v1/lives/main/commands") {
             auth?.let { header(HttpHeaders.Authorization, it) }
             setBody(start)
         }
         assertEquals(HttpStatusCode.Unauthorized, post(null).status)
-        assertEquals(HttpStatusCode.Unauthorized, post("Bearer not-the-token").status)
-        assertEquals(HttpStatusCode.Unauthorized, post("test-admin-token").status, "the token without the Bearer scheme")
-        assertEquals(HttpStatusCode.OK, post("Bearer test-admin-token").status)
+        assertEquals(HttpStatusCode.Unauthorized, post("Bearer not-the-password").status)
+        assertEquals(HttpStatusCode.Unauthorized, post("test-admin-password").status, "the password without the Bearer scheme")
+        assertEquals(HttpStatusCode.OK, post("Bearer test-admin-password").status)
         assertEquals(dev.lilguy.protocol.RunState.Running, life.latest!!.state.run.state)
         life.stop()
         scope.cancel()
-        // Without a token configured, nobody is an admin.
-        assertTrue(!DevTokenAuth(null).admits("Bearer "))
+        // Without a password configured, nobody is an admin.
+        assertTrue(!AdminPassword(null).admits("Bearer "))
     }
 }

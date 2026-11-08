@@ -76,4 +76,5 @@ these hold the outcome. Skim this index before related changes.
 - 2026-11-06 [Runs record into a local SQLite store and sync to one Postgres; saves are checkpoints](2026-11-06-runs-record-locally-and-sync-to-one-postgres-saves-are-checkpoints.md)
 - 2026-11-06 [One sim host, state streamed to clients, the browser renders; v0 is admin-only](2026-11-06-one-sim-host-state-streamed-browser-renders-admin-only-v0.md)
 - 2026-11-06 [The protocol is a snapshot then deltas, split by how often state changes, and the host owns presentation timing](2026-11-06-the-protocol-is-a-snapshot-then-deltas-split-by-rate-and-the-host-owns-presentation-timing.md)
-- 2026-11-06 [Admin sign-in is a signed GitHub session cookie; cookie commands need a CSRF header and a matching Origin](2026-11-06-admin-sign-in-is-a-signed-cookie-and-commands-need-a-csrf-header-and-origin.md)
+- 2026-11-06 [Admin sign-in is a signed GitHub session cookie; cookie commands need a CSRF header and a matching Origin](2026-11-06-admin-sign-in-is-a-signed-cookie-and-commands-need-a-csrf-header-and-origin.md) (superseded)
+- 2026-11-08 [v0's admin login is one password; GitHub sign-in waits](2026-11-08-v0-admin-login-is-one-password.md)

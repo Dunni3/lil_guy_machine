@@ -1,8 +1,12 @@
 ---
 title: "Admin sign-in is a signed GitHub session cookie; cookie commands need a CSRF header and a matching Origin"
 date: 2026-11-06
-status: active
+status: superseded
 ---
+
+**Superseded by `2026-11-08-v0-admin-login-is-one-password.md`.** This was built but not kept for v0.
+The code is on the branch `archive/github-admin-sign-in`; this file records its design for when it
+comes back.
 
 **Context.** v0 is admin-only, and the admin signs in with GitHub
 (`2026-11-06-one-sim-host-state-streamed-browser-renders-admin-only-v0.md`). Phase 2 left

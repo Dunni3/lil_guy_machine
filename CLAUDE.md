@@ -22,8 +22,7 @@ make cli         # headless runner (ARGS="--scenario bedroom --days 3 --endpoint
                  # --affinities calm=2,loud=-1 / --curiosity 1.5 for another personality
 make server-up   # local Postgres + the ingest API (token "dev"); make server-test, server-psql
 make host        # the sim host: a life in real time, its state over WebSocket, debug page at
-                 # http://127.0.0.1:8790/ (scripted unless ENDPOINT=; PAINTER=2 paints; commands need the admin: GitHub sign-in or the dev
-                 # LILGUY_ADMIN_TOKEN, see host/README.md)
+                 # http://127.0.0.1:8790/ (scripted unless ENDPOINT=; PAINTER=2 paints; commands need LILGUY_ADMIN_PASSWORD, see host/README.md)
 make protocol-types  # protocol JSON Schema + TypeScript from :protocol (make test fails when stale)
 make import-runs # old JSONL run logs into runs/lilguy.db; make sync sends unsynced rows
 make desktop     # LWJGL3 window (RESUME=<run id|latest> carries a run on)
@@ -128,9 +127,9 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   and the logs' merge; `ProtocolSchema.kt` writes `protocol/schema/protocol.schema.json`, from which `gen_types.sh` makes
   `protocol/ts/protocol.ts`). `host/` is the Ktor server: `Life.kt` (one actor per life: a `SimSession`, commands between
   ticks, publishing deltas that never wait on a viewer), `StateReader.kt` (session and agent objects to protocol types),
-  `HostServer.kt` (routes: stream, commands, debug page in `resources/debug/index.html`), `AdminAuth.kt` (who may send commands:
-  the GitHub session or the dev token), `GitHubSignIn.kt` (phase 3: `/auth/*`, the signed session cookie, the CSRF checks;
-  setup in `host/README.md`), `Main.kt` (env config, one `SyncWorker` per process).
+  `HostServer.kt` (routes: stream, commands, debug page in `resources/debug/index.html`), `AdminAuth.kt` (who may send commands: one password,
+  `docs/decisions/2026-11-08-v0-admin-login-is-*`; setup in `host/README.md`),
+  `Main.kt` (env config, one `SyncWorker` per process).
 - Token accounting: `agent/.../TokenLedger.kt`. `ledger.meter(model, purpose)` wraps a model so every call
   (decision, think, summary, self, recall, significance, art) is recorded with its sim tick and game day; `TokenReport` prints
   tokens per game day and the 30-day projection. The CLI and the app (`SimSession`, the TOKENS page) wire it and

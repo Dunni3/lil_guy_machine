@@ -15,13 +15,9 @@ dependencies {
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.cio)
     implementation(libs.ktor.server.websockets)
-    implementation(libs.ktor.server.auth)
-    implementation(libs.ktor.server.sessions)
-    implementation(libs.ktor.client.okhttp)
     runtimeOnly(libs.slf4j.nop)
     testImplementation(kotlin("test"))
     testImplementation(libs.ktor.server.test.host)
-    testImplementation(libs.ktor.client.mock)
 }
 
 application {

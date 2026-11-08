@@ -2418,29 +2418,10 @@
             "properties": {
                 "admin": {
                     "type": "boolean"
-                },
-                "login": {
-                    "anyOf": [
-                        {
-                            "type": "string"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ]
-                },
-                "sign_in": {
-                    "type": "boolean"
-                },
-                "dev_token": {
-                    "type": "boolean"
                 }
             },
             "required": [
-                "admin",
-                "login",
-                "sign_in",
-                "dev_token"
+                "admin"
             ],
             "additionalProperties": false
         },

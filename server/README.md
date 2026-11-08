@@ -2,8 +2,7 @@
 
 The run database's server: one Postgres that every writer's rows end up in, and the FastAPI
 service that takes them. It runs on its own Lightsail instance (Small, 2 GB, $12 a month), with
-Caddy in front for TLS. The sim host (`host/`, admin sign-in in `host/README.md`) joins this stack later;
-its variables are already in `.env.example`.
+Caddy in front for TLS. The sim host joins this stack in the next phase.
 
 How rows get here: every writer (the CLI, the desktop app, the TV) records into a local SQLite
 store (`runs/lilguy.db` on the Mac, the app's files dir on the TV) and never waits on the network.

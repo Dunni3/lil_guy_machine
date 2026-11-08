@@ -45,9 +45,8 @@ headless host runs lives and streams their state to renderers. What was built is
 - **Commands are HTTP, not on the socket.** `POST /v1/lives/{life}/commands` takes one command
   (start, pause, restart, replay, configure, resume, step) and runs it on the life's thread between
   ticks. The socket is read-only and open to anyone. Commands go through `AdminAuth`. For v0 that's
-  a dev token from `LILGUY_ADMIN_TOKEN`, compared in constant time; with none set, every command is
-  refused. GitHub OAuth replaces the implementation in the next phase, behind the same interface
-  (done: `2026-11-06-admin-sign-in-is-a-signed-cookie-and-commands-need-a-csrf-header-and-origin.md`).
+  a password from `LILGUY_ADMIN_PASSWORD`, compared in constant time; with none set, every command is
+  refused (`2026-11-08-v0-admin-login-is-one-password.md`).
 - **Presentation timing belongs to the life,** since every viewer shares one clock.
   `RunSettings` now carries `quiet`, `quietVerbs` and `holdForArt` per life. The view's
   `SimSession.linger()` is gone: `ArtShow` plays each stroke over a set number of real seconds

@@ -43,9 +43,8 @@ test: ## Run all JVM unit tests
 
 # --- sim host ------------------------------------------------------------------
 # The headless host runs a life in real time and streams its state over WebSocket
-# (http://localhost:8790/ is its debug page). Commands need the admin: GitHub sign-in
-# (LILGUY_GITHUB_CLIENT_ID and the rest, see host/README.md) or LILGUY_ADMIN_TOKEN, a dev token;
-# both from the secrets file above. With neither, every command is refused. Never commit or print them.
+# (http://127.0.0.1:8790/ is its debug page). Commands need LILGUY_ADMIN_PASSWORD, from the
+# secrets file above; without one every command is refused. Never commit or print it.
 
 NODE_IMAGE := node:22-alpine
 

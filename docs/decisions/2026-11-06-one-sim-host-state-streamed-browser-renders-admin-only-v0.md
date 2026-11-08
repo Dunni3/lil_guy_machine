@@ -23,9 +23,9 @@ The narrative and alternatives are in
   WebGL measurement on the Streamer. The libGDX app retires once the web renderer matches it.
 - **v0 is admin-only.** Ian is the only one who can start, stop, restart or change a sim. Everyone
   else is read-only.
-- **Admin login is GitHub OAuth.** Only Ian's GitHub account is allowed, checked by its numeric
-  user id. Sign-in gives a session cookie, and the client secret lives in the server's
-  environment. The command endpoint needs an admin session; the state stream doesn't. Viewer input (a closed set of gifts and events, and
+- **Admin login is one password** (changed from GitHub OAuth:
+  `2026-11-08-v0-admin-login-is-one-password.md`). The command endpoint needs it; the state stream
+  doesn't. Viewer input (a closed set of gifts and events, and
   moderated free text) comes later.
 - **The run database comes first.** The sim host's store is that plan's local store.
 
