@@ -43,8 +43,8 @@ test: ## Run all JVM unit tests
 
 # --- sim host ------------------------------------------------------------------
 # The headless host runs a life in real time and streams its state over WebSocket
-# (http://127.0.0.1:8790/ is its debug page). Commands need LILGUY_ADMIN_TOKEN, a dev token
-# from the secrets file above; without one every command is refused. Never commit or print it.
+# (http://127.0.0.1:8790/ is its debug page). Commands need LILGUY_ADMIN_PASSWORD, from the
+# secrets file above; without one every command is refused. Never commit or print it.
 
 NODE_IMAGE := node:22-alpine
 
@@ -67,7 +67,7 @@ protocol-check: ## Fail when protocol/ts/protocol.ts isn't what the generator ma
 # LILGUY_SYNC_TOKEN are set (put them in the secrets file above). The server is server/:
 # Postgres plus the FastAPI ingest service. See server/README.md.
 
-DEV_COMPOSE := POSTGRES_PASSWORD=dev LILGUY_INGEST_TOKENS=dev:dev DOMAIN=localhost ACME_EMAIL=dev@localhost docker compose -f server/docker-compose.yml -f server/docker-compose.dev.yml
+DEV_COMPOSE := POSTGRES_PASSWORD=dev LILGUY_INGEST_TOKENS=dev:dev DOMAIN=localhost HOST_DOMAIN=localhost ACME_EMAIL=dev@localhost docker compose -f server/docker-compose.yml -f server/docker-compose.dev.yml
 
 .PHONY: server-schema
 server-schema: ## Regenerate the rows' JSON Schema from runlog's row classes, and the server's Pydantic models from it
@@ -92,7 +92,7 @@ server-psql: ## Open psql on the local server's database
 	$(DEV_COMPOSE) exec db psql -U lilguy lilguy
 
 .PHONY: server-deploy
-server-deploy: ## Sync server/ to the Lightsail box and restart it (DEPLOY_HOST=ubuntu@<host>)
+server-deploy: ## Build the sim host, sync server/ to the Lightsail box and restart it (DEPLOY_HOST=ubuntu@<host>)
 	server/deploy/deploy.sh
 
 .PHONY: server-tunnel

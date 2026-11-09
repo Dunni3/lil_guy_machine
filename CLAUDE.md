@@ -22,7 +22,7 @@ make cli         # headless runner (ARGS="--scenario bedroom --days 3 --endpoint
                  # --affinities calm=2,loud=-1 / --curiosity 1.5 for another personality
 make server-up   # local Postgres + the ingest API (token "dev"); make server-test, server-psql
 make host        # the sim host: a life in real time, its state over WebSocket, debug page at
-                 # http://127.0.0.1:8790/ (scripted unless ENDPOINT=; PAINTER=2 paints; commands need LILGUY_ADMIN_TOKEN)
+                 # http://127.0.0.1:8790/ (scripted unless ENDPOINT=; PAINTER=2 paints; commands need LILGUY_ADMIN_PASSWORD, see host/README.md)
 make protocol-types  # protocol JSON Schema + TypeScript from :protocol (make test fails when stale)
 make import-runs # old JSONL run logs into runs/lilguy.db; make sync sends unsynced rows
 make desktop     # LWJGL3 window (RESUME=<run id|latest> carries a run on)
@@ -117,7 +117,8 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   tick (`beforeStep`/`afterStep`; `AgentRuntime.hold`); saves are `BedroomWorld.exportState`/`restore`
   (`sim/.../BedroomState.kt`) plus `AgentState`. CLI: `cli/.../RunDb.kt`, `Importer.kt`. App: `RunDatabase.kt`,
   `SimSession`. Server: `server/` (FastAPI ingest and query only, in `app/main.py`; numbered migrations in `sql/migrations/`, compose, `deploy/`
-  for its own Lightsail Small box; see `server/README.md`).
+  for its own Lightsail Small box; see `server/README.md`; `server/host/` is the sim host's image, on its own subdomain,
+  `docs/decisions/2026-11-08-the-host-runs-in-*`).
 - The run loop both the app and the sim host drive: `agent/.../live/` (`SimSession`: start, pause, restart, replay,
   resume, configure, `update(delta)` from one thread; `RunSettings` with the per-life presentation timing: `quiet`,
   `quietVerbs`, `holdForArt`; `ArtShow`, how a piece plays out on screen and when the clock waits for it; `ModelSetup`,
@@ -127,7 +128,8 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   and the logs' merge; `ProtocolSchema.kt` writes `protocol/schema/protocol.schema.json`, from which `gen_types.sh` makes
   `protocol/ts/protocol.ts`). `host/` is the Ktor server: `Life.kt` (one actor per life: a `SimSession`, commands between
   ticks, publishing deltas that never wait on a viewer), `StateReader.kt` (session and agent objects to protocol types),
-  `HostServer.kt` (routes: stream, commands, debug page in `resources/debug/index.html`), `AdminAuth.kt` (v0 dev token),
+  `HostServer.kt` (routes: stream, commands, debug page in `resources/debug/index.html`), `AdminAuth.kt` (who may send commands: one password,
+  `docs/decisions/2026-11-08-v0-admin-login-is-*`; setup in `host/README.md`),
   `Main.kt` (env config, one `SyncWorker` per process).
 - Token accounting: `agent/.../TokenLedger.kt`. `ledger.meter(model, purpose)` wraps a model so every call
   (decision, think, summary, self, recall, significance, art) is recorded with its sim tick and game day; `TokenReport` prints

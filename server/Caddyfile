@@ -2,15 +2,30 @@
 	email {$ACME_EMAIL}
 }
 
-{$DOMAIN} {
+(common) {
 	encode zstd gzip
-	request_body {
-		max_size 20MB
-	}
 	header {
 		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options nosniff
 		-Server
 	}
+}
+
+# The ingest service, for writers syncing runs.
+{$DOMAIN} {
+	import common
+	request_body {
+		max_size 20MB
+	}
 	reverse_proxy api:8787
+}
+
+# The sim host: the page, the state stream (WebSocket) and commands. Plain http redirects here, so the
+# admin password never travels unencrypted.
+{$HOST_DOMAIN} {
+	import common
+	request_body {
+		max_size 1MB
+	}
+	reverse_proxy host:8790
 }

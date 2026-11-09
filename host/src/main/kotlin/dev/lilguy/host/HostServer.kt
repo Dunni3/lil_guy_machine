@@ -8,6 +8,7 @@ import dev.lilguy.protocol.PROTOCOL_VERSION
 import dev.lilguy.protocol.Refused
 import dev.lilguy.protocol.ServerMessage
 import dev.lilguy.protocol.Snapshot
+import dev.lilguy.protocol.Viewer
 import dev.lilguy.protocol.Welcome
 import dev.lilguy.protocol.Wire
 import io.ktor.http.ContentType
@@ -38,7 +39,8 @@ import kotlinx.serialization.builtins.ListSerializer
  * - `GET /v1/lives/{life}/state`: one life's [Snapshot], for clients without a socket;
  * - `WS /v1/lives/{life}/stream?v=<version>&have=<content hash>`: the state stream, open to
  *   anyone, read-only (anything a client sends is ignored);
- * - `POST /v1/lives/{life}/commands`: one [dev.lilguy.protocol.Command], for admins only ([auth]).
+ * - `POST /v1/lives/{life}/commands`: one [dev.lilguy.protocol.Command], for admins only ([auth]);
+ * - `GET /auth/me`: whether the caller's `Authorization` header is an admin's, as a [Viewer].
  */
 fun Application.host(lives: Map<String, Life>, auth: AdminAuth) {
     install(WebSockets) {
@@ -48,6 +50,7 @@ fun Application.host(lives: Map<String, Life>, auth: AdminAuth) {
     val page = Life::class.java.getResource("/debug/index.html")?.readText() ?: "<p>debug page missing from the build</p>"
     routing {
         get("/") { call.respondText(page, ContentType.Text.Html) }
+        get("/auth/me") { call.respondText(Wire.encode(Viewer(auth.admits(call.request.headers[HttpHeaders.Authorization]))), ContentType.Application.Json) }
         get("/v1/lives") {
             call.respondText(Wire.json.encodeToString(ListSerializer(LifeSummary.serializer()), lives.values.mapNotNull { it.summary }), ContentType.Application.Json)
         }

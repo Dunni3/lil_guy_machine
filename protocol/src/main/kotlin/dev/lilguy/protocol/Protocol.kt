@@ -30,6 +30,7 @@ object Wire {
     fun command(text: String): Command = json.decodeFromString(Command.serializer(), text)
     fun encode(r: CommandResult): String = json.encodeToString(CommandResult.serializer(), r)
     fun result(text: String): CommandResult = json.decodeFromString(CommandResult.serializer(), text)
+    fun encode(v: Viewer): String = json.encodeToString(Viewer.serializer(), v)
 }
 
 /**
@@ -138,3 +139,7 @@ sealed interface Command {
 /** [error] says why a command was refused or failed; [state] is the run's state after it. */
 @Serializable
 data class CommandResult(val ok: Boolean, val error: String? = null, val seq: Long? = null, val state: RunState? = null)
+
+/** Who is asking, from `GET /auth/me`: whether the caller's credentials may send commands. */
+@Serializable
+data class Viewer(val admin: Boolean)

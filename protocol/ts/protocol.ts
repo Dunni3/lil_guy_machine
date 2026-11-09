@@ -1,5 +1,5 @@
 /* Generated from schema/protocol.schema.json (protocol/.../*.kt) by gen_types.sh. Don't edit; run `make protocol-types`.
- * schema sha256: df127d1f13d8597966fea8549d16c6b87cd9978cc9309d9d34649a291083d026
+ * schema sha256: 26f55fa6e591b6dd1012dd8d0ee26183a6b39281744afe4fa81fdbbe388a6bbc
  */
 
 /**
@@ -25,6 +25,7 @@ export interface Protocol {
   server: ServerMessage;
   command: Command;
   result: CommandResult;
+  viewer: Viewer;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -670,6 +671,13 @@ export interface CommandResult {
   error: string | null;
   seq: number | null;
   state: RunState | null;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "Viewer".
+ */
+export interface Viewer {
+  admin: boolean;
 }
 
 /** The protocol version these types are for; send it as ?v= when joining a stream. */

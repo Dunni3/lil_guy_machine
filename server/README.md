@@ -1,8 +1,8 @@
 # server/
 
-The run database's server: one Postgres that every writer's rows end up in, and the FastAPI
-service that takes them. It runs on its own Lightsail instance (Small, 2 GB, $12 a month), with
-Caddy in front for TLS. The sim host joins this stack in the next phase.
+The server: one Postgres that every writer's rows end up in, the FastAPI service that takes them,
+and the sim host (`host/`), which runs the guy's life for people to watch. It all runs on its own
+Lightsail instance (Small, 2 GB, $12 a month), with Caddy in front for TLS.
 
 How rows get here: every writer (the CLI, the desktop app, the TV) records into a local SQLite
 store (`runs/lilguy.db` on the Mac, the app's files dir on the TV) and never waits on the network.
@@ -23,9 +23,11 @@ any order.
 | `schema/rows.schema.json` | The rows as JSON Schema, **generated** from the Kotlin row classes (`runlog/.../Rows.kt`) |
 | `app/rows.py` | Pydantic models, **generated** from that schema by `gen_models.sh` |
 | `sql/migrations/NNNN_*.sql` | The tables (`0001`) and views (`0002`: `v_runs`, `v_cost_by_day`, `v_verb_mix`, `v_needs_hourly`, `v_stuck`), each applied once, in order (`app/migrations.py`) |
-| `docker-compose.yml` | `db` (Postgres 16), `api`, `caddy` |
-| `docker-compose.dev.yml` | Local overrides: API on `localhost:8787`, Postgres on `localhost:5433`, no Caddy |
-| `deploy/` | `bootstrap-instance.sh` (once per box), `deploy.sh` (`make server-deploy`), `backup.sh` (nightly cron) |
+| `docker-compose.yml` | `db` (Postgres 16), `api`, `host`, `caddy` |
+| `docker-compose.dev.yml` | Local overrides: API on `localhost:8787`, Postgres on `localhost:5433`, no Caddy, no host |
+| `Caddyfile` | https for both addresses: `DOMAIN` goes to `api`, `HOST_DOMAIN` to `host` |
+| `host/Dockerfile` | The sim host's image, from `host/dist/`, which `deploy/stage-host.sh` builds on the Mac |
+| `deploy/` | `bootstrap-instance.sh` (once per box), `deploy.sh` (`make server-deploy`), `stage-host.sh`, `backup.sh` (nightly cron) |
 
 The Kotlin row classes are the only definition of the rows. Changing a column takes four steps:
 
@@ -51,17 +53,25 @@ make server-psql    # then: select * from v_runs;
 
 1. **Instance.** Lightsail → Ubuntu 24.04 → **Small** (2 GB). It's a box of its own, not
    smarter-tv's. Attach a static IP. Open 443/tcp and 443/udp; 22 and 80 are open by default.
-2. **DNS.** Point an `A` record (e.g. `lilguy.<your domain>`) at the static IP.
+2. **DNS.** Point two `A` records at the static IP: one for the ingest service (e.g.
+   `lilguy.<your domain>`) and one for the sim host (e.g. `live.<your domain>`).
 3. **Bootstrap.** `ssh ubuntu@<ip> 'bash -s' < server/deploy/bootstrap-instance.sh`. This
    installs Docker, the firewall, 2 GB of swap and the nightly backup cron. Log out and back in.
-4. **Secrets.** Create `~/lilguy-server/.env` on the box from `.env.example`: `DOMAIN`,
-   `ACME_EMAIL`, a fresh `POSTGRES_PASSWORD`, and one token per writer in `LILGUY_INGEST_TOKENS`.
-   The file never leaves the box, because `deploy.sh` excludes it.
-5. **Deploy.** `DEPLOY_HOST=ubuntu@lilguy.<domain> make server-deploy`.
-6. **Writers.** On the Mac, add `LILGUY_SYNC_URL=https://lilguy.<domain>` and
+4. **Secrets.** Create two files on the box. They never leave it, because `deploy.sh` excludes them.
+   - `~/lilguy-server/.env` from `.env.example`: `DOMAIN`, `HOST_DOMAIN`, `ACME_EMAIL`, a fresh
+     `POSTGRES_PASSWORD`, and one token per writer in `LILGUY_INGEST_TOKENS`, including `host:`.
+   - `~/lilguy-server/.env.host` from `.env.host.example`: `LILGUY_ADMIN_PASSWORD`, and in
+     `LILGUY_SYNC_TOKEN` the same token as `host:` above. Add `LILGUY_ENDPOINT` and its key to use a
+     model; otherwise the scripted policy runs and nothing costs money.
+5. **Deploy.** `DEPLOY_HOST=ubuntu@lilguy.<domain> make server-deploy`. This builds the host on the
+   Mac (with `config/endpoints.yaml` in it if you have one), syncs everything and
+   starts the stack. It stops if `.env.host` has no admin password.
+6. **The sim host.** Open `https://live.<your domain>/`. Anyone can watch there. Paste the admin
+   password into the page for the run controls, then press start.
+7. **Writers.** On the Mac, add `LILGUY_SYNC_URL=https://lilguy.<domain>` and
    `LILGUY_SYNC_TOKEN=<the mac token>` to `~/.config/lil-guy-machine/secrets.env`. For the TV,
    export the TV's token as `LILGUY_SYNC_TOKEN` and run `make tv-push-config`.
-7. **Old runs.** `make import-runs` reads `runs/` and `runs/tv/` into `runs/lilguy.db`, then syncs.
+8. **Old runs.** `make import-runs` reads `runs/` and `runs/tv/` into `runs/lilguy.db`, then syncs.
 
 ## Querying from the Mac
 

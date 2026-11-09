@@ -23,7 +23,11 @@ captures/
 .env
 .env.*
 !.env.example
+!.env.host.example
 config/endpoints.yaml
+
+# The sim host image's staged build (server/deploy/stage-host.sh)
+server/host/dist/
 
 # Run output (JSONL decision logs, replays)
 runs/

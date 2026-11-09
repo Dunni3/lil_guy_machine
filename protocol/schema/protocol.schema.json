@@ -13,12 +13,16 @@
         },
         "result": {
             "$ref": "#/$defs/CommandResult"
+        },
+        "viewer": {
+            "$ref": "#/$defs/Viewer"
         }
     },
     "required": [
         "server",
         "command",
-        "result"
+        "result",
+        "viewer"
     ],
     "additionalProperties": false,
     "$defs": {
@@ -2405,6 +2409,19 @@
                 "locked",
                 "gives",
                 "taught_by"
+            ],
+            "additionalProperties": false
+        },
+        "Viewer": {
+            "title": "Viewer",
+            "type": "object",
+            "properties": {
+                "admin": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "admin"
             ],
             "additionalProperties": false
         },

@@ -15,13 +15,15 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.net.InetAddress
+import kotlin.system.exitProcess
 import kotlin.time.Duration.Companion.seconds
 
 /**
  * The sim host: runs one life (`main`) in real time and serves its state stream, the command
  * endpoint and the debug page. Configured from the environment:
  * - `LILGUY_HOST_PORT` (8790) and `LILGUY_HOST_BIND` (127.0.0.1; 0.0.0.0 on a server);
- * - `LILGUY_ADMIN_TOKEN`: the dev admin token commands must carry; unset, every command is refused;
+ * - `LILGUY_ADMIN_PASSWORD`: the admin password commands must carry (at least [AdminPassword.MIN_LENGTH]
+ *   characters); unset, every command is refused;
  * - `LILGUY_ENDPOINT` names the deciding endpoint in `LILGUY_CONFIG` (config/endpoints.yaml), with
  *   `LILGUY_MEMORY_ENDPOINT`, `LILGUY_WRITER_ENDPOINT`, `LILGUY_RECALL_ENDPOINT` and `LILGUY_BEAM` as for
  *   the desktop; unset, the scripted policy runs and nothing calls a model;
@@ -56,13 +58,18 @@ fun main() {
     val sync = store?.let { s -> SyncTarget.fromEnv(env)?.let { SyncWorker(s, it, client = "host@${hostName ?: "?"}") } }
     sync?.start(scope)
 
-    val auth = DevTokenAuth(get("LILGUY_ADMIN_TOKEN"))
+    val password = get("LILGUY_ADMIN_PASSWORD")?.trim()
+    if (password != null && password.length < AdminPassword.MIN_LENGTH) {
+        System.err.println("lil guy host: LILGUY_ADMIN_PASSWORD must be at least ${AdminPassword.MIN_LENGTH} characters: openssl rand -hex 24")
+        exitProcess(2)
+    }
+    val auth = AdminPassword(password)
     val life = Life("main", setup, db)
     runBlocking { life.start(scope, autostart = get("LILGUY_AUTOSTART") == "1") }
     println(
         "lil guy host on http://$bind:$port/ (protocol ${dev.lilguy.protocol.PROTOCOL_VERSION}): life 'main', model ${setup.notice ?: if (endpoint == null) "scripted" else endpoint}" +
             "${if (setup.painter != null) ", painting with random picks" else ""}; " +
-            "run database ${if (store == null) "off" else if (sync == null) "local only" else "syncing"}; commands ${if (auth.enabled) "need the admin token" else "refused (no LILGUY_ADMIN_TOKEN)"}",
+            "run database ${if (store == null) "off" else if (sync == null) "local only" else "syncing"}; commands ${if (auth.enabled) "need the admin password" else "refused (no LILGUY_ADMIN_PASSWORD)"}",
     )
     Runtime.getRuntime().addShutdownHook(Thread {
         life.stop()
