@@ -8,6 +8,7 @@ kotlin { jvmToolchain(17) }
 dependencies {
     api(libs.gdx)
     api(project(":agent"))
+    api(project(":parts"))
     testImplementation(kotlin("test"))
 }
 

@@ -1,5 +1,5 @@
 /* Generated from schema/protocol.schema.json (protocol/.../*.kt) by gen_types.sh. Don't edit; run `make protocol-types`.
- * schema sha256: 26f55fa6e591b6dd1012dd8d0ee26183a6b39281744afe4fa81fdbbe388a6bbc
+ * schema sha256: 594cb6011ff5b151edf4accce44cfc88b316ecec3c84654007e4d2ae620c3648
  */
 
 /**
@@ -78,6 +78,7 @@ export interface Delta {
   seq: number;
   run: RunInfo | null;
   fast: FastState | null;
+  things: Things | null;
   easel: Easel | null;
   wallet: Wallet | null;
   growth: Growth | null;
@@ -221,6 +222,13 @@ export interface StatusView {
 export interface CellView {
   x: number;
   y: number;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "Things".
+ */
+export interface Things {
+  entities: Entity[];
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -578,6 +586,7 @@ export interface LifeState {
   content: string;
   run: RunInfo;
   fast: FastState;
+  things: Things;
   easel: Easel;
   wallet: Wallet;
   growth: Growth;
@@ -681,4 +690,4 @@ export interface Viewer {
 }
 
 /** The protocol version these types are for; send it as ?v= when joining a stream. */
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;

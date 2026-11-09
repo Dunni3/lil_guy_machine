@@ -16,8 +16,10 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
+import io.ktor.server.http.content.staticResources
 import io.ktor.server.request.receiveText
 import io.ktor.server.response.header
+import io.ktor.server.response.respondRedirect
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
@@ -35,6 +37,7 @@ import kotlinx.serialization.builtins.ListSerializer
 /**
  * The host's HTTP side, for one set of [lives]:
  * - `GET /`: the debug page (plain JS) that shows a life updating and sends commands;
+ * - `GET /room/`: the web renderer (`web/`, built into the jar), read-only;
  * - `GET /v1/lives`: the lives, as [LifeSummary]s;
  * - `GET /v1/lives/{life}/state`: one life's [Snapshot], for clients without a socket;
  * - `WS /v1/lives/{life}/stream?v=<version>&have=<content hash>`: the state stream, open to
@@ -50,6 +53,10 @@ fun Application.host(lives: Map<String, Life>, auth: AdminAuth) {
     val page = Life::class.java.getResource("/debug/index.html")?.readText() ?: "<p>debug page missing from the build</p>"
     routing {
         get("/") { call.respondText(page, ContentType.Text.Html) }
+        // The page's assets are relative, so it has to be asked for with the trailing slash.
+        get("/room") { call.respondRedirect("/room/") }
+        if (Life::class.java.getResource("/web/index.html") != null) staticResources("/room", "web")
+        else get("/room/") { call.respondText("the web renderer isn't in this build: run make web-build", status = HttpStatusCode.NotFound) }
         get("/auth/me") { call.respondText(Wire.encode(Viewer(auth.admits(call.request.headers[HttpHeaders.Authorization]))), ContentType.Application.Json) }
         get("/v1/lives") {
             call.respondText(Wire.json.encodeToString(ListSerializer(LifeSummary.serializer()), lives.values.mapNotNull { it.summary }), ContentType.Application.Json)

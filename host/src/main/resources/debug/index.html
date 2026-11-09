@@ -107,7 +107,7 @@
 "use strict";
 const VERSION = 1;
 const LIFE = new URLSearchParams(location.search).get("life") || "main";
-const SECTIONS = ["run", "fast", "easel", "wallet", "growth", "gallery", "shop", "mind", "tokens"];
+const SECTIONS = ["run", "fast", "things", "easel", "wallet", "growth", "gallery", "shop", "mind", "tokens"];
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
@@ -248,14 +248,14 @@ function drawMap() {
   }));
   const agent = f.agents[0];
   if (agent) { g.fillStyle = "rgba(59,110,165,.35)"; agent.path.forEach((p) => g.fillRect(p.x * px + px / 3, p.y * px + px / 3, px / 3, px / 3)); }
-  for (const e of f.entities) {
+  for (const e of [...state.things.entities, ...f.entities]) {
     if (e.carried_by) continue;
     const guy = e.kind === "guy";
     g.fillStyle = guy ? "#e0882b" : "#7a9a5a";
     g.beginPath(); g.arc(e.x * px + px / 2, e.y * px + px / 2, guy ? px * 0.45 : px * 0.28, 0, Math.PI * 2); g.fill();
     if (guy) { const a = (e.facing_degrees * Math.PI) / 180; g.strokeStyle = "#222"; g.beginPath(); g.moveTo(e.x * px + px / 2, e.y * px + px / 2); g.lineTo(e.x * px + px / 2 + Math.cos(a) * px * 0.5, e.y * px + px / 2 - Math.sin(a) * px * 0.5); g.stroke(); }
   }
-  $("entities").textContent = f.entities.filter((e) => !e.carried_by && e.kind !== "guy").map((e) => e.id).join(" · ");
+  $("entities").textContent = state.things.entities.filter((e) => !e.carried_by).map((e) => e.id).join(" · ");
 }
 function drawEasel() {
   const u = state.easel.underway, c = $("easel"), g = c.getContext("2d");

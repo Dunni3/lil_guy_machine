@@ -1,5 +1,6 @@
 package dev.lilguy.host
 
+import dev.lilguy.agent.BedroomPolicy
 import dev.lilguy.agent.live.ModelSetup
 import dev.lilguy.agent.live.RunDatabase
 import dev.lilguy.decision.RandomPicker
@@ -28,6 +29,7 @@ import kotlin.time.Duration.Companion.seconds
  *   `LILGUY_MEMORY_ENDPOINT`, `LILGUY_WRITER_ENDPOINT`, `LILGUY_RECALL_ENDPOINT` and `LILGUY_BEAM` as for
  *   the desktop; unset, the scripted policy runs and nothing calls a model;
  * - `LILGUY_PAINTER=<seconds>` draws his art with random picks at that latency, so he paints with no endpoint;
+ * - `LILGUY_START_ITEMS` and `LILGUY_SCRIPT`, as for the desktop's screenshots: what he starts with, and verbs the scripted policy does first;
  * - `LILGUY_DAYS` (0 for no end), `LILGUY_AUTOSTART=1` to start the first run at once;
  * - `LILGUY_DB` (runs/lilguy.db; "none" for off), `LILGUY_RESUME` (a run id or "latest"), and
  *   `LILGUY_SYNC_URL` / `LILGUY_SYNC_TOKEN` to sync the store to the server, one worker for the process.
@@ -49,7 +51,14 @@ fun main() {
         recallEndpoint = get("LILGUY_RECALL_ENDPOINT"),
         beam = get("LILGUY_BEAM")?.toIntOrNull(),
         days = days,
-    )).let { s -> get("LILGUY_PAINTER")?.toDoubleOrNull()?.let { secs -> s.copy(painter = { RandomPicker(secs.seconds, seed = System.nanoTime()) }) } ?: s }
+    )).let { s -> get("LILGUY_PAINTER")?.toDoubleOrNull()?.let { secs -> s.copy(painter = { RandomPicker(secs.seconds, seed = System.nanoTime()) }) } ?: s }.let { s ->
+        val extra = get("LILGUY_START_ITEMS").orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
+            .associate { it.substringBefore('=') to (it.substringAfter('=', "1").toIntOrNull() ?: 1) }
+        if (extra.isEmpty()) s else s.copy(startItems = extra)
+    }.let { s ->
+        val script = get("LILGUY_SCRIPT").orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
+        if (script.isEmpty()) s else s.copy(create = { BedroomPolicy(ModelSetup.THINK_TIME, script = script) })
+    }
     val hostName = runCatching { InetAddress.getLocalHost().hostName }.getOrNull()
     val store = (get("LILGUY_DB") ?: "runs/lilguy.db").takeIf { it != "none" }?.let { JdbcSqlDriver.store(File(it)) }
     // One sync worker for the whole process; the sessions record but don't sync.

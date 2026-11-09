@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Builds the sim host and stages what its image copies into server/host/dist/ (gitignored): the
-# JVM app, and config/endpoints.yaml when there is one. That file names models and which
+# Builds the web renderer and the sim host, whose jar carries it, and stages what the image copies
+# into server/host/dist/ (gitignored): the JVM app, and config/endpoints.yaml when there is one. That file names models and which
 # environment variables hold their keys, never the keys. Without it the host runs the scripted policy.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+make --no-print-directory web-build
 ./gradlew --console=plain -q :host:installDist
 rsync -a --delete host/build/install/host/ server/host/dist/
 if [[ -f config/endpoints.yaml ]]; then

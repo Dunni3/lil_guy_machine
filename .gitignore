@@ -39,3 +39,7 @@ research_notes/
 __pycache__/
 .pytest_cache/
 .venv/
+
+# The web renderer's build and packages (web/)
+web/dist/
+web/node_modules/

@@ -30,3 +30,15 @@ tasks.named<JavaExec>("run") {
 }
 
 tasks.test { useJUnitPlatform() }
+
+// The web renderer, when it's been built (make web-build), goes in the jar; the host serves it at /room.
+tasks.processResources { from(rootProject.file("web/dist")) { into("web") } }
+
+// A real life's stream as a file, for the web client's test to replay (make web-test).
+val recordStream by tasks.registering(JavaExec::class) {
+    group = "verification"
+    description = "Records a short scripted life's stream to build/stream-recording.jsonl"
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("dev.lilguy.host.StreamRecordingKt")
+    args(layout.buildDirectory.file("stream-recording.jsonl").get().asFile.path)
+}

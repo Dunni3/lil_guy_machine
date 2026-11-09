@@ -14,4 +14,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "lil-guy-machine"
 
-include(":sim", ":decision", ":runlog", ":runlog-jdbc", ":agent", ":protocol", ":host", ":app", ":desktop", ":android", ":cli")
+include(":sim", ":decision", ":runlog", ":runlog-jdbc", ":agent", ":protocol", ":host", ":parts", ":app", ":desktop", ":android", ":cli")
