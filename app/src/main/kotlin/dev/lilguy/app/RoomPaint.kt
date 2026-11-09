@@ -3,6 +3,7 @@ package dev.lilguy.app
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.utils.Disposable
+import dev.lilguy.parts.RoomParts
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.max
@@ -99,7 +100,7 @@ class RoomPaint : Disposable {
 
     /**
      * One stretch of wall, [WALL_METRES] wide and the wall's height tall, bottom to top: a slim
-     * baseboard, a clay colour block to [RoomModels.COLOR_BLOCK], and warm limewashed plaster above,
+     * baseboard, a clay colour block to [RoomParts.COLOR_BLOCK], and warm limewashed plaster above,
      * both clouded with broad, faint crayon; ink along the top and the baseboard.
      */
     private fun wall(): Texture {
@@ -107,9 +108,9 @@ class RoomPaint : Disposable {
         val h = WALL_PX.toFloat()
         val x = CrayonCanvas(WALL_PX, WALL_PX)
         val rand = Rng(31)
-        fun yAt(m: Float) = (1 - m / RoomModels.WALL_HEIGHT) * h
-        val blockTop = yAt(RoomModels.COLOR_BLOCK)
-        val baseTop = yAt(RoomModels.BASEBOARD)
+        fun yAt(m: Float) = (1 - m / RoomParts.WALL_HEIGHT) * h
+        val blockTop = yAt(RoomParts.COLOR_BLOCK)
+        val baseTop = yAt(RoomParts.BASEBOARD)
 
         x.fill(Color.valueOf(PLASTER))
         limewash(x, PLASTER, 0f, blockTop, w, rand)

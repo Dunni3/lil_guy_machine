@@ -7,6 +7,7 @@ import com.badlogic.gdx.math.Matrix4
 import com.badlogic.gdx.math.Quaternion
 import com.badlogic.gdx.math.Vector3
 import com.badlogic.gdx.utils.Disposable
+import dev.lilguy.parts.RoomParts
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
@@ -113,7 +114,7 @@ class Blob : Disposable {
     /** Where the [held] thing goes, in his own (scaled) frame: a book's bottom centre, the guitar's body. */
     val heldAt = Matrix4()
 
-    /** True while he makes a piece ([Pose.art]): the brush or crayon in his working hand goes at [toolAt] ([RoomModels.tool]). */
+    /** True while he makes a piece ([Pose.art]): the brush or crayon in his working hand goes at [toolAt] ([RoomParts.tool]). */
     var toolShown = false
         private set
     val toolAt = Matrix4()
@@ -430,7 +431,7 @@ class Blob : Disposable {
                 if (pose.tipLifted) if (pose.workFlat) tipLocal.y += LIFT else tipLocal.z += LIFT
                 if (pose.workFlat) toolDir.set(0f, 0.7f, 0f) else toolDir.set(0f, 0.18f, 0.7f)
                 toolDir.sub(workDir.x * 0.4f, 0f, workDir.z * 0.4f).nor()
-                hold.set(tipLocal).mulAdd(toolDir, RoomModels.TOOL_TIP * SCALE)
+                hold.set(tipLocal).mulAdd(toolDir, RoomParts.TOOL_TIP * SCALE)
                 toLocal(tipLocal)
                 toLocal(hold)
             }

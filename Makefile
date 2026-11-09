@@ -49,7 +49,7 @@ test: ## Run all JVM unit tests
 NODE_IMAGE := node:22-alpine
 
 .PHONY: host
-host: ## Run the sim host (ENDPOINT=<name>, else the scripted policy; PAINTER=<s> paints with random picks; START=0 waits for a start command; PORT=8790; DAYS=<n>; RESUME=<run id|latest>)
+host: web-if-possible ## Run the sim host, the web renderer at /room/ (ENDPOINT=<name>, else the scripted policy; PAINTER=<s> paints with random picks; START=0 waits for a start command; PORT=8790; DAYS=<n>; RESUME=<run id|latest>)
 	LILGUY_ENDPOINT=$(ENDPOINT) LILGUY_MEMORY_ENDPOINT=$(MEMORY_ENDPOINT) LILGUY_WRITER_ENDPOINT=$(WRITER_ENDPOINT) LILGUY_RECALL_ENDPOINT=$(RECALL_ENDPOINT) LILGUY_PAINTER=$(PAINTER) LILGUY_AUTOSTART=$(or $(START),1) LILGUY_HOST_PORT=$(PORT) LILGUY_DAYS=$(DAYS) LILGUY_RESUME=$(RESUME) $(GRADLE) -q :host:run
 
 .PHONY: protocol-types
@@ -61,6 +61,38 @@ protocol-types: ## Regenerate the protocol's JSON Schema from its Kotlin types, 
 protocol-check: ## Fail when protocol/ts/protocol.ts isn't what the generator makes from the current schema (make test checks the hash only)
 	$(GRADLE) -q :protocol:checkProtocolTypes
 	docker run --rm -v $(CURDIR)/protocol:/p -w /p $(NODE_IMAGE) sh -c 'sh gen_types.sh /tmp/protocol.ts && cmp /tmp/protocol.ts ts/protocol.ts || { echo "protocol/ts/protocol.ts is stale: run make protocol-types"; exit 1; }'
+
+# --- web renderer ---------------------------------------------------------------
+# web/ is TypeScript, Three.js and Vite, run in the same Node container as the protocol types, with
+# its packages in a volume so Linux and macOS builds of them don't meet. `make host` builds it when
+# something in it changed, so the jar serves it at /room/.
+
+WEB_RUN := docker run --rm -v $(CURDIR):/repo -v lilguy-web-modules:/repo/web/node_modules -w /repo/web
+WEB_SOURCES := $(shell find web/src -type f 2>/dev/null) web/index.html web/package.json web/package-lock.json web/vite.config.ts web/tsconfig.json parts/export/parts.json protocol/ts/protocol.ts
+
+web/dist/index.html: $(WEB_SOURCES)
+	$(WEB_RUN) $(NODE_IMAGE) sh -c 'npm install --no-audit --no-fund && npm run build'
+	touch $@
+
+.PHONY: web-build
+web-build: web/dist/index.html ## Build the web renderer into web/dist (the host's jar carries it)
+
+.PHONY: web-if-possible
+web-if-possible:
+	-@$(MAKE) --no-print-directory web-build
+
+.PHONY: web-dev
+web-dev: ## The web renderer with live reload at http://localhost:5173/, the stream proxied to a host on this machine (make host in another terminal)
+	$(WEB_RUN) -it -p 5173:5173 -e LILGUY_HOST=http://host.docker.internal:$(or $(PORT),8790) $(NODE_IMAGE) sh -c 'npm install --no-audit --no-fund && npm run dev -- --host 0.0.0.0'
+
+.PHONY: web-test
+web-test: ## The stream client's test, against a stream recorded from a real scripted life
+	$(GRADLE) -q :host:recordStream
+	$(WEB_RUN) $(NODE_IMAGE) sh -c 'npm install --no-audit --no-fund && npm test'
+
+.PHONY: parts
+parts: ## Regenerate parts/export/parts.json from the part lists (make test fails when it's stale)
+	$(GRADLE) -q :parts:writeParts
 
 # --- run database --------------------------------------------------------------
 # Every run records into runs/lilguy.db and syncs to the server when LILGUY_SYNC_URL and

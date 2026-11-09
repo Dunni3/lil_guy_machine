@@ -9,7 +9,7 @@ import kotlinx.serialization.json.Json
  * which version it speaks when it joins (`?v=`); the host refuses a different one ([Refused])
  * rather than send it deltas it can't apply.
  */
-const val PROTOCOL_VERSION = 1
+const val PROTOCOL_VERSION = 2
 
 /**
  * The JSON every message travels as. Every property is always written, nulls and defaults
@@ -99,6 +99,7 @@ data class Delta(
     val seq: Long,
     val run: RunInfo? = null,
     val fast: FastState? = null,
+    val things: Things? = null,
     val easel: Easel? = null,
     val wallet: Wallet? = null,
     val growth: Growth? = null,

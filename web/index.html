@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>lil guy machine</title>
+  <link rel="icon" href="data:,">
+  <style>
+    html, body { margin: 0; height: 100%; background: #1e1a20; overflow: hidden; }
+    canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+    #status {
+      position: fixed; left: 12px; bottom: 10px;
+      font: 13px/1.3 ui-rounded, system-ui, sans-serif; color: #fff8ee; opacity: 0.72;
+      text-shadow: 0 1px 2px #0008; pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="room"></canvas>
+  <div id="status" role="status">connecting</div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

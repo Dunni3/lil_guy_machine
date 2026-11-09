@@ -7,7 +7,8 @@ import kotlinx.serialization.Serializable
  * One life as every viewer sees it, split by how often each part changes so a [Delta] carries
  * only what did:
  * - [run]: the run and its controls, on a command or when it ends;
- * - [fast]: the clock, needs, positions and the activity under way, every publish while he moves;
+ * - [fast]: the clock, needs, where he is and the activity under way, every publish while he moves;
+ * - [things]: everything else on the map (furniture, decor), when any of it changes;
  * - [easel]: the piece under way, as far as the screen has got, on every stroke;
  * - the slow sections ([wallet], [growth], [gallery], [shop], [mind], [tokens]), when they change;
  * - [logs]: what only grows (money, news, decisions, thoughts, memories, trips, art), as new entries.
@@ -21,6 +22,7 @@ data class LifeState(
     val content: String,
     val run: RunInfo,
     val fast: FastState,
+    val things: Things,
     val easel: Easel,
     val wallet: Wallet,
     val growth: Growth,
@@ -38,6 +40,7 @@ data class LifeState(
             seq = d.seq,
             run = d.run ?: run,
             fast = d.fast ?: fast,
+            things = d.things ?: things,
             easel = d.easel ?: easel,
             wallet = d.wallet ?: wallet,
             growth = d.growth ?: growth,
@@ -57,6 +60,7 @@ data class LifeState(
             seq = seq + 1,
             run = next.run.takeIf { it != run },
             fast = next.fast.takeIf { it != fast },
+            things = next.things.takeIf { it != things },
             easel = next.easel.takeIf { it != easel },
             wallet = next.wallet.takeIf { it != wallet },
             growth = next.growth.takeIf { it != growth },
@@ -139,6 +143,7 @@ data class FastState(
     val doing: String?,
     val progress: Float?,
     val music: String?,
+    /** The characters; the rest of the map is in [Things]. */
     val entities: List<Entity>,
     val agents: List<AgentView>,
     /** True once the key-and-door character has walked out. */
@@ -153,6 +158,10 @@ data class FastState(
     /** Real seconds into [Easel.phase], so a renderer that joins part way through a stroke starts where the host is. */
     @SerialName("easel_time") val easelTime: Float,
 )
+
+/** What's on the map besides the characters: it hardly ever changes, so it doesn't travel with [FastState]. */
+@Serializable
+data class Things(val entities: List<Entity>)
 
 @Serializable
 data class Clock(val day: Int, val time: String)

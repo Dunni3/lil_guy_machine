@@ -1,4 +1,4 @@
-package dev.lilguy.app
+package dev.lilguy.parts
 
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -7,13 +7,19 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
- * Decor from the shop, as part lists in [RoomModels]' conventions: floor things have their pivot at
+ * Decor from the shop, as part lists in [RoomParts]' conventions: floor things have their pivot at
  * the bottom centre of their tile and face +Z; [ON_WALL] things have their back at z = 0, x along
  * the wall. Each is the room's warm neutrals and muted accents with rounded edges, small lumps and ink, like the rest.
  */
-object DecorModels {
+object DecorParts {
     /** Decor that hangs in a wall tile rather than standing on the floor. */
     val ON_WALL = setOf("string_lights", "window_succulents", "moon_mobile", "round_mirror", "cork_board", "rainbow", "cloud_light", "bunting")
+
+    /** Everything [decor] knows, for the export. */
+    val IDS = listOf(
+        "lava_lamp", "sunflowers", "mushroom_lamp", "beanbag", "fishbowl", "teddy_bear", "cactus",
+        "string_lights", "window_succulents", "moon_mobile", "round_mirror", "cork_board", "rainbow", "cloud_light", "bunting",
+    )
 
     /** Adds decor [id]'s parts; false for ids that aren't decor. */
     fun PartList.decor(id: String): Boolean {
@@ -354,7 +360,7 @@ object DecorModels {
     private const val TAU = 2 * PI
     private const val RAD_TO_DEG = 180f / PI
 
-    // The room's warm neutrals (RoomModels), and a few of decor's own in the same muted accents.
+    // The room's warm neutrals (RoomParts), and a few of decor's own in the same muted accents.
     private const val WOOD = "#d8b68f"
     private const val WOOD_LIGHT = "#e8cfae"
     private const val WOOD_DARK = "#a9835f"

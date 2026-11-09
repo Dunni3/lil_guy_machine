@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "title": "Protocol",
     "description": "The lil guy machine sim host's wire format. Generated from protocol/.../*.kt; don't edit.",
-    "x-protocol-version": 1,
+    "x-protocol-version": 2,
     "type": "object",
     "properties": {
         "server": {
@@ -517,6 +517,16 @@
                         }
                     ]
                 },
+                "things": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/Things"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
                 "easel": {
                     "anyOf": [
                         {
@@ -604,6 +614,7 @@
                 "seq",
                 "run",
                 "fast",
+                "things",
                 "easel",
                 "wallet",
                 "growth",
@@ -1074,6 +1085,9 @@
                 "fast": {
                     "$ref": "#/$defs/FastState"
                 },
+                "things": {
+                    "$ref": "#/$defs/Things"
+                },
                 "easel": {
                     "$ref": "#/$defs/Easel"
                 },
@@ -1105,6 +1119,7 @@
                 "content",
                 "run",
                 "fast",
+                "things",
                 "easel",
                 "wallet",
                 "growth",
@@ -1961,6 +1976,22 @@
             "required": [
                 "count",
                 "first_tick"
+            ],
+            "additionalProperties": false
+        },
+        "Things": {
+            "title": "Things",
+            "type": "object",
+            "properties": {
+                "entities": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/Entity"
+                    }
+                }
+            },
+            "required": [
+                "entities"
             ],
             "additionalProperties": false
         },

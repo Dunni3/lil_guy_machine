@@ -1,7 +1,7 @@
 # host/
 
 The sim host: runs a life headless in real time and streams its state over WebSocket. The debug
-page is at `/`, the stream at `/v1/lives/{life}/stream`, and commands go to
+page is at `/`, the web renderer (`web/`, read-only) at `/room/`, the stream at `/v1/lives/{life}/stream`, and commands go to
 `POST /v1/lives/{life}/commands`. Anyone can watch. Only the admin can send commands.
 
 ```bash

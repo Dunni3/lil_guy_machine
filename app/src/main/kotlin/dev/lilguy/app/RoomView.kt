@@ -25,6 +25,7 @@ import dev.lilguy.sim.LifeSnapshot
 import dev.lilguy.sim.Terrain
 import dev.lilguy.sim.TileMap
 import dev.lilguy.sim.WorldSnapshot
+import dev.lilguy.parts.RoomParts
 import kotlin.math.min
 import kotlin.math.tan
 
@@ -59,8 +60,8 @@ class RoomView(private val art: ArtTextures) : Disposable {
     private var room: RoomModels.Room? = null
     private val identity = Matrix4()
     private val glassAt = Matrix4()
-    private val hourHand = models.hand(0.1f)
-    private val minuteHand = models.hand(0.15f)
+    private val hourHand = models.hand(RoomParts.HOUR_HAND)
+    private val minuteHand = models.hand(RoomParts.MINUTE_HAND)
     private val hourAt = Matrix4()
     private val minuteAt = Matrix4()
     private var clockX = 0f
@@ -244,7 +245,7 @@ class RoomView(private val art: ArtTextures) : Disposable {
         framed = map
         placedAt.clear()
         clockX = models.clockX(map)
-        glassAt.setToTranslation(models.window(map), (RoomModels.WINDOW_BOTTOM + RoomModels.WINDOW_TOP) / 2, 1.012f)
+        glassAt.setToTranslation(models.window(map), (RoomParts.WINDOW_BOTTOM + RoomParts.WINDOW_TOP) / 2, 1.012f)
         val halfFovX = tan(FOV / 2 * MathUtils.degreesToRadians) * DevView.WIDTH / DevView.HEIGHT
         val distance = (map.width / 2f + SIDE_MARGIN) / halfFovX
         val target = Vector3(map.width / 2f, 1.1f, map.height / 2f + 0.2f)
@@ -297,10 +298,10 @@ class RoomView(private val art: ArtTextures) : Disposable {
         val drawings = art.drawings(session)
         val rail = placedAt["picture_rail"]
         if (rail != null && now.entities.any { it.id.value == "picture_rail" }) {
-            pieces.filter { it.hung }.take(RoomModels.FRAME_XS.size).forEachIndexed { i, p ->
-                railAt.set(rail).translate(RoomModels.FRAME_XS[i], RoomModels.FRAME_BOTTOM, 0f)
+            pieces.filter { it.hung }.take(RoomParts.FRAME_XS.size).forEachIndexed { i, p ->
+                railAt.set(rail).translate(RoomParts.FRAME_XS[i], RoomParts.FRAME_BOTTOM, 0f)
                 crayon.model(models.frame(), railAt)
-                picture(drawings[p.id]?.let(art::of), RoomModels.FRAME_ART, flat = false, at.set(railAt).translate(0f, RoomModels.FRAME / 2, RoomModels.FRAME_ART_Z))
+                picture(drawings[p.id]?.let(art::of), RoomParts.FRAME_ART, flat = false, at.set(railAt).translate(0f, RoomParts.FRAME / 2, RoomParts.FRAME_ART_Z))
             }
         }
         for (stand in STANDS) {
@@ -339,12 +340,12 @@ class RoomView(private val art: ArtTextures) : Disposable {
         val player = placedAt["record_player"]
         val playing = life?.music != null
         if (playing) discTurn = (discTurn + delta * DISC_SPEED) % 360f
-        player?.let { crayon.model(models.disc(), at.set(it).translate(RoomModels.DISC_X, RoomModels.DISC_Y, 0f).rotate(Vector3.Y, -discTurn)) }
+        player?.let { crayon.model(models.disc(), at.set(it).translate(RoomParts.DISC_X, RoomParts.DISC_Y, 0f).rotate(Vector3.Y, -discTurn)) }
 
         recordNoteIn -= delta
         if (playing && player != null && recordNoteIn <= 0f) {
             recordNoteIn = NOTE_EVERY
-            notes += Note(player.getTranslation(source).add(RoomModels.DISC_X, RoomModels.DISC_Y + 0.12f, 0.1f))
+            notes += Note(player.getTranslation(source).add(RoomParts.DISC_X, RoomParts.DISC_Y + 0.12f, 0.1f))
         }
         guitarNoteIn -= delta
         if (blob.held == Blob.Held.Guitar && guitarNoteIn <= 0f) {
@@ -406,8 +407,8 @@ class RoomView(private val art: ArtTextures) : Disposable {
             h + m / 60f
         } ?: 12f
         light.at(hour)
-        hourAt.setToTranslation(clockX, RoomModels.CLOCK_Y, 1.06f).rotate(Vector3.Z, -30f * hour)
-        minuteAt.setToTranslation(clockX, RoomModels.CLOCK_Y, 1.07f).rotate(Vector3.Z, -360f * hour)
+        hourAt.setToTranslation(clockX, RoomParts.CLOCK_Y, 1.06f).rotate(Vector3.Z, -30f * hour)
+        minuteAt.setToTranslation(clockX, RoomParts.CLOCK_Y, 1.07f).rotate(Vector3.Z, -360f * hour)
         // Everything shades itself; the room's light only tints it, white at midday.
         val a = light.ambient
         val s = light.sun
@@ -739,7 +740,7 @@ class RoomView(private val art: ArtTextures) : Disposable {
         /**
          * Where [item]s are made ([activity]) and the newest unsold one shows: on which stand, offset
          * from its tile centre, how big, lying flat or upright, the colour of the blank it's made on
-         * (0xRRGGBB), whether the stand needs a [RoomModels.canvas] for it, and how far he moves in from
+         * (0xRRGGBB), whether the stand needs a [RoomParts.canvas] for it, and how far he moves in from
          * his tile to work at it (on the chair at the desk, a little; standing at the easel, a step).
          */
         class Stand(
@@ -747,8 +748,8 @@ class RoomView(private val art: ArtTextures) : Disposable {
             val x: Float, val y: Float, val z: Float, val size: Float, val flat: Boolean, val canvas: Boolean = false, val slide: Float,
         )
 
-        val SKETCH = Stand("desk", "sketch", "sketch", RoomModels.SKETCH_X, 0.567f, RoomModels.SKETCH_Z, 0.2f, flat = true, slide = 0.14f)
-        val PAINTING = Stand("easel", "painting", "paint", 0f, RoomModels.CANVAS_Y, RoomModels.CANVAS_Z + 0.025f, 0.44f, flat = false, canvas = true, slide = 0.38f)
+        val SKETCH = Stand("desk", "sketch", "sketch", RoomParts.SKETCH_X, 0.567f, RoomParts.SKETCH_Z, 0.2f, flat = true, slide = 0.14f)
+        val PAINTING = Stand("easel", "painting", "paint", 0f, RoomParts.CANVAS_Y, RoomParts.CANVAS_Z + 0.025f, 0.44f, flat = false, canvas = true, slide = 0.38f)
         val STANDS = listOf(SKETCH, PAINTING)
         /** Activities done by hand at a stand, and which: his working hand goes to it. */
         val WORK = mapOf("sketch" to SKETCH, "journal" to SKETCH, "paint" to PAINTING)
@@ -758,7 +759,7 @@ class RoomView(private val art: ArtTextures) : Disposable {
         const val NOTE_EVERY = 0.9f
         const val NOTE_LIFE = 2.6f
         const val NOTE_RISE = 0.3f
-        /** Notes are drawn this much bigger than [RoomModels.note], to read from across the room. */
+        /** Notes are drawn this much bigger than [RoomParts.note], to read from across the room. */
         const val NOTE_SIZE = 1.7f
         val NOTE_COLORS = listOf("#f2928a", "#8fb0ec", "#9fd49a", "#c9a0e6")
 

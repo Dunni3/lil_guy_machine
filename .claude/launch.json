@@ -6,6 +6,18 @@
       "runtimeExecutable": "python3",
       "runtimeArgs": ["-m", "http.server", "8737", "--bind", "127.0.0.1", "--directory", "tools/workshop"],
       "port": 8737
+    },
+    {
+      "name": "host",
+      "runtimeExecutable": "make",
+      "runtimeArgs": ["host"],
+      "port": 8790
+    },
+    {
+      "name": "host-furnished",
+      "runtimeExecutable": "make",
+      "runtimeArgs": ["host", "LILGUY_DB=none", "LILGUY_START_ITEMS=novel,folk_record,guitar,record_player,plant,rug,poster,easel,canvas,lava_lamp,teddy_bear,string_lights,round_mirror,meal=4", "LILGUY_SCRIPT=sketch,play_record,read,play_guitar,paint,eat"],
+      "port": 8790
     }
   ]
 }

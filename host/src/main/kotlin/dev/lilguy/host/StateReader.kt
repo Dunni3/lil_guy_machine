@@ -46,6 +46,7 @@ import dev.lilguy.protocol.Settings
 import dev.lilguy.protocol.ShopState
 import dev.lilguy.protocol.StatusView
 import dev.lilguy.protocol.Tally
+import dev.lilguy.protocol.Things
 import dev.lilguy.protocol.ThoughtView
 import dev.lilguy.protocol.TokenDay
 import dev.lilguy.protocol.TokenTotals
@@ -57,6 +58,7 @@ import dev.lilguy.protocol.VerbInfo
 import dev.lilguy.protocol.VerbState
 import dev.lilguy.protocol.Wallet
 import dev.lilguy.protocol.Wire
+import dev.lilguy.sim.EntitySnapshot
 import dev.lilguy.sim.Intent
 import dev.lilguy.sim.IntentStatus
 import dev.lilguy.sim.Terrain
@@ -107,6 +109,7 @@ class StateReader(private val dbEvery: Duration = 1.seconds) {
             content = content,
             run = run(s),
             fast = fast(s, now),
+            things = Things(now.entities.filter { !it.isCharacter }.map(::entity)),
             easel = easel(s),
             wallet = now.life?.let { Wallet(it.money, it.holding, it.owns) } ?: Wallet(0, emptyList(), emptyMap()),
             growth = now.life?.let { l ->
@@ -174,7 +177,7 @@ class StateReader(private val dbEvery: Duration = 1.seconds) {
             doing = life?.doing,
             progress = life?.progress,
             music = life?.music,
-            entities = now.entities.map { Entity(it.id.value, it.kind, it.x, it.y, it.height, it.facingDegrees, it.state, it.carriedBy?.value) },
+            entities = now.entities.filter { it.isCharacter }.map(::entity),
             agents = now.agents.map { a ->
                 AgentView(a.id.value, a.intent?.let(::intent), a.status?.let(::status), a.inventory, a.path.map { CellView(it.x, it.y) }, a.saying)
             },
@@ -186,6 +189,10 @@ class StateReader(private val dbEvery: Duration = 1.seconds) {
             easelTime = s.show.phaseTime,
         )
     }
+
+    private val EntitySnapshot.isCharacter get() = kind == "guy"
+
+    private fun entity(e: EntitySnapshot) = Entity(e.id.value, e.kind, e.x, e.y, e.height, e.facingDegrees, e.state, e.carriedBy?.value)
 
     private fun easel(s: SimSession): Easel {
         val show = s.show

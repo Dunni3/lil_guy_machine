@@ -24,6 +24,9 @@ make server-up   # local Postgres + the ingest API (token "dev"); make server-te
 make host        # the sim host: a life in real time, its state over WebSocket, debug page at
                  # http://127.0.0.1:8790/ (scripted unless ENDPOINT=; PAINTER=2 paints; commands need LILGUY_ADMIN_PASSWORD, see host/README.md)
 make protocol-types  # protocol JSON Schema + TypeScript from :protocol (make test fails when stale)
+make web-build   # the web renderer into web/dist, in a Node container; make host does it when stale and serves it at /room/
+make web-dev     # the same with live reload at http://localhost:5173/, against a make host; make web-test for its test
+make parts       # parts/export/parts.json from the part lists (make test fails when stale)
 make import-runs # old JSONL run logs into runs/lilguy.db; make sync sends unsynced rows
 make desktop     # LWJGL3 window (RESUME=<run id|latest> carries a run on)
 make tv-connect IP=10.0.0.51   # wireless adb to the Streamer
@@ -131,16 +134,24 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   `HostServer.kt` (routes: stream, commands, debug page in `resources/debug/index.html`), `AdminAuth.kt` (who may send commands: one password,
   `docs/decisions/2026-11-08-v0-admin-login-is-*`; setup in `host/README.md`),
   `Main.kt` (env config, one `SyncWorker` per process).
+- Web renderer (phase 4; `docs/decisions/2026-11-08-the-web-renderer-is-*`): `web/`, TypeScript, Three.js and Vite, read-only, served by the
+  host at `/room/`, or from anywhere with `make web-dev`. `src/stream/`: `state.ts` (snapshot and deltas in seq order, the mirror of `LifeState.apply`), `client.ts`
+  (socket, version check, rejoin, the content cache behind `?have=`), `track.ts` (his position between publishes). `src/crayon/`: the hand-drawn look, ported
+  from `Crayon.kt`, `CrayonModel.kt`, `CrayonRenderer.kt` and `CrayonCanvas.kt` (`shaders.ts`, `geometry.ts`, `model.ts`, `renderer.ts`, `canvas.ts`). `src/room/`:
+  `view.ts` (`RoomView.kt`: camera, things, shelf, music), `shell.ts` (floor and walls), `paint.ts` (`RoomPaint.kt`), `light.ts`, `parts.ts` (the export as
+  models), `art.ts` (where painting and hung art go next). `src/guy/`: `blob.ts` and `face.ts` (`Blob.kt`).
+- Part lists: `parts/` (pure Kotlin): `Part.kt` (`Part`, `PartList`), `RoomParts.kt` (furniture, props, the room's constants), `DecorParts.kt`, `PartExport.kt`
+  (writes `parts/export/parts.json`, the web renderer's copy, checked by `make test`). `:app` builds meshes from the same lists.
 - Token accounting: `agent/.../TokenLedger.kt`. `ledger.meter(model, purpose)` wraps a model so every call
   (decision, think, summary, self, recall, significance, art) is recorded with its sim tick and game day; `TokenReport` prints
   tokens per game day and the 30-day projection. The CLI and the app (`SimSession`, the TOKENS page) wire it and
   write `tokens-NN.jsonl`; `price_in`/`price_out` on an endpoint add cost.
 - Renderer: `app/.../LilGuyGame.kt`. The first page is the 3D room, `RoomView.kt` (camera, light by
   game hour, HUD, bubble, the shop's catalogue card on DOWN), his books, records and guitar on a wall shelf
-  (`RoomModels.shelf`, from `LifeSnapshot.catalog`), with furniture as part lists keyed by item id in `RoomModels.kt` (1 unit = 1 tile,
+  (`RoomParts.shelf`, from `LifeSnapshot.catalog`), with furniture as part lists keyed by item id in `parts/.../RoomParts.kt`, built by `RoomModels.kt` (1 unit = 1 tile,
   pivot bottom centre, front +Z) and the guy in `Blob.kt` (face textures per expression, animation in
   code from needs and activity). All of it is drawn in the hand-drawn look by `CrayonRenderer.kt`:
-  `CrayonModel.kt` holds the part-list format (`Part`, `PartList`) and merged meshes, `Crayon.kt` the
+  `CrayonModel.kt` holds the merged meshes, `Crayon.kt` the
   shape builders and shaders, and `RoomPaint.kt` the floor, wall and item textures painted once with `CrayonCanvas.kt`. Then the 2D dev view in
   `DevView.kt`: map plus Now/Shop/Verbs/Memory/Art/Tokens/History/Log/Run pages (Shop and Verbs read `LifeSnapshot.catalog`,
   `verbs` and `done`, built with the world's cached option lists); run control, decision history and the app's memory in
