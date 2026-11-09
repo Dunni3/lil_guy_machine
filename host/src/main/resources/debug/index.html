@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>lil guy host</title>
+<!--
+  The sim host's debug page: plain JS, no framework, no build. It joins a life's stream, keeps the
+  state the way any client must (snapshot, then deltas in seq order, logs merged by seq and cut to
+  the caps the welcome sends) and shows it, with run controls that POST commands with the admin
+  token. It's for checking the protocol, not the renderer.
+-->
+<style>
+  :root { --bg: #f6f4ef; --fg: #222; --dim: #777; --line: #ddd8cc; --card: #fffdf8; --accent: #3b6ea5; --warn: #a5543b; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1b1b1d; --fg: #e6e3dc; --dim: #999; --line: #333; --card: #232326; --accent: #7fb0e6; --warn: #e6987f; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 12px 16px 40px; background: var(--bg); color: var(--fg); font: 13px/1.4 ui-monospace, Menlo, Consolas, monospace; }
+  h1 { font-size: 15px; margin: 0 0 8px; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin: 0 0 6px; }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 10px; min-width: 0; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0; }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 2px 10px; }
+  .kv b { font-weight: normal; color: var(--dim); }
+  button { font: inherit; padding: 3px 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 4px; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  input, select { font: inherit; padding: 2px 4px; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 3px; width: 6em; }
+  input.wide { width: 14em; }
+  label { color: var(--dim); }
+  .bar { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; width: 140px; display: inline-block; vertical-align: middle; }
+  .bar i { display: block; height: 100%; background: var(--accent); }
+  ul.log { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-y: auto; }
+  ul.log li { padding: 2px 0; border-bottom: 1px dotted var(--line); overflow-wrap: anywhere; }
+  .dim { color: var(--dim); }
+  .warn { color: var(--warn); }
+  canvas { image-rendering: pixelated; background: var(--bg); border: 1px solid var(--line); max-width: 100%; }
+  pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 300px; overflow: auto; margin: 0; }
+  details summary { cursor: pointer; color: var(--dim); }
+</style>
+</head>
+<body>
+<h1>lil guy host <span id="conn" class="dim">connecting…</span></h1>
+<div class="grid">
+  <div class="card">
+    <h2>Run</h2>
+    <div class="kv" id="run"></div>
+    <div class="row" style="margin-top:8px">
+      <input id="token" type="password" class="wide" placeholder="admin token" autocomplete="off">
+    </div>
+    <div class="row">
+      <button data-cmd="start">start</button><button data-cmd="pause">pause</button>
+      <button data-cmd="restart">restart</button><button id="step">step 20</button>
+    </div>
+    <div class="row">
+      <label>days <input id="s-days" type="number" min="0" title="0 for no end"></label>
+      <label>speed <input id="s-speed" type="number" min="1"></label>
+      <label>decide cap <input id="s-cap" type="text" title="game minutes; blank never holds"></label>
+      <label>quiet <input id="s-quiet" type="number" min="1"></label>
+      <label>quiet verbs <input id="s-qverbs" type="text" class="wide"></label>
+      <label>ticks/min <input id="s-tpm" type="number" min="1" title="from the next run"></label>
+      <label><input id="s-hold" type="checkbox" style="width:auto"> hold for art</label>
+      <button id="apply">apply settings</button>
+    </div>
+    <div class="row">
+      <input id="resume" class="wide" placeholder="run id or latest"><button id="do-resume">resume</button>
+      <select id="replay"></select><button id="do-replay">replay</button>
+    </div>
+    <div id="result" class="dim"></div>
+  </div>
+  <div class="card">
+    <h2>Now</h2>
+    <div class="kv" id="now"></div>
+  </div>
+  <div class="card">
+    <h2>Room</h2>
+    <canvas id="map" width="10" height="10"></canvas>
+    <div id="entities" class="dim"></div>
+  </div>
+  <div class="card">
+    <h2>Easel</h2>
+    <canvas id="easel" width="32" height="32" style="width:192px;height:192px"></canvas>
+    <div class="kv" id="easel-info"></div>
+  </div>
+  <div class="card"><h2>Wallet, skills, art</h2><div class="kv" id="slow"></div></div>
+  <div class="card"><h2>Mind</h2><div id="mind"></div></div>
+  <div class="card"><h2>Decisions</h2><ul class="log" id="l-decisions"></ul></div>
+  <div class="card"><h2>Events</h2><ul class="log" id="l-events"></ul></div>
+  <div class="card"><h2>Money</h2><ul class="log" id="l-transactions"></ul></div>
+  <div class="card"><h2>Thoughts</h2><ul class="log" id="l-thoughts"></ul></div>
+  <div class="card"><h2>Memories</h2><ul class="log" id="l-memories"></ul></div>
+  <div class="card"><h2>Self-model revisions</h2><ul class="log" id="l-revisions"></ul></div>
+  <div class="card"><h2>Trips</h2><ul class="log" id="l-trips"></ul></div>
+  <div class="card"><h2>Drawings</h2><ul class="log" id="l-drawings"></ul></div>
+  <div class="card"><h2>Tokens</h2><div class="kv" id="tokens"></div></div>
+  <div class="card">
+    <h2>Stream</h2>
+    <div class="kv" id="stream"></div>
+    <details><summary>state JSON</summary><pre id="raw"></pre></details>
+  </div>
+</div>
+<script>
+"use strict";
+const VERSION = 1;
+const LIFE = new URLSearchParams(location.search).get("life") || "main";
+const SECTIONS = ["run", "fast", "easel", "wallet", "growth", "gallery", "shop", "mind", "tokens"];
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+let content = null, state = null, caps = {}, socket = null;
+const stats = { messages: 0, bytes: 0, deltas: 0, snapshots: 0, gaps: 0, last: "", since: performance.now(), window: [] };
+
+// ---- the client side of the protocol: exactly what a renderer has to do -------------------
+function merge(have, add, cap) {
+  if (!add || add.length === 0) return have;
+  const bySeq = new Map(have.map((e) => [e.seq, e]));
+  for (const e of add) bySeq.set(e.seq, e);
+  return [...bySeq.values()].sort((a, b) => a.seq - b.seq).slice(-cap);
+}
+function applyDelta(s, d) {
+  if (d.seq !== s.seq + 1) throw new Error(`delta ${d.seq} after ${s.seq}`);
+  const next = { ...s, seq: d.seq };
+  for (const k of SECTIONS) if (d[k] !== null) next[k] = d[k];
+  if (d.logs) {
+    next.logs = { ...s.logs };
+    for (const k of Object.keys(s.logs)) next.logs[k] = merge(s.logs[k], d.logs[k], caps[k] ?? 1000);
+  }
+  return next;
+}
+function receive(m) {
+  switch (m.type) {
+    case "welcome":
+      if (m.version !== VERSION) throw new Error(`host speaks ${m.version}`);
+      caps = m.caps;
+      break;
+    case "refused":
+      $("conn").textContent = "refused: " + m.reason;
+      $("conn").className = "warn";
+      break;
+    case "content": content = m; break;
+    case "snapshot": state = m.state; stats.snapshots++; stats.last = "snapshot"; break;
+    case "delta":
+      if (!state) return;
+      try { state = applyDelta(state, m); }
+      catch (e) { stats.gaps++; socket.close(); return; } // missed one: rejoin for a snapshot
+      stats.deltas++;
+      stats.last = SECTIONS.filter((k) => m[k] !== null).concat(m.logs ? ["logs"] : []).join(", ") || "(none)";
+      break;
+  }
+}
+function connect() {
+  const have = content ? "&have=" + encodeURIComponent(content.hash) : "";
+  socket = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/v1/lives/${encodeURIComponent(LIFE)}/stream?v=${VERSION}${have}`);
+  socket.onopen = () => { $("conn").textContent = "live"; $("conn").className = "dim"; };
+  socket.onmessage = (ev) => {
+    stats.messages++; stats.bytes += ev.data.length; stats.window.push([performance.now(), ev.data.length]);
+    receive(JSON.parse(ev.data));
+    dirty = true;
+  };
+  socket.onclose = () => { $("conn").textContent = "disconnected; retrying…"; $("conn").className = "warn"; state = null; setTimeout(connect, 1000); };
+}
+
+// ---- commands ---------------------------------------------------------------------------
+try { $("token").value = localStorage.getItem("lilguy-admin-token") || ""; } catch (e) {}
+$("token").addEventListener("change", () => { try { localStorage.setItem("lilguy-admin-token", $("token").value); } catch (e) {} });
+async function send(command) {
+  $("result").textContent = "…";
+  try {
+    const r = await fetch(`/v1/lives/${encodeURIComponent(LIFE)}/commands`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + $("token").value },
+      body: JSON.stringify(command),
+    });
+    const body = await r.json();
+    $("result").textContent = `${command.type}: ${r.status} ${body.ok ? "ok" : body.error}`;
+    $("result").className = body.ok ? "dim" : "warn";
+  } catch (e) { $("result").textContent = command.type + ": " + e; $("result").className = "warn"; }
+}
+document.querySelectorAll("[data-cmd]").forEach((b) => b.addEventListener("click", () => send({ type: b.dataset.cmd })));
+$("step").onclick = () => send({ type: "step", ticks: 20 });
+$("do-resume").onclick = () => send({ type: "resume", run: $("resume").value || "latest" });
+$("do-replay").onclick = () => send({ type: "replay", run: Number($("replay").value) });
+$("apply").onclick = () => {
+  const cap = $("s-cap").value.trim();
+  send({ type: "configure", settings: {
+    days: Number($("s-days").value) > 0 ? Number($("s-days").value) : null,
+    speed: Number($("s-speed").value),
+    ticks_per_minute: Number($("s-tpm").value),
+    decide_cap: cap === "" ? null : Number(cap),
+    quiet: Number($("s-quiet").value),
+    quiet_verbs: $("s-qverbs").value.split(",").map((v) => v.trim()).filter(Boolean),
+    hold_for_art: $("s-hold").checked,
+  } });
+  formRun = null; // refill from the host's answer
+};
+
+// ---- showing it ---------------------------------------------------------------------------
+let dirty = false, formRun = null;
+function kv(rows) { return rows.filter((r) => r).map(([k, v]) => `<b>${esc(k)}</b><span>${v}</span>`).join(""); }
+function bar(v, max = 100) { return `<span class="bar"><i style="width:${Math.max(0, Math.min(100, (v / max) * 100))}%"></i></span> ${Number(v).toFixed(1)}`; }
+function list(id, items, fmt) { $(id).innerHTML = items.slice().reverse().map((e) => `<li>${fmt(e)}</li>`).join("") || '<li class="dim">none yet</li>'; }
+function at(e) { return e.day != null ? `<span class="dim">d${e.day} ${esc(e.time ?? "")}</span> ` : `<span class="dim">t${e.tick}</span> `; }
+function fillForm(run) {
+  const s = run.settings;
+  if ($("replay").options.length !== run.starts.length) $("replay").innerHTML = run.starts.map((_, i) => `<option value="${i + 1}">run ${i + 1}</option>`).join("");
+  if (formRun === JSON.stringify(s) || document.activeElement?.closest?.(".card")?.contains($("apply"))) return;
+  formRun = JSON.stringify(s);
+  $("s-days").value = s.days ?? 0; $("s-speed").value = s.speed; $("s-cap").value = s.decide_cap ?? "";
+  $("s-quiet").value = s.quiet; $("s-qverbs").value = s.quiet_verbs.join(", "); $("s-tpm").value = s.ticks_per_minute; $("s-hold").checked = s.hold_for_art;
+}
+function drawMap() {
+  const c = $("map"), m = content?.map, f = state.fast;
+  if (!m) return;
+  const px = Math.max(8, Math.min(28, Math.floor(420 / m.width)));
+  if (c.width !== m.width * px) { c.width = m.width * px; c.height = m.height * px; }
+  const g = c.getContext("2d");
+  const css = getComputedStyle(document.documentElement);
+  g.clearRect(0, 0, c.width, c.height);
+  m.rows.forEach((row, y) => [...row].forEach((t, x) => {
+    g.fillStyle = t === "#" ? css.getPropertyValue("--fg") : t === "." ? css.getPropertyValue("--card") : css.getPropertyValue("--bg");
+    g.fillRect(x * px, y * px, px, px);
+  }));
+  const agent = f.agents[0];
+  if (agent) { g.fillStyle = "rgba(59,110,165,.35)"; agent.path.forEach((p) => g.fillRect(p.x * px + px / 3, p.y * px + px / 3, px / 3, px / 3)); }
+  for (const e of f.entities) {
+    if (e.carried_by) continue;
+    const guy = e.kind === "guy";
+    g.fillStyle = guy ? "#e0882b" : "#7a9a5a";
+    g.beginPath(); g.arc(e.x * px + px / 2, e.y * px + px / 2, guy ? px * 0.45 : px * 0.28, 0, Math.PI * 2); g.fill();
+    if (guy) { const a = (e.facing_degrees * Math.PI) / 180; g.strokeStyle = "#222"; g.beginPath(); g.moveTo(e.x * px + px / 2, e.y * px + px / 2); g.lineTo(e.x * px + px / 2 + Math.cos(a) * px * 0.5, e.y * px + px / 2 - Math.sin(a) * px * 0.5); g.stroke(); }
+  }
+  $("entities").textContent = f.entities.filter((e) => !e.carried_by && e.kind !== "guy").map((e) => e.id).join(" · ");
+}
+function drawEasel() {
+  const u = state.easel.underway, c = $("easel"), g = c.getContext("2d");
+  if (!u) { g.clearRect(0, 0, c.width, c.height); }
+  else {
+    if (c.width !== u.size) { c.width = u.size; c.height = u.size; }
+    u.rows.forEach((row, y) => [...row].forEach((ch, x) => {
+      const rgb = u.palette[ch.charCodeAt(0) - 97] ?? 0;
+      g.fillStyle = "#" + rgb.toString(16).padStart(6, "0"); g.fillRect(x, y, 1, 1);
+    }));
+  }
+  const e = state.easel, t = state.fast.easel_time;
+  $("easel-info").innerHTML = kv([
+    ["piece", u ? `${esc(u.item)} "${esc(u.title)}" (${esc(u.state)}${u.verb ? ", " + esc(u.verb) : ""})` : '<span class="dim">none</span>'],
+    ["phase", `${esc(e.phase)}${e.phase_seconds > 0 ? " " + bar(Math.min(t, e.phase_seconds), e.phase_seconds).replace(/ [\d.]+$/, "") + ` ${t.toFixed(1)}/${e.phase_seconds.toFixed(1)} s` : ""}`],
+    ["strokes", `${e.shown} shown, ${e.drawn} drawn${u ? " of " + u.of : ""}`],
+  ]);
+}
+function render() {
+  if (!dirty || !state) return;
+  dirty = false;
+  const r = state.run, f = state.fast, w = state.wallet;
+  fillForm(r);
+  $("run").innerHTML = kv([
+    ["state", `<b style="color:var(--accent)">${esc(r.state)}</b>${r.ended_because ? " · " + esc(r.ended_because) : ""}`],
+    ["run", `${r.run} · <span class="dim">${esc(r.run_id)}</span>`],
+    ["scenario", esc(r.scenario)],
+    ["models", esc(Object.entries(r.models).filter(([, v]) => v).map(([k, v]) => `${k} ${v}`).join(", "))],
+    ["clock", `speed ${r.settings.speed} min/s · ${r.ticks_per_minute} ticks/min · ends ${r.end_tick ?? "never"} · min days ${r.min_days}`],
+    r.notices.length ? ["notices", `<span class="warn">${esc(r.notices.join("; "))}</span>`] : null,
+  ]);
+  const n = f.needs;
+  $("now").innerHTML = kv([
+    ["tick", f.tick + (f.clock ? ` · day ${f.clock.day} ${esc(f.clock.time)}` : "")],
+    ["clock", f.held ? `<span class="warn">held for ${esc(f.held_for.join(", "))}</span>` : f.fast_forward > 1 ? `running ${f.fast_forward}x (quiet)` : "running"],
+    ["deciding", f.thinking_ms != null ? `${(f.thinking_ms / 1000).toFixed(1)} s` : '<span class="dim">no</span>'],
+    ["intent", esc(f.agents[0]?.intent?.text ?? "") + (f.agents[0]?.status ? ` <span class="dim">${esc(f.agents[0].status.state)}${f.agents[0].status.reason ? ": " + esc(f.agents[0].status.reason) : ""}</span>` : "")],
+    ["doing", f.doing ? `${esc(f.doing)} ${bar((f.progress ?? 0) * 100).replace(/ [\d.]+$/, "")}` : '<span class="dim">nothing</span>'],
+    f.agents[0]?.saying ? ["saying", esc(f.agents[0].saying)] : null,
+    f.music ? ["music", esc(f.music)] : null,
+    n ? ["energy", bar(n.energy)] : null, n ? ["fullness", bar(n.fullness)] : null, n ? ["mood", bar(n.mood) + ` <span class="dim">→ ${n.mood_target.toFixed(0)}</span>`] : null,
+    n ? ["stimulation", bar(n.stimulation)] : null, n ? ["frustration", bar(n.frustration)] : null,
+  ]);
+  drawMap();
+  drawEasel();
+  const g = state.growth, a = state.gallery;
+  $("slow").innerHTML = kv([
+    ["money", "$" + w.money],
+    ["owns", esc(Object.entries(w.owns).map(([k, v]) => v > 1 ? `${k} ×${v}` : k).join(", "))],
+    w.holding.length ? ["holding", esc(w.holding.join(", "))] : null,
+    ["skills", esc(Object.entries(g.skills).map(([k, v]) => `${k} ${v.toFixed(1)}`).join(", ") || "none")],
+    ["books", esc(g.books.map((b) => `${b.title} ${b.read}/${b.chapters}`).join("; ") || "none")],
+    ["done", esc(Object.entries(g.done).map(([k, v]) => `${k} ×${v.count}`).join(", "))],
+    ["art", esc(a.art.map((p) => `#${p.id} ${p.item}${p.title ? ` "${p.title}"` : ""}${p.hung ? " (hung)" : p.sells_for ? ` $${p.sells_for}` : ""}`).join("; ") || "none")],
+    a.commission ? ["request", esc(`${a.commission.request ?? a.commission.wants} · $${a.commission.reward} until ${a.commission.until}`)] : null,
+    ["shop", esc(state.shop.catalog.filter((c) => c.affordable && !c.taught_by).length + " affordable of " + state.shop.catalog.length)],
+  ]);
+  const m = state.mind;
+  $("mind").innerHTML = `<div><b class="dim">plan</b> ${esc(m.plan?.text ?? "none")}</div><div style="margin-top:6px"><b class="dim">self${m.summarizing ? " (writing…)" : ""}</b><pre>${esc(m.self_text ?? "nothing revises it")}</pre></div>`;
+  const L = state.logs;
+  list("l-decisions", L.decisions, (d) => `<span class="dim">t${d.tick}</span> ${esc(d.intent.text)}${d.rationale ? ` <span class="dim">— ${esc(d.rationale)}</span>` : ""}${d.error ? ` <span class="warn">${esc(d.error)}</span>` : ""}`);
+  list("l-events", L.events, (e) => `<span class="dim">t${e.tick}</span> ${e.outcome ? "" : "· "}${esc(e.text)}`);
+  list("l-transactions", L.transactions, (t) => `${at(t)}${t.amount > 0 ? "+" : ""}${t.amount} → $${t.balance} ${esc(t.reason)}`);
+  list("l-thoughts", L.thoughts, (t) => `${at(t)}${t.text ? esc(t.text) : `<span class="warn">${esc(t.error)}</span>`}`);
+  list("l-memories", L.memories, (x) => `<span class="dim">L${x.level} ${esc(x.span)}</span> ${esc(x.text)}`);
+  list("l-revisions", L.revisions, (x) => `<span class="dim">day ${x.day ?? "?"}</span> ${x.changed ? "changed" : "kept"}${x.note ? ": " + esc(x.note) : ""}${x.error ? ` <span class="warn">${esc(x.error)}</span>` : ""}`);
+  list("l-trips", L.trips, (t) => `${at(t)}${esc(t.buy.map((b) => b.item).join(", ") || (t.chose_saving ? "saved for " + t.save_for : "nothing"))}${t.note ? ` <span class="dim">${esc(t.note)}</span>` : ""}`);
+  list("l-drawings", L.drawings, (d) => `${at(d)}${esc(d.item)} ${d.piece ?? ""} "${esc(d.title ?? "")}" <span class="dim">${esc(d.tags.join(", "))}</span>`);
+  const T = state.tokens;
+  $("tokens").innerHTML = kv([["total", `${T.total.calls} calls · ${T.total.prompt_tokens}+${T.total.completion_tokens} tokens${T.total.cost_usd != null ? ` · $${T.total.cost_usd.toFixed(4)}` : ""}`]]
+    .concat(Object.entries(T.by_purpose).map(([k, v]) => [k, `${v.calls} calls · ${v.prompt_tokens}+${v.completion_tokens}`])));
+  const now = performance.now();
+  stats.window = stats.window.filter(([t]) => now - t < 5000);
+  $("stream").innerHTML = kv([
+    ["seq", state.seq], ["content", esc(content?.hash.slice(0, 16) ?? "?") + "…"],
+    ["messages", `${stats.messages} (${stats.snapshots} snapshots, ${stats.deltas} deltas, ${stats.gaps} gaps)`],
+    ["rate", `${(stats.window.length / 5).toFixed(1)} msg/s · ${(stats.window.reduce((s, [, b]) => s + b, 0) / 5 / 1024).toFixed(1)} KB/s`],
+    ["last delta", esc(stats.last)],
+  ]);
+  if ($("raw").parentElement.open) $("raw").textContent = JSON.stringify(state, null, 1);
+}
+setInterval(render, 100);
+connect();
+</script>
+</body>
+</html>

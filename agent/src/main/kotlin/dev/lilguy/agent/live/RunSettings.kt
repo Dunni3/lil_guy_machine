@@ -1,4 +1,4 @@
-package dev.lilguy.app
+package dev.lilguy.agent.live
 
 import dev.lilguy.sim.GameClock
 
@@ -16,9 +16,13 @@ import dev.lilguy.sim.GameClock
  * that many game minutes while a decision is out and then holds until it comes back. 0 is lockstep
  * (latency costs no game time), null lets the clock run (latency costs game time, as in real life).
  *
- * [quiet] is for the viewer: while he settles into something with little to watch ([QUIET_VERBS]:
+ * [quiet] is for the viewer: while he settles into something with little to watch ([quietVerbs]:
  * reading, sleeping), the clock runs that many times faster. He does the same things; the
  * screen spends less time on them.
+ *
+ * Presentation timing is part of the life, not of one screen, since every viewer of a life shares
+ * its clock: [quiet], [quietVerbs], and [holdForArt], which holds the clock while a piece he has
+ * finished is still going on screen ([ArtShow]).
  */
 data class RunSettings(
     /** Bedroom: game days a run lasts; null for no end. Live: raising it extends the run. */
@@ -31,6 +35,10 @@ data class RunSettings(
     val decideCap: Int? = DEFAULT_DECIDE_CAP,
     /** How many times faster the clock runs through quiet stretches; 1 for not at all. Live. */
     val quiet: Int = DEFAULT_QUIET,
+    /** What's quiet to watch, by verb id. Live. */
+    val quietVerbs: Set<String> = QUIET_VERBS,
+    /** Hold the clock while his piece is still playing out on screen after its verb has ended. Live. */
+    val holdForArt: Boolean = true,
 ) {
     /** Real seconds per tick at [ticksPerMinute] (the run's resolution, which may differ from this one's), [faster] times faster. */
     fun tickSeconds(ticksPerMinute: Int, faster: Int = 1): Float = 1f / (speed * ticksPerMinute * faster)

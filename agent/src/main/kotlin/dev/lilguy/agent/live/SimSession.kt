@@ -1,4 +1,4 @@
-package dev.lilguy.app
+package dev.lilguy.agent.live
 
 import dev.lilguy.agent.AgentRuntime
 import dev.lilguy.agent.Carried
@@ -58,9 +58,11 @@ import kotlin.time.Duration
  * with the current [settings], which again waits for [start]; [replay] does the same with the
  * settings an earlier run started with.
  *
- * Ticks from the render thread (which makes the render thread the sim thread), as fast as
- * [settings] say, holding the clock while a slow decision is out ([RunSettings.decideCap]) and
- * while an authored op's call (a drawing, a thought) is still out after its verb has ended ([waitingOnAuthor]).
+ * Ticks from whichever thread calls [update] (the render thread in the app, a life's actor on the
+ * sim host), as fast as [settings] say, holding the clock while a slow decision is out
+ * ([RunSettings.decideCap]), while an authored op's call (a drawing, a thought) is still out after
+ * its verb has ended ([waitingOnAuthor]), and while his finished piece is still going on screen
+ * ([show], [presenting]). Everything here is touched from that one thread.
  * The agent, the memory writers and the scorer run in a per-run child of [scope], off that thread. Every
  * decision is kept with the world as it was when it was made ([history]), so the view can flip
  * back through the whole run.
@@ -77,6 +79,10 @@ class SimSession(
     class Moment(val decision: AgentRuntime.DecisionRecord, val snapshot: WorldSnapshot)
 
     var state = RunState.Ready
+        private set
+
+    /** This run's id in the run database (made here when there's none). */
+    var runId: String = ""
         private set
 
     /** Counts runs since the app started; the first is 1. */
@@ -141,6 +147,10 @@ class SimSession(
     /** Every decision this run, oldest first, each with the world it was made in. */
     val history: List<Moment> get() = moments
 
+    /** Decisions filed this run, including those [history] has since let go of: the newest is number [filed]. */
+    var filed = 0L
+        private set
+
     /** The agent's latest decision. */
     val decision: AgentRuntime.DecisionRecord? get() = runtime.lastDecision
 
@@ -152,10 +162,10 @@ class SimSession(
 
     /**
      * How many times faster than [RunSettings.speed] the clock runs now: [RunSettings.quiet] while he
-     * is settled into a quiet verb ([RunSettings.QUIET_VERBS]; not on his way to it), else 1.
+     * is settled into a quiet verb ([RunSettings.quietVerbs]; not on his way to it), else 1.
      */
     val fastForward: Int get() {
-        if (state != RunState.Running || current.life?.doing !in RunSettings.QUIET_VERBS) return 1
+        if (state != RunState.Running || current.life?.doing !in settings.quietVerbs) return 1
         val guy = current.entities.firstOrNull { it.kind == "guy" } ?: return 1
         val before = previous.entities.firstOrNull { it.id == guy.id } ?: guy
         return if (before.x == guy.x && before.y == guy.y) settings.quiet else 1
@@ -197,6 +207,19 @@ class SimSession(
         sync?.start(scope)
         val carried = db?.let { d -> d.resume?.let { id -> runCatching { carried(d.store, id) }.onFailure { resumeError = it.message }.getOrNull() } }
         setUp(carried)
+    }
+
+    /**
+     * Throws this run away and carries run [id] (or "latest") on from its latest checkpoint, waiting
+     * for [start]. Keeps this run and says why in [resumeError] when it can't.
+     */
+    fun resume(id: String): Boolean {
+        val d = db ?: run { resumeError = "no run database to resume from"; return false }
+        val carried = runCatching { carried(d.store, id) }.onFailure { resumeError = it.message ?: it.toString() }.getOrNull() ?: return false
+        resumeError = null
+        tearDown()
+        setUp(carried)
+        return true
     }
 
     /** Starts a ready run, or resumes a paused one. */
@@ -259,7 +282,20 @@ class SimSession(
         }
         holding = state == RunState.Running && mustHold()
         if (holding) accumulator = accumulator.coerceAtMost(tickSeconds())
-        if (lingerUpdates > 0) lingerUpdates--
+        showArt(min(delta, MAX_FRAME))
+    }
+
+    /** The piece he's making, as it plays out on every screen. */
+    val show = ArtShow()
+
+    /** His piece's verb has ended and the piece is still going on screen ([ArtShow.finishing]): the clock waits for it. */
+    val presenting: Boolean get() = settings.holdForArt && show.current != null && show.finishing && current.life?.doing != show.verb
+
+    private fun showArt(delta: Float) {
+        val underway = memory.underway()
+        // Paused, the screen waits too; a piece whose verb is over hurries so the clock waits less.
+        if (state == RunState.Paused || state == RunState.Ready) return show.update(0f, underway, hurry = false)
+        show.update(delta, underway, hurry = current.life?.doing != underway?.verb)
     }
 
     /** Runs [ticks] ticks by hand; only while paused, so the clock can't run away. */
@@ -280,6 +316,7 @@ class SimSession(
         val thisRun = run
         val ledger = TokenLedger()
         val runId = carried?.run?.id ?: Ids.uuid7()
+        this.runId = runId
         val rec = db?.let { RunRecorder(it.store, runId, Ids.uuid7()) }
         val lr = rec?.let(::LifeRecorder)
         val memStore = rec?.let { RunMemoryStore(db!!.store, it, RunMemoryStore.lineage(db.store, carried?.resume?.checkpoint?.id)) }
@@ -421,6 +458,7 @@ class SimSession(
         log = null
         moments.clear()
         recent.clear()
+        filed = 0
     }
 
     private fun tick() {
@@ -449,25 +487,9 @@ class SimSession(
     /** What the clock is held for: handlers whose call has outlasted its verb ([AgentMemory.holding]), such as "draw". */
     val waitingOnAuthor: List<String> get() = memory.holdingFor
 
-    /** Updates left before the view's last [linger] lapses. */
-    private var lingerUpdates = 0
-
-    /**
-     * Holds the clock through the next [LINGER_UPDATES] updates for the view: the room asks every
-     * frame while he finishes a piece on screen after its verb has ended. Counted in updates, not
-     * seconds, so a slow frame can't let a tick slip through; it lapses by itself when the room stops
-     * asking (another page, the piece done).
-     */
-    fun linger() {
-        lingerUpdates = LINGER_UPDATES
-    }
-
-    /** True while the clock waits on the view's [linger]. */
-    val lingering: Boolean get() = lingerUpdates > 0
-
     /** A decision has been out for as many game minutes as [RunSettings.decideCap] allows. */
     private fun mustHold(): Boolean {
-        if (lingering) return true
+        if (presenting) return true
         // Until a drawing lands its piece has no title or tags, so selling it couldn't meet a request. Every authored call
         // holds the clock the same way.
         if (memory.holding) return true
@@ -490,6 +512,7 @@ class SimSession(
             val d = inbox.poll() ?: return
             val seen = recent.lastOrNull { it.tick == d.tick } ?: recent.firstOrNull() ?: current
             moments.addLast(Moment(d, seen))
+            filed++
             if (moments.size > MAX_MOMENTS) moments.removeFirst()
         }
     }
@@ -500,7 +523,5 @@ class SimSession(
         /** Ticks at decision points: more than a slow decision spans at a fast speed with the clock running. */
         const val MAX_RECENT = 5000
         const val MAX_MOMENTS = 5000
-        /** A [linger] holds the clock this many updates: the one before the view's next frame, and one spare. */
-        const val LINGER_UPDATES = 2
     }
 }

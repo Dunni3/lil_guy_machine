@@ -1,8 +1,8 @@
-package dev.lilguy.app
+package dev.lilguy.agent.live
 
 import dev.lilguy.agent.KeyDoorPolicy
 import dev.lilguy.agent.Scenario
-import dev.lilguy.app.SimSession.RunState
+import dev.lilguy.agent.live.SimSession.RunState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

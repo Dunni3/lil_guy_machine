@@ -1,5 +1,7 @@
 package dev.lilguy.app
 
+import dev.lilguy.agent.live.SimSession
+
 import com.badlogic.gdx.Input.Keys
 import com.badlogic.gdx.InputAdapter
 

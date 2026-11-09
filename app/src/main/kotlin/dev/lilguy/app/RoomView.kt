@@ -1,5 +1,7 @@
 package dev.lilguy.app
 
+import dev.lilguy.agent.live.SimSession
+
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.GL20
@@ -16,7 +18,6 @@ import com.badlogic.gdx.math.Vector3
 import com.badlogic.gdx.utils.Align
 import com.badlogic.gdx.utils.Disposable
 import com.badlogic.gdx.utils.viewport.FitViewport
-import dev.lilguy.agent.art.Underway
 import dev.lilguy.sim.EntitySnapshot
 import dev.lilguy.sim.Intent
 import dev.lilguy.sim.IntentStatus
@@ -208,22 +209,20 @@ class RoomView(private val art: ArtTextures) : Disposable {
     }
 
     /**
-     * The piece he's making ([SimSession.memory]'s underway), played out by [scene]; returns its stand
-     * while he's at it, else null. He's at it while its verb is under way, and after, standing there
-     * while the clock waits on the drawing; then the clock waits a moment more ([SimSession.linger])
-     * while the last strokes go on and he flourishes, so the piece is never cut off.
+     * The piece he's making, as far as the session's show has got ([SimSession.show]: the pace every
+     * screen shares), played out by [scene]; returns its stand while he's at it, else null. He's at it
+     * while its verb is under way, and after, standing there while the clock waits on the drawing and
+     * then on the show ([SimSession.presenting]) while the last strokes go on and he flourishes.
      */
     private fun followPiece(session: SimSession, life: LifeSnapshot?, now: WorldSnapshot, delta: Float): Stand? {
-        val underway = session.memory.underway()
+        val underway = session.show.presented
         val stand = underway?.let { u -> STANDS.firstOrNull { it.item == u.item } }
         val doing = life?.doing
         val over = stand != null && doing != stand.activity
         scene.update(delta, underway, hurry = over)
         if (stand == null || pose.moving || now.entities.none { it.id.value == stand.id }) return null
-        val at = doing == stand.activity || (doing == null && ("draw" in session.waitingOnAuthor || session.lingering))
-        if (!at) return null
-        if (over && (underway.state == Underway.State.Drawing || scene.finishing)) session.linger()
-        return stand
+        val at = doing == stand.activity || (doing == null && ("draw" in session.waitingOnAuthor || session.presenting))
+        return if (at) stand else null
     }
 
     /** The piece is done: sparkles off it in its own colours, and its title over his head. */

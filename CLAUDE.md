@@ -21,6 +21,9 @@ make cli         # headless runner (ARGS="--scenario bedroom --days 3 --endpoint
                  # for scored recall, --grant paint,easel,... to unlock tiers,
                  # --affinities calm=2,loud=-1 / --curiosity 1.5 for another personality
 make server-up   # local Postgres + the ingest API (token "dev"); make server-test, server-psql
+make host        # the sim host: a life in real time, its state over WebSocket, debug page at
+                 # http://127.0.0.1:8790/ (scripted unless ENDPOINT=; PAINTER=2 paints; commands need LILGUY_ADMIN_TOKEN)
+make protocol-types  # protocol JSON Schema + TypeScript from :protocol (make test fails when stale)
 make import-runs # old JSONL run logs into runs/lilguy.db; make sync sends unsynced rows
 make desktop     # LWJGL3 window (RESUME=<run id|latest> carries a run on)
 make tv-connect IP=10.0.0.51   # wireless adb to the Streamer
@@ -99,8 +102,8 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   for Jev, a prompt plus enum schema for a text model). The sim's pieces, commissions and
   hanging are in `BedroomWorld.kt`. The app's textures for them are in `ArtTextures.kt`. The piece
   under way is reported stroke by stroke (`Underway`, `ArtStudio.underway`) and played out in the room
-  by `app/.../PaintScene.kt` (brush on the real cells, dips, stepping back, a flourish), which
-  `RoomView` keeps him posed at through a drawing hold, and lingers the clock (`SimSession.linger`) for.
+  by `app/.../PaintScene.kt` (brush on the real cells, dips, stepping back, a flourish), fed stroke by stroke at the pace
+  of the session's `ArtShow`, which holds the clock until the piece has finished on screen; `RoomView` keeps him posed at it.
   Memory is stored in the run database (`RunMemoryStore`); `InMemoryStore` only without one (`--no-db`).
 - Run database (roadmap phase 1, the sim host's store; `docs/decisions/2026-11-06-runs-record-locally-*`):
   `runlog/` (pure Kotlin): `Rows.kt` (the `@Serializable` rows, the tables' only definition: `@Pg`, `@Key`), `Tables.kt`
@@ -115,6 +118,17 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   (`sim/.../BedroomState.kt`) plus `AgentState`. CLI: `cli/.../RunDb.kt`, `Importer.kt`. App: `RunDatabase.kt`,
   `SimSession`. Server: `server/` (FastAPI ingest and query only, in `app/main.py`; numbered migrations in `sql/migrations/`, compose, `deploy/`
   for its own Lightsail Small box; see `server/README.md`).
+- The run loop both the app and the sim host drive: `agent/.../live/` (`SimSession`: start, pause, restart, replay,
+  resume, configure, `update(delta)` from one thread; `RunSettings` with the per-life presentation timing: `quiet`,
+  `quietVerbs`, `holdForArt`; `ArtShow`, how a piece plays out on screen and when the clock waits for it; `ModelSetup`,
+  `RunDatabase`).
+- Sim host (phase 2; `docs/decisions/2026-11-06-the-protocol-is-*`): `protocol/` is the wire format, pure Kotlin
+  (`Protocol.kt`: messages, commands, `PROTOCOL_VERSION`, `Wire`; `State.kt`: `LifeState` split by rate, with `diff`/`apply`
+  and the logs' merge; `ProtocolSchema.kt` writes `protocol/schema/protocol.schema.json`, from which `gen_types.sh` makes
+  `protocol/ts/protocol.ts`). `host/` is the Ktor server: `Life.kt` (one actor per life: a `SimSession`, commands between
+  ticks, publishing deltas that never wait on a viewer), `StateReader.kt` (session and agent objects to protocol types),
+  `HostServer.kt` (routes: stream, commands, debug page in `resources/debug/index.html`), `AdminAuth.kt` (v0 dev token),
+  `Main.kt` (env config, one `SyncWorker` per process).
 - Token accounting: `agent/.../TokenLedger.kt`. `ledger.meter(model, purpose)` wraps a model so every call
   (decision, think, summary, self, recall, significance, art) is recorded with its sim tick and game day; `TokenReport` prints
   tokens per game day and the 30-day projection. The CLI and the app (`SimSession`, the TOKENS page) wire it and
@@ -127,9 +141,10 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   `CrayonModel.kt` holds the part-list format (`Part`, `PartList`) and merged meshes, `Crayon.kt` the
   shape builders and shaders, and `RoomPaint.kt` the floor, wall and item textures painted once with `CrayonCanvas.kt`. Then the 2D dev view in
   `DevView.kt`: map plus Now/Shop/Verbs/Memory/Art/Tokens/History/Log/Run pages (Shop and Verbs read `LifeSnapshot.catalog`,
-  `verbs` and `done`, built with the world's cached option lists); run control, decision history and the app's memory in `SimSession.kt`;
-  the Run page's knobs (days, speed, how much faster quiet stretches run, how long the clock waits on the model, resolution) in
-  `RunSettings.kt` (reading and sleeping are `QUIET_VERBS`: the clock runs `quiet` times faster through them); remote keys in
+  `verbs` and `done`, built with the world's cached option lists); run control, decision history and the app's memory in
+  `agent/.../live/SimSession.kt`; the Run page's knobs (days, speed, how much faster quiet stretches run, how long the clock
+  waits on the model, resolution) in `live/RunSettings.kt` (reading and sleeping are its `quietVerbs`: the clock runs `quiet`
+  times faster through them); remote keys in
   `RemoteInput.kt`: in the room OK opens the in-game menu, PLAY/PAUSE starts or pauses anywhere, LEFT/RIGHT pages,
   UP/DOWN scroll or pick, BACK twice restarts). The in-game menu is `GameMenu.kt`: a card over the room with tabs
   RUN (start/pause, settings, restart, replay; rows and texts shared with the Run page in `RunControls.kt`), SHOP,
@@ -142,7 +157,7 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   `LILGUY_PAINTER=3.5` draws his art with random picks at that latency, so he paints with no endpoint;
   `LILGUY_SCREENSHOT_FRAMES=n LILGUY_SCREENSHOT_EVERY=0.5` saves a burst as out-001.png and on).
 - Endpoint config example: `config/endpoints.example.yaml` (real one is gitignored). The app's
-  model choice: `app/.../ModelSetup.kt`. Run logs go in `runs/` (gitignored).
+  and host's model choice: `agent/.../live/ModelSetup.kt`. Run logs go in `runs/` (gitignored).
 - ADB helpers: `tools/adb/`.
 
 ## Rules of the road
