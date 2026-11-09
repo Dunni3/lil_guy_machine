@@ -358,6 +358,8 @@ class RoomView(private val art: ArtTextures) : Disposable {
             n.age += delta
             if (n.age > NOTE_LIFE) { it.remove(); continue }
             val grow = NOTE_SIZE * (n.age / 0.25f).coerceAtMost(1f) * ((NOTE_LIFE - n.age) / 0.7f).coerceAtMost(1f)
+            // Scale 0 (no time yet, or exactly at the end of its life) has no inverse for the renderer's normals.
+            if (grow <= 0f) continue
             val k = n.age * 2.4f + n.phase
             val sparkle = n.sparkle
             if (sparkle == null) {
