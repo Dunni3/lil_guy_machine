@@ -63,6 +63,9 @@ class Artwork(val size: Int, val palette: List<Int>, private val cells: IntArray
     /** The cell's color as 0xRRGGBB. */
     fun rgb(x: Int, y: Int): Int = palette[cells[y * size + x]]
 
+    /** The palette index of cell [i], counting row by row from the top-left. */
+    fun cell(i: Int): Int = cells[i]
+
     /** One string per row, one letter per cell (a for palette 0, b for 1, ...): a text model's view of it. */
     fun letters(): List<String> = (0 until size).map { y -> String(CharArray(size) { x -> 'a' + cells[y * size + x] }) }
 
@@ -95,27 +98,46 @@ class Artwork(val size: Int, val palette: List<Int>, private val cells: IntArray
         fun draw(size: Int, palette: List<Int>, ops: List<DrawOp>): Artwork {
             require(palette.isNotEmpty()) { "a palette needs at least one color" }
             val cells = IntArray(size * size)
-            fun inside(x: Int, y: Int) = x in 0 until size && y in 0 until size
-            fun set(x: Int, y: Int, c: Int) {
-                if (inside(x, y)) cells[y * size + x] = c
-            }
             for (op in ops) {
                 val c = op.color
                 require(c in palette.indices) { "color $c is past the palette's ${palette.size} colors" }
-                when (op) {
-                    is DrawOp.Rect -> for (y in op.y until op.y + op.h) for (x in op.x until op.x + op.w) set(x, y, c)
-                    is DrawOp.Circle -> for (y in op.y - op.r..op.y + op.r) for (x in op.x - op.r..op.x + op.r) {
-                        val dx = x - op.x
-                        val dy = y - op.y
-                        if (dx * dx + dy * dy <= op.r * op.r + op.r) set(x, y, c)
-                    }
-                    is DrawOp.Line -> line(op) { x, y -> set(x, y, c) }
-                    is DrawOp.Fill -> if (inside(op.x, op.y)) flood(cells, size, op.x, op.y, c)
-                    is DrawOp.Pixel -> set(op.x, op.y, c)
-                    is DrawOp.Stamp -> stamp(op) { x, y -> set(x, y, c) }
-                }
+                if (op is DrawOp.Fill) {
+                    if (op.x in 0 until size && op.y in 0 until size) flood(cells, size, op.x, op.y, c)
+                } else plot(op, size) { i -> cells[i] = c }
             }
             return Artwork(size, palette, cells)
+        }
+
+        /**
+         * Which cells of a [size] by [size] canvas [ops] draw on, whatever their colors. No
+         * [DrawOp.Fill], since what a paint bucket covers depends on what's under it.
+         */
+        fun covered(size: Int, ops: List<DrawOp>): BooleanArray {
+            val cells = BooleanArray(size * size)
+            for (op in ops) {
+                require(op !is DrawOp.Fill) { "what a fill covers depends on the picture under it" }
+                plot(op, size) { i -> cells[i] = true }
+            }
+            return cells
+        }
+
+        /** Calls [set] with the index of each cell [op] draws on, clipped to the canvas; not for [DrawOp.Fill]. */
+        private fun plot(op: DrawOp, size: Int, set: (Int) -> Unit) {
+            fun at(x: Int, y: Int) {
+                if (x in 0 until size && y in 0 until size) set(y * size + x)
+            }
+            when (op) {
+                is DrawOp.Rect -> for (y in op.y until op.y + op.h) for (x in op.x until op.x + op.w) at(x, y)
+                is DrawOp.Circle -> for (y in op.y - op.r..op.y + op.r) for (x in op.x - op.r..op.x + op.r) {
+                    val dx = x - op.x
+                    val dy = y - op.y
+                    if (dx * dx + dy * dy <= op.r * op.r + op.r) at(x, y)
+                }
+                is DrawOp.Line -> line(op) { x, y -> at(x, y) }
+                is DrawOp.Pixel -> at(op.x, op.y)
+                is DrawOp.Stamp -> stamp(op) { x, y -> at(x, y) }
+                is DrawOp.Fill -> error("a fill isn't plotted cell by cell")
+            }
         }
 
         private fun line(op: DrawOp.Line, plot: (Int, Int) -> Unit) {

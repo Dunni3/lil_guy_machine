@@ -177,10 +177,10 @@ class Painter(
                     // The crayons shuffled, as the strokes are, with the paper last: a picker leans to early options, and the paper rubs out.
                     val crayons = (1 until palette.crayons.size).shuffled(Random(seed)) + 0
                     val art = Artwork.draw(canvas.size, palette.rgb, back + front)
-                    fun with(stroke: Strokes.Stroke, k: Int) = if (stroke.front) back + front + stroke.ops(k) else back + stroke.ops(k) + front
+                    val inFront = Artwork.covered(canvas.size, front)
                     // A stroke that wouldn't show in any crayon (a detail wholly behind the subject) isn't offered.
                     val menu = Strokes.menu(canvas.size, seed, stage, subject.shapes).filter { it.label !in used && !(it.copy && copies >= MAX_COPIES) }
-                        .let { all -> all.filter { visible(canvas.size, palette.rgb, art, it, crayons) { k -> with(it, k) }.isNotEmpty() }.ifEmpty { all } }
+                        .let { all -> all.filter { visible(art, it, inFront, crayons).isNotEmpty() }.ifEmpty { all } }
                     val shared = buildJsonObject {
                         put("subject", "$item: ${subject.wants}")
                         put("now", stage.says)
@@ -193,7 +193,7 @@ class Painter(
                     val stroke = menu.first { it.label == chosen }
                     val crayon = if (palette.crayons.size == 2) 1 else {
                         val state = JsonObject(shared + ("stroke" to kotlinx.serialization.json.JsonPrimitive(stroke.description)))
-                        val showing = visible(canvas.size, palette.rgb, art, stroke, crayons) { k -> with(stroke, k) }.ifEmpty { crayons }
+                        val showing = visible(art, stroke, inFront, crayons).ifEmpty { crayons }
                         pick(CRAYON_INSTRUCTIONS, state, showing.map { k -> Menu.Option(Strokes.colorLabel(k), palette.crayons[k].name + if (k == 0) " (the paper: rubs out)" else "") })
                             .removePrefix("crayon:").toInt()
                     }
@@ -224,16 +224,16 @@ class Painter(
     /**
      * The [crayons] [stroke] would show in on [art]: at least half the cells it covers change. A shape
      * drawn in the color already under it vanishes (a green tree on green grass), or behind the
-     * subject, and that pick is wasted, so it isn't offered.
+     * subject, and that pick is wasted, so it isn't offered. Counted from the cells the stroke covers,
+     * which are the same in any crayon, less those [inFront] (the subject's, drawn over anything that
+     * isn't itself one of them), rather than by drawing the picture again per crayon: on the TV that
+     * redrawing was most of the time a painting took.
      */
-    private fun visible(size: Int, rgb: List<Int>, art: Artwork, stroke: Strokes.Stroke, crayons: List<Int>, with: (Int) -> List<DrawOp>): List<Int> {
-        val covers = Artwork.draw(size, listOf(0, 1), stroke.ops(1)).letters().sumOf { row -> row.count { it == 'b' } }
-        val before = art.letters()
-        return crayons.filter { k ->
-            val after = Artwork.draw(size, rgb, with(k)).letters()
-            val changed = before.indices.sumOf { y -> before[y].indices.count { x -> before[y][x] != after[y][x] } }
-            2 * changed >= covers
-        }
+    private fun visible(art: Artwork, stroke: Strokes.Stroke, inFront: BooleanArray, crayons: List<Int>): List<Int> {
+        val covers = Artwork.covered(art.size, stroke.ops(1))
+        val shown = covers.indices.filter { covers[it] && (stroke.front || !inFront[it]) }
+        val count = covers.count { it }
+        return crayons.filter { k -> 2 * shown.count { art.cell(it) != k } >= count }
     }
 
     private suspend fun pickSubject(
