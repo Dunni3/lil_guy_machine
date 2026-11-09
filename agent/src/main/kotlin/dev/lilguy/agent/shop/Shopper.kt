@@ -116,6 +116,7 @@ class Shopper(private val model: DecisionModel, private val fallback: DecisionMo
                         Menu.Option(NOTHING, "Buy nothing now.")
                     val state = buildJsonObject {
                         put("situation", call.persona)
+                        mood(obs)?.let { put("now", it) }
                         put("money", obs.money ?: 0)
                         putJsonArray("catalog") { lines.forEach { add(it.removePrefix("- ")) } }
                         putJsonArray("owns") { obs.owns.orEmpty().keys.forEach { add(it) } }
@@ -139,6 +140,7 @@ class Shopper(private val model: DecisionModel, private val fallback: DecisionMo
                         ),
                     ) { null }
                     val user = call.situation.trimEnd() + "\n\n" + "You're at the mail hatch with the shop's catalog. You have $${obs.money ?: 0}. " +
+                        mood(obs)?.let { "$it " }.orEmpty() +
                         "Everything in it you know of, with its price and what it's for:\n" + lines.joinToString("\n") + "\n\n" + ask(most, buyable.isNotEmpty())
                     val request = DecisionRequest(
                         system = call.system.trimEnd() + "\n\n" + INSTRUCTIONS,
@@ -164,6 +166,20 @@ class Shopper(private val model: DecisionModel, private val fallback: DecisionMo
         }
     }
 
+    /**
+     * How bored he is, when he is: what boredom has put off limits, and that something new for his
+     * room lifts it. Null when he isn't bored. Said first, since the catalog doesn't know how he feels.
+     */
+    private fun mood(obs: Observation): String? {
+        val content = world?.content ?: return null
+        val stimulation = obs.needs?.stimulation ?: return null
+        if (stimulation >= content.needs.bored) return null
+        val locked = obs.activities.orEmpty().filter { it.locked?.startsWith("you're bored") == true }.map { it.id }.distinct()
+        val off = if (locked.isEmpty()) "" else " ${locked.joinToString(" and ")} ${if (locked.size == 1) "is" else "are"} off limits until that wears off."
+        val lift = if (content.novelty?.things != null) " Something new for your room that you like lifts your stimulation for a few days, and so does anything you haven't done before." else ""
+        return "You're bored (stimulation $stimulation of 100), which drags your mood down.$off$lift"
+    }
+
     /** What a trip looks through: everything in the catalog he knows of and doesn't already have (food and supplies always). */
     private fun catalog(): List<CatalogEntry> =
         world?.snapshot()?.life?.catalog.orEmpty().filter { it.taughtBy == null && (it.stackable || it.owned == 0) }
@@ -185,13 +201,13 @@ class Shopper(private val model: DecisionModel, private val fallback: DecisionMo
         }
 
         val INSTRUCTIONS = """
-            |Right now you are not choosing an action: you are going through the shop's catalog. Money is scarce and food comes first, so think about what you have, what you'd use, and what would make your life better over the coming days. Buying nothing is fine. What you can't afford yet you can save for.
+            |Right now you are not choosing an action: you are going through the shop's catalog. Food comes first. Beyond that, think about how you feel and what you'd enjoy and use: things to do, and things for your room, for now as well as for the coming days. Money is for living well, not only for earning more. Buying nothing is fine. What you can't afford yet you can save for.
             |
             |For this reply only, ignore the reply format above: reply with a JSON object {"buy": [{"item": ..., "why": ...}], "save_for": ..., "note": ...} and nothing else.
         """.trimMargin()
 
-        private const val PICK_INSTRUCTIONS = "The character in `state` is going through the shop's catalog. Money is scarce and food comes first. " +
-            "Which one thing does he buy now, if any? Choose what he'd use and what would make his life better over the coming days; buying nothing is fine."
+        private const val PICK_INSTRUCTIONS = "The character in `state` is going through the shop's catalog. Food comes first; `state.now` says if he's bored. " +
+            "Which one thing does he buy now, if any? Choose what he'd enjoy and use, now and over the coming days; buying nothing is fine."
 
         /** "the easel ($17): so I can paint". */
         internal fun picked(p: ShopPick, catalog: List<String>): String {

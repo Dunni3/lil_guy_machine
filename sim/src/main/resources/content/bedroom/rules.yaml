@@ -20,7 +20,7 @@ needs:
   # Stimulation (low = bored) drains while he's awake. Hobbies, making things and anything new feed
   # it; repeating the same thing pays less and drains it (habituation, below). Mood is the summary:
   # below `bored`, each missing point lowers the mood he settles to by `bored_mood` (16 at 0).
-  stimulation_per_hour: -5.5
+  stimulation_per_hour: -8
   bored: 40
   bored_mood: 0.4
 
@@ -35,14 +35,21 @@ night:
 # finishing one that was already worn costs `stale_stimulation` times the wear. Routine verbs
 # (eating, sleeping, selling, hanging) don't wear. A verb with arguments wears per item, so each
 # record is its own, unless it says `wear: verb` (reading: any book wears the verb).
+# `bored_lock`: below `below` stimulation, anything worn `worn` or more is refused, pay and all,
+# until he's less bored or it wears off. What feeds energy or fullness never locks (the oats stay
+# open), nor does anything without mood or stimulation gains.
 habituation:
   per_repeat: 0.25
-  recover_per_hour: 0.015
+  recover_per_hour: 0.04
   stale_stimulation: -6
+  bored_lock: { below: 40, worn: 0.5 }
 
 # The first time he finishes a verb (with given items: a record, a book) pays this on top. Routine ones don't count.
+# `things`: a new thing for the room feeds stimulation while he's awake, `stimulation_per_value` an
+# hour per point of its value to him (so only what he likes), fading to nothing over `days`.
 novelty:
   effects: { stimulation: 8, mood: 3 }
+  things: { stimulation_per_value: 0.5, days: 3 }
 
 # Something failing (refused, or cut short because what it needed was gone) adds `per_failure`;
 # finishing anything that isn't routine adds `per_success`; it fades `per_hour`, and sleep eases it
@@ -54,13 +61,12 @@ frustration:
   above: 20
   mood: 0.3
 
-# Skills (vocabulary.yaml) have no cap. A verb's mood and stimulation gains grow `gain_per_level`
-# per level of the skills it practises. A piece whose `sellable` names a skill sells for
-# `price_per_level` more per level he had when he made it. A skill that `deepens` a quality adds
-# `affinity_per_level` per level to his affinity for it.
+# Skills (vocabulary.yaml) have no cap. A verb's mood gains grow `gain_per_level`
+# per level of the skills it practises. What a skill does for a piece of art (its price and its
+# strokes) is on the item (items.yaml `sellable` and `drawable`). A skill that `deepens` a quality
+# adds `affinity_per_level` per level to his affinity for it.
 skills:
   gain_per_level: 0.1
-  price_per_level: 0.15
   affinity_per_level: 0.25
   deepens: { nature: natural, music: lively }
 
@@ -81,7 +87,7 @@ reflection:
 # earns `reward` on top of its price.
 commissions:
   arrive: "09:00"
-  reward: 12
+  reward: 20
   adjectives: [sleepy, stormy, tiny, golden, lonely, cheerful, ancient, frozen, glowing, secret, upside-down, rainy, busy, quiet, wild, striped]
   nouns: [lighthouse, cat, mountain, teapot, garden, whale, rocket, fox, castle, bicycle, moon, sailboat, owl, cactus, bridge, forest]
 

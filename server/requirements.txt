@@ -1,0 +1,8 @@
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+psycopg[binary]==3.2.3
+psycopg-pool==3.2.4
+# Generating app/rows.py (gen_models.sh), and the tests that check it's current
+datamodel-code-generator==0.26.3
+pytest==8.3.4
+httpx==0.28.1

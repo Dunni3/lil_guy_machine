@@ -1,0 +1,12 @@
+# Local overrides for `make server-up` / `make server-test` (the Makefile sets dev secrets: token
+# "dev", password "dev"): the API on localhost:8787 and Postgres on localhost:5433, no Caddy.
+name: lilguy-dev
+services:
+  db:
+    ports: !override
+      - "127.0.0.1:5433:5432"
+  api:
+    ports:
+      - "127.0.0.1:8787:8787"
+  caddy:
+    profiles: ["prod"]

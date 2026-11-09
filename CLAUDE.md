@@ -15,11 +15,14 @@ memory and personality (`research_notes/2026-10-29_0313_bedroom-proposal-and-roa
 ```bash
 make test        # JVM unit tests (all modules)
 make cli         # headless runner (ARGS="--scenario bedroom --days 3 --endpoint typesafe")
-                 # add --memory runs/mem.db [--memory-endpoint NAME] for long-term memory,
+                 # every run records into runs/lilguy.db (--db FILE, --no-db; --resume RUN|latest
+                 # carries a run on from its latest checkpoint); add --memory-endpoint NAME for memories,
                  # --writer-endpoint NAME for thoughts and the self-model, --recall-endpoint NAME (typesafe)
                  # for scored recall, --grant paint,easel,... to unlock tiers,
                  # --affinities calm=2,loud=-1 / --curiosity 1.5 for another personality
-make desktop     # LWJGL3 window
+make server-up   # local Postgres + the ingest API (token "dev"); make server-test, server-psql
+make import-runs # old JSONL run logs into runs/lilguy.db; make sync sends unsynced rows
+make desktop     # LWJGL3 window (RESUME=<run id|latest> carries a run on)
 make tv-connect IP=10.0.0.51   # wireless adb to the Streamer
 make tv-run      # build + install + launch debug APK (ENDPOINT=<name>, MEMORY_ENDPOINT=<name|none>, WRITER_ENDPOINT=, RECALL_ENDPOINT=,
                  # SCENARIO=key-door, MINUTE_TICKS=<n>, DAYS=<n>); runs wait for OK on the remote
@@ -94,8 +97,24 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   handler: saves `art-NN/piece-NNN.png`, delivers title and tags to the piece; commission wording goes
   through `BedroomWorld.annotate`). `agent/.../Menu.kt` puts one pick to any model (a choice set
   for Jev, a prompt plus enum schema for a text model). The sim's pieces, commissions and
-  hanging are in `BedroomWorld.kt`. The app's textures for them are in `ArtTextures.kt`.
-  SQLite store: `memory-sqlite/` (JVM only; not in the TV build yet).
+  hanging are in `BedroomWorld.kt`. The app's textures for them are in `ArtTextures.kt`. The piece
+  under way is reported stroke by stroke (`Underway`, `ArtStudio.underway`) and played out in the room
+  by `app/.../PaintScene.kt` (brush on the real cells, dips, stepping back, a flourish), which
+  `RoomView` keeps him posed at through a drawing hold, and lingers the clock (`SimSession.linger`) for.
+  Memory is stored in the run database (`RunMemoryStore`); `InMemoryStore` only without one (`--no-db`).
+- Run database (roadmap phase 1, the sim host's store; `docs/decisions/2026-11-06-runs-record-locally-*`):
+  `runlog/` (pure Kotlin): `Rows.kt` (the `@Serializable` rows, the tables' only definition: `@Pg`, `@Key`), `Tables.kt`
+  (read from their descriptors; the SQLite DDL), `RowSchema.kt` (`make server-schema`: `server/schema/rows.schema.json`, then
+  Pydantic `server/app/rows.py`; checked by `RowSchemaTest` and `server/tests/test_schema.py`), `RunStore.kt` (the
+  device's SQLite store, many runs, `_rev`/`_dirty` for sync, prune after 30 days), `RunRecorder.kt` (`record` returns at
+  once; an IO coroutine writes; blobs by SHA-256, gzipped), `SyncWorker.kt` (blobs then `POST /v1/ingest`; env
+  `LILGUY_SYNC_URL`, `LILGUY_SYNC_TOKEN`). Drivers: `runlog-jdbc/` (JVM), `android/.../AndroidSqlDriver.kt` (TV).
+  `agent/.../LifeRecorder.kt` turns a run into rows (decisions with outcomes, model calls with prompts via
+  `TokenLedger.record`, ledger, needs, hourly state, authored ops, art) and takes the morning checkpoint around each
+  tick (`beforeStep`/`afterStep`; `AgentRuntime.hold`); saves are `BedroomWorld.exportState`/`restore`
+  (`sim/.../BedroomState.kt`) plus `AgentState`. CLI: `cli/.../RunDb.kt`, `Importer.kt`. App: `RunDatabase.kt`,
+  `SimSession`. Server: `server/` (FastAPI ingest and query only, in `app/main.py`; numbered migrations in `sql/migrations/`, compose, `deploy/`
+  for its own Lightsail Small box; see `server/README.md`).
 - Token accounting: `agent/.../TokenLedger.kt`. `ledger.meter(model, purpose)` wraps a model so every call
   (decision, think, summary, self, recall, significance, art) is recorded with its sim tick and game day; `TokenReport` prints
   tokens per game day and the 30-day projection. The CLI and the app (`SimSession`, the TOKENS page) wire it and
@@ -111,11 +130,17 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   `verbs` and `done`, built with the world's cached option lists); run control, decision history and the app's memory in `SimSession.kt`;
   the Run page's knobs (days, speed, how much faster quiet stretches run, how long the clock waits on the model, resolution) in
   `RunSettings.kt` (reading and sleeping are `QUIET_VERBS`: the clock runs `quiet` times faster through them); remote keys in
-  `RemoteInput.kt`: OK start/pause, LEFT/RIGHT pages, UP/DOWN scroll or pick, BACK twice restarts). Launchers: `desktop/`, `android/`.
+  `RemoteInput.kt`: in the room OK opens the in-game menu, PLAY/PAUSE starts or pauses anywhere, LEFT/RIGHT pages,
+  UP/DOWN scroll or pick, BACK twice restarts). The in-game menu is `GameMenu.kt`: a card over the room with tabs
+  RUN (start/pause, settings, restart, replay; rows and texts shared with the Run page in `RunControls.kt`), SHOP,
+  THOUGHTS, MEMORY, SELF (core, taste, every night's self-model revision) and TRIPS (shopping transcripts, from
+  `AgentMemory.trips()`), each a list with the picked entry in full beside it. Launchers: `desktop/`, `android/`.
   `LILGUY_SCREENSHOT=out.png LILGUY_SCREENSHOT_AT=<s> make desktop` saves one frame and quits
   (add `LILGUY_CONFIG=/nonexistent` for the scripted policy, no API calls; `MINUTE_TICKS=1` for a faster clock)
   (`LILGUY_SCREENSHOT_KEYS="Enter,@60,Right"` presses keys first; `LILGUY_START_ITEMS=novel,folk_record,guitar` adds to
-  what he starts with, and what a book teaches with it; `LILGUY_SCRIPT=read,play_guitar` has the scripted policy do those first).
+  what he starts with, and what a book teaches with it; `LILGUY_SCRIPT=read,play_guitar` has the scripted policy do those first;
+  `LILGUY_PAINTER=3.5` draws his art with random picks at that latency, so he paints with no endpoint;
+  `LILGUY_SCREENSHOT_FRAMES=n LILGUY_SCREENSHOT_EVERY=0.5` saves a burst as out-001.png and on).
 - Endpoint config example: `config/endpoints.example.yaml` (real one is gitignored). The app's
   model choice: `app/.../ModelSetup.kt`. Run logs go in `runs/` (gitignored).
 - ADB helpers: `tools/adb/`.

@@ -51,6 +51,14 @@ class ArtStudio(
     @Volatile var lastError: String? = null
         private set
 
+    /**
+     * The latest piece he started, as far as it has got: stroke by stroke while it's drawn, then
+     * [Underway.State.Done] once the drawing is back, or [Underway.State.Dropped] if it failed or the
+     * verb didn't finish. Kept until the next piece starts, so a viewer polling it sees how it ended. Readable from any thread.
+     */
+    @Volatile var underway: Underway? = null
+        private set
+
     /** Pieces drawn and kept, oldest first, each with its [Drawing.piece] and artwork. Readable from any thread. */
     fun pieces(): List<Drawing> = drawn.toList()
 
@@ -67,8 +75,21 @@ class ArtStudio(
         val made = c.withName(id).firstOrNull { it.canvas != null } ?: error("draw: no drawable '$id'")
         val obs = call.obs
         val subjects = Painter.Subjects.of(c.commissions)
-        return painter.draw(call.persona, call.situation, made.name, made.canvas!!, obs.commission, subjects, obs.tick, obs.clock?.day, obs.clock?.time, drawn.mapNotNull { it.title })
-            .also { d -> d.error?.let { lastError = it }; if (d.artwork == null) onDrawing(d) }
+        // More skill, more strokes: the canvas at the level he has as he starts it.
+        val canvas = made.canvasAt(made.drawSkill?.let { obs.skills?.get(it) } ?: 0.0)!!
+        underway = null
+        return painter.draw(call.persona, call.situation, made.name, canvas, obs.commission, subjects, obs.tick, obs.clock?.day, obs.clock?.time, drawn.mapNotNull { it.title }) { underway = it }
+            .also { d ->
+                d.error?.let { lastError = it }
+                if (d.artwork == null) onDrawing(d)
+                settle(d.tick, if (d.artwork == null) Underway.State.Dropped else Underway.State.Done)
+            }
+    }
+
+    override fun discard(result: Drawing?, call: AuthorCall) = settle(call.obs.tick, Underway.State.Dropped)
+
+    private fun settle(tick: Long, state: Underway.State) {
+        underway?.takeIf { it.tick == tick && it.state != Underway.State.Dropped }?.let { underway = it.copy(state = state) }
     }
 
     override fun keep(result: Drawing, call: AuthorCall, ended: Observation, view: AuthoredView?, deliver: (AuthoredResult) -> Unit) {

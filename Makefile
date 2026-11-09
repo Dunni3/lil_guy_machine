@@ -26,8 +26,8 @@ local.properties:
 # --- desktop / headless --------------------------------------------------------
 
 .PHONY: desktop
-desktop: ## Run the app in a desktop window (ENDPOINT=<name>, MEMORY_ENDPOINT=<name|none>, WRITER_ENDPOINT=<name|none>, RECALL_ENDPOINT=<name|none>, SCENARIO=key-door, MINUTE_TICKS=<n>, DAYS=<n, 0 no end>, BEAM=<n, 0 flat>)
-	LILGUY_ENDPOINT=$(ENDPOINT) LILGUY_MEMORY_ENDPOINT=$(MEMORY_ENDPOINT) LILGUY_WRITER_ENDPOINT=$(or $(WRITER_ENDPOINT),$(JOURNAL_ENDPOINT)) LILGUY_RECALL_ENDPOINT=$(RECALL_ENDPOINT) LILGUY_SCENARIO=$(SCENARIO) LILGUY_MINUTE_TICKS=$(MINUTE_TICKS) LILGUY_DAYS=$(DAYS) LILGUY_BEAM=$(BEAM) $(GRADLE) :desktop:run
+desktop: ## Run the app in a desktop window (ENDPOINT=<name>, MEMORY_ENDPOINT=<name|none>, WRITER_ENDPOINT=<name|none>, RECALL_ENDPOINT=<name|none>, SCENARIO=key-door, MINUTE_TICKS=<n>, DAYS=<n, 0 no end>, BEAM=<n, 0 flat>, RESUME=<run id|latest>)
+	LILGUY_RESUME=$(RESUME) LILGUY_ENDPOINT=$(ENDPOINT) LILGUY_MEMORY_ENDPOINT=$(MEMORY_ENDPOINT) LILGUY_WRITER_ENDPOINT=$(or $(WRITER_ENDPOINT),$(JOURNAL_ENDPOINT)) LILGUY_RECALL_ENDPOINT=$(RECALL_ENDPOINT) LILGUY_SCENARIO=$(SCENARIO) LILGUY_MINUTE_TICKS=$(MINUTE_TICKS) LILGUY_DAYS=$(DAYS) LILGUY_BEAM=$(BEAM) $(GRADLE) :desktop:run
 
 .PHONY: cli
 cli: ## Run the headless CLI (ARGS="--endpoint hosted --runs 10"; ARGS=--help for all)
@@ -40,6 +40,52 @@ content-docs: ## Regenerate the bedroom content's JSON Schemas and build/grammar
 .PHONY: test
 test: ## Run all JVM unit tests
 	$(GRADLE) test
+
+# --- run database --------------------------------------------------------------
+# Every run records into runs/lilguy.db and syncs to the server when LILGUY_SYNC_URL and
+# LILGUY_SYNC_TOKEN are set (put them in the secrets file above). The server is server/:
+# Postgres plus the FastAPI ingest service. See server/README.md.
+
+DEV_COMPOSE := POSTGRES_PASSWORD=dev LILGUY_INGEST_TOKENS=dev:dev DOMAIN=localhost ACME_EMAIL=dev@localhost docker compose -f server/docker-compose.yml -f server/docker-compose.dev.yml
+
+.PHONY: server-schema
+server-schema: ## Regenerate the rows' JSON Schema from runlog's row classes, and the server's Pydantic models from it
+	$(GRADLE) -q :cli:run --args="--server-schema server/schema/rows.schema.json"
+	$(DEV_COMPOSE) run --rm --build --no-deps -v $(CURDIR)/server:/srv api sh gen_models.sh
+
+.PHONY: server-up
+server-up: ## Start Postgres and the ingest service locally (http://localhost:8787; token "dev")
+	$(DEV_COMPOSE) up -d --build db api
+
+.PHONY: server-down
+server-down: ## Stop the local server (the data volume stays)
+	$(DEV_COMPOSE) down
+
+.PHONY: server-test
+server-test: ## Run the server's tests (ingest is idempotent) against the local Postgres
+	$(DEV_COMPOSE) up -d db
+	$(DEV_COMPOSE) run --rm --build api pytest -q tests
+
+.PHONY: server-psql
+server-psql: ## Open psql on the local server's database
+	$(DEV_COMPOSE) exec db psql -U lilguy lilguy
+
+.PHONY: server-deploy
+server-deploy: ## Sync server/ to the Lightsail box and restart it (DEPLOY_HOST=ubuntu@<host>)
+	server/deploy/deploy.sh
+
+.PHONY: server-tunnel
+server-tunnel: ## Forward the box's Postgres to localhost:5434 for psql, pandas or DuckDB (DEPLOY_HOST=ubuntu@<host>)
+	@: "$${DEPLOY_HOST:?set DEPLOY_HOST=ubuntu@<host>}"
+	ssh -N -L 5434:127.0.0.1:5432 $(DEPLOY_HOST)
+
+.PHONY: import-runs
+import-runs: ## Read the old run logs under runs/ (and runs/tv/) into runs/lilguy.db, then sync
+	$(GRADLE) -q :cli:run --args="--import-runs runs"
+
+.PHONY: sync
+sync: ## Send what runs/lilguy.db hasn't synced to the server
+	$(GRADLE) -q :cli:run --args="--sync"
 
 # --- tv ------------------------------------------------------------------------
 
@@ -57,8 +103,8 @@ tv-install: local.properties ## Build and install the debug APK on the connected
 	$(GRADLE) :android:installDebug
 
 .PHONY: tv-run
-tv-run: tv-install ## Install and launch on the connected device (ENDPOINT=<name>, MEMORY_ENDPOINT=<name|none>, WRITER_ENDPOINT=<name|none>, RECALL_ENDPOINT=<name|none>, SCENARIO=key-door, MINUTE_TICKS=<n>, DAYS=<n>, BEAM=<n, 0 flat>)
-	$(ADB) shell am start -S -n $(APP_ID)/dev.lilguy.android.AndroidLauncher $(if $(ENDPOINT),--es endpoint $(ENDPOINT)) $(if $(MEMORY_ENDPOINT),--es memory_endpoint $(MEMORY_ENDPOINT)) $(if $(or $(WRITER_ENDPOINT),$(JOURNAL_ENDPOINT)),--es writer_endpoint $(or $(WRITER_ENDPOINT),$(JOURNAL_ENDPOINT))) $(if $(RECALL_ENDPOINT),--es recall_endpoint $(RECALL_ENDPOINT)) $(if $(SCENARIO),--es scenario $(SCENARIO)) $(if $(MINUTE_TICKS),--ei minute_ticks $(MINUTE_TICKS)) $(if $(DAYS),--ei days $(DAYS)) $(if $(BEAM),--ei beam $(BEAM))
+tv-run: tv-install ## Install and launch on the connected device (ENDPOINT=<name>, MEMORY_ENDPOINT=<name|none>, WRITER_ENDPOINT=<name|none>, RECALL_ENDPOINT=<name|none>, SCENARIO=key-door, MINUTE_TICKS=<n>, DAYS=<n>, BEAM=<n, 0 flat>, RESUME=<run id|latest>)
+	$(ADB) shell am start -S -n $(APP_ID)/dev.lilguy.android.AndroidLauncher $(if $(ENDPOINT),--es endpoint $(ENDPOINT)) $(if $(MEMORY_ENDPOINT),--es memory_endpoint $(MEMORY_ENDPOINT)) $(if $(or $(WRITER_ENDPOINT),$(JOURNAL_ENDPOINT)),--es writer_endpoint $(or $(WRITER_ENDPOINT),$(JOURNAL_ENDPOINT))) $(if $(RECALL_ENDPOINT),--es recall_endpoint $(RECALL_ENDPOINT)) $(if $(SCENARIO),--es scenario $(SCENARIO)) $(if $(MINUTE_TICKS),--ei minute_ticks $(MINUTE_TICKS)) $(if $(DAYS),--ei days $(DAYS)) $(if $(BEAM),--ei beam $(BEAM)) $(if $(RESUME),--es resume $(RESUME))
 
 .PHONY: tv-push-config
 tv-push-config: ## Push config/endpoints.yaml and its API keys to the device (dev only)

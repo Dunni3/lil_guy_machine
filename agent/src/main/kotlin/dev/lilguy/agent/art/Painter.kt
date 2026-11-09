@@ -58,6 +58,26 @@ data class Drawing(
 )
 
 /**
+ * A piece as it's being made, for the room to show stroke by stroke: what it is ([item], and its
+ * [title] from the subject), the crayons' colours (0xRRGGBB, the paper first), and [art], the
+ * picture after [strokes] of [of] strokes, [crayon] the last one's. [tick] says which piece it is.
+ * The [Painter] reports it as it goes; [ArtStudio] says when it's [State.Done] or [State.Dropped].
+ */
+data class Underway(
+    val tick: Long,
+    val item: String,
+    val title: String,
+    val palette: List<Int>,
+    val strokes: Int,
+    val of: Int,
+    val art: Artwork,
+    val crayon: Int? = null,
+    val state: State = State.Drawing,
+) {
+    enum class State { Drawing, Done, Dropped }
+}
+
+/**
  * How his art gets made: a run of closed choices on the model that decides for him, so the cheap
  * picking model (TypeSafe's Jev) draws, and nothing has to write text. First he picks the piece's
  * subject (the customer's request, or something of his own), then a box of crayons ([Palettes]),
@@ -100,7 +120,8 @@ class Painter(
      * Draws one piece of [item] on [canvas]. [persona] is who he is; [situation] is his state in
      * the words of the decision prompt, which is what the subject is chosen from. [drawn] are the
      * titles of pieces he has already made, which aren't offered as subjects of his own again.
-     * Never throws for a model failure: the drawing says what went wrong.
+     * Never throws for a model failure: the drawing says what went wrong. [onProgress] hears the
+     * piece once its crayons are picked and again after every stroke, on the drawing's coroutine.
      */
     suspend fun draw(
         persona: String,
@@ -113,6 +134,7 @@ class Painter(
         day: Int?,
         time: String?,
         drawn: Collection<String> = emptyList(),
+        onProgress: (Underway) -> Unit = {},
     ): Drawing {
         val started = TimeSource.Monotonic.markNow()
         val asked = commission?.let { it.request ?: "I'd like ${it.wants}." }
@@ -144,6 +166,9 @@ class Painter(
                 val used = mutableSetOf<String>()
                 var copies = 0
                 var shows: String? = null
+                fun report(strokes: Int, crayon: Int?) =
+                    onProgress(Underway(tick, item, subject.title, palette.rgb, strokes, canvas.strokes, Artwork.draw(canvas.size, palette.rgb, back + front), crayon))
+                report(0, null)
                 for (strokes in 0 until canvas.strokes) {
                     val stage = Strokes.stage(strokes, canvas.strokes, subject.shapes.isNotEmpty())
                     val seed = tick * 101 + strokes
@@ -175,6 +200,7 @@ class Painter(
                     used += chosen
                     if (stroke.copy) copies++
                     if (stroke.front && stroke.shape in Shapes.showing(subject.noun)) shows = subject.noun
+                    report(strokes + 1, crayon)
                 }
                 val ops = back + front
                 val art = Artwork.draw(canvas.size, palette.rgb, ops)

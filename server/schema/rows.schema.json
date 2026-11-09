@@ -1,0 +1,1982 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Row",
+    "description": "One row of the lil guy machine run database, as sync sends it. Generated from runlog/.../Rows.kt; don't edit.",
+    "oneOf": [
+        {
+            "$ref": "#/$defs/ContentVersionRow"
+        },
+        {
+            "$ref": "#/$defs/BatchRow"
+        },
+        {
+            "$ref": "#/$defs/RunRow"
+        },
+        {
+            "$ref": "#/$defs/SessionRow"
+        },
+        {
+            "$ref": "#/$defs/ModelCallRow"
+        },
+        {
+            "$ref": "#/$defs/DecisionRow"
+        },
+        {
+            "$ref": "#/$defs/LedgerRow"
+        },
+        {
+            "$ref": "#/$defs/NeedRow"
+        },
+        {
+            "$ref": "#/$defs/HourlyRow"
+        },
+        {
+            "$ref": "#/$defs/MemoryEventRow"
+        },
+        {
+            "$ref": "#/$defs/MemoryRow"
+        },
+        {
+            "$ref": "#/$defs/AuthoredRow"
+        },
+        {
+            "$ref": "#/$defs/ArtPieceRow"
+        },
+        {
+            "$ref": "#/$defs/CheckpointRow"
+        },
+        {
+            "$ref": "#/$defs/LineageRow"
+        },
+        {
+            "$ref": "#/$defs/RecordRow"
+        },
+        {
+            "$ref": "#/$defs/LetterRow"
+        }
+    ],
+    "$defs": {
+        "ContentVersionRow": {
+            "type": "object",
+            "x-table": "content_versions",
+            "x-key": [
+                "hash"
+            ],
+            "properties": {
+                "table": {
+                    "const": "content_versions"
+                },
+                "hash": {
+                    "type": "string",
+                    "x-pg-type": "text",
+                    "x-not-null": true
+                },
+                "files": {
+                    "x-pg-type": "jsonb",
+                    "x-not-null": true
+                },
+                "created_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "x-pg-type": "timestamp with time zone",
+                    "x-not-null": true
+                },
+                "_rev": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                }
+            },
+            "required": [
+                "table",
+                "hash",
+                "files",
+                "created_at",
+                "_rev"
+            ],
+            "additionalProperties": false
+        },
+        "BatchRow": {
+            "type": "object",
+            "x-table": "batches",
+            "x-key": [
+                "id"
+            ],
+            "properties": {
+                "table": {
+                    "const": "batches"
+                },
+                "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "name": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "spec": {
+                    "x-pg-type": "jsonb",
+                    "x-not-null": false
+                },
+                "created_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "x-pg-type": "timestamp with time zone",
+                    "x-not-null": true
+                },
+                "notes": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "_rev": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                }
+            },
+            "required": [
+                "table",
+                "id",
+                "name",
+                "spec",
+                "created_at",
+                "notes",
+                "_rev"
+            ],
+            "additionalProperties": false
+        },
+        "RunRow": {
+            "type": "object",
+            "x-table": "runs",
+            "x-key": [
+                "id"
+            ],
+            "properties": {
+                "table": {
+                    "const": "runs"
+                },
+                "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "parent_id": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": false
+                },
+                "forked_from": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": false
+                },
+                "batch_id": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": false
+                },
+                "label": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "scenario": {
+                    "type": "string",
+                    "x-pg-type": "text",
+                    "x-not-null": true
+                },
+                "platform": {
+                    "type": "string",
+                    "x-pg-type": "text",
+                    "x-not-null": true
+                },
+                "host": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "git_sha": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "git_dirty": {
+                    "type": [
+                        "boolean",
+                        "null"
+                    ],
+                    "x-pg-type": "boolean",
+                    "x-not-null": false
+                },
+                "content_hash": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "seed": {
+                    "type": "integer",
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                },
+                "ticks_per_minute": {
+                    "type": "integer",
+                    "x-pg-type": "integer",
+                    "x-not-null": true
+                },
+                "personality": {
+                    "x-pg-type": "jsonb",
+                    "x-not-null": false
+                },
+                "granted": {
+                    "anyOf": [
+                        {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "x-pg-type": "text[]",
+                    "x-not-null": false
+                },
+                "models": {
+                    "x-pg-type": "jsonb",
+                    "x-not-null": true
+                },
+                "settings": {
+                    "x-pg-type": "jsonb",
+                    "x-not-null": false
+                },
+                "started_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "x-pg-type": "timestamp with time zone",
+                    "x-not-null": true
+                },
+                "ended_at": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "format": "date-time",
+                    "x-pg-type": "timestamp with time zone",
+                    "x-not-null": false
+                },
+                "end_reason": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "notes": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "_rev": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                }
+            },
+            "required": [
+                "table",
+                "id",
+                "parent_id",
+                "forked_from",
+                "batch_id",
+                "label",
+                "scenario",
+                "platform",
+                "host",
+                "git_sha",
+                "git_dirty",
+                "content_hash",
+                "seed",
+                "ticks_per_minute",
+                "personality",
+                "granted",
+                "models",
+                "settings",
+                "started_at",
+                "ended_at",
+                "end_reason",
+                "notes",
+                "_rev"
+            ],
+            "additionalProperties": false
+        },
+        "SessionRow": {
+            "type": "object",
+            "x-table": "sessions",
+            "x-key": [
+                "id"
+            ],
+            "properties": {
+                "table": {
+                    "const": "sessions"
+                },
+                "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "run_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "from_checkpoint": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": false
+                },
+                "git_sha": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "git_dirty": {
+                    "type": [
+                        "boolean",
+                        "null"
+                    ],
+                    "x-pg-type": "boolean",
+                    "x-not-null": false
+                },
+                "content_hash": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "platform": {
+                    "type": "string",
+                    "x-pg-type": "text",
+                    "x-not-null": true
+                },
+                "host": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "started_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "x-pg-type": "timestamp with time zone",
+                    "x-not-null": true
+                },
+                "ended_at": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "format": "date-time",
+                    "x-pg-type": "timestamp with time zone",
+                    "x-not-null": false
+                },
+                "_rev": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                }
+            },
+            "required": [
+                "table",
+                "id",
+                "run_id",
+                "from_checkpoint",
+                "git_sha",
+                "git_dirty",
+                "content_hash",
+                "platform",
+                "host",
+                "started_at",
+                "ended_at",
+                "_rev"
+            ],
+            "additionalProperties": false
+        },
+        "ModelCallRow": {
+            "type": "object",
+            "x-table": "model_calls",
+            "x-key": [
+                "id"
+            ],
+            "properties": {
+                "table": {
+                    "const": "model_calls"
+                },
+                "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "run_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "session_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "seq": {
+                    "type": "integer",
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                },
+                "tick": {
+                    "type": "integer",
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                },
+                "day": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-pg-type": "integer",
+                    "x-not-null": false
+                },
+                "minute_of_day": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-pg-type": "integer",
+                    "x-not-null": false
+                },
+                "purpose": {
+                    "type": "string",
+                    "x-pg-type": "text",
+                    "x-not-null": true
+                },
+                "endpoint": {
+                    "type": "string",
+                    "x-pg-type": "text",
+                    "x-not-null": true
+                },
+                "model": {
+                    "type": "string",
+                    "x-pg-type": "text",
+                    "x-not-null": true
+                },
+                "calls": {
+                    "type": "integer",
+                    "x-pg-type": "integer",
+                    "x-not-null": true
+                },
+                "prompt_tokens": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-pg-type": "integer",
+                    "x-not-null": false
+                },
+                "completion_tokens": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-pg-type": "integer",
+                    "x-not-null": false
+                },
+                "reasoning_tokens": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-pg-type": "integer",
+                    "x-not-null": false
+                },
+                "total_tokens": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-pg-type": "integer",
+                    "x-not-null": false
+                },
+                "latency_ms": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-pg-type": "integer",
+                    "x-not-null": false
+                },
+                "price_in": {
+                    "type": [
+                        "number",
+                        "null"
+                    ],
+                    "x-pg-type": "double precision",
+                    "x-not-null": false
+                },
+                "price_out": {
+                    "type": [
+                        "number",
+                        "null"
+                    ],
+                    "x-pg-type": "double precision",
+                    "x-not-null": false
+                },
+                "cost_usd": {
+                    "type": [
+                        "number",
+                        "null"
+                    ],
+                    "x-pg-type": "double precision",
+                    "x-not-null": false
+                },
+                "failed": {
+                    "type": "boolean",
+                    "x-pg-type": "boolean",
+                    "x-not-null": true
+                },
+                "system_blob": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "request_blob": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "response_blob": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "_rev": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                }
+            },
+            "required": [
+                "table",
+                "id",
+                "run_id",
+                "session_id",
+                "seq",
+                "tick",
+                "day",
+                "minute_of_day",
+                "purpose",
+                "endpoint",
+                "model",
+                "calls",
+                "prompt_tokens",
+                "completion_tokens",
+                "reasoning_tokens",
+                "total_tokens",
+                "latency_ms",
+                "price_in",
+                "price_out",
+                "cost_usd",
+                "failed",
+                "system_blob",
+                "request_blob",
+                "response_blob",
+                "_rev"
+            ],
+            "additionalProperties": false
+        },
+        "DecisionRow": {
+            "type": "object",
+            "x-table": "decisions",
+            "x-key": [
+                "id"
+            ],
+            "properties": {
+                "table": {
+                    "const": "decisions"
+                },
+                "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "run_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "session_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "seq": {
+                    "type": "integer",
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                },
+                "tick": {
+                    "type": "integer",
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                },
+                "day": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-pg-type": "integer",
+                    "x-not-null": false
+                },
+                "minute_of_day": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-pg-type": "integer",
+                    "x-not-null": false
+                },
+                "model_call_id": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": false
+                },
+                "intent": {
+                    "x-pg-type": "jsonb",
+                    "x-not-null": true
+                },
+                "intent_label": {
+                    "type": "string",
+                    "x-pg-type": "text",
+                    "x-not-null": true
+                },
+                "thought": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "choices": {
+                    "x-pg-type": "jsonb",
+                    "x-not-null": false
+                },
+                "fallback": {
+                    "type": "boolean",
+                    "x-pg-type": "boolean",
+                    "x-not-null": true
+                },
+                "error": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "outcome_status": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "outcome_text": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "observation_blob": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "_rev": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                }
+            },
+            "required": [
+                "table",
+                "id",
+                "run_id",
+                "session_id",
+                "seq",
+                "tick",
+                "day",
+                "minute_of_day",
+                "model_call_id",
+                "intent",
+                "intent_label",
+                "thought",
+                "choices",
+                "fallback",
+                "error",
+                "outcome_status",
+                "outcome_text",
+                "observation_blob",
+                "_rev"
+            ],
+            "additionalProperties": false
+        },
+        "LedgerRow": {
+            "type": "object",
+            "x-table": "ledger_entries",
+            "x-key": [
+                "run_id",
+                "seq"
+            ],
+            "properties": {
+                "table": {
+                    "const": "ledger_entries"
+                },
+                "run_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "session_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "seq": {
+                    "type": "integer",
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                },
+                "tick": {
+                    "type": "integer",
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                },
+                "day": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-pg-type": "integer",
+                    "x-not-null": false
+                },
+                "minute_of_day": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-pg-type": "integer",
+                    "x-not-null": false
+                },
+                "amount": {
+                    "type": "integer",
+                    "x-pg-type": "integer",
+                    "x-not-null": true
+                },
+                "balance": {
+                    "type": "integer",
+                    "x-pg-type": "integer",
+                    "x-not-null": true
+                },
+                "reason": {
+                    "type": "string",
+                    "x-pg-type": "text",
+                    "x-not-null": true
+                },
+                "_rev": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                }
+            },
+            "required": [
+                "table",
+                "run_id",
+                "session_id",
+                "seq",
+                "tick",
+                "day",
+                "minute_of_day",
+                "amount",
+                "balance",
+                "reason",
+                "_rev"
+            ],
+            "additionalProperties": false
+        },
+        "NeedRow": {
+            "type": "object",
+            "x-table": "need_changes",
+            "x-key": [
+                "run_id",
+                "seq"
+            ],
+            "properties": {
+                "table": {
+                    "const": "need_changes"
+                },
+                "run_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "session_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "seq": {
+                    "type": "integer",
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                },
+                "tick": {
+                    "type": "integer",
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                },
+                "day": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-pg-type": "integer",
+                    "x-not-null": false
+                },
+                "minute_of_day": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-pg-type": "integer",
+                    "x-not-null": false
+                },
+                "need": {
+                    "type": "string",
+                    "x-pg-type": "text",
+                    "x-not-null": true
+                },
+                "delta": {
+                    "type": "number",
+                    "x-pg-type": "double precision",
+                    "x-not-null": true
+                },
+                "value": {
+                    "type": "number",
+                    "x-pg-type": "double precision",
+                    "x-not-null": true
+                },
+                "reason": {
+                    "type": "string",
+                    "x-pg-type": "text",
+                    "x-not-null": true
+                },
+                "_rev": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                }
+            },
+            "required": [
+                "table",
+                "run_id",
+                "session_id",
+                "seq",
+                "tick",
+                "day",
+                "minute_of_day",
+                "need",
+                "delta",
+                "value",
+                "reason",
+                "_rev"
+            ],
+            "additionalProperties": false
+        },
+        "HourlyRow": {
+            "type": "object",
+            "x-table": "hourly_state",
+            "x-key": [
+                "run_id",
+                "seq"
+            ],
+            "properties": {
+                "table": {
+                    "const": "hourly_state"
+                },
+                "run_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "session_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "seq": {
+                    "type": "integer",
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                },
+                "tick": {
+                    "type": "integer",
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                },
+                "day": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-pg-type": "integer",
+                    "x-not-null": false
+                },
+                "minute_of_day": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-pg-type": "integer",
+                    "x-not-null": false
+                },
+                "hour": {
+                    "type": "integer",
+                    "x-pg-type": "integer",
+                    "x-not-null": true
+                },
+                "money": {
+                    "type": "integer",
+                    "x-pg-type": "integer",
+                    "x-not-null": true
+                },
+                "needs": {
+                    "x-pg-type": "jsonb",
+                    "x-not-null": true
+                },
+                "skills": {
+                    "x-pg-type": "jsonb",
+                    "x-not-null": false
+                },
+                "doing": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "_rev": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                }
+            },
+            "required": [
+                "table",
+                "run_id",
+                "session_id",
+                "seq",
+                "tick",
+                "day",
+                "minute_of_day",
+                "hour",
+                "money",
+                "needs",
+                "skills",
+                "doing",
+                "_rev"
+            ],
+            "additionalProperties": false
+        },
+        "MemoryEventRow": {
+            "type": "object",
+            "x-table": "memory_events",
+            "x-key": [
+                "run_id",
+                "id"
+            ],
+            "properties": {
+                "table": {
+                    "const": "memory_events"
+                },
+                "run_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "session_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "seq": {
+                    "type": "integer",
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                },
+                "tick": {
+                    "type": "integer",
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                },
+                "day": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-pg-type": "integer",
+                    "x-not-null": false
+                },
+                "minute_of_day": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-pg-type": "integer",
+                    "x-not-null": false
+                },
+                "id": {
+                    "type": "integer",
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                },
+                "time": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "kind": {
+                    "type": "string",
+                    "x-pg-type": "text",
+                    "x-not-null": true
+                },
+                "text": {
+                    "type": "string",
+                    "x-pg-type": "text",
+                    "x-not-null": true
+                },
+                "significance": {
+                    "type": [
+                        "number",
+                        "null"
+                    ],
+                    "x-pg-type": "double precision",
+                    "x-not-null": false
+                },
+                "_rev": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                }
+            },
+            "required": [
+                "table",
+                "run_id",
+                "session_id",
+                "seq",
+                "tick",
+                "day",
+                "minute_of_day",
+                "id",
+                "time",
+                "kind",
+                "text",
+                "significance",
+                "_rev"
+            ],
+            "additionalProperties": false
+        },
+        "MemoryRow": {
+            "type": "object",
+            "x-table": "memories",
+            "x-key": [
+                "run_id",
+                "id"
+            ],
+            "properties": {
+                "table": {
+                    "const": "memories"
+                },
+                "run_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "session_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "seq": {
+                    "type": "integer",
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                },
+                "tick": {
+                    "type": "integer",
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                },
+                "day": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-pg-type": "integer",
+                    "x-not-null": false
+                },
+                "minute_of_day": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-pg-type": "integer",
+                    "x-not-null": false
+                },
+                "id": {
+                    "type": "integer",
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                },
+                "level": {
+                    "type": "integer",
+                    "x-pg-type": "integer",
+                    "x-not-null": true
+                },
+                "from_id": {
+                    "type": "integer",
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                },
+                "to_id": {
+                    "type": "integer",
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                },
+                "from_day": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-pg-type": "integer",
+                    "x-not-null": false
+                },
+                "from_minute": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "to_day": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-pg-type": "integer",
+                    "x-not-null": false
+                },
+                "to_minute": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "text": {
+                    "type": "string",
+                    "x-pg-type": "text",
+                    "x-not-null": true
+                },
+                "source": {
+                    "type": "string",
+                    "x-pg-type": "text",
+                    "x-not-null": true
+                },
+                "importance": {
+                    "type": [
+                        "number",
+                        "null"
+                    ],
+                    "x-pg-type": "double precision",
+                    "x-not-null": false
+                },
+                "_rev": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                }
+            },
+            "required": [
+                "table",
+                "run_id",
+                "session_id",
+                "seq",
+                "tick",
+                "day",
+                "minute_of_day",
+                "id",
+                "level",
+                "from_id",
+                "to_id",
+                "from_day",
+                "from_minute",
+                "to_day",
+                "to_minute",
+                "text",
+                "source",
+                "importance",
+                "_rev"
+            ],
+            "additionalProperties": false
+        },
+        "AuthoredRow": {
+            "type": "object",
+            "x-table": "authored",
+            "x-key": [
+                "id"
+            ],
+            "properties": {
+                "table": {
+                    "const": "authored"
+                },
+                "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "run_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "session_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "seq": {
+                    "type": "integer",
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                },
+                "tick": {
+                    "type": "integer",
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                },
+                "day": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-pg-type": "integer",
+                    "x-not-null": false
+                },
+                "minute_of_day": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-pg-type": "integer",
+                    "x-not-null": false
+                },
+                "op": {
+                    "type": "string",
+                    "x-pg-type": "text",
+                    "x-not-null": true
+                },
+                "verb": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "kept": {
+                    "type": "boolean",
+                    "x-pg-type": "boolean",
+                    "x-not-null": true
+                },
+                "writer": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "result": {
+                    "x-pg-type": "jsonb",
+                    "x-not-null": true
+                },
+                "error": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "_rev": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                }
+            },
+            "required": [
+                "table",
+                "id",
+                "run_id",
+                "session_id",
+                "seq",
+                "tick",
+                "day",
+                "minute_of_day",
+                "op",
+                "verb",
+                "kept",
+                "writer",
+                "result",
+                "error",
+                "_rev"
+            ],
+            "additionalProperties": false
+        },
+        "ArtPieceRow": {
+            "type": "object",
+            "x-table": "art_pieces",
+            "x-key": [
+                "run_id",
+                "seq"
+            ],
+            "properties": {
+                "table": {
+                    "const": "art_pieces"
+                },
+                "run_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "session_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "seq": {
+                    "type": "integer",
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                },
+                "tick": {
+                    "type": "integer",
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                },
+                "day": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-pg-type": "integer",
+                    "x-not-null": false
+                },
+                "minute_of_day": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-pg-type": "integer",
+                    "x-not-null": false
+                },
+                "piece": {
+                    "type": "integer",
+                    "x-pg-type": "integer",
+                    "x-not-null": true
+                },
+                "medium": {
+                    "type": "string",
+                    "x-pg-type": "text",
+                    "x-not-null": true
+                },
+                "title": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-pg-type": "text[]",
+                    "x-not-null": true
+                },
+                "shows": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "palette": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-pg-type": "text[]",
+                    "x-not-null": true
+                },
+                "letters": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-pg-type": "text[]",
+                    "x-not-null": true
+                },
+                "ops": {
+                    "type": "integer",
+                    "x-pg-type": "integer",
+                    "x-not-null": true
+                },
+                "png_blob": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "commission": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "artist": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "_rev": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                }
+            },
+            "required": [
+                "table",
+                "run_id",
+                "session_id",
+                "seq",
+                "tick",
+                "day",
+                "minute_of_day",
+                "piece",
+                "medium",
+                "title",
+                "tags",
+                "shows",
+                "palette",
+                "letters",
+                "ops",
+                "png_blob",
+                "commission",
+                "artist",
+                "_rev"
+            ],
+            "additionalProperties": false
+        },
+        "CheckpointRow": {
+            "type": "object",
+            "x-table": "checkpoints",
+            "x-key": [
+                "id"
+            ],
+            "properties": {
+                "table": {
+                    "const": "checkpoints"
+                },
+                "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "run_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "session_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "tick": {
+                    "type": "integer",
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                },
+                "day": {
+                    "type": "integer",
+                    "x-pg-type": "integer",
+                    "x-not-null": true
+                },
+                "minute_of_day": {
+                    "type": "integer",
+                    "x-pg-type": "integer",
+                    "x-not-null": true
+                },
+                "reason": {
+                    "type": "string",
+                    "x-pg-type": "text",
+                    "x-not-null": true
+                },
+                "content_hash": {
+                    "type": "string",
+                    "x-pg-type": "text",
+                    "x-not-null": true
+                },
+                "git_sha": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "world_state": {
+                    "x-pg-type": "jsonb",
+                    "x-not-null": true
+                },
+                "agent_state": {
+                    "x-pg-type": "jsonb",
+                    "x-not-null": true
+                },
+                "watermarks": {
+                    "x-pg-type": "jsonb",
+                    "x-not-null": true
+                },
+                "created_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "x-pg-type": "timestamp with time zone",
+                    "x-not-null": true
+                },
+                "_rev": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                }
+            },
+            "required": [
+                "table",
+                "id",
+                "run_id",
+                "session_id",
+                "tick",
+                "day",
+                "minute_of_day",
+                "reason",
+                "content_hash",
+                "git_sha",
+                "world_state",
+                "agent_state",
+                "watermarks",
+                "created_at",
+                "_rev"
+            ],
+            "additionalProperties": false
+        },
+        "LineageRow": {
+            "type": "object",
+            "x-table": "run_lineage",
+            "x-key": [
+                "run_id",
+                "source_run_id",
+                "scope"
+            ],
+            "properties": {
+                "table": {
+                    "const": "run_lineage"
+                },
+                "run_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "source_run_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "scope": {
+                    "type": "string",
+                    "x-pg-type": "text",
+                    "x-not-null": true
+                },
+                "mode": {
+                    "type": "string",
+                    "x-pg-type": "text",
+                    "x-not-null": true
+                },
+                "note": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
+                "_rev": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                }
+            },
+            "required": [
+                "table",
+                "run_id",
+                "source_run_id",
+                "scope",
+                "mode",
+                "note",
+                "_rev"
+            ],
+            "additionalProperties": false
+        },
+        "RecordRow": {
+            "type": "object",
+            "x-table": "run_records",
+            "x-key": [
+                "run_id",
+                "seq"
+            ],
+            "properties": {
+                "table": {
+                    "const": "run_records"
+                },
+                "run_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "session_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "seq": {
+                    "type": "integer",
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                },
+                "tick": {
+                    "type": "integer",
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                },
+                "day": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-pg-type": "integer",
+                    "x-not-null": false
+                },
+                "minute_of_day": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-pg-type": "integer",
+                    "x-not-null": false
+                },
+                "kind": {
+                    "type": "string",
+                    "x-pg-type": "text",
+                    "x-not-null": true
+                },
+                "data": {
+                    "x-pg-type": "jsonb",
+                    "x-not-null": true
+                },
+                "_rev": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                }
+            },
+            "required": [
+                "table",
+                "run_id",
+                "session_id",
+                "seq",
+                "tick",
+                "day",
+                "minute_of_day",
+                "kind",
+                "data",
+                "_rev"
+            ],
+            "additionalProperties": false
+        },
+        "LetterRow": {
+            "type": "object",
+            "x-table": "letters",
+            "x-key": [
+                "id"
+            ],
+            "properties": {
+                "table": {
+                    "const": "letters"
+                },
+                "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "run_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": true
+                },
+                "direction": {
+                    "type": "string",
+                    "x-pg-type": "text",
+                    "x-not-null": true
+                },
+                "tick": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-pg-type": "bigint",
+                    "x-not-null": false
+                },
+                "day": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-pg-type": "integer",
+                    "x-not-null": false
+                },
+                "minute_of_day": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-pg-type": "integer",
+                    "x-not-null": false
+                },
+                "text": {
+                    "type": "string",
+                    "x-pg-type": "text",
+                    "x-not-null": true
+                },
+                "reply_to": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "format": "uuid",
+                    "x-pg-type": "uuid",
+                    "x-not-null": false
+                },
+                "written_at": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "format": "date-time",
+                    "x-pg-type": "timestamp with time zone",
+                    "x-not-null": false
+                },
+                "delivered_at": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "format": "date-time",
+                    "x-pg-type": "timestamp with time zone",
+                    "x-not-null": false
+                },
+                "read_at": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "format": "date-time",
+                    "x-pg-type": "timestamp with time zone",
+                    "x-not-null": false
+                },
+                "_rev": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "x-pg-type": "bigint",
+                    "x-not-null": true
+                }
+            },
+            "required": [
+                "table",
+                "id",
+                "run_id",
+                "direction",
+                "tick",
+                "day",
+                "minute_of_day",
+                "text",
+                "reply_to",
+                "written_at",
+                "delivered_at",
+                "read_at",
+                "_rev"
+            ],
+            "additionalProperties": false
+        }
+    }
+}

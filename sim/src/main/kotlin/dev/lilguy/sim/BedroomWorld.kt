@@ -60,6 +60,9 @@ class BedroomWorld private constructor(
     /** Habits he has finished at least once, for the novelty bonus. */
     private val tried = mutableSetOf<String>()
 
+    /** Things he bought for the room, to the tick he bought them, while they still feel new ([NewThings]). */
+    private val newThings = LinkedHashMap<String, Long>()
+
     /** Skill name to level, from 0 up. */
     private val skills = LinkedHashMap<String, Double>()
 
@@ -334,7 +337,7 @@ class BedroomWorld private constructor(
     }
 
     /** What one [spec] sells for, made at [level] in the skill its price grows with. */
-    private fun price(spec: ItemSpec, level: Double): Int? = spec.sellPrice?.let { (it * (1 + content.skills.pricePerLevel * level)).roundToInt() }
+    private fun price(spec: ItemSpec, level: Double): Int? = spec.priceAt(level)
 
     private fun piecePrice(p: Piece): Int = price(item(p.item), p.skill) ?: 0
 
@@ -403,6 +406,51 @@ class BedroomWorld private constructor(
     /** The first-time bonus, scaled by his curiosity. */
     private fun novelty(): Map<String, Double> = content.novelty!!.effects.mapValues { it.value * content.personality.curiosity }
 
+    /** Whether [a] is something he can be bored of ([BoredLock]): it wears thin, has mood or stimulation gains to wear, and doesn't feed energy or fullness. */
+    private fun boring(a: VerbSpec): Boolean {
+        if (a.isRoutine) return false
+        val gains = a.needEffects.entries + a.ops<RateOp>().flatMap { it.perHour.entries } + a.ops<BackgroundOp>().flatMap { it.rates.entries }
+        fun gains(n: Need) = gains.any { it.key == n.id && it.value > 0 }
+        return (gains(Need.Mood) || gains(Need.Stimulation)) && !gains(Need.Energy) && !gains(Need.Fullness)
+    }
+
+    /** [a]'s freshness when he's bored and it's worn past [BoredLock.worn], or null. Unbound (null [args]), a verb that wears per item leaves it to each binding. */
+    private fun boredOf(a: VerbSpec, args: Map<String, String>?): Double? {
+        val lock = content.habituation?.boredLock ?: return null
+        if (needs[Need.Stimulation] >= lock.below || !boring(a)) return null
+        if (args == null && a.args.isNotEmpty() && a.wear != Wear.Verb) return null
+        // What he's never done is new, even when it wears with something he's tired of (a new book, read worn thin).
+        if (isNew(a, args.orEmpty())) return null
+        return freshness(a, args.orEmpty()).takeIf { 1 - it >= lock.worn }
+    }
+
+    /**
+     * Why boredom refuses [a] now, or null. Work stays open while he can't afford anything new, since
+     * buying something new is the way out of boredom and work is the way to the money.
+     */
+    private fun boredLock(a: VerbSpec, args: Map<String, String>?): String? {
+        val fresh = boredOf(a, args) ?: return null
+        if (a.work && !canAffordNew()) return null
+        return "you're bored, and you've done it a lot lately (gains at ${percent(fresh)}, stimulation ${needs.level(Need.Stimulation)})"
+    }
+
+    /** Whether the shop has something new to him that he can afford: a thing for the room he likes, or something for a verb he hasn't done. */
+    private fun canAffordNew(): Boolean = shopItems().any { spec ->
+        heldBack(spec) == null && ledger.canAfford(spec.price!!) && (newThingRate(spec) > 0 || usesOf(spec).any { isNew(it) })
+    }
+
+    /** What [spec], bought at [since], feeds stimulation an hour now ([NewThings]): 0 out of sight, once it's old, or if he doesn't like it. */
+    private fun newThingRate(spec: ItemSpec, since: Long = ticks): Double {
+        val t = content.novelty?.things ?: return 0.0
+        if (spec.slot == null) return 0.0
+        val left = 1 - (ticks - since).toDouble() / clock.ticks(60) / 24 / t.days
+        return if (left <= 0) 0.0 else value(spec).coerceAtLeast(0.0) * t.stimulationPerValue * content.personality.curiosity * left
+    }
+
+    /** "stimulation +2/h while you're awake, fading over 3 days". */
+    private fun newThingText(rate: Double): String =
+        "stimulation ${signed((rate * 10).roundToInt() / 10.0)}/h while you're awake, fading over ${signed(content.novelty!!.things!!.days).removePrefix("+")} days"
+
     /** [d] as paid at [fresh]: gains in mood and stimulation shrink with wear; costs and other needs don't. */
     private fun paid(need: Need, d: Double, fresh: Double): Double = if (d > 0 && (need == Need.Mood || need == Need.Stimulation)) d * fresh else d
 
@@ -441,6 +489,7 @@ class BedroomWorld private constructor(
         // The thing it happens at first (the record player before a record), since the shop holds the rest back until he has it.
         if (args == null) a.args.entries.sortedBy { it.key !in a.at }.firstOrNull { countTag(it.value, extra) == 0 }?.let { return "needs ${wanted(it.value)}" }
         if (a.noRepeat && (justDid as? Intent.Do)?.activity == a.id) return "you just did; do something else first"
+        boredLock(a, args)?.let { return it }
         val b = Bound(a, args.orEmpty(), fresh = 1.0, extra = extra)
         a.effects.firstNotNullOfOrNull { it.lockReason(ops, b) }?.let { return it }
         val blocks = a.block + byDay(a)?.block.orEmpty() + if (a.work) content.needs.workFloor else emptyList()
@@ -775,7 +824,8 @@ class BedroomWorld private constructor(
         ledger.debit(ticks, price, "bought $what")
         add(spec.id, spec.pack)
         val comfortNote = if (comfortOf(spec) != 0) "; comfort ${comfort()}, so mood settles toward ${moodTarget().toInt()}" else ""
-        return "bought $what for $$price (money $${ledger.balance})$comfortNote"
+        val newNote = newThingRate(spec).takeIf { it > 0 }?.let { newThings[spec.id] = ticks; "; new: ${newThingText(it)}" } ?: ""
+        return "bought $what for $$price (money $${ledger.balance})$comfortNote$newNote"
     }
 
     private fun quantity(id: String, n: Int): String {
@@ -810,7 +860,9 @@ class BedroomWorld private constructor(
         if (d == null || d.activity.effects.all { it.awake }) {
             rate(Need.Energy, r.awakeEnergyPerHour, "awake")
             rate(Need.Stimulation, r.stimulationPerHour * content.personality.curiosity, "awake")
+            newThings.forEach { (id, since) -> rate(Need.Stimulation, newThingRate(item(id), since), "new: ${item(id).name}") }
         }
+        newThings.entries.removeIf { (id, since) -> count(id) == 0 || newThingRate(item(id), since) <= 0 }
         val asleep = d != null && d.activity.effects.any { !it.awake }
         rate(Need.Fullness, if (asleep) r.asleepFullnessPerHour ?: r.fullnessPerHour else r.fullnessPerHour, "hunger")
         content.frustration?.let { rate(Need.Frustration, it.perHour, "fading") }
@@ -824,6 +876,93 @@ class BedroomWorld private constructor(
             if (gap != 0.0) needs.change(ticks, Need.Mood, sign(gap) * min(r.moodDriftPerHour / 60, abs(gap)), "drift toward ${moodTarget().toInt()}", rate = true)
         }
     }
+
+    // --- checkpoints ----------------------------------------------------------------------------
+
+    /**
+     * True when the world can be saved: nothing running or queued, no activity, no authored result,
+     * basket or commission wording on its way in. A decision point after waking is such a moment.
+     * Authored views still waiting are saved as they are: whether a result is still coming is the
+     * agent side's to say (with no handler for an op, none ever is).
+     */
+    val canExport: Boolean
+        get() = atRest && doing == null && notes.isEmpty() && deliveries.isEmpty() && staging.isEmpty() && baskets.isEmpty()
+
+    /** Everything a [restore] needs to carry on from here. Only when [canExport]; call on the sim thread. */
+    fun exportState(): BedroomState {
+        check(canExport) { "can't save the bedroom with something in flight" }
+        return BedroomState(
+            grid = gridState(),
+            money = ledger.balance,
+            needs = Need.entries.associate { it.id to needs[it] },
+            needsPending = needs.pending().map { (k, d) -> BedroomState.PendingNeed(k.first.id, k.second, d) },
+            owned = LinkedHashMap(owned),
+            skills = LinkedHashMap(skills),
+            chapters = chapters.toMap(),
+            known = known.sorted(),
+            wear = wear.mapValues { (_, w) -> BedroomState.Wear(w.first, w.second) },
+            tried = tried.sorted(),
+            newThings = LinkedHashMap(newThings),
+            done = done,
+            music = music?.let { BedroomState.Music(it.itemId, it.on, it.spec.name, it.endTick, it.fresh) },
+            savingFor = savingFor,
+            pieces = pieces.map { BedroomState.Piece(it.id, it.item, it.commission, it.skill, it.state.name.lowercase(), it.title, it.tags, it.shows) },
+            commission = commission?.let { BedroomState.Commission(it.id, it.adjective, it.noun, it.wants, it.until, it.request, it.fulfilled) },
+            commissions = commissions,
+            authored = authored.toList(),
+            authoredCount = authoredCount,
+        )
+    }
+
+    /** Overwrites this fresh world with [s]; returns what it had to drop because the content no longer has it. */
+    private fun load(s: BedroomState): List<String> {
+        val dropped = mutableListOf<String>()
+        fun has(id: String, what: String) = (content.item(id) != null).also { if (!it) dropped += "$what '$id' is no longer in the content" }
+        owned.clear()
+        pieces.clear()
+        s.owned.forEach { (id, n) -> if (has(id, "item")) owned[id] = n }
+        s.pieces.forEach { p ->
+            if (has(p.item, "piece ${p.id}'s item")) pieces += Piece(p.id, p.item, p.commission, p.skill).also {
+                it.state = PieceState.valueOf(p.state.replaceFirstChar(Char::uppercase))
+                it.title = p.title
+                it.tags = p.tags
+                it.shows = p.shows
+            }
+        }
+        ledger.restore(s.money)
+        needs.restore(
+            Need.entries.associateWith { n -> s.needs[n.id] ?: needs[n] },
+            s.needsPending.mapNotNull { p -> Need.entries.firstOrNull { it.id == p.need }?.let { (it to p.reason) to p.delta } }.toMap(),
+        )
+        skills.clear(); skills.putAll(s.skills)
+        chapters.clear()
+        s.chapters.forEach { (id, n) -> if (content.book(id) != null) chapters[id] = n else dropped += "book '$id' is no longer in the content" }
+        known = s.known.filter { (it in content.taught).also { ok -> if (!ok) dropped += "taught '$it' is no longer taught" } }.toSet()
+        knownCache = null
+        wear.clear(); s.wear.forEach { (k, w) -> wear[k] = w.level to w.tick }
+        tried.clear(); tried.addAll(s.tried)
+        newThings.clear(); s.newThings.forEach { (id, t) -> if (has(id, "new thing")) newThings[id] = t }
+        done = s.done
+        music = s.music?.let { m ->
+            val op = content.verbs.flatMap { it.effects }.filterIsInstance<BackgroundOp>().firstOrNull { it.name == m.op }
+            if (op == null || content.item(m.item) == null) null.also { dropped += "music '${m.op}' of '${m.item}' is no longer in the content" }
+            else Music(m.item, m.on, op, m.endTick, m.fresh)
+        }
+        savingFor = s.savingFor?.takeIf { has(it, "saving for") }
+        commission = s.commission?.let { Commission(it.id, it.adjective, it.noun, it.wants, it.until).also { c -> c.request = it.request; c.fulfilled = it.fulfilled } }
+        commissions = s.commissions
+        authored.clear(); authored.addAll(s.authored)
+        authoredCount = s.authoredCount
+        lastPlanned = s.grid.last?.intent
+        version++
+        options = null
+        syncHolding()
+        restoreGrid(s.grid)
+        return dropped
+    }
+
+    /** A world [restore]d from a checkpoint, and what of it the content no longer has. */
+    class Restored(val world: BedroomWorld, val dropped: List<String>)
 
     // --- what the agent and the renderer see ----------------------------------------------------
 
@@ -868,6 +1007,8 @@ class BedroomWorld private constructor(
             parts += "done a lot lately: gains at ${percent(fresh)}" + if (stale < 0) ", and stimulation $stale" else ""
         }
         if (isNew(a, args)) parts += "new to you: " + novelty().entries.joinToString { (need, d) -> "$need ${signed(d.roundToInt().toDouble())}" }
+        // Offered while bored of it: only work, while he can't afford anything new.
+        if (boredOf(a, args) != null) parts += "you're bored of it, but you can't afford anything new yet, so you keep at it"
         return parts.joinToString("; ")
     }
 
@@ -927,6 +1068,7 @@ class BedroomWorld private constructor(
         val comfort = comfortOf(spec)
         if (comfort > 0) parts += "comfort +$comfort: mood settles $comfort higher"
         if (comfort < 0) parts += "comfort $comfort: you don't like it, so mood settles ${-comfort} lower"
+        newThingRate(spec).takeIf { it > 0 }?.let { parts += "new to you: ${newThingText(it)}" }
         if (spec.qualities.isNotEmpty()) parts += spec.qualities.keys.joinToString(", ")
         // What owning it opens up: items the shop holds back until he has this.
         shopItems().filter { other -> other.id != spec.id && heldBack(other) != null && usesOf(other).any { a -> placesOf(a).any { it in spec.names } } }
@@ -1129,6 +1271,27 @@ class BedroomWorld private constructor(
             /** Picks the commissions; the same seed gives the same requests. */
             seed: Long = 0,
         ): BedroomWorld = build(content.unlocked(granted), ticksPerMinute, characterId, seed)
+
+        /**
+         * A world made as [create] makes it, then set to [state]: a checkpoint carried on. Ids the
+         * content no longer has are dropped and listed ([Restored.dropped]); with [strict], any drop
+         * is refused instead.
+         */
+        fun restore(
+            state: BedroomState,
+            content: BedroomContent = BedroomContent.default(),
+            ticksPerMinute: Int = GameClock.DEFAULT_TICKS_PER_MINUTE,
+            characterId: String = "guy",
+            granted: Set<String> = emptySet(),
+            seed: Long = 0,
+            strict: Boolean = false,
+        ): Restored {
+            require(state.version == BedroomState.VERSION) { "checkpoint is version ${state.version}; this build reads ${BedroomState.VERSION}" }
+            val world = create(content, ticksPerMinute, characterId, granted, seed)
+            val dropped = world.load(state)
+            require(!strict || dropped.isEmpty()) { "checkpoint doesn't match the content: ${dropped.joinToString("; ")}" }
+            return Restored(world, dropped)
+        }
 
         private fun build(content: BedroomContent, ticksPerMinute: Int, characterId: String, seed: Long): BedroomWorld {
             val rows = content.room.rows

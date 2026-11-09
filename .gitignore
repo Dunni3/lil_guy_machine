@@ -30,3 +30,8 @@ runs/
 
 # Local-only notes from agents and Ian
 research_notes/
+
+# Python (server/)
+__pycache__/
+.pytest_cache/
+.venv/

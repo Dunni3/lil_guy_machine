@@ -4,6 +4,7 @@ import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.math.MathUtils
 import com.badlogic.gdx.math.Matrix4
+import com.badlogic.gdx.math.Quaternion
 import com.badlogic.gdx.math.Vector3
 import com.badlogic.gdx.utils.Disposable
 import kotlin.math.abs
@@ -47,6 +48,14 @@ class Blob : Disposable {
         var workFlat = true
         /** How far he steps or slides toward the work, in metres. */
         var workSlide = 0f
+        /** At a piece played out stroke by stroke ([PaintScene]): what he's doing at it, and for how long; null to dab at random. */
+        var art: PaintScene.Phase? = null
+        var artTime = 0f
+        /** Where his tool's tip touches the work during a stroke, in world space, and whether it's lifted off. */
+        val tip = Vector3()
+        var tipLifted = false
+        /** Painting, he holds a brush and a palette; drawing at the desk, a crayon. */
+        var brush = true
     }
 
     /** One moving part: its model and where it is this frame. */
@@ -81,6 +90,12 @@ class Blob : Disposable {
     private val workDir = Vector3()
     private val leanAxis = Vector3()
     private var slideTo = 0f
+    /** 0..1, how far he has stepped back from the work to look at it, and his head's tilt (degrees) as he does. */
+    private var back = 0f
+    private var tilt = 0f
+    private val tipLocal = Vector3()
+    private val toolDir = Vector3()
+    private val turn = Quaternion()
 
     /** The current expression, after blinking. */
     var expression = Face.Neutral
@@ -97,6 +112,15 @@ class Blob : Disposable {
         private set
     /** Where the [held] thing goes, in his own (scaled) frame: a book's bottom centre, the guitar's body. */
     val heldAt = Matrix4()
+
+    /** True while he makes a piece ([Pose.art]): the brush or crayon in his working hand goes at [toolAt] ([RoomModels.tool]). */
+    var toolShown = false
+        private set
+    val toolAt = Matrix4()
+    /** True while he paints: the palette in his other hand goes at [paletteAt]. */
+    var paletteShown = false
+        private set
+    val paletteAt = Matrix4()
 
     private val root = Matrix4()
     private val inverse = Matrix4()
@@ -160,6 +184,9 @@ class Blob : Disposable {
         // his work, more with something in his hands to show.
         var target = pose.facing + 90f
         if (!pose.moving) target += angleDiff(0f, target) * when {
+            pose.art == PaintScene.Phase.Flourish -> PLAY_HELD
+            // Considering the piece, he glances round, so the thinking shows.
+            pose.art == PaintScene.Phase.Ponder -> PLAY_PONDER
             pose.workAt != null -> PLAY_AT_WORK
             held != Held.None -> PLAY_HELD
             else -> PLAY_TO_CAMERA
@@ -182,7 +209,8 @@ class Blob : Disposable {
         blinkLeft -= dt
         expression = when {
             asleep -> Face.Asleep
-            pose.thinking || pose.doing == "think" -> Face.Thinking
+            pose.art == PaintScene.Phase.Flourish || pose.art == PaintScene.Phase.Admire -> Face.Happy
+            pose.thinking || pose.doing == "think" || pose.art == PaintScene.Phase.Ponder -> Face.Thinking
             pose.energy < 20 -> Face.Tired
             pose.mood < 30 -> Face.Sad
             pose.mood >= 65 || pose.music || pose.doing == "play_guitar" -> Face.Happy
@@ -198,7 +226,9 @@ class Blob : Disposable {
         if (pose.moving) squash -= 0.07f * cos(2 * walkPhase)
         if (pose.doing == "eat" && !pose.moving) squash += 0.04f * sin(time * 10f)
         val stretchXZ = 1f / sqrt(squash)
-        val hop = if (pose.moving) abs(sin(walkPhase)) * 0.07f else 0f
+        var hop = if (pose.moving) abs(sin(walkPhase)) * 0.07f else 0f
+        // A piece done: two little hops of joy.
+        if (pose.art == PaintScene.Phase.Flourish && pose.artTime < FLOURISH_HOPS * HOP) hop += HOP_HEIGHT * abs(sin(pose.artTime * MathUtils.PI / HOP))
 
         // He sleeps propped on his pillow, leaning back far enough that his face still shows.
         lie = MathUtils.lerp(lie, if (asleep) 1f else 0f, (dt * 4f).coerceAtMost(1f))
@@ -213,14 +243,23 @@ class Blob : Disposable {
         if (work != null) workDir.set(work.x - pose.x, 0f, work.z - pose.z).nor()
         val stroke = strokeAt(time)
         if (work != null) slideTo = pose.workSlide
-        val slide = slideTo * settle
-        val lean = settle * (if (pose.workFlat) LEAN_FLAT + 3f * stroke.nod else LEAN_UPRIGHT)
+        // Between strokes, and with the piece done, he steps back to look at it, his head on one side.
+        val looking = work != null && (pose.art == PaintScene.Phase.Ponder || pose.art == PaintScene.Phase.Admire || pose.art == PaintScene.Phase.Flourish)
+        back = MathUtils.lerp(back, if (looking) 1f else 0f, (dt * 2.5f).coerceAtMost(1f))
+        tilt = MathUtils.lerp(tilt, if (work != null && pose.art == PaintScene.Phase.Ponder) TILT * sin(pose.artTime * 1.1f + 0.6f) else 0f, (dt * 3f).coerceAtMost(1f))
+        val slide = (slideTo - STEP_BACK * back) * settle
+        val lean = settle * when {
+            pose.art == PaintScene.Phase.Stroke -> if (pose.workFlat) LEAN_FLAT + 2f else LEAN_UPRIGHT + 4f
+            pose.art != null -> -3f * back
+            pose.workFlat -> LEAN_FLAT + 3f * stroke.nod
+            else -> LEAN_UPRIGHT
+        }
 
         root.setToTranslation(pose.x + workDir.x * slide, pose.standY + hop, pose.z + workDir.z * slide + lie * 0.08f)
             .rotate(leanAxis.set(workDir.z, 0f, -workDir.x), lean)
             .rotate(Vector3.Y, if (asleep) MathUtils.lerp(yaw, 0f, lie) else yaw)
             .rotate(Vector3.X, -38f * lie)
-            .rotate(Vector3.Z, sway)
+            .rotate(Vector3.Z, sway + tilt)
             .rotate(Vector3.X, nod)
             .scale(SCALE, SCALE, SCALE)
         val m = measure
@@ -271,13 +310,16 @@ class Blob : Disposable {
                 else -> ay += if (pose.music) 0.03f * sin(time * 5.2f + i * MathUtils.PI) else 0.008f * sin(time * 2.3f + i)
             }
             if (work != null) {
-                workHand(work, pose, stroke, side, i == hand)
+                if (pose.art != null) artHand(pose, side, i == hand) else workHand(work, pose, stroke, side, i == hand)
                 ax = MathUtils.lerp(ax, hold.x, settle)
                 ay = MathUtils.lerp(ay, hold.y, settle)
                 az = MathUtils.lerp(az, hold.z, settle)
             }
             arms[i].transform.set(root).translate(ax, ay, az)
+            if (work != null && pose.art != null) props(pose, i == hand, ax, ay, az)
         }
+        toolShown = work != null && pose.art != null
+        paletteShown = toolShown && pose.brush && !pose.workFlat
 
         val shrink = SCALE * (1f - hop * 2f)
         shadowTransform.setToTranslation(pose.x, pose.standY + SHADOW_LIFT, pose.z).scale(shrink * shadowWidth * SHADOW_W, 1f, shrink * SHADOW_D)
@@ -361,6 +403,76 @@ class Blob : Disposable {
         }
         toLocal(hold)
         reach(side)
+    }
+
+    /**
+     * Sets [hold] to where hand [side] goes while he makes a piece played out stroke by stroke
+     * ([Pose.art]), in his own frame. The [working] hand holds the tool: its tip on the cell going on
+     * during a stroke, at the palette for a dip, at his chin or held up to size the picture while he
+     * considers it, raised high in the flourish, lowered as he admires it. The other holds the palette
+     * (painting) or the page down (drawing).
+     */
+    private fun artHand(pose: Pose, side: Float, working: Boolean) {
+        val t = pose.artTime
+        val shoulder = FEET + measure.bottom + measure.armY
+        if (!working) {
+            if (pose.workFlat) {
+                hold.set(pose.workAt!!).add(0f, 0.02f, 0f)
+                toLocal(hold)
+                hold.x = side * 0.17f
+            } else palette(side)
+            return reach(side)
+        }
+        when (pose.art!!) {
+            PaintScene.Phase.Stroke -> {
+                // His hand a tool's length back from the tip: off the surface and a little toward him.
+                tipLocal.set(pose.tip)
+                if (pose.tipLifted) if (pose.workFlat) tipLocal.y += LIFT else tipLocal.z += LIFT
+                if (pose.workFlat) toolDir.set(0f, 0.7f, 0f) else toolDir.set(0f, 0.18f, 0.7f)
+                toolDir.sub(workDir.x * 0.4f, 0f, workDir.z * 0.4f).nor()
+                hold.set(tipLocal).mulAdd(toolDir, RoomModels.TOOL_TIP * SCALE)
+                toLocal(tipLocal)
+                toLocal(hold)
+            }
+            PaintScene.Phase.Dip -> {
+                // Over to the palette in his other hand, and round in the paint.
+                palette(-side)
+                hold.add(side * 0.07f + 0.025f * cos(t * 13f), 0.07f + 0.04f * abs(sin(t * 6.5f)), 0.02f * sin(t * 13f))
+            }
+            PaintScene.Phase.Ponder -> {
+                if (t % SIZE_UP_EVERY > SIZE_UP_EVERY - SIZE_UP) {
+                    // The painter's look: the brush held up at arm's length against the picture.
+                    hold.set(pose.workAt!!).add(0f, 0.12f, 0f)
+                    toLocal(hold)
+                } else {
+                    // Brush to his chin, tapping now and then.
+                    val tap = if (t % 3f < 1.2f) 0.014f * sin(t * 11f) else 0f
+                    hold.set(side * 0.13f, shoulder + 0.13f + tap, 0.25f)
+                }
+            }
+            PaintScene.Phase.Flourish -> hold.set(side * (measure.armX + 0.06f + 0.05f * sin(t * 15f)), shoulder + 0.46f, 0.16f)
+            PaintScene.Phase.Admire -> hold.set(side * (measure.armX + 0.05f), shoulder - 0.05f + 0.01f * sin(t * 2f), 0.13f)
+        }
+        reach(side)
+    }
+
+    /**
+     * Places the tool in the working hand at (x, y, z) in his own frame, its tip toward the work in a
+     * stroke and held up or down otherwise, and the palette in the other hand.
+     */
+    private fun props(pose: Pose, working: Boolean, x: Float, y: Float, z: Float) {
+        if (!working) {
+            paletteAt.set(root).translate(x, y - 0.035f, z + 0.03f).rotate(Vector3.X, 14f)
+            return
+        }
+        when (pose.art!!) {
+            PaintScene.Phase.Stroke -> toolDir.set(tipLocal).sub(x, y, z)
+            PaintScene.Phase.Dip -> toolDir.set(0f, -1f, 0.35f)
+            PaintScene.Phase.Ponder -> toolDir.set(0.15f, 1f, 0.35f)
+            PaintScene.Phase.Flourish -> toolDir.set(0.3f, 1f, 0.15f)
+            PaintScene.Phase.Admire -> toolDir.set(0f, -0.6f, 1f)
+        }
+        toolAt.set(root).translate(x, y, z).rotate(turn.setFromCross(Vector3.Z, toolDir.nor()))
     }
 
     /** Where hand [side] holds the palette, out to his side and low, in his own frame. */
@@ -496,6 +608,7 @@ class Blob : Disposable {
         const val LEAN_FLAT = 8f
         const val LEAN_UPRIGHT = 3f
         const val PLAY_AT_WORK = 0.25f
+        const val PLAY_PONDER = 0.55f
         const val REACH = 0.48f
         /** Seconds a stroke takes, and the part of it his hand is down. */
         const val STROKE = 0.85f
@@ -504,6 +617,17 @@ class Blob : Disposable {
         const val LINE = 1.6f
         /** Every this many strokes, he dips his brush in the palette. */
         const val PALETTE_EVERY = 6
+        /** Considering a piece: how far he steps back (metres), how far his head tips (degrees), and how often (seconds) he holds the brush up to size it and for how long. */
+        const val STEP_BACK = 0.22f
+        const val TILT = 9f
+        const val SIZE_UP_EVERY = 7f
+        const val SIZE_UP = 1.8f
+        /** How far the tool's tip lifts off the work between cells (metres). */
+        const val LIFT = 0.03f
+        /** The flourish's hops: how many, seconds each, and how high (metres). */
+        const val FLOURISH_HOPS = 2
+        const val HOP = 0.42f
+        const val HOP_HEIGHT = 0.09f
         /** Done by hand at a page, these write in lines rather than sketch: the journal. */
         val WRITING = setOf("journal")
         /** A held book: from his shoulders, how high and how far out its bottom is, and where his hands hold it. */

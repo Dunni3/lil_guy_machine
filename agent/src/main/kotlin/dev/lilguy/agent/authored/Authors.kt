@@ -122,8 +122,8 @@ class Authors(handlers: List<AuthorHandler<*>>, private val scope: CoroutineScop
     /** True while a call for [handler] is running or waiting to be kept. */
     fun busy(handler: String): Boolean = pending.any { it.handler.name == handler && it.job?.isActive == true } || committing.any { it.first == handler && it.second.isActive }
 
-    /** The result of the latest [handler] call not yet kept or thrown away, once the model has sent it. Readable from any thread. */
-    fun inProgress(handler: String): Any? = pending.lastOrNull { it.handler.name == handler }?.result
+    /** True when no authored call is out or waiting for its verb to end: a checkpoint can be taken. */
+    val quiet: Boolean get() = pending.isEmpty() && inline.isEmpty() && committing.none { it.second.isActive }
 
     /** True while a `before` call is out or a `during` call has outlasted its verb: the clock should wait for it. */
     val holding: Boolean get() = inline.isNotEmpty() || committing.any { it.second.isActive }

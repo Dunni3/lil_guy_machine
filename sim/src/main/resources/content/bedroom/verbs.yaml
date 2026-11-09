@@ -17,7 +17,7 @@
 # picture rail), `background` (keeps going while he does anything else), `sleep`, and `enjoy`
 # (an argument's value to him, as mood), `progress` (the next chapter of the book bound to an
 # argument, raising the book's skills, library.yaml) and `practice` (raises
-# skills; the verb's mood and stimulation gains grow with them). Where an op names an item it can
+# skills; the verb's mood gains grow with them). Where an op names an item it can
 # name an argument instead.
 #
 # Two ops are authored: a model writes their result, and a handler in the agent layer runs it

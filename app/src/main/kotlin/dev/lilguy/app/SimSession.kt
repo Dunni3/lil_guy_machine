@@ -1,6 +1,23 @@
 package dev.lilguy.app
 
 import dev.lilguy.agent.AgentRuntime
+import dev.lilguy.agent.Carried
+import dev.lilguy.agent.LifeRecorder
+import dev.lilguy.agent.carried
+import dev.lilguy.agent.memory.MemoryStore
+import dev.lilguy.agent.memory.RunMemoryStore
+import dev.lilguy.runlog.Ids
+import dev.lilguy.runlog.RowJson
+import dev.lilguy.runlog.RunRecorder
+import dev.lilguy.runlog.RunRow
+import dev.lilguy.runlog.SessionRow
+import dev.lilguy.runlog.SyncWorker
+import dev.lilguy.sim.Personality
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlin.time.Duration.Companion.seconds
 import dev.lilguy.agent.DecisionLog
 import dev.lilguy.agent.Scenario
 import dev.lilguy.agent.TokenLedger
@@ -51,6 +68,8 @@ import kotlin.time.Duration
 class SimSession(
     private val scope: CoroutineScope,
     val setup: ModelSetup,
+    /** Where runs are recorded and synced from; null records nothing. */
+    private val db: RunDatabase? = null,
 ) {
     enum class RunState { Ready, Running, Paused, Ended }
 
@@ -162,8 +181,22 @@ class SimSession(
     private var endedOnDays = false
     private val ticksPerDay: Long get() = GameClock.MINUTES_PER_DAY.toLong() * ticksPerMinute
 
+    /** This run's rows in the run database, or null without one. */
+    var life: LifeRecorder? = null
+        private set
+    private var recorder: RunRecorder? = null
+
+    /** Sends the run database's rows to the server in the background, for as long as the app runs. */
+    val sync: SyncWorker? = db?.let { d -> d.sync?.let { SyncWorker(d.store, it, client = "${d.platform}@${d.host ?: "?"}") } }
+
+    /** Why the run asked to be resumed couldn't be, if it couldn't. */
+    var resumeError: String? = null
+        private set
+
     init {
-        setUp()
+        sync?.start(scope)
+        val carried = db?.let { d -> d.resume?.let { id -> runCatching { carried(d.store, id) }.onFailure { resumeError = it.message }.getOrNull() } }
+        setUp(carried)
     }
 
     /** Starts a ready run, or resumes a paused one. */
@@ -226,6 +259,7 @@ class SimSession(
         }
         holding = state == RunState.Running && mustHold()
         if (holding) accumulator = accumulator.coerceAtMost(tickSeconds())
+        if (lingerUpdates > 0) lingerUpdates--
     }
 
     /** Runs [ticks] ticks by hand; only while paused, so the clock can't run away. */
@@ -239,18 +273,22 @@ class SimSession(
 
     fun dispose() = tearDown()
 
-    private fun setUp() {
+    private fun setUp(carried: Carried? = null) {
         run++
+        if (carried != null) settings = settings.copy(ticksPerMinute = carried.run.ticksPerMinute)
         starts += settings
         val thisRun = run
         val ledger = TokenLedger()
+        val runId = carried?.run?.id ?: Ids.uuid7()
+        val rec = db?.let { RunRecorder(it.store, runId, Ids.uuid7()) }
+        val lr = rec?.let(::LifeRecorder)
+        val memStore = rec?.let { RunMemoryStore(db!!.store, it, RunMemoryStore.lineage(db.store, carried?.resume?.checkpoint?.id)) }
         val rawModel = setup.create()
         val m = ledger.meter(rawModel, TokenPurpose.Decision, setup.prices.decision)
         val runLog = setup.logFor(run, m.id)
         val runInbox = ConcurrentLinkedQueue<AgentRuntime.DecisionRecord>()
         val rs = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job]))
-        val store = InMemoryStore()
-        val runId = "run-$run"
+        val store: MemoryStore = memStore ?: InMemoryStore()
         val w = setup.memoryModel?.invoke()
         val summarizer = w?.let {
             Summarizer(
@@ -262,15 +300,16 @@ class SimSession(
         val jw = setup.writerModel?.invoke()
         val rawScorer = setup.recallScorer?.invoke()
         val scorer = rawScorer?.let { MemoryScorer(ledger.meter(it, TokenPurpose.Recall, setup.prices.recall), ledger.meter(it, TokenPurpose.Significance, setup.prices.recall), onFailure = { e -> if (run == thisRun) writerError = "scoring: ${e.message ?: e}" }) }
-        val personality = if (setup.scenario == Scenario.Bedroom) BedroomContent.default().personality else null
+        val personality = if (setup.scenario == Scenario.Bedroom) carried?.personality ?: BedroomContent.default().personality else null
         val selfModeler = if (w == null || personality == null) null else jw?.let {
             SelfModeler(ledger.meter(it, TokenPurpose.SelfModel, setup.prices.writer), store, runId, personality.core.you, personality.selfSeed)
         }
         // The deciding model draws his art, pick by pick; the writer writes his thoughts and words each day's request.
-        val studio = if (!setup.paints || setup.scenario != Scenario.Bedroom) null else ArtStudio(
-            Painter(ledger.meter(rawModel, TokenPurpose.Art, setup.prices.decision)), store, runId, rs, setup.logDir?.let { d -> File(d, "art-%03d".format(thisRun)) },
+        val drawer = setup.painter?.invoke() ?: rawModel.takeIf { setup.paints }
+        val studio = if (drawer == null || setup.scenario != Scenario.Bedroom) null else ArtStudio(
+            Painter(ledger.meter(drawer, TokenPurpose.Art, setup.prices.decision)), store, runId, rs, setup.logDir?.let { d -> File(d, "art-%03d".format(thisRun)) },
             voice = jw?.let { CommissionVoice(ledger.meter(it, TokenPurpose.Art, setup.prices.writer)) },
-        ) { drawing -> runCatching { runLog?.write(drawing) } }
+        ) { drawing -> runCatching { runLog?.write(drawing) }; lr?.drawing(drawing) }
         memory = AgentMemory(
             store, runId, summarizer, scope = rs, scorer = scorer, selfModeler = selfModeler,
             onSelf = { r -> if (run == thisRun && r.error != null) writerError = "self-model: ${r.error}" },
@@ -283,19 +322,54 @@ class SimSession(
             },
             studio = studio,
             reader = jw?.takeIf { setup.scenario == Scenario.Bedroom }?.let { Reader(ledger.meter(it, TokenPurpose.Reading, setup.prices.writer)) },
-            onAnswer = { a -> runCatching { runLog?.write(a) } },
+            onAnswer = { a -> runCatching { runLog?.write(a) }; lr?.answer(a) },
             // A shopping trip's picks: the writer with reasons, falling back to the deciding model's one pick.
             shopper = if (setup.scenario != Scenario.Bedroom) null else {
                 val picker = rawModel.takeIf { setup.paints }?.let { ledger.meter(it, TokenPurpose.Shop, setup.prices.decision) }
                 jw?.let { Shopper(ledger.meter(it, TokenPurpose.Shop, setup.prices.writer), fallback = picker) } ?: picker?.let { Shopper(it) }
             },
-            onTrip = { t -> runCatching { runLog?.write(t) } },
+            onTrip = { t -> runCatching { runLog?.write(t) }; lr?.trip(t) },
         )
-        val (gw, r) = setup.scenario.create(m, setup.timeout, settings.ticksPerMinute, longTerm = memory, startItems = setup.startItems) {
+        val (gw, r) = setup.scenario.create(
+            m, setup.timeout, settings.ticksPerMinute, longTerm = memory, startItems = setup.startItems,
+            personality = carried?.personality, from = carried?.resume?.world,
+        ) {
             runCatching { runLog?.write(it) }
+            lr?.decision(it)
             runInbox.add(it)
         }
         ledger.attach({ gw.tick }, (gw as? BedroomWorld)?.clock)
+        carried?.resume?.agent?.let { a ->
+            r.restore(a.runtime)
+            a.memory?.let(memory::restore)
+        }
+        lr?.let { l ->
+            val d = db!!
+            val content = LifeRecorder.content().takeIf { setup.scenario == Scenario.Bedroom }
+            val runRow = carried?.run?.copy(endedAt = null, endReason = null) ?: RunRow(
+                id = runId, scenario = setup.scenario.id, platform = d.platform, host = d.host, gitSha = d.gitSha, gitDirty = d.gitDirty,
+                contentHash = content?.hash, seed = 0, ticksPerMinute = settings.ticksPerMinute,
+                personality = personality?.let { RowJson.encodeToJsonElement(Personality.serializer(), it) },
+                models = buildJsonObject {
+                    put("decision", buildJsonObject { put("id", m.id); setup.prices.decision?.let { put("price_in", it.inPerMillion); put("price_out", it.outPerMillion) } })
+                    w?.let { put("memory", buildJsonObject { put("id", it.id) }) }
+                    jw?.let { put("writer", buildJsonObject { put("id", it.id) }) }
+                    rawScorer?.let { put("recall", buildJsonObject { put("id", it.id) }) }
+                },
+                settings = buildJsonObject {
+                    settings.days?.let { put("days", it) }
+                    put("speed", settings.speed)
+                    put("quiet", settings.quiet)
+                    if (setup.startItems.isNotEmpty()) put("start_items", buildJsonObject { setup.startItems.forEach { (k, v) -> put(k, v) } })
+                },
+                startedAt = Ids.now(),
+            )
+            l.begin(runRow, SessionRow(l.sessionId, runId, carried?.resume?.checkpoint?.id, d.gitSha, d.gitDirty, content?.hash, d.platform, d.host, Ids.now()), content)
+            ledger.record(l)
+            if (gw is BedroomWorld) l.attach(gw, r, memory, memStore) else l.attachClock(null)
+        }
+        life = lr
+        recorder = rec
         tokens = ledger
         model = rawModel
         writer = w
@@ -320,6 +394,16 @@ class SimSession(
     }
 
     private fun tearDown() {
+        life?.let { l ->
+            runCatching { l.checkpointNow("shutdown") }
+            l.end(endedBecause ?: "stopped")
+        }
+        recorder?.let { r ->
+            runCatching { runBlocking { withTimeoutOrNull(2.seconds) { r.flush() } } }
+            r.close()
+        }
+        life = null
+        recorder = null
         runScope?.cancel()
         // Summaries finish in the background after a run ends, so the file is written once the run is thrown away.
         setup.logDir?.let { dir -> runCatching { tokens.writeJsonl(File(dir, "tokens-%03d.jsonl".format(run))) } }
@@ -341,7 +425,9 @@ class SimSession(
 
     private fun tick() {
         if (world.awaitingDecision(world.agentId)) waitTicks++ else waitTicks = 0
+        life?.beforeStep()
         world.step()
+        life?.afterStep()
         previous = current
         current = world.snapshot()
         // Decisions are made only at decision points, so only those ticks are kept to file them against.
@@ -363,8 +449,25 @@ class SimSession(
     /** What the clock is held for: handlers whose call has outlasted its verb ([AgentMemory.holding]), such as "draw". */
     val waitingOnAuthor: List<String> get() = memory.holdingFor
 
+    /** Updates left before the view's last [linger] lapses. */
+    private var lingerUpdates = 0
+
+    /**
+     * Holds the clock through the next [LINGER_UPDATES] updates for the view: the room asks every
+     * frame while he finishes a piece on screen after its verb has ended. Counted in updates, not
+     * seconds, so a slow frame can't let a tick slip through; it lapses by itself when the room stops
+     * asking (another page, the piece done).
+     */
+    fun linger() {
+        lingerUpdates = LINGER_UPDATES
+    }
+
+    /** True while the clock waits on the view's [linger]. */
+    val lingering: Boolean get() = lingerUpdates > 0
+
     /** A decision has been out for as many game minutes as [RunSettings.decideCap] allows. */
     private fun mustHold(): Boolean {
+        if (lingering) return true
         // Until a drawing lands its piece has no title or tags, so selling it couldn't meet a request. Every authored call
         // holds the clock the same way.
         if (memory.holding) return true
@@ -376,6 +479,7 @@ class SimSession(
     private fun end(why: String) {
         state = RunState.Ended
         endedBecause = why
+        life?.let { l -> l.settle(world.observe(world.agentId)); l.end(why) }
         agent?.cancel()
         val mem = memory
         runScope?.launch { mem.flush() }
@@ -396,5 +500,7 @@ class SimSession(
         /** Ticks at decision points: more than a slow decision spans at a fast speed with the clock running. */
         const val MAX_RECENT = 5000
         const val MAX_MOMENTS = 5000
+        /** A [linger] holds the clock this many updates: the one before the view's next frame, and one spare. */
+        const val LINGER_UPDATES = 2
     }
 }

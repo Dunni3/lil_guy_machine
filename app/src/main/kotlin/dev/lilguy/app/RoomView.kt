@@ -16,6 +16,7 @@ import com.badlogic.gdx.math.Vector3
 import com.badlogic.gdx.utils.Align
 import com.badlogic.gdx.utils.Disposable
 import com.badlogic.gdx.utils.viewport.FitViewport
+import dev.lilguy.agent.art.Underway
 import dev.lilguy.sim.EntitySnapshot
 import dev.lilguy.sim.Intent
 import dev.lilguy.sim.IntentStatus
@@ -39,8 +40,8 @@ import kotlin.math.tan
  * Everything is drawn in the hand-drawn look by one [CrayonRenderer]: furniture and the guy with the
  * crayon shader and boiling ink outlines, the floor and walls as painted textures under the cheap
  * paper shader. Shown as the dev view's first page ([DevView.Page.Room]); the other pages are the 2D
- * dev view. DOWN opens the shop's catalogue over the room (UP closes it), and it opens by itself
- * while he's buying something, that item picked out. Fill rate stays low for the Streamer: one clear, opaque geometry, the per-pixel crayon
+ * dev view. The shop's catalogue opens over the room by itself while he's buying something, that
+ * item picked out (the in-game menu, [GameMenu], has the whole shop). Fill rate stays low for the Streamer: one clear, opaque geometry, the per-pixel crayon
  * shader only on furniture and the guy, no shadow maps or post-processing; the only blended things
  * are the hatched shadows and the HUD's small rectangles.
  */
@@ -98,6 +99,12 @@ class RoomView(private val art: ArtTextures) : Disposable {
     /** The room's light as a tint, white at midday. */
     private val tint = Color(Color.WHITE)
 
+    /** The piece he's making, played out stroke by stroke; the one it last flourished for; the title it announced, and how long ago. */
+    private val scene = PaintScene()
+    private var flourishFor: Long? = null
+    private var announced: String? = null
+    private var announceAge = 0f
+
     /** The newest thought, and how long it has been on show. */
     private var thoughtCount = 0
     private var thought: String? = null
@@ -105,8 +112,8 @@ class RoomView(private val art: ArtTextures) : Disposable {
 
     fun resize(width: Int, height: Int) = viewport.update(width, height, true)
 
-    /** One frame of the live world; [banner] is the run-state line the dev view would show, if any; [shopPage] shows that page of the catalogue. */
-    fun render(session: SimSession, banner: String?, delta: Float, shopPage: Int? = null) {
+    /** One frame of the live world; [banner] is the run-state line, if any; [menuOpen]: the menu covers the right of the screen, so the catalogue and the hint stay off. */
+    fun render(session: SimSession, banner: String?, delta: Float, menuOpen: Boolean = false) {
         val now = session.current
         val before = session.previous
         val life = now.life
@@ -123,7 +130,8 @@ class RoomView(private val art: ArtTextures) : Disposable {
         pose.z = MathUtils.lerp(guyBefore.y, guy.y, alpha)
         pose.facing = guy.facingDegrees
         pose.moving = guyBefore.x != guy.x || guyBefore.y != guy.y
-        pose.doing = life?.doing
+        val piece = followPiece(session, life, now, delta)
+        pose.doing = piece?.activity ?: life?.doing
         pose.energy = life?.energy ?: 70.0
         pose.mood = life?.mood ?: 60.0
         pose.music = life?.music != null
@@ -139,7 +147,20 @@ class RoomView(private val art: ArtTextures) : Disposable {
         pose.workAt = if (station != null && stand != null) workAt.set(stand.x + station.x, station.y, stand.y + station.z) else null
         pose.workFlat = station?.flat ?: true
         pose.workSlide = station?.slide ?: 0f
+        pose.art = if (piece != null && scene.piece != null) scene.phase else null
+        pose.artTime = scene.phaseTime
+        pose.brush = piece?.canvas ?: true
+        pose.tipLifted = scene.lifted
+        if (piece != null && stand != null) {
+            val s = piece.size
+            if (piece.flat) pose.tip.set(stand.x + piece.x + (scene.u - 0.5f) * s, piece.y, stand.y + piece.z + (scene.v - 0.5f) * s)
+            else pose.tip.set(stand.x + piece.x + (scene.u - 0.5f) * s, piece.y + (0.5f - scene.v) * s, stand.y + piece.z)
+        }
         blob.update(delta, pose)
+        if (piece != null && stand != null && scene.phase == PaintScene.Phase.Flourish && flourishFor != scene.piece?.tick) {
+            flourishFor = scene.piece?.tick
+            celebrate(piece, stand)
+        }
 
         crayon.begin(camera, tint, delta)
         room?.let { r ->
@@ -154,9 +175,11 @@ class RoomView(private val art: ArtTextures) : Disposable {
             if (e.kind == "door" && e.state == "open") continue
             place(e, now.map)
         }
-        renderArt(session, now)
+        renderArt(session, now, piece)
         renderShelf(life, now.map)
         blob.render(crayon, asleep)
+        if (blob.toolShown) crayon.model(models.tool(scene.color, pose.brush), blob.toolAt)
+        if (blob.paletteShown) scene.piece?.let { crayon.model(models.palette(it.palette), blob.paletteAt) }
         val book = models.bookColor((agent?.intent as? Intent.Do)?.what)
         when (blob.held) {
             Blob.Held.Book -> crayon.model(models.heldBook(book), blob.heldAt)
@@ -168,8 +191,10 @@ class RoomView(private val art: ArtTextures) : Disposable {
         Gdx.gl.glDisable(GL20.GL_DEPTH_TEST)
 
         updateThought(session, delta)
+        announceAge += delta
         val bubble = agent?.saying ?: when {
             asleep -> "z z z"
+            announced != null && announceAge < ANNOUNCE_SECONDS -> announced
             thought != null -> thought
             pose.thinking -> "..."
             else -> null
@@ -177,7 +202,39 @@ class RoomView(private val art: ArtTextures) : Disposable {
         camera.project(head.set(blob.headTop), 0f, 0f, DevView.WIDTH, DevView.HEIGHT)
         // While he's off to buy something, the catalogue opens by itself at that item.
         val buying = (agent?.intent as? Intent.Buy)?.item?.takeIf { agent.status.let { it == IntentStatus.Executing || it == IntentStatus.Validated || it == IntentStatus.Submitted } }
-        drawHud(session, life, bubble, banner, if (shopPage != null || buying != null) buying ?: "" else null, shopPage ?: 0)
+        // At a piece, the card says how far he has got, and why the clock has stopped if it has.
+        val making = piece?.let { p -> scene.piece?.let { "${if (p.canvas) "painting" else "drawing"} · stroke ${scene.shown} of ${it.of}" } }
+        drawHud(session, life, bubble, banner, buying?.takeIf { !menuOpen }, making, hint = !menuOpen)
+    }
+
+    /**
+     * The piece he's making ([SimSession.memory]'s underway), played out by [scene]; returns its stand
+     * while he's at it, else null. He's at it while its verb is under way, and after, standing there
+     * while the clock waits on the drawing; then the clock waits a moment more ([SimSession.linger])
+     * while the last strokes go on and he flourishes, so the piece is never cut off.
+     */
+    private fun followPiece(session: SimSession, life: LifeSnapshot?, now: WorldSnapshot, delta: Float): Stand? {
+        val underway = session.memory.underway()
+        val stand = underway?.let { u -> STANDS.firstOrNull { it.item == u.item } }
+        val doing = life?.doing
+        val over = stand != null && doing != stand.activity
+        scene.update(delta, underway, hurry = over)
+        if (stand == null || pose.moving || now.entities.none { it.id.value == stand.id }) return null
+        val at = doing == stand.activity || (doing == null && ("draw" in session.waitingOnAuthor || session.lingering))
+        if (!at) return null
+        if (over && (underway.state == Underway.State.Drawing || scene.finishing)) session.linger()
+        return stand
+    }
+
+    /** The piece is done: sparkles off it in its own colours, and its title over his head. */
+    private fun celebrate(at: Stand, e: EntitySnapshot) {
+        val p = scene.piece ?: return
+        announced = "\"${p.title}\""
+        announceAge = 0f
+        // Its colours lightened, leaving out the dark ones (a black star reads as a cross); gold when none are left.
+        val colors = p.palette.drop(1).filter { luma(it) > 0.3f }.map { lighten(it, 0.35f) }.ifEmpty { listOf(GOLD) }
+        val y = if (at.flat) at.y + 0.05f else at.y + at.size / 2
+        repeat(SPARKLES) { i -> notes += Note(source.set(e.x + at.x, y, e.y + at.z + 0.05f), sparkle = colors[i % colors.size]) }
     }
 
     // --- 3D --------------------------------------------------------------------------------------
@@ -229,11 +286,12 @@ class RoomView(private val art: ArtTextures) : Disposable {
 
     /**
      * Hung pieces in frames along the picture rail, oldest at the left; then each stand ([STANDS]):
-     * the piece he's making there, filling in as he works, or else his newest unsold piece of its
-     * item. The easel holds a blank canvas while he has one, is painting, or has a painting to show.
-     * Pieces not drawn yet show as an empty frame, a blank page or a blank canvas.
+     * the piece he's making there ([making], while he's at it), stroke by stroke as the model draws
+     * it ([scene]), or else his newest unsold piece of its item. The easel holds a blank canvas while
+     * he has one, is painting, or has a painting to show. Pieces not drawn yet show as an empty frame,
+     * a blank page or a blank canvas.
      */
-    private fun renderArt(session: SimSession, now: WorldSnapshot) {
+    private fun renderArt(session: SimSession, now: WorldSnapshot, making: Stand?) {
         val life = now.life ?: return
         val pieces = life.art
         art.sync(session)
@@ -248,13 +306,9 @@ class RoomView(private val art: ArtTextures) : Disposable {
         }
         for (stand in STANDS) {
             val e = now.entities.firstOrNull { it.id.value == stand.id } ?: continue
-            val making = life.doing == stand.activity
-            val texture = if (making) {
-                session.memory.drawingInProgress()?.takeIf { it.item == stand.item }?.let { art.partial(it, life.progress ?: 0f, stand.blank) }
-            } else {
-                pieces.lastOrNull { !it.hung && it.item == stand.item }?.let { p -> drawings[p.id]?.let(art::of) }
-            }
-            if (stand.canvas && (making || texture != null || (life.owns["canvas"] ?: 0) > 0)) {
+            val here = making === stand
+            val texture = if (here) scene.texture else pieces.lastOrNull { !it.hung && it.item == stand.item }?.let { p -> drawings[p.id]?.let(art::of) }
+            if (stand.canvas && (here || texture != null || (life.owns["canvas"] ?: 0) > 0)) {
                 placedAt[stand.id]?.let { crayon.model(models.canvas(), it) }
             }
             picture(texture, stand.size, stand.flat, at.setToTranslation(e.x + stand.x, stand.y, e.y + stand.z))
@@ -305,15 +359,34 @@ class RoomView(private val art: ArtTextures) : Disposable {
             if (n.age > NOTE_LIFE) { it.remove(); continue }
             val grow = NOTE_SIZE * (n.age / 0.25f).coerceAtMost(1f) * ((NOTE_LIFE - n.age) / 0.7f).coerceAtMost(1f)
             val k = n.age * 2.4f + n.phase
-            at.setToTranslation(n.x + 0.08f * MathUtils.sin(k), n.y + NOTE_RISE * n.age, n.z)
-                .rotate(Vector3.Z, 14f * MathUtils.sin(k + 1f)).scale(grow, grow, grow)
-            crayon.model(models.note(n.color), at)
+            val sparkle = n.sparkle
+            if (sparkle == null) {
+                at.setToTranslation(n.x + 0.08f * MathUtils.sin(k), n.y + NOTE_RISE * n.age, n.z)
+                    .rotate(Vector3.Z, 14f * MathUtils.sin(k + 1f)).scale(grow, grow, grow)
+                crayon.model(models.note(n.color), at)
+            } else {
+                // Sparkles burst out from the piece, drift up and spin as they fade.
+                val out = SPARKLE_SPREAD * (1f - 1f / (1f + 3f * n.age))
+                val twinkle = grow * (0.75f + 0.2f * MathUtils.sin(n.age * 14f + n.phase))
+                at.setToTranslation(n.x + out * MathUtils.cos(n.phase), n.y + out * MathUtils.sin(n.phase) + NOTE_RISE * 0.6f * n.age, n.z)
+                    .rotate(Vector3.Z, 18f * MathUtils.sin(n.age * 3f + n.phase)).scale(twinkle, twinkle, twinkle)
+                crayon.model(models.sparkle(sparkle), at)
+            }
         }
     }
 
-    /** One note on its way up, from where it started. */
-    private class Note(from: Vector3) {
-        val x = from.x + MathUtils.random(-0.12f, 0.12f)
+    /** How light 0xRRGGBB [rgb] is, 0..1. */
+    private fun luma(rgb: Int) = (0.3f * (rgb shr 16 and 0xff) + 0.59f * (rgb shr 8 and 0xff) + 0.11f * (rgb and 0xff)) / 255f
+
+    /** [rgb] moved [by] of the way to white. */
+    private fun lighten(rgb: Int, by: Float): Int {
+        fun ch(shift: Int) = (rgb shr shift and 0xff).let { (it + (255 - it) * by).toInt() } shl shift
+        return ch(16) or ch(8) or ch(0)
+    }
+
+    /** One note (or a [sparkle] of that colour, 0xRRGGBB) on its way up, from where it started. */
+    private class Note(from: Vector3, val sparkle: Int? = null) {
+        val x = from.x + if (sparkle == null) MathUtils.random(-0.12f, 0.12f) else 0f
         val y = from.y
         val z = from.z
         val phase = MathUtils.random(MathUtils.PI2)
@@ -357,8 +430,8 @@ class RoomView(private val art: ArtTextures) : Disposable {
         if (thoughtAge > THOUGHT_SECONDS) thought = null
     }
 
-    /** [shop]: null with the catalogue closed, else the item he's buying ("" for none); [page] is the one shown when he isn't. */
-    private fun drawHud(session: SimSession, life: LifeSnapshot?, bubble: String?, banner: String?, shop: String?, page: Int) {
+    /** [shop]: the item he's buying, with the catalogue open at it, or null. [making] says how far along a piece he's at is, for the card. */
+    private fun drawHud(session: SimSession, life: LifeSnapshot?, bubble: String?, banner: String?, shop: String?, making: String?, hint: Boolean) {
         val catalogue = shop?.let { life?.catalog?.takeIf { c -> c.isNotEmpty() } }
         shapes.projectionMatrix = viewport.camera.combined
         batch.projectionMatrix = viewport.camera.combined
@@ -367,20 +440,21 @@ class RoomView(private val art: ArtTextures) : Disposable {
 
         shapes.begin(ShapeRenderer.ShapeType.Filled)
         life?.let { cardShape(it) }
-        catalogue?.let { catalogueShape(it, shop, page) }
+        catalogue?.let { catalogueShape(it, shop, 0) }
         bubble?.let { bubbleShape(it) }
         banner?.let { bannerShape(it) }
         shapes.end()
 
         batch.begin()
-        life?.let { cardText(session, it) }
-        catalogue?.let { catalogueText(it, life!!.money, shop, page) }
+        life?.let { cardText(session, it, making) }
+        catalogue?.let { catalogueText(it, life!!.money, shop, 0) }
         bubble?.let { bubbleText(it) }
         banner?.let { bannerText(it) }
-        font.data.setScale(HINT_SCALE)
-        font.color = HINT
-        val hint = if (catalogue != null) "DOWN turns the page · UP turns back or closes · LEFT/RIGHT for the dev pages" else "DOWN for the shop · LEFT/RIGHT for the dev pages"
-        font.draw(batch, hint, DevView.WIDTH - MARGIN - 700f, DevView.HEIGHT - MARGIN, 700f, Align.right, false)
+        if (hint) {
+            font.data.setScale(HINT_SCALE)
+            font.color = HINT
+            font.draw(batch, "OK for the menu · LEFT/RIGHT for the dev pages", DevView.WIDTH - MARGIN - 700f, DevView.HEIGHT - MARGIN, 700f, Align.right, false)
+        }
         batch.end()
     }
 
@@ -398,8 +472,8 @@ class RoomView(private val art: ArtTextures) : Disposable {
         }
     }
 
-    /** Clock and money, the need bars' labels, and what he's doing. */
-    private fun cardText(session: SimSession, life: LifeSnapshot) {
+    /** Clock and money, the need bars' labels, and what he's doing: [making], at a piece, and a note when the clock waits for it. */
+    private fun cardText(session: SimSession, life: LifeSnapshot, making: String?) {
         val left = MARGIN + 28f
         font.data.setScale(CLOCK_SCALE)
         font.color = INK
@@ -414,7 +488,12 @@ class RoomView(private val art: ArtTextures) : Disposable {
         val doing = life.doing?.let { d ->
             d.replace('_', ' ') + (life.progress?.let { " · ${(it * 100).toInt()}%" } ?: "") + session.fastForward.let { if (it > 1) "   >> ${it}x" else "" }
         }
-        font.draw(batch, doing ?: if (session.thinkingFor != null) "deciding..." else "idle", left, DevView.HEIGHT - MARGIN - CARD_HEIGHT + 40f)
+        font.draw(batch, making ?: doing ?: if (session.thinkingFor != null) "deciding..." else "idle", left, DevView.HEIGHT - MARGIN - CARD_HEIGHT + 40f)
+        if (making != null && session.holding) {
+            font.data.setScale(SHOP_SMALL_SCALE)
+            font.color = MUTED
+            font.draw(batch, "the clock waits while he works", left, DevView.HEIGHT - MARGIN - CARD_HEIGHT + 68f)
+        }
     }
 
     // --- the catalogue: the shop as a mail-order card ----------------------------------------------
@@ -602,6 +681,7 @@ class RoomView(private val art: ArtTextures) : Disposable {
         quads.values.forEach { it.dispose() }
         models.dispose()
         blob.dispose()
+        scene.dispose()
         crayon.dispose()
         shapes.dispose()
         batch.dispose()
@@ -609,8 +689,8 @@ class RoomView(private val art: ArtTextures) : Disposable {
     }
 
     /**
-     * Light through the day, interpolated between [KEYS]: cool and dim at night (a warm lamp's worth
-     * of ambient), warm at dawn and dusk, bright and near-flat by day.
+     * Light through the day, interpolated between [KEYS]: warm and dim at night (a lamp's worth of
+     * ambient), warm at dawn and dusk, bright and near-flat by day.
      */
     private class Light {
         val ambient = Color()
@@ -637,15 +717,16 @@ class RoomView(private val art: ArtTextures) : Disposable {
 
         companion object {
             val KEYS = listOf(
-                Key(0f, "6a6488", "1c2038", "141a38"),
-                Key(5.5f, "6a6488", "1c2038", "1c2448"),
+                // Night is lamp-lit: warm and dim inside, the sky dark blue beyond the glass.
+                Key(0f, "7a6670", "2a2028", "141a38"),
+                Key(5.5f, "7a6670", "2a2028", "1c2448"),
                 Key(7f, "c8aaa0", "8a6048", "f6b48c"),
                 // A pale gold between dawn and day, so the sky doesn't pass through grey.
                 Key(8.2f, "c8b8ac", "7a6450", "f8e0a8"),
                 Key(9.5f, "c8c4b8", "6a665e", "9fd4f5"),
                 Key(16.5f, "c8c4b8", "6a665e", "9fd4f5"),
                 Key(19f, "c8a08c", "8a5030", "f08a5d"),
-                Key(21f, "8c7678", "302028", "2a2850"),
+                Key(21f, "947a70", "3a2820", "2a2850"),
             )
         }
     }
@@ -664,11 +745,11 @@ class RoomView(private val art: ArtTextures) : Disposable {
          */
         class Stand(
             val id: String, val item: String, val activity: String,
-            val x: Float, val y: Float, val z: Float, val size: Float, val flat: Boolean, val blank: Int, val canvas: Boolean = false, val slide: Float,
+            val x: Float, val y: Float, val z: Float, val size: Float, val flat: Boolean, val canvas: Boolean = false, val slide: Float,
         )
 
-        val SKETCH = Stand("desk", "sketch", "sketch", RoomModels.SKETCH_X, 0.567f, RoomModels.SKETCH_Z, 0.2f, flat = true, blank = 0xfdf9ef, slide = 0.14f)
-        val PAINTING = Stand("easel", "painting", "paint", 0f, RoomModels.CANVAS_Y, RoomModels.CANVAS_Z + 0.025f, 0.44f, flat = false, blank = 0xfdf8ee, canvas = true, slide = 0.38f)
+        val SKETCH = Stand("desk", "sketch", "sketch", RoomModels.SKETCH_X, 0.567f, RoomModels.SKETCH_Z, 0.2f, flat = true, slide = 0.14f)
+        val PAINTING = Stand("easel", "painting", "paint", 0f, RoomModels.CANVAS_Y, RoomModels.CANVAS_Z + 0.025f, 0.44f, flat = false, canvas = true, slide = 0.38f)
         val STANDS = listOf(SKETCH, PAINTING)
         /** Activities done by hand at a stand, and which: his working hand goes to it. */
         val WORK = mapOf("sketch" to SKETCH, "journal" to SKETCH, "paint" to PAINTING)
@@ -693,6 +774,12 @@ class RoomView(private val art: ArtTextures) : Disposable {
         }
         /** (dx, dy) toward the room, from a wall tile. */
         val INWARD = listOf(0 to 1, 1 to 0, -1 to 0, 0 to -1)
+
+        /** A finished piece: how many sparkles fly off it, how far, and how long its title stays over his head. */
+        const val SPARKLES = 7
+        const val SPARKLE_SPREAD = 0.35f
+        const val GOLD = 0xf6d26b
+        const val ANNOUNCE_SECONDS = 4f
 
         const val THOUGHT_SECONDS = 9f
         const val THOUGHT_CHARS = 150

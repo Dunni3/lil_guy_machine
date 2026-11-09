@@ -14,6 +14,10 @@ import dev.lilguy.decision.Usage
 import dev.lilguy.sim.GameClock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlin.time.TimeSource
 
 /** What a model call was for. */
 @Serializable
@@ -109,6 +113,12 @@ class TokenLedger {
 
     @Volatile private var tickNow: () -> Long = { 0L }
     @Volatile private var clock: GameClock? = null
+    @Volatile private var sink: LifeRecorder? = null
+
+    /** Also writes every call from here on, with its prompt and reply, to [recorder]'s `model_calls`. */
+    fun record(recorder: LifeRecorder?) {
+        sink = recorder
+    }
 
     /** Stamps calls from here on with [tick] and [clock]'s day and time. */
     fun attach(tick: () -> Long, clock: GameClock? = null) {
@@ -128,10 +138,15 @@ class TokenLedger {
 
         override suspend fun score(request: ScoreRequest): ScoreResult {
             val tick = tickNow()
+            val body = { scoreJson(request) }
             try {
-                return scorer.score(request).also { record(tick, purpose, id, price, it.usage, 1, it.latency.inWholeMilliseconds, failed = false) }
+                return scorer.score(request).also { r ->
+                    record(tick, purpose, id, price, r.usage, 1, r.latency.inWholeMilliseconds, failed = false)
+                    sink?.modelCall(tick, purpose, id, price, r.usage, 1, r.latency.inWholeMilliseconds, false, request = body(), response = answersJson(r))
+                }
             } catch (e: DecisionFailed) {
                 record(tick, purpose, id, price, e.usage, 1, 0, failed = true)
+                sink?.modelCall(tick, purpose, id, price, e.usage, 1, 0, true, request = body(), response = LifeRecorder.responseJson(null, e.attempts, e.message))
                 throw e
             }
         }
@@ -163,14 +178,45 @@ class TokenLedger {
 
         override suspend fun <A> decide(request: DecisionRequest, schema: ActionSchema<A>): Decision<A> {
             val tick = tickNow()
+            val started = TimeSource.Monotonic.markNow()
             try {
                 val d = inner.decide(request, schema)
                 record(tick, purpose, id, price, d.usage, d.attempts.size, d.latency.inWholeMilliseconds, failed = false)
+                sink?.modelCall(
+                    tick, purpose, id, price, d.usage, d.attempts.size, d.latency.inWholeMilliseconds, false,
+                    system = request.system, request = LifeRecorder.requestJson(request, schema.jsonSchema), response = LifeRecorder.responseJson(d.raw, d.attempts),
+                )
                 return d
             } catch (e: DecisionFailed) {
                 record(tick, purpose, id, price, e.usage, e.attempts.size, 0, failed = true)
+                sink?.modelCall(
+                    tick, purpose, id, price, e.usage, e.attempts.size, started.elapsedNow().inWholeMilliseconds, true,
+                    system = request.system, request = LifeRecorder.requestJson(request, schema.jsonSchema), response = LifeRecorder.responseJson(null, e.attempts, e.message),
+                )
                 throw e
             }
+        }
+    }
+
+    private fun scoreJson(r: ScoreRequest) = buildJsonObject {
+        put("state", r.state)
+        put("questions", buildJsonObject {
+            r.questions.forEach { (k, q) ->
+                put(k, buildJsonObject {
+                    put("instructions", q.instructions)
+                    put("criteria", JsonArray(q.criteria.map { JsonPrimitive(it) }))
+                })
+            }
+        })
+    }
+
+    private fun answersJson(r: ScoreResult) = buildJsonObject {
+        r.answers.forEach { (k, a) ->
+            put(k, buildJsonObject {
+                put("score", JsonPrimitive(a.score))
+                put("levels", JsonPrimitive(a.levels))
+                put("probabilities", JsonArray(a.probabilities.map { JsonPrimitive(it) }))
+            })
         }
     }
 

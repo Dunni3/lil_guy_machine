@@ -126,6 +126,29 @@
             },
             "stale_stimulation": {
               "type": "number"
+            },
+            "bored_lock": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "below": {
+                      "type": "number"
+                    },
+                    "worn": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "below",
+                    "worn"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [
@@ -149,6 +172,29 @@
               "additionalProperties": {
                 "type": "number"
               }
+            },
+            "things": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "stimulation_per_value": {
+                      "type": "number"
+                    },
+                    "days": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "stimulation_per_value",
+                    "days"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [
@@ -200,9 +246,6 @@
       "type": "object",
       "properties": {
         "gain_per_level": {
-          "type": "number"
-        },
-        "price_per_level": {
           "type": "number"
         },
         "affinity_per_level": {

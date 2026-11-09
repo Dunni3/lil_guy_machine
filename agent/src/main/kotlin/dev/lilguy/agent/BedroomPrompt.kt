@@ -113,6 +113,21 @@ object BedroomPrompt {
      * The learning line: skills, practice and books, or null when the content has no skills or books.
      * Only what he knows is named: [content] is the known part.
      */
+    /**
+     * What a skill does for the art he knows how to make, or null when nothing he makes grows with
+     * one: "a sketch sells for $2 more and a painting $10 more per level of art skill you had when
+     * you made it, and you draw it in more strokes".
+     */
+    private fun artPays(content: BedroomContent, skills: List<String>): String? {
+        val made = content.verbs.flatMap { v -> v.ops<ProduceOp>().flatMap { it.items.keys } }.toSet()
+        val pieces = content.items.filter { it.id in made && it.pricePerLevel > 0 && it.sellSkill in skills }
+        if (pieces.isEmpty()) return null
+        val skill = pieces.first().sellSkill
+        val more = pieces.mapIndexed { k, it -> "a ${it.name}${if (k == 0) " sells for" else ""} $${it.pricePerLevel} more" }.joinToString(" and ")
+        val strokes = if (pieces.any { (it.affords["drawable"]?.strokesPerLevel ?: 0) > 0 && it.drawSkill == skill }) ", and you draw it in more strokes" else ""
+        return "$more per level of $skill skill you had when you made it$strokes"
+    }
+
     private fun learningHint(content: BedroomContent): String? {
         // Only skills something he knows raises: a practice op, or reading a book.
         val raised = content.verbs.flatMap { v -> v.ops<PracticeOp>().flatMap { it.gains.keys } } + content.books.flatMap { it.skill.keys }
@@ -125,8 +140,8 @@ object BedroomPrompt {
                 val by = listOfNotNull(practice.takeIf { it.isNotEmpty() }?.joinToString(", "), reading.takeIf { it.isNotEmpty() }?.let { "${it.joinToString(" or ")} a book" }).joinToString(" and ")
                 val r = content.skills
                 val pays = listOfNotNull(
-                    if (r.gainPerLevel > 0) "what you do with a skill gives ${(r.gainPerLevel * 100).toInt()}% more mood and stimulation per level" else null,
-                    if (r.pricePerLevel > 0 && content.items.any { it.sellSkill != null }) "your art sells for ${(r.pricePerLevel * 100).toInt()}% more per level of art skill you had when you made it" else null,
+                    if (r.gainPerLevel > 0) "what you do with a skill gives ${(r.gainPerLevel * 100).toInt()}% more mood per level" else null,
+                    artPays(content, skills),
                     r.deepens.entries.filter { it.key in skills }.takeIf { r.affinityPerLevel > 0 && it.isNotEmpty() }?.let { d -> "knowing more about " + d.joinToString(" and ") { (s, q) -> "$s makes $q things mean more to you" } },
                 ).joinToString("; ")
                 add("you have skills (${skills.joinToString(", ")}, in `skills`), each from 0 with no limit" + (if (by.isNotEmpty()) ", raised by $by" else "") + (if (pays.isNotEmpty()) ": $pays." else "."))
@@ -145,7 +160,9 @@ object BedroomPrompt {
                 add("Doing the same thing again gives less: each time you finish it, its mood and stimulation gains drop ${num(h.perRepeat * 100)}%, coming back ${num(h.recoverPerHour * 100)}% an hour$stale.")
                 val routine = content.verbs.filter { it.isRoutine }.map { it.phrase ?: it.id }
                 if (routine.isNotEmpty()) add("Routine things (${routine.joinToString(", ")}) don't wear thin.")
+                h.boredLock?.let { add("While you're bored (stimulation below ${num(it.below)}), anything worn ${num(it.worn * 100)}% thin or more is off limits, what it pays included, until it wears off or something else lifts you.") }
             }
+            content.novelty?.things?.let { add("Something new for your room that you like lifts your stimulation for ${num(it.days)} days, fading as you get used to it.") }
         }
         return if (parts.isEmpty()) null else "- Variety: " + parts.joinToString(" ").replaceFirstChar { it.lowercase() }
     }
@@ -198,7 +215,7 @@ object BedroomPrompt {
         val makers = content.verbs.filter { it.ops<ProduceOp>().isNotEmpty() }.map { it.id }
         val made = content.verbs.flatMap { v -> v.ops<ProduceOp>().flatMap { it.items.keys } }.toSet()
         val art = content.items.filter { it.sellPrice != null && it.id in made }.joinToString(" and ") { "a ${it.name} sells for $${it.sellPrice}" } +
-            if (content.items.any { it.sellSkill != null } && content.skills.pricePerLevel > 0) ", more as your skill grows" else ""
+            if (content.items.any { it.id in made && it.pricePerLevel > 0 }) ", more as your skill grows" else ""
         val work = content.verbs.filter { it.work }.joinToString(", ") { it.id }
         val floor = r.workFloor.joinToString(" or ") { "${it.need} is below ${it.below?.toInt()}" }
         val sellAt = content.verbs.firstOrNull { it.ops<SellOp>().isNotEmpty() }

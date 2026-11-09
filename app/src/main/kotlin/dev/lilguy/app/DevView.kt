@@ -61,13 +61,6 @@ import kotlin.math.sin
 class DevView(private val art: ArtTextures) : Disposable {
     enum class Page(val title: String) { Room("ROOM"), Now("NOW"), Shop("SHOP"), Verbs("VERBS"), Memory("MEMORY"), Art("ART"), Tokens("TOKENS"), History("HISTORY"), Log("LOG"), Run("RUN") }
 
-    /** The Run page's rows. */
-    private enum class RunRow(val label: String) {
-        Days("Length"), Speed("Speed"), Quiet("Quiet stretches"), DecideCap("While he decides"), Resolution("Clock resolution"), Restart("Restart"), Replay("Replay");
-
-        val isAction: Boolean get() = this == Restart || this == Replay
-    }
-
     private val viewport = FitViewport(WIDTH, HEIGHT)
     private val shapes = ShapeRenderer()
     private val batch = SpriteBatch()
@@ -83,10 +76,6 @@ class DevView(private val art: ArtTextures) : Disposable {
 
     /** History only: the decision shown, as an index into [SimSession.history]; null follows the newest and shows the live world. */
     var pinned: Int? = null
-        private set
-
-    /** Room only: the page of the shop's catalogue card open over the room, or null with it closed; DOWN opens it and turns on, UP turns back and closes it. */
-    var shopPage: Int? = null
         private set
 
     /** Art only: the piece shown, as an index into the drawn pieces oldest first; null follows the newest. */
@@ -113,20 +102,11 @@ class DevView(private val art: ArtTextures) : Disposable {
         pinned = null
     }
 
-    /** UP (-1) and DOWN (+1): in the room the catalogue and its pages, in History a newer or older decision, in Art a newer or older piece, elsewhere scroll. */
+    /** UP (-1) and DOWN (+1): in History a newer or older decision, in Art a newer or older piece, on the Run page the rows, elsewhere scroll. */
     fun move(by: Int, session: SimSession) {
-        if (page == Page.Room) {
-            val pages = shopPages(session.current.life?.catalog?.size ?: 0)
-            val page = shopPage
-            shopPage = when {
-                by > 0 -> if (page == null) 0 else (page + 1).coerceAtMost(pages - 1)
-                page == null || page == 0 -> null
-                else -> page - 1
-            }
-            return
-        }
+        if (page == Page.Room) return
         if (page == Page.Run) {
-            val rows = RunRow.entries
+            val rows = RunRow.SETTINGS
             val next = (runRow?.ordinal ?: -1) + by
             runRow = if (next < 0) null else rows[next.coerceAtMost(rows.lastIndex)]
             return
@@ -152,22 +132,7 @@ class DevView(private val art: ArtTextures) : Disposable {
     fun adjust(by: Int, session: SimSession): Boolean {
         if (page != Page.Run) return false
         val row = runRow ?: return false
-        val s = session.settings
-        when (row) {
-            RunRow.Days -> {
-                val days = when (val d = s.days) {
-                    null -> if (by < 0) RunSettings.MAX_DAYS.coerceAtLeast(session.minDays) else null
-                    else -> if (by > 0 && d >= RunSettings.MAX_DAYS) null else d + by
-                }
-                session.configure(s.copy(days = days?.coerceAtLeast(1)))
-            }
-            RunRow.Speed -> session.configure(s.copy(speed = RunSettings.SPEEDS.step(s.speed, by)))
-            RunRow.Quiet -> session.configure(s.copy(quiet = RunSettings.QUIETS.step(s.quiet, by)))
-            RunRow.DecideCap -> session.configure(s.copy(decideCap = RunSettings.DECIDE_CAPS.step(s.decideCap, by)))
-            RunRow.Resolution -> session.configure(s.copy(ticksPerMinute = RunSettings.RESOLUTIONS.step(s.ticksPerMinute, by)))
-            RunRow.Replay -> replayPick = ((replayPick ?: session.run) + by).coerceIn(1, session.run).takeIf { it != session.run }
-            RunRow.Restart -> Unit
-        }
+        replayPick = RunControls.adjust(row, by, session, replayPick)
         return true
     }
 
@@ -183,15 +148,11 @@ class DevView(private val art: ArtTextures) : Disposable {
         return true
     }
 
-    /** The value [by] steps on from [current] in this list, stopping at either end. */
-    private fun <T> List<T>.step(current: T, by: Int): T = this[(indexOf(current).coerceAtLeast(0) + by).coerceIn(0, lastIndex)]
-
     /** After a restart: the live world, every page scrolled to the top. */
     fun reset() {
         pinned = null
         replayPick = null
         artPick = null
-        shopPage = null
         scroll.fill(0)
         confirmRestart = false
         confirmAction = false
@@ -474,11 +435,13 @@ class DevView(private val art: ArtTextures) : Disposable {
         font.draw(batch, glyphs, x + w / 2 - BUBBLE_MAX_WIDTH / 2, y + h - BUBBLE_PAD)
     }
 
-    /** The run's state, across the bottom of the map whenever it isn't simply running. */
-    fun banner(session: SimSession): String? = when {
+    /** The run's state, across the bottom of the map (or the room, [inRoom], where OK opens the menu) whenever it isn't simply running. */
+    fun banner(session: SimSession, inRoom: Boolean = false): String? = when {
         confirmRestart -> "Restart? BACK again for a fresh run · any other key cancels"
         confirmAction && runRow == RunRow.Replay -> "Replay run ${replayPick ?: session.run}? OK again · any other key cancels"
         confirmAction -> "Restart with these settings? OK again · any other key cancels"
+        inRoom && session.state == RunState.Ready -> "READY · OK opens the menu, OK again starts"
+        inRoom && session.state == RunState.Paused -> "PAUSED · OK opens the menu"
         session.state == RunState.Ready -> "READY · press OK to start"
         session.state == RunState.Paused -> "PAUSED · OK resumes"
         session.state == RunState.Ended -> "ENDED · ${session.endedBecause} · BACK twice for a fresh run"
@@ -532,13 +495,6 @@ class DevView(private val art: ArtTextures) : Disposable {
         cursor -= font.lineHeight * (glyphs.runs.size.coerceAtLeast(1) + gapAfter)
     }
 
-    /** Model text in characters the bitmap font has: dashes, curly quotes and ellipses made plain. */
-    private fun plain(text: String): String {
-        if (text.none { it.code > 0x7e }) return text
-        return text.replace("\u2014", " - ").replace('\u2013', '-').replace('\u2018', '\'').replace('\u2019', '\'')
-            .replace('\u201c', '"').replace('\u201d', '"').replace("\u2026", "...")
-    }
-
     private fun heading(text: String) {
         cursor -= 14f
         line(text, HEADING_SCALE, MUTED, maxLines = 1, gapAfter = 0.1f)
@@ -551,10 +507,6 @@ class DevView(private val art: ArtTextures) : Disposable {
         glyphs.setText(font, text, 0, text.length, color, width, align, false, "...")
         font.draw(batch, glyphs, x, cursor)
     }
-
-    /** "d2 14:30" in the bedroom, "t 140" in rooms without a clock. */
-    private fun stamp(tick: Long, s: WorldSnapshot): String =
-        s.life?.clockScale?.reading(tick)?.let { "d${it.day} ${it.time}" } ?: "t $tick"
 
     // --- panel ---------------------------------------------------------------------------------
 
@@ -980,25 +932,20 @@ class DevView(private val art: ArtTextures) : Disposable {
         heading(if (runRow == null) "SETTINGS · DOWN to change them" else "SETTINGS")
         font.data.setScale(SMALL_SCALE)
         val rowHeight = font.lineHeight * 1.25f
-        RunRow.entries.forEach { row ->
+        RunRow.SETTINGS.forEach { row ->
             val selected = row == runRow
             cell(if (selected) ">" else "", PANEL_X, 20f, SMALL_SCALE, ACCENT)
             cell(row.label, PANEL_X + 24f, 220f, SMALL_SCALE, if (selected) TEXT else MUTED)
-            cell(runValue(row, session), PANEL_X + 250f, PANEL_WIDTH - 250f, SMALL_SCALE, if (selected) ACCENT else TEXT)
+            cell(RunControls.value(row, session, replayPick), PANEL_X + 250f, PANEL_WIDTH - 250f, SMALL_SCALE, if (selected) ACCENT else TEXT)
             cursor -= rowHeight
         }
         cursor -= 10f
-        runRow?.let { line(runHelp(it, session), SMALL_SCALE * 0.9f, MUTED, maxLines = 6) }
+        runRow?.let { line(RunControls.help(it, session), SMALL_SCALE * 0.9f, MUTED, maxLines = 6) }
 
         heading("CLOCK")
-        val holdsAfter = s.decideCap?.let { "holds the clock after ${seconds(it * 60f / s.speed)} s" } ?: "never holds the clock"
+        val holdsAfter = s.decideCap?.let { "holds the clock after ${RunControls.seconds(it * 60f / s.speed)} s" } ?: "never holds the clock"
         line("tick ${session.current.tick} · ${s.speed * session.ticksPerMinute} ticks/s · a decision $holdsAfter", SMALL_SCALE * 0.9f, TEXT, maxLines = 2)
-        val deciding = session.thinkingFor
-        when {
-            session.holding && session.waitingOnAuthor.isNotEmpty() -> line("held: waiting on his ${session.waitingOnAuthor.joinToString(" and ") { if (it == "draw") "drawing" else it }}", SMALL_SCALE * 0.9f, INTERRUPTED, maxLines = 1)
-            session.holding -> line("held: waiting on the model (%.1f s)".format((deciding?.inWholeMilliseconds ?: 0) / 1000f), SMALL_SCALE * 0.9f, INTERRUPTED, maxLines = 1)
-            deciding != null -> line("the model is deciding (%.1f s); the clock runs".format(deciding.inWholeMilliseconds / 1000f), SMALL_SCALE * 0.9f, ACCENT, maxLines = 1)
-        }
+        RunControls.clock(session)?.let { line(it, SMALL_SCALE * 0.9f, if (session.holding) INTERRUPTED else ACCENT, maxLines = 1) }
 
         heading("RUNS SINCE THE APP STARTED")
         session.runStarts.withIndex().toList().takeLast(RUN_ROWS).asReversed().forEach { (i, start) ->
@@ -1008,56 +955,12 @@ class DevView(private val art: ArtTextures) : Disposable {
                 replayPick -> " · replay picks this"
                 else -> ""
             }
-            line("run $n: ${summary(start)}$mark", SMALL_SCALE * 0.9f, if (n == (replayPick ?: session.run)) TEXT else MUTED, maxLines = 1, gapAfter = 0.05f)
+            line("run $n: ${RunControls.summary(start)}$mark", SMALL_SCALE * 0.9f, if (n == (replayPick ?: session.run)) TEXT else MUTED, maxLines = 1, gapAfter = 0.05f)
         }
     }
-
-    private fun runValue(row: RunRow, session: SimSession): String {
-        val s = session.settings
-        return when (row) {
-            RunRow.Days -> s.days?.let { d -> plural(d, "day") + (session.endTick?.let { " · ends ${stamp(it, session.current)}" } ?: "") } ?: "no end"
-            RunRow.Speed -> "${s.speed} game min/s · a day in ${RunSettings.realTime(s.secondsPerDay)}"
-            RunRow.Quiet -> quietText(s.quiet)
-            RunRow.DecideCap -> capText(s.decideCap)
-            RunRow.Resolution -> "${s.ticksPerMinute} ticks/game min" + if (s.ticksPerMinute != session.ticksPerMinute) " · next run (now ${session.ticksPerMinute})" else ""
-            RunRow.Restart -> "a fresh run with these settings"
-            RunRow.Replay -> "run ${replayPick ?: session.run} as it started" + if (session.run > 1) " · LEFT/RIGHT picks the run" else ""
-        }
-    }
-
-    private fun runHelp(row: RunRow, session: SimSession): String {
-        val s = session.settings
-        return when (row) {
-            RunRow.Days -> "Game days the run lasts, and the next run's. Raising it extends this run; an ended run reopens, paused. It can't go below the days he has lived."
-            RunRow.Speed -> "How fast his day passes on screen. Everything speeds up together; ticks per second = speed x resolution, now ${s.speed * session.ticksPerMinute}."
-            RunRow.Quiet -> "While he's settled into something with little to watch (${RunSettings.QUIET_VERBS.joinToString()}), the clock runs this many times faster. " +
-                "He does the same things; the screen spends less time on them. A decision out meanwhile holds the clock sooner in real time."
-            RunRow.DecideCap -> "A model's reply takes real seconds whatever the speed, and he stands still meanwhile. The clock runs up to this much game time while a decision is out, " +
-                "then holds until it comes back. Waits: thinking costs no game time (lockstep). Runs: it costs whatever the latency is at this speed." +
-                (s.decideCap?.takeIf { it > 0 }?.let { " Now: ${seconds(it * 60f / s.speed)} s of model time." } ?: "")
-            RunRow.Resolution -> "Ticks per game minute: how finely walking and timing are cut. Walking is in tiles per tick, so fewer ticks make walks cheaper in game time. His prompt states it, so it applies from the next run."
-            RunRow.Restart -> "Throws this run away for a fresh one with the settings above. OK, then OK again."
-            RunRow.Replay -> "A fresh run set up as the picked run started (length, speed, wait, resolution), to watch the same start play out again. A model may not decide the same way twice. OK, then OK again."
-        }
-    }
-
-    private fun summary(s: RunSettings): String =
-        "${s.days?.let { plural(it, "day") } ?: "no end"} · ${s.speed} min/s · quiet ${quietText(s.quiet)} · ${s.ticksPerMinute} ticks/min · ${capText(s.decideCap)}"
-
-    private fun quietText(quiet: Int): String = if (quiet == 1) "same speed" else "${quiet}x faster"
-
-    private fun capText(cap: Int?): String = when (cap) {
-        null -> "clock runs"
-        0 -> "clock waits"
-        else -> "clock runs ${GameClock.duration(cap)}, then waits"
-    }
-
-    private fun plural(n: Int, what: String) = if (n == 1) "1 $what" else "$n ${what}s"
 
     /** Low is bad for every need but frustration, where high is. */
     private fun bad(need: String, value: Double) = if (need == "frustration") value > 100 - LOW else value < LOW
-
-    private fun seconds(s: Float): String = if (s < 10) "%.1f".format(s) else s.toInt().toString()
 
     private fun drawNeedBars(life: LifeSnapshot) {
         val needs = listOf(life.energy to ENERGY, life.fullness to FULLNESS, life.mood to MOOD, life.stimulation to STIMULATION, life.frustration to FRUSTRATION)

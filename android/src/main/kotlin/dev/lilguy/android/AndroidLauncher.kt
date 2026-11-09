@@ -5,6 +5,9 @@ import com.badlogic.gdx.backends.android.AndroidApplication
 import com.badlogic.gdx.backends.android.AndroidApplicationConfiguration
 import dev.lilguy.app.LilGuyGame
 import dev.lilguy.app.ModelSetup
+import dev.lilguy.app.RunDatabase
+import dev.lilguy.runlog.RunStore
+import dev.lilguy.runlog.SyncTarget
 import dev.lilguy.agent.Scenario
 import dev.lilguy.sim.GameClock
 import java.io.File
@@ -18,8 +21,26 @@ class AndroidLauncher : AndroidApplication() {
             useCompass = false
             numSamples = 4
         }
-        initialize(LilGuyGame(modelSetup()), config)
+        initialize(LilGuyGame(modelSetup(), runDatabase()), config)
     }
+
+    /**
+     * The run store in the app's files dir (`runs/lilguy.db`), synced to the server when the pushed
+     * secrets.env has LILGUY_SYNC_URL and LILGUY_SYNC_TOKEN (`make tv-push-config` copies them from
+     * your shell). A `resume` extra (a run id, or "latest") carries that run on from its latest
+     * checkpoint: `make tv-run RESUME=latest`.
+     */
+    private fun runDatabase(): RunDatabase? = runCatching {
+        val dir = getExternalFilesDir(null) ?: filesDir
+        val env = ModelSetup.readEnvFile(File(dir, "secrets.env"))
+        RunDatabase(
+            store = RunStore(AndroidSqlDriver(File(filesDir, "runs/lilguy.db"))),
+            sync = SyncTarget.fromEnv { env[it] },
+            platform = "tv",
+            host = android.os.Build.DEVICE,
+            resume = intent?.getStringExtra("resume")?.takeIf { it.isNotBlank() },
+        )
+    }.onFailure { android.util.Log.e("LilGuy", "run database: ${it.message}") }.getOrNull()
 
     /**
      * Endpoint config pushed by `make tv-push-config` into the app's external files dir
