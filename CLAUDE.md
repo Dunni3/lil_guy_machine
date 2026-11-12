@@ -139,7 +139,9 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   (socket, version check, rejoin, the content cache behind `?have=`), `track.ts` (his position between publishes). `src/crayon/`: the hand-drawn look, ported
   from `Crayon.kt`, `CrayonModel.kt`, `CrayonRenderer.kt` and `CrayonCanvas.kt` (`shaders.ts`, `geometry.ts`, `model.ts`, `renderer.ts`, `canvas.ts`). `src/room/`:
   `view.ts` (`RoomView.kt`: camera, things, shelf, music), `shell.ts` (floor and walls), `paint.ts` (`RoomPaint.kt`), `light.ts`, `parts.ts` (the export as
-  models), `art.ts` (where painting and hung art go next). `src/guy/`: `blob.ts` and `face.ts` (`Blob.kt`).
+  models), `room.ts` (the room's layout the map doesn't give: stands where pieces are made, wall spots where they hang),
+  `art.ts` (hung frames, the pieces on the desk and easel, brush, palette and sparkles; `PaintScene.kt`), `easel.ts` (the piece under way played out
+  stroke by stroke at the host's pace from `state.easel`). `src/guy/`: `blob.ts` and `face.ts` (`Blob.kt`).
 - Part lists: `parts/` (pure Kotlin): `Part.kt` (`Part`, `PartList`), `RoomParts.kt` (furniture, props, the room's constants), `DecorParts.kt`, `PartExport.kt`
   (writes `parts/export/parts.json`, the web renderer's copy, checked by `make test`). `:app` builds meshes from the same lists.
 - Token accounting: `agent/.../TokenLedger.kt`. `ledger.meter(model, purpose)` wraps a model so every call

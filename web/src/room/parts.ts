@@ -71,6 +71,17 @@ export class Models {
     });
   }
 
+  /** A painter's palette with a dab of each of [colors] round its far edge (`RoomParts.palette`). */
+  palette(colors: string[]): CrayonModel {
+    return this.cached(`palette/${colors.join(",")}`, () => {
+      const dabs = colors.map((c, i) => {
+        const a = Math.PI * (1.1 + (0.8 * i) / Math.max(1, colors.length - 1));
+        return parts.props.palette_dab.map((p) => ({ ...p, color: c, x: p.x + 0.085 * Math.cos(a), z: p.z + 0.058 * Math.sin(a) }));
+      });
+      return joined(parts.props.palette_board, ...dabs);
+    });
+  }
+
   /** The colour of book [id]'s spine on the shelf, so the one in his hands matches; the plain book colour without one. */
   bookColor(id: string | null): string {
     return id === null ? constants.PLAIN_BOOK : constants.SPINES[pick(id, constants.SPINES.length)];
