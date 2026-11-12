@@ -2,7 +2,7 @@ import { BufferAttribute, BufferGeometry, type Vector3 } from "three";
 import { WHITE, hex, mix, times, type Rgba } from "../crayon/color";
 import { clamp } from "../crayon/math";
 import { FLOOR_METRES, SECTION_METRES, WALL_METRES } from "./paint";
-import { constants } from "./parts";
+import type { RoomDef } from "./room";
 
 const THICK = 0.14;
 const FLOOR_GRID = 4;
@@ -75,11 +75,11 @@ export interface Shell {
 }
 
 /**
- * Floor and walls of [map], with the front wall cut down to a lip, each side shaded once for the
- * world-space [light] it faces. They aren't part lists: big surfaces are painted textures (see
+ * Floor and walls of [map], [room]'s height with the front wall cut down to its lip, each side
+ * shaded once for the world-space [light] it faces, and the window's glass. They aren't part lists: big surfaces are painted textures (see
  * `docs/decisions/2026-10-31-models-are-crayon-part-lists.md`). Ported from `RoomModels.kt`.
  */
-export function buildShell(map: Terrain, light: Vector3): Shell {
+export function buildShell(map: Terrain, room: RoomDef, light: Vector3): Shell {
   const floor = new PaperMesh();
   const walls = new PaperMesh();
   const section = new PaperMesh();
@@ -87,11 +87,11 @@ export function buildShell(map: Terrain, light: Vector3): Shell {
   for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) {
     const t = map.at(x, y);
     if (t === ".") floorTile(floor, map, x, y, faceShade(0, 1, 0, light));
-    else if (t === "#") wallTile(walls, section, map, x, y, y === front ? constants.LIP : constants.WALL_HEIGHT, light);
+    else if (t === "#") wallTile(walls, section, map, x, y, y === front ? room.lip : room.wallHeight, room.wallHeight, light);
   }
   const glass = new PaperMesh();
-  const w = constants.WINDOW_WIDTH / 2;
-  const h = (constants.WINDOW_TOP - constants.WINDOW_BOTTOM) / 2;
+  const w = room.window.width / 2;
+  const h = (room.window.top - room.window.bottom) / 2;
   glass.rect([-w, -h, 0, w, -h, 0, w, h, 0, -w, h, 0], FULL_UV, WHITE);
   return { floor: floor.geometry(), walls: walls.geometry(), section: section.geometry(), glass: glass.geometry() };
 }
@@ -155,11 +155,11 @@ class Face {
 }
 
 /**
- * A wall tile: a thin slab along each side that faces the floor, so the room reads as a cutaway
+ * A wall tile [h] tall (of a [full] wall's texture): a thin slab along each side that faces the floor, so the room reads as a cutaway
  * dollhouse. The face into the room carries the painted wall (or its bottom strip, on the low front
  * lip); the top and the other faces are the cut section. Slabs run [THICK] past both ends of the tile, so they meet at the corners.
  */
-function wallTile(walls: PaperMesh, section: PaperMesh, map: Terrain, x: number, y: number, h: number, light: Vector3) {
+function wallTile(walls: PaperMesh, section: PaperMesh, map: Terrain, x: number, y: number, h: number, full: number, light: Vector3) {
   for (const [dx, dy] of SIDES) {
     if (map.at(x + dx, y + dy) !== ".") continue;
     slab(section, x, y, dx, dy, -THICK, 1 + THICK, THICK, h, light);
@@ -169,7 +169,7 @@ function wallTile(walls: PaperMesh, section: PaperMesh, map: Terrain, x: number,
     const u0 = (dx !== 0 ? f.pz(-THICK, 0) : f.px(-THICK, 0)) / WALL_METRES;
     const u1 = (dx !== 0 ? f.pz(1 + THICK, 0) : f.px(1 + THICK, 0)) / WALL_METRES;
     const v0 = 1;
-    const v1 = 1 - h / constants.WALL_HEIGHT;
+    const v1 = 1 - h / full;
     walls.rect([a0[0], 0, a0[1], a1[0], 0, a1[1], a1[0], h, a1[1], a0[0], h, a0[1]], [u0, v0, u1, v0, u1, v1, u0, v1], faceShade(dx, 0, dy, light));
   }
 }

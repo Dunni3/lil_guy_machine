@@ -8,16 +8,36 @@
   <style>
     html, body { margin: 0; height: 100%; background: #1e1a20; overflow: hidden; }
     canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+    body.broadcast, body.broadcast canvas { cursor: none; }
     #status {
       position: fixed; left: 12px; bottom: 10px;
       font: 13px/1.3 ui-rounded, system-ui, sans-serif; color: #fff8ee; opacity: 0.72;
       text-shadow: 0 1px 2px #0008; pointer-events: none;
     }
+    /* The admin's password box: the one piece of DOM over the room, there only while signing in. */
+    #signin {
+      position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+      width: min(720px, 86vw); box-sizing: border-box; padding: 32px 36px;
+      background: #fff8ee; border: 6px solid #e8cfb2; border-radius: 22px;
+      font: 600 22px/1.3 ui-rounded, system-ui, sans-serif; color: #3a2a20;
+    }
+    #signin[hidden] { display: none; }
+    #signin label { display: block; color: #8a7464; font-size: 18px; letter-spacing: 0.04em; margin-bottom: 12px; }
+    #signin input {
+      width: 100%; box-sizing: border-box; padding: 14px 18px; font: inherit; color: inherit;
+      background: #fde9c6; border: 0; border-radius: 12px; outline: 5px solid #e07f74; outline-offset: 3px;
+    }
+    #signin p { margin: 18px 0 0; color: #8a7464; font-size: 18px; text-align: center; }
   </style>
 </head>
 <body>
   <canvas id="room"></canvas>
   <div id="status" role="status">connecting</div>
+  <form id="signin" hidden autocomplete="on">
+    <label for="password">ADMIN PASSWORD</label>
+    <input id="password" type="password" autocomplete="current-password" spellcheck="false">
+    <p id="signin-note">Enter signs in · Escape gives up</p>
+  </form>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
