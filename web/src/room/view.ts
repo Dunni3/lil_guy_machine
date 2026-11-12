@@ -8,6 +8,7 @@ import { ArtLayer } from "./art";
 import { lightAt, type Light } from "./light";
 import { RoomPaint } from "./paint";
 import { Models, constants, flatItem, wallItem } from "./parts";
+import { BEDROOM } from "./room";
 import { Terrain, buildShell } from "./shell";
 
 const FOV = 30;
@@ -16,20 +17,6 @@ const WIDE = 16 / 9;
 const PITCH = 40;
 /** Room beyond the side walls, in tiles, so the walls don't touch the screen edge. */
 const SIDE_MARGIN = 0.9;
-
-/** Where a piece is made at a stand, and how far he moves in from his tile to work at it. */
-interface Stand {
-  id: string;
-  x: number;
-  y: number;
-  z: number;
-  flat: boolean;
-  slide: number;
-}
-const SKETCH: Stand = { id: "desk", x: constants.SKETCH_X, y: 0.567, z: constants.SKETCH_Z, flat: true, slide: 0.14 };
-const PAINTING: Stand = { id: "easel", x: 0, y: constants.CANVAS_Y, z: constants.CANVAS_Z + 0.025, flat: false, slide: 0.38 };
-/** Activities done by hand at a stand, and which: his working hand goes to it. */
-const WORK: Record<string, Stand> = { sketch: SKETCH, journal: SKETCH, paint: PAINTING };
 
 /** The record's turn (degrees a second), and the notes: seconds apart, how long each lasts, and how fast it rises (metres a second). */
 const DISC_SPEED = 200;
@@ -72,8 +59,9 @@ interface Thing {
  * window's sky following the game clock. What he's busy with shows: the book in his hands, the guitar
  * off its peg and in his arms, the record turning and notes rising from it.
  *
- * Everything is drawn in the hand-drawn look by one [CrayonRenderer]. His art is [ArtLayer]'s. The
- * app's HUD isn't here yet: [Blob.headTop] is where the bubble's anchored, for when it is.
+ * Everything is drawn in the hand-drawn look by one [CrayonRenderer]. His art is [ArtLayer]'s, and
+ * where pieces are made and hang is the room's [RoomDef]. The app's HUD isn't here yet:
+ * [Blob.headTop] is where the bubble's anchored, and [ArtLayer.announced] a finished piece's title, for when it is.
  */
 export class RoomView {
   private readonly paint = new RoomPaint();
@@ -116,7 +104,7 @@ export class RoomView {
 
   constructor(private readonly r: CrayonRenderer) {
     this.blob = new Blob(r, constants.TOOL_TIP);
-    this.art = new ArtLayer(r, this.models);
+    this.art = new ArtLayer(r, this.models, BEDROOM);
   }
 
   /** What's beyond the room, for clearing to. */
@@ -141,7 +129,9 @@ export class RoomView {
     pose.z = place.y;
     pose.facing = guy.facing_degrees;
     pose.moving = place.moving;
-    pose.doing = fast.doing;
+    // At a piece, he stays in its pose after its verb while the clock waits for it to finish.
+    const making = this.art.follow(state, place.moving, delta);
+    pose.doing = making?.activity ?? fast.doing;
     pose.energy = fast.needs?.energy ?? 70;
     pose.mood = fast.needs?.mood ?? 60;
     pose.music = fast.music !== null;
@@ -150,15 +140,16 @@ export class RoomView {
     const under = state.things.entities.find((e) => e.id in SURFACES && Math.trunc(e.x) === Math.trunc(place.x) && Math.trunc(e.y) === Math.trunc(place.y))?.id;
     pose.standY = under === undefined || (under === "chair" && pose.moving) ? 0 : SURFACES[under];
     // Drawing, writing or painting, his hand goes to the page or the canvas.
-    const station = pose.doing ? WORK[pose.doing] : undefined;
+    const station = pose.doing ? BEDROOM.work[pose.doing] : undefined;
     const stand = station ? state.things.entities.find((e) => e.id === station.id) : undefined;
     pose.workAt = station && stand ? this.workAt.set(stand.x + station.x, station.y, stand.y + station.z) : null;
     pose.workFlat = station?.flat ?? true;
     pose.workSlide = station?.slide ?? 0;
+    this.art.pose(pose, making, making ? stand : undefined);
     this.blob.update(delta, pose);
 
     this.r.begin(this.light.tint, delta);
-    this.art.update(state, this.things.get("easel")?.at ?? null);
+    this.art.draw(state, making, (id) => this.things.get(id)?.at ?? null, this.blob, delta);
     this.drawHeld(intent?.type === "do" ? intent.item : null);
     this.drawMusic(fast.music !== null, delta);
   }

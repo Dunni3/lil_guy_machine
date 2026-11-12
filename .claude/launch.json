@@ -18,6 +18,12 @@
       "runtimeExecutable": "make",
       "runtimeArgs": ["host", "LILGUY_DB=none", "LILGUY_START_ITEMS=novel,folk_record,guitar,record_player,plant,rug,poster,easel,canvas,lava_lamp,teddy_bear,string_lights,round_mirror,meal=4", "LILGUY_SCRIPT=sketch,play_record,read,play_guitar,paint,eat"],
       "port": 8790
+    },
+    {
+      "name": "host-painter",
+      "runtimeExecutable": "make",
+      "runtimeArgs": ["host", "PORT=8791", "PAINTER=3", "LILGUY_DB=none", "LILGUY_START_ITEMS=easel,canvas=3,meal=4", "LILGUY_SCRIPT=paint,hang_art,paint"],
+      "port": 8791
     }
   ]
 }
