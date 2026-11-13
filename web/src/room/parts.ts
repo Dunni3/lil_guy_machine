@@ -49,10 +49,10 @@ export class Models {
     return this.cached(`prop/${name}/${color ?? ""}`, () => parts.props[name].map((p) => (p.color === COLOR ? { ...p, color: color! } : p)));
   }
 
-  /** The window's frame and curtains, and the clock, along a back wall [width] tiles wide. */
-  fixtures(width: number): CrayonModel {
-    return this.cached(`fixtures/${width}`, () =>
-      joined(shifted(parts.props.window_fixtures, width * constants.WINDOW_AT), shifted(parts.props.wall_clock, width * constants.CLOCK_AT)),
+  /** The window's frame and curtains centred at [windowX], and the clock at [clockX], along the back wall. */
+  fixtures(windowX: number, clockX: number): CrayonModel {
+    return this.cached(`fixtures/${windowX}/${clockX}`, () =>
+      joined(shifted(parts.props.window_fixtures, windowX), shifted(parts.props.wall_clock, clockX)),
     );
   }
 

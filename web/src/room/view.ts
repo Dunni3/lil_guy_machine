@@ -5,18 +5,12 @@ import type { CrayonRenderer, Placed } from "../crayon/renderer";
 import { Blob, newPose } from "../guy/blob";
 import type { Place } from "../stream/track";
 import { ArtLayer } from "./art";
+import { CameraRig, type CameraMode } from "./camera";
 import { lightAt, type Light } from "./light";
 import { RoomPaint } from "./paint";
 import { Models, constants, flatItem, wallItem } from "./parts";
 import { BEDROOM } from "./room";
 import { Terrain, buildShell } from "./shell";
-
-const FOV = 30;
-const WIDE = 16 / 9;
-/** Degrees the camera looks down. */
-const PITCH = 40;
-/** Room beyond the side walls, in tiles, so the walls don't touch the screen edge. */
-const SIDE_MARGIN = 0.9;
 
 /** The record's turn (degrees a second), and the notes: seconds apart, how long each lasts, and how fast it rises (metres a second). */
 const DISC_SPEED = 200;
@@ -54,14 +48,14 @@ interface Thing {
 }
 
 /**
- * The room in 3D, ported from `RoomView.kt`: a fixed-camera cutaway of the room (no front wall, no
- * ceiling), furniture placed where the state says, the guy as an animated [Blob], light and the
+ * The room in 3D, ported from `RoomView.kt`: a cutaway of the room (no front wall, no ceiling) seen
+ * from the viewer's own [CameraRig], furniture placed where the state says, the guy as an animated [Blob], light and the
  * window's sky following the game clock. What he's busy with shows: the book in his hands, the guitar
  * off its peg and in his arms, the record turning and notes rising from it.
  *
  * Everything is drawn in the hand-drawn look by one [CrayonRenderer]. His art is [ArtLayer]'s, and
- * where pieces are made and hang is the room's [RoomDef]. The app's HUD isn't here yet:
- * [Blob.headTop] is where the bubble's anchored, and [ArtLayer.announced] a finished piece's title, for when it is.
+ * the room's layout beyond its map (walls, window, clock, shelf, where pieces are made and hang) is
+ * its [RoomDef]. The HUD is drawn over it (`ui/`), from [speech] and [making].
  */
 export class RoomView {
   private readonly paint = new RoomPaint();
@@ -101,10 +95,18 @@ export class RoomView {
   private readonly workAt = new Vector3();
   private readonly at = new Matrix4();
   private light: Light = lightAt(12);
+  readonly camera: CameraRig;
+  private readonly room = BEDROOM;
 
-  constructor(private readonly r: CrayonRenderer) {
+  /** For his bubble: where his head is, and whether he's asleep or thinking. The finished piece's title is [ArtLayer.announced]. */
+  readonly speech = { head: new Vector3(), asleep: false, thinking: false, announced: null as string | null };
+  /** The stand of the piece he's at this frame, or null: the HUD says how far along it is. */
+  making: { canvas: boolean } | null = null;
+
+  constructor(private readonly r: CrayonRenderer, camera: CameraMode) {
+    this.camera = new CameraRig(camera);
     this.blob = new Blob(r, constants.TOOL_TIP);
-    this.art = new ArtLayer(r, this.models, BEDROOM);
+    this.art = new ArtLayer(r, this.models, this.room);
   }
 
   /** What's beyond the room, for clearing to. */
@@ -140,49 +142,51 @@ export class RoomView {
     const under = state.things.entities.find((e) => e.id in SURFACES && Math.trunc(e.x) === Math.trunc(place.x) && Math.trunc(e.y) === Math.trunc(place.y))?.id;
     pose.standY = under === undefined || (under === "chair" && pose.moving) ? 0 : SURFACES[under];
     // Drawing, writing or painting, his hand goes to the page or the canvas.
-    const station = pose.doing ? BEDROOM.work[pose.doing] : undefined;
+    const station = pose.doing ? this.room.work[pose.doing] : undefined;
     const stand = station ? state.things.entities.find((e) => e.id === station.id) : undefined;
     pose.workAt = station && stand ? this.workAt.set(stand.x + station.x, station.y, stand.y + station.z) : null;
     pose.workFlat = station?.flat ?? true;
     pose.workSlide = station?.slide ?? 0;
     this.art.pose(pose, making, making ? stand : undefined);
     this.blob.update(delta, pose);
+    this.camera.update(this.r.camera, place.x, place.y, delta);
+    this.making = making;
 
     this.r.begin(this.light.tint, delta);
     this.art.draw(state, making, (id) => this.things.get(id)?.at ?? null, this.blob, delta);
     this.drawHeld(intent?.type === "do" ? intent.item : null);
     this.drawMusic(fast.music !== null, delta);
+    const speech = this.speech;
+    speech.head.copy(this.blob.headTop);
+    speech.asleep = pose.doing === "sleep" && !pose.moving;
+    speech.thinking = pose.thinking;
+    speech.announced = this.art.announced;
   }
 
-  /** Points the camera at the room and builds it (once per map): a front view from above, the whole room in frame. */
+  /** Builds the room (once per map) and frames it for the camera. The shell is shaded from the camera's direction, which moving it never changes. */
   private frame(content: Content) {
     const rows = content.map.rows.join("\n");
     if (rows === this.framedRows) return;
     this.framedRows = rows;
     const map = (this.map = new Terrain(content.map.rows));
-    const halfFovX = Math.tan((FOV / 2) * (Math.PI / 180)) * WIDE;
-    const distance = (map.width / 2 + SIDE_MARGIN) / halfFovX;
-    const target = new Vector3(map.width / 2, 1.1, map.height / 2 + 0.2);
-    const pitch = PITCH * (Math.PI / 180);
-    const camera = this.r.camera;
-    camera.position.copy(target).add(new Vector3(0, Math.sin(pitch) * distance, Math.cos(pitch) * distance));
-    camera.up.set(0, 1, 0);
-    camera.lookAt(target);
-    camera.updateMatrixWorld();
+    this.camera.frame(map.width, map.height);
+    this.camera.update(this.r.camera, map.width / 2, map.height / 2, 0);
+    const room = this.room;
+    const back = room.backWall;
 
     for (const m of this.surfaces) this.r.removeMesh(m);
     if (this.fixtures) this.r.remove(this.fixtures);
-    const shell = buildShell(map, this.r.worldLight());
+    const shell = buildShell(map, room, this.r.worldLight());
     const surface = (g: BufferGeometry, name: string) => this.r.surface(g, this.paint.texture(name)!);
     this.glass = this.r.surface(shell.glass, this.paint.texture("white")!, this.glassTint);
-    const glassAt = new Matrix4().makeTranslation(map.width * constants.WINDOW_AT, (constants.WINDOW_BOTTOM + constants.WINDOW_TOP) / 2, 1.012);
+    const glassAt = new Matrix4().makeTranslation(map.width * room.window.along, (room.window.bottom + room.window.top) / 2, back + 0.012);
     this.glass.matrix.copy(glassAt);
     this.glass.matrixWorldNeedsUpdate = true;
     this.surfaces = [surface(shell.floor, "floor"), surface(shell.walls, "wall"), surface(shell.section, "section"), this.glass];
-    this.fixtures = this.r.add(this.models.fixtures(map.width));
+    this.fixtures = this.r.add(this.models.fixtures(map.width * room.window.along, map.width * room.clock.along));
     this.hourHand ??= this.r.add(this.models.prop("hand_hour"));
     this.minuteHand ??= this.r.add(this.models.prop("hand_minute"));
-    this.guitarAt.makeTranslation(map.width * constants.GUITAR_AT, 0, 1);
+    this.guitarAt.makeTranslation(map.width * room.guitar.along, room.guitar.y, back);
     this.thingsFrom = null;
     this.shelfKey = "";
     this.shelfFrom = null;
@@ -198,9 +202,10 @@ export class RoomView {
     this.light = lightAt(hour);
     const { r, g, b } = this.light.sky;
     this.glassTint.value.set(r, g, b);
-    const clockX = this.map!.width * constants.CLOCK_AT;
-    this.hourHand!.set(rotate(this.at.makeTranslation(clockX, constants.CLOCK_Y, 1.06), Z_AXIS, -30 * hour));
-    this.minuteHand!.set(rotate(this.at.makeTranslation(clockX, constants.CLOCK_Y, 1.07), Z_AXIS, -360 * hour));
+    const { clock, backWall } = this.room;
+    const clockX = this.map!.width * clock.along;
+    this.hourHand!.set(rotate(this.at.makeTranslation(clockX, clock.y, backWall + 0.06), Z_AXIS, -30 * hour));
+    this.minuteHand!.set(rotate(this.at.makeTranslation(clockX, clock.y, backWall + 0.07), Z_AXIS, -360 * hour));
   }
 
   /**
@@ -269,7 +274,8 @@ export class RoomView {
       this.shelfKey = key;
       if (this.shelf) this.r.remove(this.shelf);
       this.shelf = books.length || records.length ? this.r.add(this.models.shelf(books, records)) : null;
-      this.shelf?.set(this.at.makeTranslation(this.map!.width * constants.SHELF_AT, 0, 1));
+      const { shelf, backWall } = this.room;
+      this.shelf?.set(this.at.makeTranslation(this.map!.width * shelf.along, shelf.y, backWall));
     }
     if (owned.some((c) => c.id === "guitar") && !this.guitar) this.guitar = this.r.add(this.models.prop("guitar")).set(this.guitarAt);
     else if (!owned.some((c) => c.id === "guitar") && this.guitar) {

@@ -1,5 +1,5 @@
 import {
-  BackSide, BufferAttribute, BufferGeometry, Color, ColorManagement, DoubleSide, FrontSide, LinearSRGBColorSpace, Matrix4, Mesh, PerspectiveCamera, Scene,
+  BackSide, BufferAttribute, BufferGeometry, Camera, Color, ColorManagement, DoubleSide, FrontSide, LinearSRGBColorSpace, Matrix4, Mesh, PerspectiveCamera, Scene,
   ShaderMaterial, Vector2, Vector3, Vector4, WebGLRenderer, type Material, type Texture,
 } from "three";
 import { CrayonCanvas, blobPath } from "./canvas";
@@ -73,6 +73,7 @@ export class CrayonRenderer {
   frame = 0;
 
   private time = 0;
+  private readonly clear = new Color();
   private readonly placed = new Set<Placed>();
   private readonly materials = new Map<string, ShaderMaterial>();
   private readonly ids = new Map<Texture, number>();
@@ -206,8 +207,16 @@ export class CrayonRenderer {
   }
 
   render(background: Rgba) {
-    this.webgl.setClearColor(new Color(background.r, background.g, background.b), 1);
+    this.webgl.setClearColor(this.clear.setRGB(background.r, background.g, background.b), 1);
     this.webgl.render(this.scene, this.camera);
+  }
+
+  /** Draws [scene] over the frame just rendered, through [camera], keeping what's there (the HUD). */
+  overlay(scene: Scene, camera: Camera) {
+    const w = this.webgl;
+    w.autoClear = false;
+    w.render(scene, camera);
+    w.autoClear = true;
   }
 
   private place(mesh: Mesh, order: number) {
