@@ -62,7 +62,8 @@ fun main() {
     val hostName = runCatching { InetAddress.getLocalHost().hostName }.getOrNull()
     val store = (get("LILGUY_DB") ?: "runs/lilguy.db").takeIf { it != "none" }?.let { JdbcSqlDriver.store(File(it)) }
     // One sync worker for the whole process; the sessions record but don't sync.
-    val db = store?.let { RunDatabase(it, sync = null, platform = "host", host = hostName, gitSha = git("rev-parse", "HEAD")?.trim(), gitDirty = git("status", "--porcelain")?.isNotBlank(), resume = get("LILGUY_RESUME")) }
+    val (gitSha, gitDirty) = gitVersion()
+    val db = store?.let { RunDatabase(it, sync = null, platform = "host", host = hostName, gitSha = gitSha, gitDirty = gitDirty, resume = get("LILGUY_RESUME")) }
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val sync = store?.let { s -> SyncTarget.fromEnv(env)?.let { SyncWorker(s, it, client = "host@${hostName ?: "?"}") } }
     sync?.start(scope)
@@ -85,6 +86,17 @@ fun main() {
         if (sync != null) runBlocking { withTimeoutOrNull(10.seconds) { sync.syncAll() } }
     })
     embeddedServer(CIO, port = port, host = bind) { host(mapOf(life.id to life), auth) }.start(wait = true)
+}
+
+/**
+ * The commit this host was built from and whether that checkout had changes: from git when it runs in a checkout,
+ * else from the `git-version` file in the working directory that `server/deploy/stage-host.sh` writes into the
+ * server's image, which has no git (its sha, then `dirty` or `clean`).
+ */
+private fun gitVersion(): Pair<String?, Boolean?> {
+    git("rev-parse", "HEAD")?.trim()?.takeIf { it.isNotEmpty() }?.let { return it to git("status", "--porcelain")?.isNotBlank() }
+    val lines = runCatching { File("git-version").readLines().map { it.trim() } }.getOrNull() ?: return null to null
+    return lines.getOrNull(0)?.takeIf { it.isNotEmpty() } to when (lines.getOrNull(1)) { "dirty" -> true; "clean" -> false; else -> null }
 }
 
 private fun git(vararg args: String): String? = runCatching {
