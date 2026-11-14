@@ -120,10 +120,21 @@ window.addEventListener("keydown", (e) => {
   else if (view && (press === "up" || press === "down")) view.camera.mode = press === "up" ? "room" : "follow";
 });
 
+/** A click on the room opens the menu, as OK does, for a mouse that reaches for a button; inside it the keys do the rest. */
+canvas.addEventListener("click", () => {
+  const life = stream.state.life;
+  if (settings.broadcast || signIn.open || menu.open || !life) return;
+  const v = pageView(life);
+  if (!v) return;
+  pressed = true;
+  menu.show(v);
+});
+
 let view: RoomView | null = null;
 let last = seconds();
 let next = 0;
-let statusText = "";
+/** Null until the first frame sets it, so a page whose first frame is already live still hides the "connecting" it loaded with. */
+let statusText: string | null = null;
 const stats = { frames: 0, worst: 0, since: last, fps: 0 };
 
 function frame() {
@@ -179,9 +190,11 @@ function banner(life: LifeState, menuOpen: boolean): string | null {
   }
 }
 
+/** Top right: the room's keys, and for anyone not signed in, where signing in is (on a keyboard, OK is Enter). */
 function hint(menuOpen: boolean): string | null {
   if (settings.broadcast || menuOpen) return null;
-  return "OK for the menu · " + (view?.camera.mode === "follow" ? "UP shows the room" : "DOWN follows him");
+  const camera = view?.camera.mode === "follow" ? "UP shows the room" : "DOWN follows him";
+  return admin.admin ? `OK for the menu · ${camera}` : `OK (Enter) or a click for the menu · admin sign-in is on RUN · ${camera}`;
 }
 
 /** The line under the canvas, for before there's a room to draw a HUD on, or when there's no room at all. */

@@ -31,10 +31,14 @@ test("viewers get the pages and a sign-in but no run controls; the admin's keys 
   expect(TABS.map(({ id }) => entries(id, full).length)).toEqual([1, host.shop.catalog.length, 1, 2, 3, 1]);
   expect(entries("shop", watching).length).toBe(host.shop.catalog.length);
   expect(entries("run", watching).map((e) => e.key)).toEqual(["signin"]);
+  // A viewer's first opening lands on Sign in, so the admin finds it; after that the tab stays where they left it.
+  menu.show(watching);
+  expect(menu.tab).toBe("run");
+  expect(menu.press("ok", watching)).toEqual({ type: "signIn" });
+  menu.press("right", watching);
+  menu.close();
   menu.show(watching);
   expect(menu.tab).toBe("shop");
-  menu.press("left", watching);
-  expect(menu.press("ok", watching)).toEqual({ type: "signIn" });
 
   // The admin, on a run that hasn't started: OK twice from the room starts it, and the menu closes.
   const ready = { ...host, run: { ...host.run, state: "ready" as const } };
