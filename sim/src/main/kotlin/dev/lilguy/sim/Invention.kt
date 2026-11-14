@@ -12,6 +12,7 @@ import kotlin.math.roundToInt
  * to look at. [book]: what a readable thing is as a book.
  */
 @Serializable
+@SerialName("design")
 data class Design(
     val name: String,
     val use: String,
@@ -25,6 +26,7 @@ data class Design(
 
 /** A book he wrote: [chapters] are a sentence each, and [skill] is the one skill reading it raises, if any. */
 @Serializable
+@SerialName("book_design")
 data class BookDesign(val title: String, val blurb: String, val chapters: List<String>, val skill: String? = null)
 
 /**
@@ -33,6 +35,7 @@ data class BookDesign(val title: String, val blurb: String, val chapters: List<S
  * bottom centre of the shape, and rotations are degrees.
  */
 @Serializable
+@SerialName("look_part")
 data class LookPart(
     val shape: String,
     val w: Double,

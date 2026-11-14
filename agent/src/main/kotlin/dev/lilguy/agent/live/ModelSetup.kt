@@ -3,6 +3,7 @@ package dev.lilguy.agent.live
 import dev.lilguy.agent.DecisionLog
 import dev.lilguy.agent.Scenario
 import dev.lilguy.agent.TokenPrice
+import dev.lilguy.agent.invent.Inventing
 import dev.lilguy.decision.DecisionModel
 import dev.lilguy.decision.Endpoints
 import dev.lilguy.decision.EndpointsFile
@@ -49,6 +50,8 @@ class ModelSetup(
     val startItems: Map<String, Int> = emptyMap(),
     /** A fresh model for each run that draws his art instead of the deciding one; a dev aid for watching him paint with no endpoint (LILGUY_PAINTER). */
     val painter: (() -> DecisionModel)? = null,
+    /** A fresh inventor for each run that designs what he invents instead of the writer; a dev aid for watching him invent with no endpoint (LILGUY_INVENTOR). */
+    val inventor: (() -> Inventing)? = null,
 ) {
     class Prices(val decision: TokenPrice? = null, val memory: TokenPrice? = null, val writer: TokenPrice? = null, val recall: TokenPrice? = null)
 
@@ -61,7 +64,8 @@ class ModelSetup(
         recallScorer: (() -> Scorer)? = this.recallScorer,
         startItems: Map<String, Int> = this.startItems,
         painter: (() -> DecisionModel)? = this.painter,
-    ) = ModelSetup(create, scenario, ticksPerMinute, timeout, logDir, notice, memoryModel, days, writerModel, prices, paints, recallScorer, startItems, painter)
+        inventor: (() -> Inventing)? = this.inventor,
+    ) = ModelSetup(create, scenario, ticksPerMinute, timeout, logDir, notice, memoryModel, days, writerModel, prices, paints, recallScorer, startItems, painter, inventor)
 
     /** The Run page's starting values; the viewer changes them from there. */
     val settings: RunSettings get() = RunSettings(days, ticksPerMinute = ticksPerMinute)

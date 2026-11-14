@@ -14,6 +14,7 @@ import dev.lilguy.agent.TokenPrice
 import dev.lilguy.agent.TokenPurpose
 import dev.lilguy.agent.TokenReport
 import dev.lilguy.agent.TokenTotals
+import dev.lilguy.agent.invent.Inventor
 import dev.lilguy.agent.shop.Shopper
 import dev.lilguy.agent.shop.Trip
 import dev.lilguy.agent.memory.AgentMemory
@@ -387,6 +388,8 @@ fun main(argv: Array<String>) {
                     val picker = decisionModel.takeIf { painting }?.let { ledger.meter(it, TokenPurpose.Shop, priceOf(endpoint)) }
                     writerModel?.let { Shopper(ledger.meter(it, TokenPurpose.Shop, priceOf(writerEndpoint!!)), fallback = picker) } ?: picker?.let { Shopper(it) }
                 },
+                inventor = writerModel?.takeIf { scenario == Scenario.Bedroom }?.let { Inventor(ledger.meter(it, TokenPurpose.Invent, priceOf(writerEndpoint!!))) },
+                onDraft = { d -> life?.invention(d) },
                 onTrip = { t ->
                     log?.write(t)
                     life?.trip(t)

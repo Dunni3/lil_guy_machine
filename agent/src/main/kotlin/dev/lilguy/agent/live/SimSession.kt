@@ -32,6 +32,7 @@ import dev.lilguy.agent.memory.MemoryScorer
 import dev.lilguy.agent.memory.SelfModeler
 import dev.lilguy.agent.memory.Reader
 import dev.lilguy.agent.memory.Thinker
+import dev.lilguy.agent.invent.Inventor
 import dev.lilguy.agent.shop.Shopper
 import dev.lilguy.agent.memory.Summarizer
 import dev.lilguy.decision.DecisionModel
@@ -385,6 +386,9 @@ class SimSession(
                 jw?.let { Shopper(ledger.meter(it, TokenPurpose.Shop, setup.prices.writer), fallback = picker) } ?: picker?.let { Shopper(it) }
             },
             onTrip = { t -> runCatching { runLog?.write(t) }; lr?.trip(t) },
+            // What he invents: the writer designs it; a canned inventor stands in when the setup has one.
+            inventor = if (setup.scenario != Scenario.Bedroom) null else setup.inventor?.invoke() ?: jw?.let { Inventor(ledger.meter(it, TokenPurpose.Invent, setup.prices.writer)) },
+            onDraft = { d -> lr?.invention(d) },
         )
         val (gw, r) = setup.scenario.create(
             m, setup.timeout, settings.ticksPerMinute, longTerm = memory, startItems = setup.startItems,
