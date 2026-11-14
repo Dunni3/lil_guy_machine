@@ -53,7 +53,11 @@ class BedroomWorld private constructor(
 
     /** What he has invented, oldest first; replaced rather than changed, so any thread can read it. */
     @Volatile var inventions: List<Invention> = emptyList()
-        private set
+        private set(value) {
+            field = value
+            invented = value.map { InventedView(it, it.item.slot in content.room.wallSlots) }
+        }
+    private var invented: List<InventedView> = emptyList()
 
     val ledger = Ledger(content.start.money, clock)
     val needs = Needs(content.start.needs, clock)
@@ -1198,6 +1202,7 @@ class BedroomWorld private constructor(
             commission = commissionView(),
             art = artViews(),
             catalog = current.catalog,
+            inventions = invented,
             verbs = current.verbs,
             done = done,
         )

@@ -1,5 +1,5 @@
 /* Generated from schema/protocol.schema.json (protocol/.../*.kt) by gen_types.sh. Don't edit; run `make protocol-types`.
- * schema sha256: 1083425239a864ad75c3feed9b0adaff32ee7c0ce0c335b33bf30e3e6254d750
+ * schema sha256: 872229f6dafc0fe9e319f0803e561ed22efb4c9d917387dcb1bfce5ec56d139e
  */
 
 /**
@@ -341,6 +341,7 @@ export interface CommissionView {
 export interface ShopState {
   catalog: CatalogState[];
   verbs: VerbState[];
+  inventions: Invented[];
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -362,6 +363,41 @@ export interface VerbState {
   locked: string | null;
   gives: string | null;
   taught_by: string | null;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "Invented".
+ */
+export interface Invented {
+  id: string;
+  name: string;
+  group: string;
+  use: string;
+  like: {
+    [k: string]: number;
+  };
+  price: number | null;
+  wall: boolean;
+  cost: number;
+  why: string;
+  look: LookShape[];
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "LookShape".
+ */
+export interface LookShape {
+  shape: string;
+  w: number;
+  h: number;
+  d: number;
+  x: number;
+  y: number;
+  z: number;
+  rot_x: number;
+  rot_y: number;
+  rot_z: number;
+  color: string;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
