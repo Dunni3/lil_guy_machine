@@ -58,7 +58,7 @@ make server-psql    # then: select * from v_runs;
 3. **Bootstrap.** `ssh ubuntu@<ip> 'bash -s' < server/deploy/bootstrap-instance.sh`. This
    installs Docker, the firewall, 2 GB of swap and the nightly backup cron. Log out and back in.
 4. **Secrets.** Create two files on the box. They never leave it, because `deploy.sh` excludes them.
-   - `~/lilguy-server/.env` from `.env.example`: `DOMAIN`, `HOST_DOMAIN`, `ACME_EMAIL`, a fresh
+   - `~/lilguy-server/.env` from `.env.example`: `DOMAIN`, `HOST_DOMAIN`, a fresh
      `POSTGRES_PASSWORD`, and one token per writer in `LILGUY_INGEST_TOKENS`, including `host:`.
    - `~/lilguy-server/.env.host` from `.env.host.example`: `LILGUY_ADMIN_PASSWORD`, and in
      `LILGUY_SYNC_TOKEN` the same token as `host:` above. Add `LILGUY_ENDPOINT` and its key to use a

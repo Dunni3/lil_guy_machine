@@ -62,7 +62,6 @@ services:
     environment:
       DOMAIN: ${DOMAIN:?set DOMAIN in server/.env}
       HOST_DOMAIN: ${HOST_DOMAIN:?set HOST_DOMAIN in server/.env}
-      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in server/.env}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data

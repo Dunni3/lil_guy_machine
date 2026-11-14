@@ -1,6 +1,4 @@
-{
-	email {$ACME_EMAIL}
-}
+# No ACME email: Let's Encrypt no longer sends expiry notices, and Caddy renews by itself.
 
 (common) {
 	encode zstd gzip
