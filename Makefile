@@ -99,7 +99,7 @@ parts: ## Regenerate parts/export/parts.json from the part lists (make test fail
 # LILGUY_SYNC_TOKEN are set (put them in the secrets file above). The server is server/:
 # Postgres plus the FastAPI ingest service. See server/README.md.
 
-DEV_COMPOSE := POSTGRES_PASSWORD=dev LILGUY_INGEST_TOKENS=dev:dev DOMAIN=localhost HOST_DOMAIN=localhost ACME_EMAIL=dev@localhost docker compose -f server/docker-compose.yml -f server/docker-compose.dev.yml
+DEV_COMPOSE := POSTGRES_PASSWORD=dev LILGUY_INGEST_TOKENS=dev:dev DOMAIN=localhost HOST_DOMAIN=localhost docker compose -f server/docker-compose.yml -f server/docker-compose.dev.yml
 
 .PHONY: server-schema
 server-schema: ## Regenerate the rows' JSON Schema from runlog's row classes, and the server's Pydantic models from it
