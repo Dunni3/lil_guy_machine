@@ -10,6 +10,7 @@ import kotlin.test.assertTrue
 class BedroomWorldTest {
     /** The shipped file gates nothing; the tier mechanism is tested on what used to be tier 1, and all decor. */
     private val tier1 = setOf(
+        "workbench", "invent",
         "canvas", "easel", "record_player", "jazz_record", "ambient_record", "folk_record", "novel", "poetry_book",
         "field_guide", "painting", "paint", "read", "listen", "play_record",
         "drawing_book", "music_book", "guitar", "play_guitar",
@@ -381,7 +382,7 @@ class BedroomWorldTest {
         assertTrue("isn't in vocabulary.qualities" in broken(withItem("rug") { it.copy(qualities = mapOf("shiny" to 1.0)) }))
         assertTrue("isn't in vocabulary.affords" in broken(withItem("novel") { it.copy(affords = mapOf("edible?" to AffordanceParams())) }))
         assertEquals("item sketch, sellable: needs price from 1 to 10000", broken(withItem("sketch") { it.copy(affords = it.affords + ("sellable" to AffordanceParams())) }))
-        assertEquals("verb read: a generative verb needs produce; a generative verb can't progress; a generative verb can't enjoy; a generative verb can't write", broken(withActivity("read") { it.copy(kind = VerbKind.Generative) }))
+        assertEquals("verb read: a generative verb needs produce or build; a generative verb can't progress; a generative verb can't enjoy", broken(withActivity("read") { it.copy(kind = VerbKind.Generative) }))
         assertEquals("verb listen: a consumptive verb needs an affordance in requires, args or a consume, or a hear", broken(withActivity("listen") { it.copy(requires = listOf("record_player"), effects = it.effects.drop(1)) }))
         // Kinds list what they allow: an op no kind lists for it is refused.
         assertEquals("verb think: an expressive verb can't produce", broken(withActivity("think") { it.copy(effects = it.effects + ProduceOp(mapOf("sketch" to 1))) }))

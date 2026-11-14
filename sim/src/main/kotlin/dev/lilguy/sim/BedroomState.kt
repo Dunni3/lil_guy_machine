@@ -58,6 +58,8 @@ data class BedroomState(
     val commissions: Int,
     val authored: List<AuthoredView>,
     @SerialName("authored_count") val authoredCount: Int,
+    /** What he has invented, oldest first: put back into the content before the rest is loaded. */
+    val inventions: List<Invention> = emptyList(),
 ) {
     @Serializable
     data class PendingNeed(val need: String, val reason: String, val delta: Double)

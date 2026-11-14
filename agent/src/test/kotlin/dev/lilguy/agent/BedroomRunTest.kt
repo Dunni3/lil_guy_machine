@@ -97,6 +97,7 @@ class BedroomRunTest {
     /** The shipped file gates nothing; the small world and its grants are tested on what used to be tier 1, and all decor. */
     private val smallWorld = dev.lilguy.sim.BedroomContent.default().let { c ->
         val tier1 = setOf(
+        "workbench", "invent",
             "canvas", "easel", "record_player", "jazz_record", "ambient_record", "folk_record", "novel", "poetry_book",
             "field_guide", "drawing_book", "music_book", "guitar", "painting", "paint", "read",
             "listen", "play_record", "play_guitar",
@@ -124,7 +125,7 @@ class BedroomRunTest {
 
         val choices = BedroomPrompt.choices(obs, emptyList(), world.clock.ticksPerMinute, world.content)
         assertEquals(
-            listOf("do:eat", "do:sketch", "do:shop", "do:think", "wait:${BedroomPrompt.WAIT_TICKS}"),
+            listOf("do:eat:meal", "do:sketch", "do:shop", "do:think", "wait:${BedroomPrompt.WAIT_TICKS}"),
             choices.options.map { it.label },
         )
         // Every option's reply passes the same schema a writing model is held to.

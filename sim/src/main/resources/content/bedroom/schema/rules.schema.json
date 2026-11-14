@@ -367,6 +367,81 @@
         }
       },
       "additionalProperties": false
+    },
+    "invent": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "per_day": {
+              "type": "integer"
+            },
+            "qualities": {
+              "type": "object",
+              "properties": {
+                "most": {
+                  "type": "integer"
+                },
+                "total": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            },
+            "uses": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "group": {
+                    "type": "string"
+                  },
+                  "base": {
+                    "type": "integer"
+                  },
+                  "per_strength": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "group",
+                  "base",
+                  "per_strength"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "book": {
+              "type": "object",
+              "properties": {
+                "min_chapters": {
+                  "type": "integer"
+                },
+                "max_chapters": {
+                  "type": "integer"
+                },
+                "skill_gain": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            },
+            "wage_per_hour": {
+              "type": "integer"
+            },
+            "look_parts": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "uses"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "required": [
