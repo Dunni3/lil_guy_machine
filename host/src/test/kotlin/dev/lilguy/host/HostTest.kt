@@ -110,4 +110,11 @@ class HostTest {
         // Without a password configured, nobody is an admin.
         assertTrue(!AdminPassword(null).admits("Bearer "))
     }
+
+    /** The debug page hard-codes the protocol version it asks for, and the host refuses any other. */
+    @Test
+    fun `the debug page asks for the protocol version the host speaks`() {
+        val page = assertNotNull(HostTest::class.java.getResource("/debug/index.html")).readText()
+        assertEquals(dev.lilguy.protocol.PROTOCOL_VERSION, Regex("""const VERSION = (\d+);""").find(page)?.groupValues?.get(1)?.toInt())
+    }
 }
