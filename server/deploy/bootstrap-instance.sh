@@ -31,5 +31,6 @@ fi
 
 mkdir -p ~/lilguy-server ~/backups
 # Nightly pg_dump at 04:15 UTC, two weeks kept (server/deploy/backup.sh).
-( crontab -l 2>/dev/null | grep -v lilguy-backup; echo "15 4 * * * \$HOME/lilguy-server/deploy/backup.sh >> \$HOME/backups/backup.log 2>&1 # lilguy-backup" ) | crontab -
+# On a fresh box there is no crontab, and grep -v of nothing exits 1, hence the || true under pipefail.
+{ crontab -l 2>/dev/null | grep -v lilguy-backup || true; echo "15 4 * * * \$HOME/lilguy-server/deploy/backup.sh >> \$HOME/backups/backup.log 2>&1 # lilguy-backup"; } | crontab -
 echo "Done. Log out and back in (docker group), create ~/lilguy-server/.env from .env.example, then run 'make server-deploy' from the Mac."
