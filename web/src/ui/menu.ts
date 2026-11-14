@@ -21,7 +21,8 @@ const SCROLL_STEP = 4;
  * confirm before a restart or replay. Keys: LEFT/RIGHT tabs (on a Run setting, change it), UP/DOWN
  * pick, OK reads the entry (then UP/DOWN scroll, OK or BACK go back to the list) or does the Run
  * row's action, BACK closes. Opening it on a run that hasn't started lands an admin on Start, so
- * OK twice starts a run. All of it is this viewer's own; the host only sees the commands.
+ * OK twice starts a run; the first opening of a visit lands anyone else on Sign in, so the admin
+ * finds it. All of it is this viewer's own; the host only sees the commands.
  */
 export class Menu {
   open = false;
@@ -35,15 +36,18 @@ export class Menu {
   /** The run Replay would start again (1-based); null for this one. */
   replayPick: number | null = null;
   private readonly picked = new Map<TabId, string>();
+  /** The menu has opened before on this page: after the first time, a viewer's tab stays where they left it. */
+  private opened = false;
 
   show(v: PageView) {
     this.open = true;
     this.reading = false;
     this.confirm = false;
-    if (v.admin && v.life.run.state === "ready") {
+    if (v.admin ? v.life.run.state === "ready" : !this.opened) {
       this.tab = "run";
       this.picked.delete("run");
     }
+    this.opened = true;
   }
 
   close() {

@@ -32,6 +32,7 @@
   ul.log { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-y: auto; }
   ul.log li { padding: 2px 0; border-bottom: 1px dotted var(--line); overflow-wrap: anywhere; }
   .dim { color: var(--dim); }
+  h1 a { font-size: 0.7em; font-weight: normal; color: var(--accent); margin-left: 1em; }
   .warn { color: var(--warn); }
   canvas { image-rendering: pixelated; background: var(--bg); border: 1px solid var(--line); max-width: 100%; }
   pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 300px; overflow: auto; margin: 0; }
@@ -40,7 +41,7 @@
 </style>
 </head>
 <body>
-<h1>lil guy host <span id="conn" class="dim">connecting…</span></h1>
+<h1>lil guy host <span id="conn" class="dim">connecting…</span> <a id="room-link" href="/room/">the room →</a></h1>
 <div class="grid">
   <div class="card">
     <h2>Run</h2>
@@ -109,6 +110,8 @@ const VERSION = 2;
 const LIFE = new URLSearchParams(location.search).get("life") || "main";
 const SECTIONS = ["run", "fast", "things", "easel", "wallet", "growth", "gallery", "shop", "mind", "tokens"];
 const $ = (id) => document.getElementById(id);
+// The web renderer, on this life; signing in here signs in there (the same saved password).
+if (LIFE !== "main") $("room-link").href = "/room/?life=" + encodeURIComponent(LIFE);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 let content = null, state = null, caps = {}, socket = null;

@@ -14,6 +14,8 @@ const SAFE_X = 96;
 const SAFE_Y = 54;
 const CARD_W = 440;
 const CARD_H = 270;
+/** The hint's panel, right-aligned at the top: room for a viewer's longer one, with how to sign in. */
+const HINT_W = 900;
 const BAR_X = 120;
 const BAR_W = 280;
 const BAR_H = 18;
@@ -245,15 +247,15 @@ export class Hud {
     const key = `${text}/${u}/${this.layer.ratio}`;
     if (key !== this.keys.hint) {
       this.keys.hint = key;
-      this.hint.draw(700 * u, 30 * u, (c) => {
+      this.hint.draw(HINT_W * u, 30 * u, (c) => {
         c.font = font(1.2, u, 600);
         c.fillStyle = COLORS.hint;
         c.textAlign = "right";
         c.textBaseline = "top";
-        c.fillText(text, 700 * u, 0);
+        c.fillText(text, HINT_W * u, 0);
       });
     }
-    this.hint.place(box.right - 700 * u, box.top);
+    this.hint.place(box.right - HINT_W * u, box.top);
   }
 
   /**
