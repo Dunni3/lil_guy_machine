@@ -25,6 +25,11 @@ data class Observation(
     val recentEvents: List<String>,
     /** Where he is: the place, and the nearest thing to him in it ("your bedroom, by the desk"); null in rooms without places. */
     @EncodeDefault(EncodeDefault.Mode.NEVER) val place: String? = null,
+    /**
+     * How the light is round him, in a few landmark phrases ("lit by the floor lamp (light 5): the bed and
+     * the chair"; "too dark to see the rest here"); null when everything near him is lit enough for anything.
+     */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val light: List<String>? = null,
     /** The other places he could walk to, nearest first, with the walk from here; null in rooms without places. */
     @EncodeDefault(EncodeDefault.Mode.NEVER) val places: List<PlaceOption>? = null,
     /** What of his he could put somewhere else, and the free spots by place ([Intent.Put]); null when there's nothing to move or nowhere to put it. */
@@ -203,6 +208,8 @@ data class SeenEntity(
     val state: String? = null,
     /** On or beside your tile, so pick_up and use can reach it. Computed so models needn't. */
     val inReach: Boolean = false,
+    /** Too dark to see: he knows it's there (his house's things, what's in a place he explored), but not how it is. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val remembered: Boolean = false,
 )
 
 /** Compass directions; north is toward row 0. */
@@ -308,6 +315,8 @@ data class EntitySnapshot(
     val motions: List<Motion> = emptyList(),
     /** The short label his code floats over it. */
     val readout: String? = null,
+    /** The light it gives off, or null for none. */
+    val light: LightSpec? = null,
 )
 
 /** What a character's controller is doing, for HUDs and debug views. */

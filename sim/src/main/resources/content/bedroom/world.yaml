@@ -99,6 +99,7 @@ world:
         - "########"
       slots: { L: lab_bench, S: lab_shelf }
       items: [lab_bench, lab_shelf]
+      windows: [[3, 0]]
     - id: sunroom
       plan: sunroom_plan
       name: the sunroom
@@ -115,6 +116,7 @@ world:
         - "########"
       slots: { A: armchair, F: floor_lamp }
       items: [armchair, floor_lamp]
+      windows: [[2, 0], [5, 0], [0, 4]]
   # Where a room can stand: its top-left tile on the lot, and the doorway into the room it joins
   # (`next_to`: a site whose room must stand first; none means the bedroom). Rooms share the wall
   # they meet at, so a site's left column is its neighbour's right wall.

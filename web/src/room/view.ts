@@ -1,6 +1,6 @@
 import { Box3, Matrix4, MeshStandardMaterial, Vector3, type Mesh, type Ray } from "three";
 import type { Content, Entity, LifeState, MotionView, PlaceView, RectView, WorldView } from "../../../protocol/ts/protocol";
-import { ClayModel, type ClayRenderer, type Glow, type Placed } from "../clay/renderer";
+import { ClayModel, type ClayRenderer, type Lamp, type Placed } from "../clay/renderer";
 import type { ClayTextures } from "../clay/textures";
 import { Blob, newPose } from "../guy/blob";
 import { X_AXIS, Y_AXIS, Z_AXIS, rotate, scale, translate } from "../math";
@@ -39,6 +39,9 @@ interface Note {
   phase: number;
   age: number;
 }
+
+/** A sim light in the scene, and the place it stands in. */
+type PlacedLamp = Lamp & { place: string | null };
 
 /** One thing on the map: its model, and where it stands; [moving], its parts his code set moving, each drawn on its own. */
 interface Thing {
@@ -92,7 +95,9 @@ export class RoomView {
 
   private readonly things = new Map<string, Thing>();
   private thingsFrom: LifeState["things"] | null = null;
-  private glows: Glow[] = [];
+  /** The sim's lights where they shine from, those in the place framed first, then the brightest ([syncThings]). */
+  private lamps: PlacedLamp[] = [];
+  private lampsFor = "";
 
   private shelf: Placed | null = null;
   private shelfFrom: LifeState["shop"] | null = null;
@@ -183,7 +188,9 @@ export class RoomView {
     this.aimShadows();
     this.making = making;
 
-    this.r.setLamps(this.glows, this.middle);
+    this.r.setLantern(guy.light);
+    this.sortLamps();
+    this.r.setLamps(this.lamps, this.middle);
     this.rain.update(weather?.sky ?? null, place.x, place.y, this.map, delta);
     this.art.draw(state, making, (id) => this.things.get(id)?.at ?? null, this.blob, delta);
     this.drawHeld(intent?.type === "do" ? intent.item : null);
@@ -351,12 +358,25 @@ export class RoomView {
       this.unplace(t);
       this.things.delete(id);
     }
-    // What glows lights the room at night: each lamp's glow, where it stands.
-    this.glows = [];
-    for (const t of this.things.values()) {
-      for (const g of t.placed.model.glows) this.glows.push({ at: g.at.clone().applyMatrix4(t.at), strength: g.strength });
-      for (const m of t.moving) for (const g of m.placed.model.glows) this.glows.push({ at: g.at.clone().add(this.scratch.set(...m.pivot)).applyMatrix4(t.at), strength: g.strength });
+    // What lights the scene is the sim's lights (its light model, not the models' looks), each shining from its
+    // model's brightest glowing part, or from a little above where it stands.
+    this.lamps = [];
+    this.lampsFor = "";
+    for (const e of state.things.entities) {
+      const t = this.things.get(e.id);
+      if (!e.light || !t) continue;
+      const glow = [...t.placed.model.glows].sort((a, b) => b.strength - a.strength)[0];
+      const at = glow ? glow.at.clone().applyMatrix4(t.at) : new Vector3(e.x, 0.8, e.y);
+      this.lamps.push({ at, strength: e.light.strength, radius: e.light.radius, place: e.place });
     }
+  }
+
+  /** The lamps in the place framed first (the scene has light for only a few), then the brightest; again only when the place changes. */
+  private sortLamps() {
+    if (this.lampsFor === this.framedPlace) return;
+    this.lampsFor = this.framedPlace;
+    const here = (l: PlacedLamp) => (l.place === this.framedPlace ? 1 : 0);
+    this.lamps.sort((a, b) => here(b) - here(a) || b.strength - a.strength);
   }
 
   private readonly scratch = new Vector3();

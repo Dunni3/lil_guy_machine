@@ -1217,6 +1217,16 @@
                             "type": "null"
                         }
                     ]
+                },
+                "light": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/LightView"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
                 }
             },
             "required": [
@@ -1232,7 +1242,8 @@
                 "color",
                 "variant",
                 "motions",
-                "readout"
+                "readout",
+                "light"
             ],
             "additionalProperties": false
         },
@@ -1716,6 +1727,23 @@
                 "scenario",
                 "run_id",
                 "state"
+            ],
+            "additionalProperties": false
+        },
+        "LightView": {
+            "title": "LightView",
+            "type": "object",
+            "properties": {
+                "strength": {
+                    "type": "number"
+                },
+                "radius": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "strength",
+                "radius"
             ],
             "additionalProperties": false
         },

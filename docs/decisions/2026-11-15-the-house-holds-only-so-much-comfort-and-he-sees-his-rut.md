@@ -1,7 +1,7 @@
 ---
 title: "The house holds only so much comfort, rooms hold more; the sunroom and microscope are open; he sees what he's been doing lately"
 date: 2026-11-15
-status: active
+status: superseded
 ---
 
 # The house holds only so much comfort, and he sees his rut

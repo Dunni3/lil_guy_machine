@@ -7,7 +7,7 @@ needs:
   fullness_per_hour: -5
   # Asleep he burns less: a night costs about 18 fullness rather than 45.
   asleep_fullness_per_hour: -2
-  # Mood moves this much an hour toward the baseline plus the room's comfort.
+  # Mood moves this much an hour toward the baseline plus the comfort of what he can see (`comfort`).
   mood_drift_per_hour: 3
   mood_baseline: 50
   # Below `low` energy or fullness, mood falls `low_mood_per_hour` instead of drifting.
@@ -122,14 +122,30 @@ gallery:
   max: 3
   comfort_each: 3
 
-# The house holds only so much comfort: `holds` for the bedroom, and `per_room` more for each room built
-# onto it. Past that, more decor, hung art or samples add none, and a thing bought for a full house doesn't
-# feel new (novelty.things; what he invents still does). Without it 25 pieces of decor pinned his mood at
-# 100 and their newness kept his stimulation near 100, so nothing was worth changing and the money piled
-# up (docs/decisions/2026-11-15-the-house-holds-only-so-much-comfort-*).
+# Comfort is what he can see from where he stands (docs/decisions/2026-11-15-comfort-is-what-he-can-see-lit-*):
+# a thing in the place he's in counts in full within `near` tiles, less and less out to `far`, where it stops,
+# and in full at `lit` light or more, less in dimmer light, none where it's too dark to see (light.see).
+# Hung art counts where it hangs, the collection where its shelf is (his bedroom), a room's qualities
+# while he's in it. Asleep, he counts what's round him in the room he sleeps in, lit or not. A new thing
+# feels new (novelty.things) by the same measure: while he can see it.
 comfort:
-  holds: 25
-  per_room: 10
+  near: 2
+  far: 6
+  lit: 4
+
+# Light, from 0 (black) to about 10 (noon outdoors). It's daylight on the land by the time of day,
+# `indoors` of it everywhere in a room (the sky's light), and through each window (room.yaml `windows`) a
+# light of `window.share` of the daylight reaching `window.radius` tiles. Things with `light` (items.yaml)
+# light round them; walls and trees block light, and a light in a room lights only that room. He can make
+# out a thing with `see` light on it; at night what's darker isn't in what he sees, and a verb that
+# `needs` light (verbs.yaml) is locked where it would be done until there's that much. `lantern`: the
+# small light that goes with him, enough to make out what's beside him; a verb's `needs` don't count it.
+light:
+  see: 1
+  lantern: { strength: 1.5, radius: 1.5 }
+  indoors: 0.5
+  window: { share: 0.8, radius: 8 }
+  daylight: { "00:00": 0.5, "05:00": 0.5, "06:30": 6, "09:00": 10, "17:30": 9, "19:30": 4, "20:30": 1, "21:00": 0.5 }
 
 # Samples he keeps are his collection, on a shelf in his room: each kind he has adds comfort, up to `max` kinds.
 collection:

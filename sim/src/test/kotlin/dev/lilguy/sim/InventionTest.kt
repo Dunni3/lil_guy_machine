@@ -41,7 +41,7 @@ class InventionTest {
         assertEquals(1, w.count("pebble_lamp"))
         assertTrue(w.snapshot().entities.any { it.id.value == "pebble_lamp" }, "it stands in the room")
         val outcome = w.observe(w.agentId).recentEvents.joinToString("\n")
-        assertTrue("built the pebble lamp" in outcome && "comfort 3" in outcome, outcome)
+        assertTrue("built the pebble lamp" in outcome && "from what you can see here" in outcome, outcome)
         assertEquals("you've built what you can today; a new idea needs a night's sleep", w.observe(w.agentId).activities!!.first { it.id == "invent" }.locked)
 
         w.finish(Intent.Wait(1))

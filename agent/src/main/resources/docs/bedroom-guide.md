@@ -21,8 +21,8 @@ every piece he holds at once.
 
 ## guide:hanging: hanging art on the wall
 Any piece he made, a sketch or a painting, can be hung on the picture rail instead of sold. Every
-hung piece raises the room's comfort by the same amount, whatever it shows, up to the gallery's
-limit. Nothing takes a hung piece down, so it is never sold.
+hung piece raises his comfort by the same amount while he can see it (near, and lit), whatever it
+shows, up to the gallery's limit. Nothing takes a hung piece down, so it is never sold.
 
 ## guide:discovery: what he can't see yet
 The shop only sells what he could use now; something that's no use without another thing appears

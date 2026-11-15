@@ -30,6 +30,8 @@
 # `with: letter` writes a letter that a `post_letter` op then sends.
 # `wear: verb`: repetition wears the verb as a whole, whatever it's done with (any book wears
 # "read"); by default each item wears on its own (each record). What counts as new stays per item.
+# `needs: { light: N }`: locked where it would be done until the light there is N or more (rules.yaml
+# `light`): "too dark to read there". Of the places in `at`, he goes to the nearest lit enough.
 # `no_repeat`: locked right after he did it. `by_day: { block, minutes }`: started outside the night
 # (rules.yaml `night`), these blocks apply too and it lasts at most `minutes`.
 
@@ -67,6 +69,7 @@ verbs:
     minutes: 60
     work: true
     block: [{ need: mood, below: 25, reason: "too low to make art" }]
+    needs: { light: 3 }
     effects:
       - produce: { sketch: 1 }
       - draw: sketch
@@ -80,6 +83,7 @@ verbs:
     minutes: 180
     work: true
     block: [{ need: mood, below: 25, reason: "too low to make art" }]
+    needs: { light: 3 }
     effects:
       - produce: { painting: 1 }
       - draw: painting
@@ -96,6 +100,7 @@ verbs:
     at: [workbench]
     minutes: 120
     block: [{ need: mood, below: 25, reason: "too low to invent anything" }]
+    needs: { light: 3 }
     effects:
       - write: { with: invention, into: [events], timing: before }
       - build: {}
@@ -109,6 +114,7 @@ verbs:
     phrase: write code for a new thing to do, or for what one of your things does
     at: [desk]
     minutes: 60
+    needs: { light: 3 }
     effects:
       - write: { with: verb_code, into: [events], timing: before }
       - define: {}
@@ -155,6 +161,7 @@ verbs:
     phrase: write a letter to someone who has written to you
     at: [desk]
     minutes: 30
+    needs: { light: 3 }
     effects:
       - write: { with: letter, into: [events], timing: before }
       - post_letter: {}
@@ -177,6 +184,7 @@ verbs:
     at: [bed, chair]
     minutes: 60
     wear: verb
+    needs: { light: 3 }
     effects:
       - progress: { book: what }
       - need: { energy: -2, mood: 2, stimulation: 6 }
@@ -247,6 +255,7 @@ verbs:
     args: { on: explorable }
     at: [on]
     minutes: 40
+    needs: { light: 3 }
     effects:
       - survey: on
       - practice: { nature: 0.1 }
@@ -257,6 +266,7 @@ verbs:
     args: { on: forageable }
     at: [on]
     minutes: 15
+    needs: { light: 3 }
     effects:
       - gather: on
       - need: { energy: -1, stimulation: 2 }
@@ -278,6 +288,7 @@ verbs:
     args: { what: specimen }
     at: [microscope]
     minutes: 45
+    needs: { light: 3 }
     effects:
       - practice: { nature: 0.2 }
       - need: { energy: -2, mood: 2, stimulation: 6 }

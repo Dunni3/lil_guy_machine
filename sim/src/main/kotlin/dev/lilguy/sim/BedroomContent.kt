@@ -62,8 +62,10 @@ data class BedroomContent(
     val world: WorldContent? = null,
     /** Samples he keeps add comfort, one kind at a time; null and they add none. */
     val collection: CollectionRules? = null,
-    /** How much comfort the house holds, more with each room he builds; null and there's no limit. */
+    /** How what he sees counts toward comfort: near and lit counts most ([ComfortRules]); null and everything in its slot counts in full, wherever he is. */
     val comfort: ComfortRules? = null,
+    /** Daylight, windows and what lamps reach ([LightRules]); null and it's never dark. */
+    val light: LightRules? = null,
     /** Letters he writes to people who have written to him; null and he writes none. */
     val letters: LetterRules? = null,
     /** The sky, temperature and hidden pressure over the land, and what a recorder keeps (Weather.kt); null for no weather. */
@@ -144,7 +146,7 @@ data class BedroomContent(
         /** The content's files, each with the top-level keys it holds. */
         val FILES: Map<String, List<String>> = linkedMapOf(
             "room" to listOf("room", "start"),
-            "rules" to listOf("needs", "night", "habituation", "novelty", "frustration", "skills", "shop", "reflection", "commissions", "gallery", "quality_value", "invent", "collection", "comfort", "letters"),
+            "rules" to listOf("needs", "night", "habituation", "novelty", "frustration", "skills", "shop", "reflection", "commissions", "gallery", "quality_value", "invent", "collection", "comfort", "light", "letters"),
             "vocabulary" to listOf("vocabulary"),
             "personality" to listOf("personality"),
             "items" to listOf("items"),
@@ -246,6 +248,15 @@ data class BedroomContent(
                 d.block.forEach { needOf(it.need) }
             }
         }
+        verbs.forEach { a ->
+            a.needs.forEach { (k, v) ->
+                require(EffectKind.of(k) != null) { "verb ${a.id} needs '$k', which isn't an effect; use ${EffectKind.entries.joinToString { it.id }}" }
+                require(v > 0) { "verb ${a.id}: needs $k must be above 0" }
+            }
+        }
+        items.forEach { item -> item.light?.let { require(it.strength > 0 && it.radius >= 0) { "item ${item.id}: light needs a strength above 0 and a radius not negative" } } }
+        (light?.problems().orEmpty() + comfort?.problems().orEmpty()).firstOrNull()?.let { throw IllegalArgumentException(it) }
+        (room.windows + world?.rooms?.flatMap { it.windows }.orEmpty()).forEach { require(it.size == 2) { "a window is [x, y]: $it" } }
         night?.let { GameClock.parseHhmm(it.from); GameClock.parseHhmm(it.to) }
         needs.workFloor.forEach { needOf(it.need) }
         require(needs.stimulationPerHour <= 0 && needs.boredMood >= 0) { "stimulation_per_hour can't be positive or bored_mood negative" }
@@ -330,6 +341,8 @@ data class RoomContent(
     val approach: Map<String, Direction> = emptyMap(),
     /** Spare slots no shipped item stands in: where the things he invents go ([InventRules.freeSpots]). */
     val spots: Spots = Spots(),
+    /** Windows: wall tiles [x, y] from the room's top-left, where daylight comes in ([LightRules.window]). */
+    val windows: List<List<Int>> = emptyList(),
 ) {
     @Serializable
     data class Spots(val floor: List<String> = emptyList(), val wall: List<String> = emptyList())
@@ -548,13 +561,6 @@ data class CommissionRules(
 @Serializable
 data class CollectionRules(val max: Int = 6, @SerialName("comfort_each") val comfortEach: Int = 2)
 
-/**
- * The house holds [holds] comfort, and [perRoom] more for each room built onto it. Past that, more things add
- * none, and a thing bought for a full house doesn't feel new (novelty.things), so what the money is for is a room.
- */
-@Serializable
-data class ComfortRules(val holds: Int, @SerialName("per_room") val perRoom: Int)
-
 @Serializable
 data class GalleryRules(val max: Int = 3, @SerialName("comfort_each") val comfortEach: Int = 3)
 
@@ -665,6 +671,8 @@ data class ItemSpec(
     val carried: Boolean = false,
     /** Above 0, it's gated until granted; see [BedroomContent.unlocked]. */
     val tier: Int = 0,
+    /** The light it gives off where it stands; null for none. */
+    val light: LightSpec? = null,
 ) {
     /** What an activity can ask for it by: its id and its affordances. */
     @Transient val names: Set<String> = setOf(id) + affords.keys
@@ -739,6 +747,8 @@ data class VerbSpec(
     val wear: Wear = Wear.Items,
     /** A verb he wrote: its JavaScript ([ScriptOp] runs it). Null for the world's own verbs. */
     val code: VerbCode? = null,
+    /** What it needs where it's done, effect kind ([EffectKind]) to the least level: `{ light: 3 }` is too dark to read below 3. */
+    val needs: Map<String, Double> = emptyMap(),
 ) {
     /** Marked routine, or of a kind that always is (selling, sleeping). */
     val isRoutine: Boolean get() = routine || kind.routine

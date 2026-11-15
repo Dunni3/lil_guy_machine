@@ -74,12 +74,18 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   `docs/decisions/2026-11-15-he-searches-the-real-web-*`), so he isn't offered think. `menu.yaml` groups his options into a tree for Jev, who walks down it by beam search
   (`decision/.../BeamSearch.kt`, `beam` on the endpoint) instead of picking from one flat list. Skills
   (`vocabulary.skills`, rules.yaml `skills`) rise with `practice` and reading. Needs are energy,
-  fullness, mood, stimulation and frustration. The house holds only so much comfort (rules.yaml `comfort`: more for each room
-  built), and his observation's `lately` says what he's done most, and what he hasn't for days or ever. Weather: `sim/.../Weather.kt` (a seeded hourly sky
+  fullness, mood, stimulation and frustration. Comfort is what he can see lit from where he stands (rules.yaml `comfort`: near
+  and far, in tiles; `Lighting.viewWeight`), and his observation's `lately` says what he's done most, and what he hasn't for days or ever. Weather: `sim/.../Weather.kt` (a seeded hourly sky
   chain, temperature, a hidden pressure that leads rain; numbers in `weather.yaml`) and `Records.kt` (what a
   `recorder` logs each hour, and `StationLog`, the summary `check_station` reads standing at it). `make content-docs` regenerates the content's
   JSON Schemas (`content/bedroom/schema/`, checked by a test) and `build/grammar-reference.html`
   (`agent/.../ContentDocs.kt`).
+- Effects with reach (`docs/decisions/2026-11-15-light-is-an-effect-with-reach-*`): `sim/.../Effects.kt` (the engine: an
+  `EffectKind`, `Emitter`s, a `Field` per kind over the map's tiles, walls block, recomputed only when its inputs change) and
+  `sim/.../Lighting.kt` (light, the first kind: rules.yaml `light`, daylight by hour and through room `windows`, items' `light`,
+  his lantern; the weather's `daylight()` dims it, and a station logs it at its tile; the landmark phrases in `Observation.light`; `viewWeight` for comfort).
+  `BedroomWorld.lightField()`; a verb's `needs: { light: N }` locks it where it would be done (`darkLock`); at night `nearby`
+  holds what's lit, the rest `remembered` if he knows it's there. The protocol's `Entity.light` is what the web lights the scene with.
 - Scenario wiring, scripted policies, lockstep runner: `agent/.../Scenario.kt` (`Scenario` enum),
   `KeyDoorPolicy.kt`, `BedroomPolicy.kt`. Bedroom prompt, schema, choice set: `BedroomPrompt.kt`;
   who he is (core and taste from content, plus his self-model): `Persona.kt`; run summaries and the self-model report: `BedroomReport.kt`.

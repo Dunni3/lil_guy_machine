@@ -6,10 +6,15 @@ import {
 import { merged, partGeometry, placement, type Part } from "./geometry";
 import { dayAt, type Day } from "./day";
 
-/** How many lamps light the room at once (a fixed number, so the shaders never recompile), and how bright each is at full night. */
+/**
+ * How many lamps light the scene at once (a fixed number, so the shaders never recompile), how bright one
+ * of the sim's light 4 is at full night, and how far past the sim's radius (in tiles, a metre each) its
+ * light reaches, since the sim's falls to nothing a tile past it.
+ */
 const LAMPS = 4;
 const LAMP_INTENSITY = 5;
 const LAMP_RANGE = 9;
+const LAMP_PAST = 1.5;
 const SHADOW_MAP = 2048;
 /** The sun has to move this far (metres, at its distance) before the shadow map is drawn again. */
 const SUN_MOVES = 0.25;
@@ -18,6 +23,13 @@ const SUN_MOVES = 0.25;
 export interface Glow {
   at: Vector3;
   strength: number;
+}
+
+/** A light from the sim (the protocol's `Entity.light`), where it shines from in the scene: [strength] 0 to 10, [radius] in tiles. */
+export interface Lamp {
+  at: Vector3;
+  strength: number;
+  radius: number;
 }
 
 interface Batch {
@@ -184,7 +196,23 @@ export class ClayRenderer {
     this.sun.position.set(t.x + d.sunFrom.x, d.sunFrom.y, t.z + d.sunFrom.z);
     if (this.sun.position.distanceTo(this.shadowSun) > SUN_MOVES) this.dirty = true;
     for (const [strength, m] of this.glowing) m.emissiveIntensity = strength * (0.3 + 1.2 * d.night);
-    this.lantern.intensity = 5 * clamp01((d.night - 0.1) / 0.7) + 0.4;
+    this.lanternBy();
+  }
+
+  /** His lantern's light from the sim ([setLantern]); null when he carries none. */
+  private lanternLight: { strength: number; radius: number } | null = null;
+
+  /** His lantern as the sim has it: as bright and as far as the light he carries there, so the dark the sim sees is the dark on screen. */
+  setLantern(light: { strength: number; radius: number } | null) {
+    if (light?.strength === this.lanternLight?.strength && light?.radius === this.lanternLight?.radius) return;
+    this.lanternLight = light;
+    this.lanternBy();
+  }
+
+  private lanternBy() {
+    const l = this.lanternLight;
+    this.lantern.intensity = l ? LAMP_INTENSITY * (l.strength / 4) * clamp01((this.night - 0.1) / 0.7) + 0.2 : 0;
+    this.lantern.distance = l ? l.radius + LAMP_PAST : 0.01;
   }
 
   /**
@@ -210,17 +238,19 @@ export class ClayRenderer {
   private readonly fog = new Fog("#d9d6d2", FOG_NEAR, FOG_FAR);
 
   /**
-   * The room's lamps: the brightest [LAMPS] of [glows] (in world space) light it, more as night
-   * comes. Each light sits a little out from its glow toward [middle], the room's middle, so a lamp
+   * The sim's lamps: the first [LAMPS] of [lamps] (in world space, the caller's order: those in the place
+   * framed, brightest first) light the scene, more as night comes, each as bright and as far as the sim
+   * says. Each light sits a little out from its lamp toward [middle], the room's middle, so a lamp
    * against a wall lights the room rather than a hot spot on the wall.
    */
-  setLamps(glows: Glow[], middle: Vector3) {
-    const lit = [...glows].sort((a, b) => b.strength - a.strength).slice(0, LAMPS);
+  setLamps(lamps: Lamp[], middle: Vector3) {
+    const lit = lamps.slice(0, LAMPS);
     const k = LAMP_INTENSITY * clamp01((this.night - 0.15) / 0.7);
     this.lamps.forEach((l, i) => {
       const g = lit[i];
-      l.intensity = g ? k * Math.min(1, g.strength) : 0;
+      l.intensity = g ? k * Math.min(2, g.strength / 4) : 0;
       if (!g) return;
+      l.distance = Math.min(LAMP_RANGE, g.radius + LAMP_PAST);
       l.position.copy(g.at);
       const toward = scratch.set(middle.x - g.at.x, 0, middle.z - g.at.z);
       l.position.addScaledVector(toward.normalize(), LAMP_OUT);
