@@ -87,7 +87,7 @@ fun main() {
     runBlocking { life.start(scope, autostart = get("LILGUY_AUTOSTART") == "1") }
     println(
         "lil guy host on http://$bind:$port/ (protocol ${dev.lilguy.protocol.PROTOCOL_VERSION}): life 'main', model ${setup.notice ?: if (endpoint == null) "scripted" else endpoint}${roles(setup, ::get)}, speed ${setup.speed}" +
-            "${if (setup.painter != null) ", painting with random picks" else ""}; " +
+            "${if (get("LILGUY_PAINTER")?.toDoubleOrNull() != null) ", painting with random picks" else ""}; " +
             "run database ${if (store == null) "off" else if (sync == null) "local only" else "syncing"}; commands ${if (auth.enabled) "need the admin password" else "refused (no LILGUY_ADMIN_PASSWORD)"}",
     )
     Runtime.getRuntime().addShutdownHook(Thread {
@@ -102,6 +102,7 @@ private fun roles(setup: ModelSetup, get: (String) -> String?): String = listOfN
     get("LILGUY_MEMORY_ENDPOINT")?.takeIf { setup.memoryModel != null }?.let { "memory $it" },
     get("LILGUY_WRITER_ENDPOINT")?.takeIf { setup.writerModel != null }?.let { "writer $it" },
     get("LILGUY_RECALL_ENDPOINT")?.takeIf { setup.recallScorer != null }?.let { "recall $it" },
+    get("LILGUY_PAINTER_ENDPOINT")?.takeIf { setup.painter != null && get("LILGUY_PAINTER")?.toDoubleOrNull() == null }?.let { "painter $it" },
 ).takeIf { it.isNotEmpty() }?.joinToString(", ", " (", ")").orEmpty()
 
 private const val PLATFORM = "host"
