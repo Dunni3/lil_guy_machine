@@ -23,6 +23,10 @@ data class Observation(
     val lastIntent: Intent?,
     val lastResult: IntentStatus?,
     val recentEvents: List<String>,
+    /** Where he is: the place, and the nearest thing to him in it ("your bedroom, by the desk"); null in rooms without places. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val place: String? = null,
+    /** The other places he could walk to, nearest first, with the walk from here; null in rooms without places. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val places: List<PlaceOption>? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val clock: ClockReading? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val money: Int? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val needs: NeedLevels? = null,
@@ -60,6 +64,10 @@ data class Observation(
     /** The tile at [localMap]'s top-left, where the map is part of a bigger world; null when it's all of it. */
     @EncodeDefault(EncodeDefault.Mode.NEVER) val localMapAt: Cell? = null,
 )
+
+/** A place he could go to: its id (for `move_to` a place), its name, what it is, and the game minutes to walk there. */
+@Serializable
+data class PlaceOption(val id: String, val name: String, val says: String, val walk: Int)
 
 /**
  * A request for a piece: [wants] is the adjective and noun ("a sleepy lighthouse"), [request] the
@@ -122,6 +130,9 @@ data class ActivityOption(
     @EncodeDefault(EncodeDefault.Mode.NEVER) val gives: String? = null,
     /** Why it can't be done now, such as "needs an easel ($120)". */
     @EncodeDefault(EncodeDefault.Mode.NEVER) val locked: String? = null,
+    /** The place it's done in, when that's somewhere else than where he is, and the game minutes it takes to walk there. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val where: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val walk: Int? = null,
 )
 
 @Serializable

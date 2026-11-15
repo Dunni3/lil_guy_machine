@@ -2,6 +2,7 @@ package dev.lilguy.sim
 
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.min
@@ -606,7 +607,7 @@ class BedroomWorld private constructor(
     }
 
     private fun planIntent(intent: Intent): Work = when (intent) {
-        is Intent.MoveTo -> walkTo(goalOf(intent.target), describe(intent.target))
+        is Intent.MoveTo -> (intent.target as? Target.Place)?.let(::goTo) ?: walkTo(goalOf(intent.target), describe(intent.target))
         is Intent.PickUp -> reject("there's nothing to pick up here: what you own is already yours, and do and buy fetch it for you")
         is Intent.Use -> reject("use is for other rooms; here an item is used through a verb, do(verb, what, on)" + (content.verbs.firstOrNull { "on" in it.args }?.let { "; ${it.id} puts a ${noun(it.args.getValue("what"))} on the ${noun(it.args.getValue("on"))}" } ?: ""))
         is Intent.Say -> say(intent)
@@ -628,6 +629,46 @@ class BedroomWorld private constructor(
             if (target.id == guy.id.value) reject("you can't move to yourself")
             placed().firstOrNull { it.first.id == target.id }?.second ?: reject("there is nothing called '${target.id}' in the room")
         }
+        is Target.Place -> error("planned by goTo")
+    }
+
+    /** A walk to the middle of a place, which says where he went and how long it took. */
+    private fun goTo(target: Target.Place): Work {
+        val place = layout.place(target.id) ?: reject("there's no place called '${target.id}'; the places are ${layout.places.joinToString { it.id }}")
+        if (layout.placeOf(guy.cell) == place) reject("you're already in ${place.name}")
+        val spot = layout.spot(place) ?: reject("there's nowhere to stand in ${place.name}")
+        val walk = walkTo(spot, place.name)
+        val minutes = walkMinutes(walk.path.size.toFloat())
+        return Work.Steps(walk, Work.Until(start = {}, done = { true }, finish = { outcome("went to ${place.name} (${GameClock.duration(minutes.coerceAtLeast(1))} walk)"); null }))
+    }
+
+    /** Game minutes to walk [tiles]. */
+    fun walkMinutes(tiles: Float): Int = ceil(tiles / (SPEED * clock.ticksPerMinute)).toInt()
+
+    /** Game minutes from where he stands to [cell], round walls, water and trees; null when there's no way. */
+    fun walkFromHere(cell: Cell): Int? = layout.distance(guy.cell, cell)?.let(::walkMinutes)
+
+    private var placesCache: Pair<Cell, List<PlaceOption>>? = null
+
+    /** Every place but the one he's in, nearest first, with the walk there; kept while he stands on one tile. */
+    private fun placeOptions(): List<PlaceOption>? {
+        if (!layout.outdoors) return null
+        placesCache?.let { if (it.first == guy.cell) return it.second }
+        val here = layout.placeOf(guy.cell)
+        val list = layout.places.filter { it != here }.mapNotNull { p ->
+            val spot = layout.spot(p) ?: return@mapNotNull null
+            walkFromHere(spot)?.let { PlaceOption(p.id, p.name, p.says, it) }
+        }.sortedBy { it.walk }
+        placesCache = guy.cell to list
+        return list
+    }
+
+    /** "your bedroom, by the desk": the place he's in, and the nearest thing to him in it. */
+    private fun whereText(): String? {
+        val place = layout.placeOf(guy.cell) ?: return null
+        val near = placed().filter { (spec, cell) -> layout.placeOf(cell) == place && chebyshev(cell, guy.cell) <= 2 && spec.group != "fixture" }
+            .minByOrNull { (_, cell) -> chebyshev(cell, guy.cell) }
+        return place.name + (near?.let { ", by the ${it.first.name}" }.orEmpty())
     }
 
     /**
@@ -1093,7 +1134,24 @@ class BedroomWorld private constructor(
         lockReason(a)?.let { return listOf(ActivityOption(a.id, locked = it)) }
         val open = bindings(a).map { it to lockReason(a, it) }
         if (open.none { it.second == null }) return listOf(ActivityOption(a.id, locked = open.first().second))
-        return open.filter { it.second == null }.map { (args, _) -> ActivityOption(a.id, args["what"], args["on"], takes(a), gives(a, args = args)) }
+        return open.filter { it.second == null }.map { (args, _) ->
+            val (where, walk) = whereFor(a, args) ?: (null to null)
+            ActivityOption(a.id, args["what"], args["on"], takes(a), gives(a, args = args), where = where, walk = walk)
+        }
+    }
+
+    /**
+     * Where [a] with [args] would happen and the walk there, when that's another place than where
+     * he is: the nearest of the things it's done at. Null when it's done here or in this place.
+     */
+    private fun whereFor(a: VerbSpec, args: Map<String, String>): Pair<String, Int>? {
+        if (!layout.outdoors || VerbSpec.HERE in a.at) return null
+        val here = layout.placeOf(guy.cell)
+        val ids = a.at.map { args[it] ?: it }
+        val cells = placed().filter { it.first.id in ids }.map { it.second }
+        if (cells.any { layout.placeOf(it) == here }) return null
+        return cells.mapNotNull { c -> walkFromHere(c)?.let { c to it } }.minByOrNull { it.second }
+            ?.let { (c, minutes) -> (layout.placeOf(c)?.name ?: "elsewhere") to minutes }
     }
 
     private fun takes(a: VerbSpec): String {
@@ -1246,6 +1304,8 @@ class BedroomWorld private constructor(
             SeenEntity(e.id.value, e.kind, cell.x, cell.y, Direction.of(dx, dy), round(hypot(dx, dy), 1), e.state, chebyshev(guy.cell, cell) <= REACH)
         }.sortedBy { it.distance }
         return Observation(
+            place = whereText(),
+            places = placeOptions(),
             tick = ticks,
             self = SelfState(guy.id, round(guy.x, 2), round(guy.y, 2), guy.facing, guy.inventory.toList()),
             nearby = nearby,

@@ -31,6 +31,7 @@ class RoomWorld private constructor(
                     }
                     cell
                 }
+                is Target.Place -> reject("this room has no places to go to")
                 is Target.Entity -> {
                     if (target.id == guy.id.value) reject("you can't move to yourself")
                     if (target.id in guy.inventory) reject("you are carrying ${target.id}")

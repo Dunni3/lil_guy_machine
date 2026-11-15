@@ -76,10 +76,17 @@ fun bedroomScenario(
         return known.copy(verbs = known.verbs.filter { offered(it) }).also { lastKnown = known to it }
     }
     val start = shown()
+    // His map changes only with what he knows (and later the house), so it's kept per known content.
+    var lastMap: Pair<BedroomContent, String?>? = null
+    fun map(): String? {
+        val known = shown()
+        lastMap?.let { if (it.first === known) return it.second }
+        return WorldMap.text(world, known).also { lastMap = known to it }
+    }
     // Who he is opens the system prompt and changes with his self-model, once a night.
     val self = { longTerm?.selfText() }
     val prompts = PromptBuilder(
-        systemFor = { BedroomPrompt.system(shown(), ticksPerMinute, self()) },
+        systemFor = { BedroomPrompt.system(shown(), ticksPerMinute, self(), map = map()) },
         timeout = timeout,
         choices = { obs, recent -> BedroomPrompt.choices(obs, recent, ticksPerMinute, shown()) },
         stamp = BedroomPrompt.stamp(world.clock),
@@ -88,7 +95,7 @@ fun bedroomScenario(
         view = { BedroomPrompt.deciding(it, shown()) },
         // A model that calls tools calls his verbs.
         toolTurn = PromptBuilder.ToolTurn(
-            system = { BedroomPrompt.system(shown(), ticksPerMinute, self(), tools = true, looks = setOfNotNull("recall".takeIf { longTerm != null }, "ask".takeIf { longTerm?.canAsk == true }, "search".takeIf { longTerm?.canSearch == true })) },
+            system = { BedroomPrompt.system(shown(), ticksPerMinute, self(), tools = true, map = map(), looks = setOfNotNull("recall".takeIf { longTerm != null }, "ask".takeIf { longTerm?.canAsk == true }, "search".takeIf { longTerm?.canSearch == true })) },
             tools = { obs ->
                 val looks = longTerm?.let { m ->
                     BedroomTools.looks(

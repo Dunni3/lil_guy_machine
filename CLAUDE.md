@@ -51,7 +51,9 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   (map text in `TileMap.kt`, A* in `Pathfinder.kt`).
 - The world: `sim/.../Layout.kt` stitches the lot (`content/bedroom/world.yaml`: ground letters, the named
   outdoor places, where the bedroom stands and its front door; `WorldContent.kt`) and the bedroom into one map,
-  and says which place a tile is in. Content without `world.yaml` is the bedroom alone.
+  and says which place a tile is in. Content without `world.yaml` is the bedroom alone. What he perceives of it
+  (`Observation.place`, `places`, an activity's `where` and `walk`) is the sim's; his map in the system prompt is
+  `agent/.../WorldMap.kt`; `move_to` a `Target.Place` (the `go` tool) walks him to a place.
 - The bedroom: `sim/.../BedroomWorld.kt` (engine), `BedroomContent.kt` (schema of the content files),
   `GameClock.kt` (clock scale knob), `Ledger.kt` (money ledger and needs). Content, which is where
   numbers and new jobs, items and hobbies go: `sim/src/main/resources/content/bedroom/*.yaml`

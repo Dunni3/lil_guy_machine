@@ -585,6 +585,8 @@ data class MenuNode(
     val under: String? = null,
     val verbs: List<String> = emptyList(),
     val buys: List<String> = emptyList(),
+    /** Going to a place (a `move_to` a place) sits in this node. */
+    val go: Boolean = false,
 )
 
 @Serializable

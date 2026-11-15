@@ -7,7 +7,7 @@
 # it, each in at most one node. A purchase sits in the node of the first verb the item is for (a
 # record with play_record), else in the node whose `buys` names its item group (decor). Waiting,
 # and anything placed nowhere, stays at the top. A node with nothing on offer is left out, and one
-# with a single option is that option.
+# with a single option is that option. Going to a place sits in the node with `go: true`.
 menu:
   - id: upkeep
     says: look after his body - eat something or sleep
@@ -37,6 +37,9 @@ menu:
   - id: shopping
     says: go through the shop's catalog and buy food, supplies or things to own - furniture, decor, books, records - or see what to save for
     verbs: [shop]
+  - id: outdoors
+    says: go somewhere - out of the house to the garden, the forest or the pond, or back home - to be there and look around
+    go: true
   - id: mind
     says: stop to think things over and plan, asking how things in his world work
     verbs: [think]

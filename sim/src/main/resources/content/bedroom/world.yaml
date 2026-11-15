@@ -65,6 +65,6 @@ world:
       says: a flower-edged garden south-west of the house
       rects: [[2, 15, 13, 23]]
     - id: outside
-      name: outside the house
-      says: the grass around the house
+      name: the grass round the house
+      says: open grass round the house, with room for more rooms
       rects: [[0, 0, 39, 29]]

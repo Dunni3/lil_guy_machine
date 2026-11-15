@@ -125,7 +125,8 @@ class BedroomRunTest {
 
         val choices = BedroomPrompt.choices(obs, emptyList(), world.clock.ticksPerMinute, world.content)
         assertEquals(
-            listOf("do:eat:meal", "do:sketch", "do:shop", "do:think", "wait:${BedroomPrompt.WAIT_TICKS}"),
+            // Then going to each place outdoors, nearest first.
+            listOf("do:eat:meal", "do:sketch", "do:shop", "do:think") + obs.places!!.map { "move_to:${it.id}" } + "wait:${BedroomPrompt.WAIT_TICKS}",
             choices.options.map { it.label },
         )
         // Every option's reply passes the same schema a writing model is held to.

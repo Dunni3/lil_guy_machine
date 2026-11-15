@@ -32,6 +32,7 @@ object Describe {
         is Intent.Wait -> "wait"
         is Intent.MoveTo -> "walk to " + when (val t = intent.target) {
             is Target.Entity -> t.id
+            is Target.Place -> t.id
             is Target.Tile -> "(${t.x}, ${t.y})"
         }
         is Intent.PickUp -> "pick up ${intent.itemId}"

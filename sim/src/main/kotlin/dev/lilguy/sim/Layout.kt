@@ -40,6 +40,33 @@ class Layout private constructor(
     /** True when the content has land around the house. */
     val outdoors: Boolean get() = places.any { it.kind == PlaceKind.Outdoor }
 
+    /**
+     * Where he goes to be in [place]: its walkable tile nearest its middle (for a room, nearest the
+     * middle of its floor). Null when it has none.
+     */
+    fun spot(place: Place): Cell? = spots[place.id]
+
+    private val spots: Map<String, Cell?> by lazy {
+        places.associate { place ->
+            val (cx, cy) = place.bounds.centre
+            var best: Cell? = null
+            var bestD = Float.MAX_VALUE
+            for (r in place.rects) for (y in r.y0..r.y1) for (x in r.x0..r.x1) {
+                val c = Cell(x, y)
+                if (!map.isFloor(x, y) || placeOf(c) != place || doors.any { it.cell == c }) continue
+                val d = (x + 0.5f - cx) * (x + 0.5f - cx) + (y + 0.5f - cy) * (y + 0.5f - cy)
+                if (d < bestD) {
+                    bestD = d
+                    best = c
+                }
+            }
+            place.id to best
+        }
+    }
+
+    /** Tiles walked from [from] to [to] round walls, water and trees (not furniture), or null when there's no way. */
+    fun distance(from: Cell, to: Cell): Float? = Pathfinder.find(map.width, map.height, from, to, map::isFloor)?.cost
+
     /** The rows of [rect], clipped to the map. */
     fun rowsOf(rect: Rect): List<String> = (maxOf(rect.y0, 0)..minOf(rect.y1, map.height - 1)).map { y -> rows[y].substring(maxOf(rect.x0, 0), minOf(rect.x1, map.width - 1) + 1) }
 
