@@ -86,10 +86,12 @@ export class Models {
     return this.invented.get(id)?.wall ?? false;
   }
 
-  /** The model for item [id] (of [kind], for the fallback). */
-  item(id: string, kind: string): ClayModel {
+  /** The model for item [id] (of [kind], for the fallback); a patch that's [state] "bare" has its own. */
+  item(id: string, kind: string, state: string | null = null): ClayModel {
     const made = this.invented.get(id);
     if (made && made.look.length > 0) return this.cached(`invented/${id}`, () => lookParts(made));
+    const bare = state === "bare" ? parts.clay_items[`${id}_bare`] : undefined;
+    if (bare) return this.cached(`${kind}/${id}_bare`, () => bare);
     return this.cached(`${kind}/${id}`, () => parts.clay_items[id] ?? parts.items[id] ?? parts.kinds[kind] ?? parts.kinds["*"]);
   }
 
@@ -101,8 +103,8 @@ export class Models {
   }
 
   /** What he owns to read and play, on the wall shelf (`RoomParts.shelf`). */
-  shelf(books: string[], records: string[]): ClayModel {
-    return this.cached(`shelf/${books.join(",")}/${records.join(",")}`, () => {
+  shelf(books: string[], records: string[], jars: string[] = []): ClayModel {
+    return this.cached(`shelf/${books.join(",")}/${records.join(",")}/${jars.join(",")}`, () => {
       const lists = [parts.clay_props.shelf_boards];
       let x = constants.SHELF_START;
       for (const id of books.slice(0, constants.SHELF_BOOKS)) {
@@ -111,6 +113,8 @@ export class Models {
         x += book.width + constants.SHELF_GAP;
       }
       records.slice(0, constants.SHELF_RECORDS).forEach((id, i) => lists.push(parts.shelf_records[pick(id, parts.shelf_records.length)][i]));
+      // His samples in jars, from the lower board's right end inward.
+      jars.slice(0, JAR_MOST).forEach((id, i) => lists.push(jar(id, 0.43 - i * 0.12)));
       return lists.flat();
     });
   }
@@ -143,3 +147,27 @@ export class Models {
 
 export const wallItem = (id: string, kind: string) => constants.WALL_ITEMS.includes(id) || constants.WALL_KINDS.includes(kind);
 export const flatItem = (id: string, kind: string) => constants.FLAT_ITEMS.includes(id) || constants.FLAT_KINDS.includes(kind);
+
+/** What's in each sample's jar, by item id; samples he keeps stand on his shelf. */
+export const SAMPLE_COLORS: Record<string, string> = {
+  glowcap: "#bfeee0",
+  moss_ball: "#86b96a",
+  blue_fern: "#6fb3c9",
+  violet_beetle: "#8f7fd6",
+  pond_water: "#9fd0d6",
+  amber_seed_pod: "#ffc47a",
+};
+const JAR_MOST = 6;
+
+/** A glass jar with a brass lid and the sample inside, standing on the shelf's lower board at [x]. */
+function jar(id: string, x: number): Part[] {
+  const base = { rotX: 0, rotY: 0, rotZ: 0, texture: null, taper: 1 };
+  const y = 1.04;
+  const z = 0.1;
+  const glows = id === "glowcap" || id === "amber_seed_pod";
+  return [
+    { ...base, shape: "sphere", x, y: y + 0.01, z, w: 0.06, h: 0.06, d: 0.06, color: SAMPLE_COLORS[id] ?? "#cccccc", round: -1, ...(glows ? { glow: 0.5 } : {}) },
+    { ...base, shape: "cylinder", x, y, z, w: 0.09, h: 0.12, d: 0.09, color: "#e8f4f6", round: 0.02, opacity: 0.45 },
+    { ...base, shape: "cylinder", x, y: y + 0.12, z, w: 0.08, h: 0.025, d: 0.08, color: "#d9a95a", round: 0.008 },
+  ];
+}

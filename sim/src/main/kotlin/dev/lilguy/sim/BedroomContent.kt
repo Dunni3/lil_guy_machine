@@ -60,6 +60,8 @@ data class BedroomContent(
     val invent: InventRules? = null,
     /** The land around the house and its places; null and the bedroom is the whole map. */
     val world: WorldContent? = null,
+    /** Samples he keeps add comfort, one kind at a time; null and they add none. */
+    val collection: CollectionRules? = null,
 ) {
     @Transient private val byId = items.associateBy { it.id }
 
@@ -70,7 +72,8 @@ data class BedroomContent(
     fun book(id: String): BookSpec? = books.find { it.id == id }
 
     /** Ids a book teaches: unknown to him, so not in his world, until he finishes that book. */
-    @Transient val taught: Set<String> = books.flatMap { it.teaches }.toSet()
+    /** Ids he doesn't know until something shows him: what books teach, and the patches on the land until he explores their place. */
+    @Transient val taught: Set<String> = books.flatMap { it.teaches }.toSet() + world?.finds?.map { it.patch }.orEmpty()
 
     /** The content as he knows it: without what a book teaches that he hasn't learned ([known]). */
     fun known(known: Set<String>): BedroomContent {
@@ -123,7 +126,7 @@ data class BedroomContent(
         /** The content's files, each with the top-level keys it holds. */
         val FILES: Map<String, List<String>> = linkedMapOf(
             "room" to listOf("room", "start"),
-            "rules" to listOf("needs", "night", "habituation", "novelty", "frustration", "skills", "shop", "reflection", "commissions", "gallery", "quality_value", "invent"),
+            "rules" to listOf("needs", "night", "habituation", "novelty", "frustration", "skills", "shop", "reflection", "commissions", "gallery", "quality_value", "invent", "collection"),
             "vocabulary" to listOf("vocabulary"),
             "personality" to listOf("personality"),
             "items" to listOf("items"),
@@ -166,7 +169,11 @@ data class BedroomContent(
         val ids = items.map { it.id }
         require(ids.size == ids.toSet().size) { "item ids must be unique: ${ids.groupBy { it }.filterValues { it.size > 1 }.keys}" }
         val tags = items.flatMap { it.names }.toSet()
-        val slots = room.slots.values.toSet()
+        val slots = room.slots.values.toSet() + world?.slots?.keys.orEmpty()
+        world?.finds?.forEach { f ->
+            require(byId[f.patch]?.slot in world.slots.keys) { "find ${f.patch}: the patch must be an item on a world slot" }
+            require(byId[f.yields] != null) { "find ${f.patch} yields '${f.yields}', which isn't an item" }
+        }
         val affordances = vocabulary.affords.toSet()
         val qualities = vocabulary.qualities.toSet()
         require(affordances.none { it in ids }) { "affordances can't share a name with an item: ${affordances.filter { it in ids }}" }
@@ -506,6 +513,9 @@ data class CommissionRules(
 
 /** Hung art: at most [max] pieces on the wall, each adding [comfortEach] to the room's comfort. */
 @Serializable
+data class CollectionRules(val max: Int = 6, @SerialName("comfort_each") val comfortEach: Int = 2)
+
+@Serializable
 data class GalleryRules(val max: Int = 3, @SerialName("comfort_each") val comfortEach: Int = 3)
 
 /** What a piece of this item is drawn on: a [size] by [size] grid, up to [colors] colors and [strokes] strokes, each two of a model's picks. */
@@ -546,6 +556,7 @@ object Affordance {
     /** Affordances that take parameters, with the ones each must set and their ranges. */
     val PARAMS: Map<String, Map<String, IntRange>> = mapOf(
         "sellable" to mapOf("price" to 1..10_000),
+        "specimen" to mapOf("price" to 1..10_000),
         "drawable" to mapOf("size" to 4..64, "colors" to 2..32, "strokes" to 1..100),
     )
 
@@ -617,7 +628,7 @@ data class ItemSpec(
     @Transient val names: Set<String> = setOf(id) + affords.keys
 
     /** What one sells for, when it's `sellable`, before any skill raises it. */
-    val sellPrice: Int? get() = affords["sellable"]?.price
+    val sellPrice: Int? get() = affords["sellable"]?.price ?: affords["specimen"]?.price
 
     /** The skill its price grows with, if any. */
     val sellSkill: String? get() = affords["sellable"]?.skill

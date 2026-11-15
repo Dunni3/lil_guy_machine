@@ -74,6 +74,38 @@
                 ],
                 "additionalProperties": false
               }
+            },
+            "slots": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              }
+            },
+            "finds": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "patch": {
+                    "type": "string"
+                  },
+                  "yields": {
+                    "type": "string"
+                  },
+                  "regrow_hours": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "patch",
+                  "yields",
+                  "regrow_hours"
+                ],
+                "additionalProperties": false
+              }
             }
           },
           "required": [

@@ -7,7 +7,7 @@ room:
   rows:
     - "#l##5F#g#w6o##"
     - "ubvf.1..2.stn#"
-    - "m...........p#"
+    - "m........M..p#"
     - "H.....r......#"
     - "i..........q.#"
     - "ke...........#"
@@ -20,7 +20,7 @@ room:
     { b: bed, d: desk, c: chair, e: easel, s: shelf, p: plant, o: poster, r: rug, H: hatch, F: rail,
       v: lava_lamp, f: sunflowers, t: mushroom_lamp, n: beanbag, q: fishbowl, y: teddy_bear, x: cactus,
       l: string_lights, w: window_succulents, m: moon_mobile, i: round_mirror, k: cork_board, a: rainbow, u: cloud_light, g: bunting,
-      W: workbench, "1": spot_1, "2": spot_2, "3": spot_3, "4": spot_4, "5": wall_1, "6": wall_2 }
+      W: workbench, M: microscope, "1": spot_1, "2": spot_2, "3": spot_3, "4": spot_4, "5": wall_1, "6": wall_2 }
   # Slots in the wall rather than on the floor.
   wall_slots: [poster, hatch, rail, string_lights, window_succulents, moon_mobile, round_mirror, cork_board, rainbow, cloud_light, bunting, wall_1, wall_2]
   # Spare spots nothing in items.yaml stands in: a thing he invents to look at takes the first
@@ -34,4 +34,6 @@ start:
   money: 20
   time: "08:00"
   needs: { energy: 80, fullness: 70, mood: 60, stimulation: 60 }
-  items: { mail_hatch: 1, picture_rail: 1, bed: 1, desk: 1, chair: 1, sketchbook: 1, meal: 2, oats: 1 }
+  items: { mail_hatch: 1, picture_rail: 1, bed: 1, desk: 1, chair: 1, sketchbook: 1, meal: 2, oats: 1,
+           garden_bench: 1, forest_trail: 1, clearing_log: 1, pond_edge: 1,
+           glowcap_patch: 1, moss_patch: 1, fern_patch: 1, beetle_log: 1, pond_patch: 1, seedpod_bush: 1 }

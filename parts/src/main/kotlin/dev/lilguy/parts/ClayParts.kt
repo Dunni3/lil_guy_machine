@@ -24,11 +24,15 @@ import kotlin.math.sqrt
 object ClayParts {
     fun parts(body: PartList.() -> Unit): List<Part> = PartList().apply { outline = 0f; lump = 0f; body() }.parts
 
+    /** Patches on the land, each with a `_bare` model for while nothing has grown back (declared first: [ITEM_IDS] uses it). */
+    val PATCHES = listOf("glowcap_patch", "moss_patch", "fern_patch", "beetle_log", "pond_patch", "seedpod_bush")
+
     /** Item ids with a clay model of their own. */
     val ITEM_IDS = listOf(
         "bed", "desk", "chair", "easel", "record_player", "plant", "rug", "mail_hatch", "picture_rail", "poster",
         "lava_lamp", "mushroom_lamp", "string_lights", "cloud_light",
-    )
+        "microscope", "garden_bench", "forest_trail", "clearing_log", "pond_edge",
+    ) + PATCHES.flatMap { listOf(it, "${it}_bare") }
 
     /** The clay model of item [id]. */
     fun item(id: String): List<Part> = parts {
@@ -50,7 +54,23 @@ object ClayParts {
             "mushroom_lamp" -> mushroomLamp()
             "string_lights" -> stringLights()
             "cloud_light" -> cloudLight()
-            else -> error("no clay model for '$id'")
+            "microscope" -> microscope()
+            "garden_bench" -> gardenBench()
+            "forest_trail" -> trailSign()
+            "clearing_log" -> log(1.3f)
+            "pond_edge" -> pondEdge()
+            else -> {
+                val bare = id.endsWith("_bare")
+                when (id.removeSuffix("_bare")) {
+                    "glowcap_patch" -> glowcaps(bare)
+                    "moss_patch" -> mossStones(bare)
+                    "fern_patch" -> ferns(bare)
+                    "beetle_log" -> beetleLog(bare)
+                    "pond_patch" -> reeds(bare)
+                    "seedpod_bush" -> seedpodBush(bare)
+                    else -> error("no clay model for '$id'")
+                }
+            }
         }
     }
 
@@ -264,6 +284,100 @@ object ClayParts {
     }
 
     /** A capsule from ([ax], [ay]) to ([bx], [by]) in the plane z = [z], [thick] across. */
+    // --- outdoors: lookouts he explores from, patches he collects from, and the microscope --------
+
+    /** A brass microscope on a little wooden stand, as the sketch's lab bench has. */
+    private fun PartList.microscope() {
+        box(WOOD_D, 0f, 0f, 0f, 0.62f, 0.5f, 0.46f, round = 0.04f)
+        box(WOOD, 0f, 0.5f, 0f, 0.7f, 0.05f, 0.52f, round = 0.025f)
+        box(INK, 0f, 0.55f, 0f, 0.24f, 0.03f, 0.2f, round = 0.012f)
+        cylinder(BRASS, -0.02f, 0.58f, -0.06f, 0.05f, 0.34f, 0.05f, rotX = 12f)
+        cylinder(TRIM, 0.0f, 0.78f, -0.02f, 0.09f, 0.26f, 0.09f, rotX = -30f, taper = 0.75f)
+        cylinder(INK, 0.0f, 0.99f, -0.14f, 0.05f, 0.07f, 0.05f, rotX = -30f)
+        box(LENS, 0f, 0.6f, 0.06f, 0.14f, 0.012f, 0.1f, round = 0.004f)
+        for (sx in listOf(-0.16f, 0.18f)) cylinder(LENS, sx, 0.55f, 0.12f, 0.06f, 0.09f, 0.06f, taper = 0.85f, opacity = 0.7f)
+    }
+
+    private fun PartList.gardenBench() {
+        for (sx in listOf(-0.42f, 0.42f)) box(WOOD_D, sx, 0f, 0f, 0.08f, 0.32f, 0.34f, round = 0.03f)
+        box(WOOD, 0f, 0.32f, 0f, 1.0f, 0.06f, 0.38f, round = 0.03f)
+        box(WOOD, 0f, 0.38f, -0.17f, 1.0f, 0.3f, 0.05f, round = 0.025f)
+    }
+
+    /** A post with a little sign pointing into the trees. */
+    private fun PartList.trailSign() {
+        cylinder(WOOD_D, 0f, 0f, 0f, 0.07f, 1.0f, 0.07f, round = 0.02f)
+        box(TRIM, 0.12f, 0.78f, 0f, 0.38f, 0.14f, 0.03f, round = 0.02f, rotY = 20f)
+        box(SAGE, 0.12f, 0.82f, 0.018f, 0.24f, 0.04f, 0.01f, round = 0.005f, rotY = 20f)
+        sphere(LEAF, -0.1f, 0f, 0.08f, 0.26f, 0.18f, 0.22f)
+    }
+
+    /** A log lying along X to sit on. */
+    private fun PartList.log(length: Float) {
+        cylinder(WOOD_D, 0f, 0.18f, 0f, 0.34f, length, 0.34f, rotZ = 90f, round = 0.05f)
+    }
+
+    /** Flat stones at the water's edge. */
+    private fun PartList.pondEdge() {
+        for ((x, z, s) in listOf(Triple(-0.2f, 0.05f, 0.42f), Triple(0.22f, -0.12f, 0.34f), Triple(0.12f, 0.24f, 0.28f))) {
+            sphere("#d8d2c4", x, 0f, z, s, s * 0.35f, s * 0.8f)
+        }
+    }
+
+    private fun PartList.glowcaps(bare: Boolean) {
+        log(0.9f)
+        if (bare) return
+        for ((x, z, s) in listOf(Triple(-0.2f, 0.24f, 1f), Triple(0.1f, 0.26f, 0.7f), Triple(0.28f, 0.2f, 0.55f))) {
+            cylinder(TRIM, x, 0f, z, 0.05f * s, 0.2f * s, 0.05f * s)
+            dome("#bfeee0", x, 0.18f * s, z, 0.24f * s, 0.12f * s, 0.24f * s, glow = 0.6f)
+        }
+    }
+
+    private fun PartList.mossStones(bare: Boolean) {
+        sphere("#d8d2c4", 0f, 0f, 0f, 0.5f, 0.28f, 0.42f)
+        sphere("#cfc8b8", 0.3f, 0f, 0.15f, 0.32f, 0.2f, 0.3f)
+        if (bare) return
+        sphere("#86b96a", -0.02f, 0.16f, 0f, 0.3f, 0.16f, 0.26f)
+        for (i in 0 until 5) sphere("#a8d58a", -0.12f + i * 0.06f, 0.24f, 0.02f * (i % 2), 0.07f, 0.07f, 0.07f)
+    }
+
+    private fun PartList.ferns(bare: Boolean) {
+        val n = if (bare) 3 else 7
+        for (i in 0 until n) {
+            val a = i * 2 * PI.toFloat() / n
+            val color = if (bare) "#8aa88a" else if (i % 2 == 0) "#6fb3c9" else "#8fcbd8"
+            sphere(color, 0.06f * cos(a), 0f, 0.06f * sin(a), 0.14f, (if (bare) 0.2f else 0.5f), 0.05f, rotY = deg(PI.toFloat() / 2 - a), rotX = 40f)
+        }
+    }
+
+    private fun PartList.beetleLog(bare: Boolean) {
+        log(1.0f)
+        sphere(LEAF, -0.3f, 0.3f, 0.05f, 0.2f, 0.08f, 0.2f)
+        if (bare) return
+        sphere("#8f7fd6", 0.15f, 0.34f, 0.05f, 0.12f, 0.08f, 0.16f)
+        sphere(INK, 0.15f, 0.36f, 0.13f, 0.06f, 0.05f, 0.05f)
+    }
+
+    private fun PartList.reeds(bare: Boolean) {
+        val n = if (bare) 3 else 6
+        for (i in 0 until n) {
+            val x = -0.25f + i * 0.1f
+            val h = 0.5f + (i % 3) * 0.18f
+            cylinder("#7fae84", x, 0f, 0.04f * (i % 2), 0.025f, h, 0.025f, rotZ = (i - n / 2f) * 3f)
+            if (!bare && i % 2 == 1) capsule("#a9805f", x, h - 0.02f, 0.04f * (i % 2), 0.05f, 0.14f, 0.05f)
+        }
+        if (!bare) cylinder("#9fd0d6", 0.32f, 0f, 0.1f, 0.12f, 0.14f, 0.12f, opacity = 0.75f)
+    }
+
+    private fun PartList.seedpodBush(bare: Boolean) {
+        sphere(LEAF, 0f, 0f, 0f, 0.7f, 0.55f, 0.6f)
+        sphere(LEAF_LIGHT, 0.18f, 0.22f, 0.08f, 0.4f, 0.36f, 0.36f)
+        if (bare) return
+        for ((x, y, z) in listOf(Triple(-0.22f, 0.36f, 0.2f), Triple(0.12f, 0.46f, 0.18f), Triple(0.28f, 0.28f, -0.1f))) {
+            sphere(AMBER, x, y, z, 0.1f, 0.15f, 0.1f, glow = 0.4f)
+        }
+    }
+
     private fun PartList.segment(color: String, ax: Float, ay: Float, bx: Float, by: Float, z: Float, thick: Float) {
         val dx = bx - ax
         val dy = by - ay

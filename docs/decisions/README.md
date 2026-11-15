@@ -91,3 +91,4 @@ these hold the outcome. Skim this index before related changes.
 - 2026-11-15 [Calling is optional for a tool model; what he writes is his thought, and a turn that runs out of steps is think](2026-11-15-calling-is-optional-and-what-he-writes-is-his-thought.md)
 - 2026-11-15 [He searches the real web as a look, read-only, through Gemini grounded on Google Search](2026-11-15-he-searches-the-real-web-as-a-look.md)
 - 2026-11-15 [Going somewhere is implied by the verb, plus `go`; he perceives his place, the other places and the walk to each](2026-11-15-going-somewhere-is-implied-by-the-verb-plus-go.md)
+- 2026-11-15 [The land is explored from lookouts, samples are collected from patches that regrow, and kept, studied or sold](2026-11-15-the-land-is-explored-and-samples-are-collected.md)

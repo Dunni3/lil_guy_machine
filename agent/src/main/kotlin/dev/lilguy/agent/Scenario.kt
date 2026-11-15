@@ -78,9 +78,12 @@ fun bedroomScenario(
     val start = shown()
     // His map changes only with what he knows (and later the house), so it's kept per known content.
     var lastMap: Pair<BedroomContent, String?>? = null
+    var lastExplored: Set<String> = emptySet()
     fun map(): String? {
         val known = shown()
-        lastMap?.let { if (it.first === known) return it.second }
+        // What he knows covers the patches he's found; exploring a place with none changes only what he's explored.
+        lastMap?.let { if (it.first === known && lastExplored == world.exploredPlaces()) return it.second }
+        lastExplored = world.exploredPlaces()
         return WorldMap.text(world, known).also { lastMap = known to it }
     }
     // Who he is opens the system prompt and changes with his self-model, once a night.

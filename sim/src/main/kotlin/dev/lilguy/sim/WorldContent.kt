@@ -15,7 +15,13 @@ data class WorldContent(
     val house: HouseSpec,
     /** Outdoor places, the first whose [PlaceSpec.rects] hold a tile winning; rooms come before all of them. */
     val places: List<PlaceSpec> = emptyList(),
+    /** Slot name to its tile [x, y] on the lot: where outdoor things stand, as the room's slots. */
+    val slots: Map<String, List<Int>> = emptyMap(),
+    /** What grows on the land: a patch (an item on a slot) and what collecting there yields. */
+    val finds: List<FindSpec> = emptyList(),
 ) {
+    fun find(patch: String): FindSpec? = finds.firstOrNull { it.patch == patch }
+
     val width: Int get() = lot.firstOrNull()?.length ?: 0
     val height: Int get() = lot.size
 
@@ -30,6 +36,13 @@ data class WorldContent(
         val onEdge = house.door.size == 2 && (dx == 0 || dy == 0 || dx == w - 1 || dy == h - 1) && dx in 0 until w && dy in 0 until h
         if (!onEdge) add("world.house.door ${house.door} must be a tile on the bedroom's outer wall")
         else if (room.rows[dy][dx] != '#') add("world.house.door ${house.door} must be a plain wall tile of the bedroom, not '${room.rows[dy][dx]}'")
+        slots.forEach { (name, at) ->
+            if (name in room.slots.values) add("world slot '$name' is also a room slot")
+            val ok = at.size == 2 && at[1] in lot.indices && at[0] in 0 until width && Ground.of(lot[at[1]][at[0]])?.walkable == true
+            if (!ok) add("world slot '$name' at $at must be a walkable tile of the lot")
+        }
+        finds.forEach { f -> if (f.regrowHours <= 0) add("find ${f.patch}: regrow_hours must be above 0") }
+        if (finds.map { it.patch }.toSet().size != finds.size) add("each patch may have one find")
         val ids = places.map { it.id }
         if (ids.size != ids.toSet().size) add("world place ids must be unique")
         if (house.room in ids) add("world place '${house.room}' has the bedroom's id")
@@ -52,6 +65,10 @@ data class HouseSpec(
     /** The front door: a tile of the bedroom's outer wall, from its top-left, that opens onto the lot. */
     val door: List<Int>,
 )
+
+/** A patch ([patch], an item on a lot slot) that [yields] an item when he collects there, then is bare for [regrowHours]. */
+@Serializable
+data class FindSpec(val patch: String, val yields: String, @SerialName("regrow_hours") val regrowHours: Int)
 
 @Serializable
 data class PlaceSpec(

@@ -91,6 +91,12 @@ class BedroomWorld private constructor(
 
     private var music: Music? = null
 
+    /** Outdoor places he has explored (looked round from their lookout). */
+    private val explored = linkedSetOf<String>()
+
+    /** Patch to the tick it has grown back by, while it's bare. */
+    private val bareUntil = linkedMapOf<String, Long>()
+
     /** Bumped whenever what he owns or plays changes; with his last intent it keys [options], and the minute and need levels too between activities. */
     private var version = 0
     private var options: Options? = null
@@ -235,6 +241,34 @@ class BedroomWorld private constructor(
             }
         }
 
+        override fun survey(lookout: String): String {
+            val place = layout.placeOf(cellOf(lookout)) ?: return "nothing to find here"
+            val first = explored.add(place.id)
+            val found = patchesIn(place).filter { it !in known }
+            if (found.isEmpty()) return if (first) "explored ${place.name}: nothing grows here to collect" else "looked round ${place.name} again; nothing new"
+            known = known + found
+            version++
+            return "explored ${place.name} and found " + found.joinToString(" and ") { item(it).name }
+        }
+
+        override fun surveyText(lookout: String): String {
+            val place = layout.placeOf(cellOf(lookout)) ?: return "a look round"
+            return if (place.id in explored) "you've explored ${place.name} before" else "you haven't explored ${place.name} yet: there may be things to collect"
+        }
+
+        override fun bare(patch: String): String? {
+            val until = bareUntil[patch]?.takeIf { it > ticks } ?: return null
+            return "the ${item(patch).name} haven't grown back yet (until ${stamp(until)})"
+        }
+
+        override fun gather(patch: String): List<String> {
+            val find = content.world?.find(patch) ?: return emptyList()
+            add(find.yields, 1)
+            bareUntil[patch] = ticks + clock.ticks(find.regrowHours * 60)
+            version++
+            return listOf("+1 ${item(find.yields).name}", "the ${item(patch).name} will grow back by ${stamp(bareUntil.getValue(patch))}")
+        }
+
         override fun build(verb: VerbSpec): List<String> {
             val design = designs.remove(verb.id)!!.design!!
             val made = (content.invent!!.check(design, content, verb.minutes!!) as InventRules.Checked.Ok).invention.copy(tick = ticks)
@@ -298,6 +332,16 @@ class BedroomWorld private constructor(
 
     fun count(id: String): Int = owned[id] ?: 0
 
+    /** Where [id]'s slot is on the map. */
+    private fun cellOf(id: String): Cell = layout.slotCells.getValue(item(id).slot!!)
+
+    /** The patches (world.yaml `finds`) whose slots are in [place]. */
+    private fun patchesIn(place: Place): List<String> =
+        content.world?.finds.orEmpty().map { it.patch }.filter { content.item(it) != null && layout.placeOf(cellOf(it)) == place }
+
+    /** Outdoor places he has explored, by id. */
+    fun exploredPlaces(): Set<String> = explored.toSet()
+
     private fun item(id: String): ItemSpec = content.item(id) ?: error("no item '$id'")
 
     /** How many owned items answer to [tag] (an id or an affordance), plus one more [extra] if given (for "what if he bought it"). */
@@ -357,7 +401,12 @@ class BedroomWorld private constructor(
         }
     }
 
-    private fun comfort(): Int = placed().sumOf { (spec, _) -> comfortOf(spec) } + hung().size * content.gallery.comfortEach
+    private fun comfort(): Int = placed().sumOf { (spec, _) -> comfortOf(spec) } + hung().size * content.gallery.comfortEach + collectionComfort()
+
+    /** Each kind of sample he keeps adds comfort, up to the rule's most kinds. */
+    private fun collectionComfort(): Int = content.collection?.let { c ->
+        minOf(c.max, owned.keys.count { "specimen" in item(it).names }) * c.comfortEach
+    } ?: 0
 
     /** How to say [name] in a sentence: an item's name, or for an affordance, the kind its items share ("book"). */
     private fun noun(name: String): String {
@@ -710,7 +759,7 @@ class BedroomWorld private constructor(
     /** Every way to bind [a]'s arguments to items he owns, in the order he owns them; one empty binding when it has none. */
     private fun bindings(a: VerbSpec): List<Map<String, String>> =
         a.args.entries.fold(listOf(emptyMap())) { acc, (slot, type) ->
-            acc.flatMap { b -> owned.keys.filter { type in item(it).names }.map { b + (slot to it) } }
+            acc.flatMap { b -> owned.keys.filter { type in item(it).names && isKnown(it) }.map { b + (slot to it) } }
         }
 
     private fun planBuy(id: String): Work {
@@ -1060,6 +1109,8 @@ class BedroomWorld private constructor(
             authored = authored.toList(),
             authoredCount = authoredCount,
             inventions = inventions,
+            explored = explored.toList(),
+            bare = bareUntil.filterValues { it > ticks },
         )
     }
 
@@ -1075,6 +1126,10 @@ class BedroomWorld private constructor(
         owned.clear()
         pieces.clear()
         s.owned.forEach { (id, n) -> if (has(id, "item")) owned[id] = n }
+        // A fixture he starts with is always there, though an older checkpoint may not have it (the land's lookouts and patches).
+        content.start.items.forEach { (id, n) -> if (item(id).group == "fixture" && id !in owned) owned[id] = n }
+        explored.clear(); explored.addAll(s.explored.filter { layout.place(it) != null })
+        bareUntil.clear(); s.bare.forEach { (id, t) -> if (content.item(id) != null) bareUntil[id] = t }
         s.pieces.forEach { p ->
             if (has(p.item, "piece ${p.id}'s item")) pieces += Piece(p.id, p.item, p.commission, p.skill).also {
                 it.state = PieceState.valueOf(p.state.replaceFirstChar(Char::uppercase))
@@ -1133,6 +1188,8 @@ class BedroomWorld private constructor(
     private fun activityOptions(a: VerbSpec): List<ActivityOption> {
         lockReason(a)?.let { return listOf(ActivityOption(a.id, locked = it)) }
         val open = bindings(a).map { it to lockReason(a, it) }
+        // Things he owns but doesn't know of yet (patches he hasn't found) bind to nothing.
+        if (open.isEmpty()) return listOf(ActivityOption(a.id, locked = "you haven't found anywhere to ${a.id} yet"))
         if (open.none { it.second == null }) return listOf(ActivityOption(a.id, locked = open.first().second))
         return open.filter { it.second == null }.map { (args, _) ->
             val (where, walk) = whereFor(a, args) ?: (null to null)
@@ -1262,7 +1319,11 @@ class BedroomWorld private constructor(
         val entities = buildList {
             add(EntitySnapshot(guy.id, "guy", guy.x, guy.y, 1f, guy.facing.degrees, place = layout.placeOf(guy.x, guy.y)?.id))
             placed().forEach { (spec, cell) ->
-                val state = if (spec.id == music?.on) "playing ${music!!.itemId}" else null
+                val state = when {
+                    spec.id == music?.on -> "playing ${music!!.itemId}"
+                    (bareUntil[spec.id] ?: 0) > ticks -> "bare"
+                    else -> null
+                }
                 add(EntitySnapshot(EntityId(spec.id), spec.group, cell.x + 0.5f, cell.y + 0.5f, if (spec.blocks) 1f else 0.2f, 0f, state, place = layout.placeOf(cell)?.id))
             }
         }
@@ -1297,7 +1358,9 @@ class BedroomWorld private constructor(
     }
 
     private fun observe(entities: List<EntitySnapshot>): Observation {
-        val nearby = entities.filter { it.id != guy.id }.map { e ->
+        // What's near him is what's in his place, and only what he knows of.
+        val here = layout.placeOf(guy.cell)?.id
+        val nearby = entities.filter { it.id != guy.id && (!layout.outdoors || it.place == here) && isKnown(it.id.value) }.map { e ->
             val dx = e.x - guy.x
             val dy = e.y - guy.y
             val cell = Cell(e.x.toInt(), e.y.toInt())
@@ -1410,7 +1473,8 @@ class BedroomWorld private constructor(
 
     private fun drawRoomMap(): Pair<Rect, List<String>> {
         val rect = mapRect()
-        val letters = placed().associate { (spec, cell) -> cell to letterOf(spec.slot!!) }
+        // Things on the land (lookouts, patches he knows of) are 'o'; ones he hasn't found aren't drawn.
+        val letters = placed().filter { (spec, _) -> isKnown(spec.id) }.associate { (spec, cell) -> cell to (letterOf(spec.slot!!) ?: 'o') }
         return rect to (rect.y0..rect.y1).map { y ->
             buildString {
                 for (x in rect.x0..rect.x1) {
@@ -1427,11 +1491,11 @@ class BedroomWorld private constructor(
         }
     }
 
-    private fun letterOf(slot: String): Char = content.room.slots.entries.first { it.value == slot }.key.single()
+    private fun letterOf(slot: String): Char? = content.room.slots.entries.firstOrNull { it.value == slot }?.key?.single()
 
     /** "@ you, # wall, . floor, b bed, ..." */
     val mapLegend: String
-        get() = "@ you, # wall, . floor, " + (if (layout.outdoors) "+ doorway, , grass, = path, : bare ground, * flowers, ~ water, T tree, " else "") + content.room.slots.entries.mapNotNull { (letter, slot) ->
+        get() = "@ you, # wall, . floor, " + (if (layout.outdoors) "+ doorway, , grass, = path, : bare ground, * flowers, ~ water, T tree, o something outdoors you know of, " else "") + content.room.slots.entries.mapNotNull { (letter, slot) ->
             val spec = content.items.firstOrNull { it.slot == slot }
             // A spare spot is nothing until something he invented stands in it.
             if (spec == null && slot in content.room.spots.let { it.floor + it.wall }) null else "$letter ${spec?.name ?: slot}"

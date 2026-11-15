@@ -448,6 +448,25 @@
           "type": "null"
         }
       ]
+    },
+    "collection": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "max": {
+              "type": "integer"
+            },
+            "comfort_each": {
+              "type": "integer"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "required": [

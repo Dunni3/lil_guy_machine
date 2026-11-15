@@ -43,7 +43,7 @@ class WorldTest {
         assertTrue(home.place!!.startsWith("your bedroom"), home.place)
         val garden = home.places!!.first { it.id == "garden" }
         assertTrue(garden.walk in 3..30, "garden is ${garden.walk} min away")
-        assertTrue(home.activities!!.none { it.where != null }, "everything he can do is in his room")
+        assertTrue(home.activities!!.filter { it.where != null }.all { it.id == "explore" }, "but exploring is done in his room")
         val went = w.run(Intent.MoveTo(Target.Place("garden")))
         assertIs<IntentStatus.Succeeded>(went.status)
         assertEquals("garden", w.guyPlace())
@@ -54,6 +54,30 @@ class WorldTest {
         assertTrue(sketch.walk!! > 0)
         assertTrue(out.places!!.first().id == "bedroom" || out.places!!.any { it.id == "bedroom" })
     }
+
+    @Test
+    fun `exploring the clearing finds what grows there, and he collects, keeps and sells a sample`() {
+        val w = BedroomWorld.create()
+        fun obs() = w.observe(w.agentId)
+        assertTrue(obs().activities!!.first { it.id == "collect" }.locked!!.contains("haven't found"))
+        assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("explore", on = "clearing_log")).status)
+        assertEquals("clearing", w.guyPlace())
+        assertTrue(obs().recentEvents.any { "found glowcaps under the log and mossy stones" in it }, obs().recentEvents.toString())
+        val patches = obs().activities!!.filter { it.id == "collect" && it.locked == null }.map { it.on }
+        assertEquals(listOf("glowcap_patch", "moss_patch"), patches)
+        val mood = w.snapshot().life!!.moodTarget
+        assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("collect", on = "glowcap_patch")).status)
+        assertEquals(1, w.count("glowcap"))
+        assertTrue(w.snapshot().life!!.moodTarget > mood, "a kept sample is comfort")
+        assertTrue("grown back" in failure(w.run(Intent.Do("collect", on = "glowcap_patch"))))
+        assertEquals("bare", w.snapshot().entities.first { it.id.value == "glowcap_patch" }.state)
+        val money = w.snapshot().life!!.money
+        assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("sell_sample", what = "glowcap")).status)
+        assertEquals(money + 6, w.snapshot().life!!.money)
+        assertEquals(0, w.count("glowcap"))
+    }
+
+    private fun failure(h: IntentHandle) = assertIs<IntentStatus.Failed>(h.status).reason
 
     @Test
     fun `a checkpoint from before the lot puts him where he was in the room`() {

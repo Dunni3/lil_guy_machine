@@ -36,16 +36,16 @@ enum class VerbKind(
     @SerialName("generative")
     Generative(
         "generative", "turns time (and maybe items it uses up) into a new item",
-        allowed = setOf("need", "rate", "consume", "produce", "draw", "practice", "build", "write"),
-        required = listOf(setOf("produce", "build")),
+        allowed = setOf("need", "rate", "consume", "produce", "draw", "practice", "build", "write", "gather"),
+        required = listOf(setOf("produce", "build", "gather")),
     ),
 
     /** Working through a book or practising: raises a skill, and may teach him things. */
     @SerialName("study")
     Study(
         "study", "works through a book or practises, raising a skill",
-        allowed = setOf("need", "rate", "progress", "practice", "write"),
-        required = listOf(setOf("progress", "practice")),
+        allowed = setOf("need", "rate", "progress", "practice", "write", "survey"),
+        required = listOf(setOf("progress", "practice", "survey")),
     ),
 
     /** Changing the state of an item he has: hanging a piece. */

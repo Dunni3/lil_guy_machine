@@ -200,3 +200,42 @@ verbs:
     effects:
       - need: { energy: -1 }
       - write: { with: thought, into: [events, short_term], timing: before, shows_as: plan }
+  # Outdoors. Exploring a place from its lookout reveals what grows there (the `survey` op), and
+  # it's a pleasure in itself; collecting takes a sample from a patch he has found (`gather`).
+  - id: explore
+    kind: study
+    phrase: explore a place outdoors
+    args: { on: explorable }
+    at: [on]
+    minutes: 40
+    effects:
+      - survey: on
+      - practice: { nature: 0.1 }
+      - need: { energy: -4, mood: 3, stimulation: 8 }
+  - id: collect
+    kind: generative
+    phrase: collect a sample
+    args: { on: forageable }
+    at: [on]
+    minutes: 15
+    effects:
+      - gather: on
+      - need: { energy: -1, stimulation: 2 }
+  - id: study_sample
+    tier: 1
+    kind: study
+    phrase: study a sample under the microscope
+    args: { what: specimen }
+    at: [microscope]
+    minutes: 45
+    effects:
+      - practice: { nature: 0.2 }
+      - need: { energy: -2, mood: 2, stimulation: 6 }
+  - id: sell_sample
+    kind: economic
+    phrase: sell samples
+    args: { what: specimen }
+    at: [mail_hatch]
+    minutes: 1
+    effects:
+      - sell: what

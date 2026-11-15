@@ -114,6 +114,7 @@ class Layout private constructor(
                 terrain[y * width + x] = t
                 letters[y][x] = letter
             }
+            world?.slots?.forEach { (name, at) -> slotCells[name] = Cell(at[0], at[1]) }
             val missing = room.slots.values.toSet() - slotCells.keys
             require(missing.isEmpty()) { "slots $missing aren't in the room" }
 
