@@ -236,7 +236,17 @@ data class Entity(
     val place: String?,
     /** The colour his code painted it, hex, or null for its own colours. */
     val color: String? = null,
+    /** The variant of his invention's design ([Invented.variants]) his code shows; null for its own look. */
+    val variant: String? = null,
+    /** Named parts of his invention's look his code set moving. Not part of what model it is: a renderer animates them. */
+    val motions: List<MotionView> = emptyList(),
+    /** A short label (up to 24 characters) his code floats over it, or null. */
+    val readout: String? = null,
 )
+
+/** A named [part] of an invention's look moving as [kind] (spin, bob, sway, pulse, shake) at [speed], 1 gentle, up to 4. */
+@Serializable
+data class MotionView(val part: String, val kind: String, val speed: Float)
 
 /** What a character is doing: its intent and how far along, the walk left, and what it's saying. */
 @Serializable
@@ -344,6 +354,21 @@ data class Invented(
     val why: String,
     val look: List<LookShape>,
     val tick: Long = 0,
+    /** Its other looks, by name: each the changes it makes to the shapes of [look] with that `part`. */
+    val variants: Map<String, List<VariantChange>> = emptyMap(),
+)
+
+/** One change a variant makes to the shapes named [part]: a [color], [glow], rotation, a [scale] about the part's bottom centre, or [hidden]; null keeps the look's own. */
+@Serializable
+data class VariantChange(
+    val part: String,
+    val color: String? = null,
+    val glow: Float? = null,
+    @SerialName("rot_x") val rotX: Float? = null,
+    @SerialName("rot_y") val rotY: Float? = null,
+    @SerialName("rot_z") val rotZ: Float? = null,
+    val scale: Float? = null,
+    val hidden: Boolean = false,
 )
 
 /**
@@ -409,7 +434,10 @@ data class CodedVerbView(
     val time: String?,
 )
 
-/** What a thing of his ([thing], an item id) does each game hour: what it [says] it does, its [source], [version], and how many hours in a row it has broken ([failures]; at three it stops). */
+/**
+ * What a thing of his ([thing], an item id) does by itself: what it [says] it does, its [source], [version], how many runs in a row
+ * it has broken ([failures]; at three it stops), and the minutes between its `every` runs ([every]), null without one.
+ */
 @Serializable
 data class BehaviorView(
     val thing: String,
@@ -420,6 +448,7 @@ data class BehaviorView(
     val tick: Long,
     val day: Int?,
     val time: String?,
+    val every: Int? = null,
 )
 
 /** What his code changed about a thing ([id]): the [spot] it moved it to, the [name] it gave it, the [color] it painted it; null where it's the thing's own. */

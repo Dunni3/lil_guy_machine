@@ -22,7 +22,31 @@ data class Design(
     val book: BookDesign? = null,
     /** Why he made it, in his words; it goes into the event. */
     val why: String = "",
+    /** Other looks it can show (`world.show(id, name)`): each a list of changes to named parts of [look] ([PartChange]). */
+    val variants: Map<String, List<PartChange>> = emptyMap(),
 )
+
+/**
+ * One change a variant makes to the parts of a look named [part] (every shape with that `part`): a new
+ * [color], [glow], rotation, a [scale] about the part's bottom centre, or [hidden]. Unset fields keep the base look's.
+ */
+@Serializable
+@SerialName("part_change")
+data class PartChange(
+    val part: String,
+    val color: String? = null,
+    val glow: Double? = null,
+    @SerialName("rot_x") val rotX: Double? = null,
+    @SerialName("rot_y") val rotY: Double? = null,
+    @SerialName("rot_z") val rotZ: Double? = null,
+    val scale: Double? = null,
+    val hidden: Boolean = false,
+) {
+    companion object {
+        const val MIN_SCALE = 0.2
+        const val MAX_SCALE = 3.0
+    }
+}
 
 /** A book he wrote: [chapters] are a sentence each, and [skill] is the one skill reading it raises, if any. */
 @Serializable
@@ -87,6 +111,8 @@ data class Invention(
     val cost: Int,
     val why: String = "",
     val tick: Long = 0,
+    /** Its other looks ([Design.variants]); empty for one saved before they came. */
+    val variants: Map<String, List<PartChange>> = emptyMap(),
 )
 
 /**
@@ -148,6 +174,7 @@ data class InventRules(
         if (design.qualities.values.sum() > qualities.total) problems += "its qualities' strengths can add up to at most ${signed(qualities.total).removePrefix("+")}"
         if (design.look.size > lookParts) problems += "its look can have at most $lookParts shapes"
         design.look.forEachIndexed { i, p -> partProblem(p)?.let { problems += "shape ${i + 1} of its look: $it" } }
+        problems += variantProblems(design)
         var slot: String? = null
         if (design.use == VIEWABLE) {
             when (design.place) {
@@ -185,7 +212,7 @@ data class InventRules(
             qualities = design.qualities,
         )
         val spec = book?.let { BookSpec(id, it.title.trim(), it.blurb.trim(), it.chapters.map(String::trim), it.skill?.let { s -> mapOf(s to this.book.skillGain) }.orEmpty()) }
-        return Checked.Ok(Invention(item, spec, design.look, cost, design.why.trim()))
+        return Checked.Ok(Invention(item, spec, design.look, cost, design.why.trim(), variants = design.variants.mapKeys { it.key.trim() }))
     }
 
     /** Why [use] isn't open to him, in words he can act on. */
@@ -208,6 +235,29 @@ data class InventRules(
         p.glow.isNaN() || p.glow < 0 || p.glow > 1 -> "glow is from 0 to 1"
         p.opacity.isNaN() || p.opacity < LookPart.MIN_OPACITY || p.opacity > 1 -> "opacity is from ${LookPart.MIN_OPACITY} to 1"
         else -> null
+    }
+
+    /** What's wrong with [design]'s variants: names, how many, and that each change names a part of the look and stays in range. */
+    fun variantProblems(design: Design): List<String> {
+        if (design.variants.isEmpty()) return emptyList()
+        val problems = mutableListOf<String>()
+        val parts = design.look.map { it.part }.filter { it.isNotBlank() }.toSet()
+        if (design.variants.size > MAX_VARIANTS) problems += "at most $MAX_VARIANTS variants"
+        design.variants.forEach { (name, changes) ->
+            val v = "variant '$name'"
+            if (!name.trim().matches(VARIANT)) problems += "$v: a variant's name is 1 to 20 lowercase letters, digits or underscores, like spraying"
+            if (changes.isEmpty() || changes.size > lookParts) problems += "$v: it changes 1 to $lookParts parts"
+            changes.forEach { c ->
+                when {
+                    c.part !in parts -> problems += "$v: '${c.part}' isn't a part of its look" + if (parts.isEmpty()) " (name the shapes' parts, like \"head\")" else "; its parts are ${parts.joinToString()}"
+                    c.color != null && !c.color.matches(COLOR) -> problems += "$v: ${c.part}'s color must be hex, like #c96f4a"
+                    c.glow != null && (c.glow.isNaN() || c.glow < 0 || c.glow > 1) -> problems += "$v: ${c.part}'s glow is from 0 to 1"
+                    listOfNotNull(c.rotX, c.rotY, c.rotZ).any { it.isNaN() || it < -360 || it > 360 } -> problems += "$v: ${c.part}'s rotations are degrees from -360 to 360"
+                    c.scale != null && (c.scale.isNaN() || c.scale < PartChange.MIN_SCALE || c.scale > PartChange.MAX_SCALE) -> problems += "$v: ${c.part}'s scale is from ${PartChange.MIN_SCALE} to ${PartChange.MAX_SCALE}"
+                }
+            }
+        }
+        return problems
     }
 
     /** What's wrong with these rules in [c], as messages. */
@@ -250,5 +300,7 @@ data class InventRules(
         private const val MIN_SIZE = 0.02
         private const val MAX_SIZE = 1.5
         private const val REACH = 0.5
+        const val MAX_VARIANTS = 6
+        private val VARIANT = Regex("[a-z0-9_]{1,20}")
     }
 }

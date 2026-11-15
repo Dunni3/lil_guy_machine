@@ -68,6 +68,8 @@ data class Observation(
     @Transient val outcome: String? = null,
     /** [recentEvents] without the outcomes: deliveries, requests, the day changing. For memory. */
     @Transient val news: List<String> = emptyList(),
+    /** The place each line of [news] happened in, by place name, for the lines that say ([WorldEvent.place]). For memory. */
+    @Transient val newsPlaces: Map<String, String> = emptyMap(),
     /** The tile at [localMap]'s top-left, where the map is part of a bigger world; null when it's all of it. */
     @EncodeDefault(EncodeDefault.Mode.NEVER) val localMapAt: Cell? = null,
     /** The weather as he sees it now ("raining, cold"; indoors only the sky through the window); null without weather. */
@@ -300,6 +302,12 @@ data class EntitySnapshot(
     val place: String? = null,
     /** The colour his code painted it, hex, or null for its own colours. */
     val color: String? = null,
+    /** The variant of its design his code shows ([ThingLook]), null for its own look. */
+    val variant: String? = null,
+    /** Its parts his code set moving. */
+    val motions: List<Motion> = emptyList(),
+    /** The short label his code floats over it. */
+    val readout: String? = null,
 )
 
 /** What a character's controller is doing, for HUDs and debug views. */
@@ -314,5 +322,9 @@ data class AgentSnapshot(
     val saying: String?,
 )
 
-/** [outcome]: it says how an intent ended (a finish, a purchase, a failure) rather than what happened around him. */
-data class WorldEvent(val tick: Long, val text: String, val outcome: Boolean = false)
+/**
+ * [outcome]: it says how an intent ended (a finish, a purchase, a failure) rather than what happened
+ * around him. [place]: the id of the place it happened in ([Layout.places]), when that isn't simply
+ * where he is: a machine of his acting in its own place. Memory files it there.
+ */
+data class WorldEvent(val tick: Long, val text: String, val outcome: Boolean = false, val place: String? = null)

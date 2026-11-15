@@ -1,5 +1,5 @@
 /* Generated from schema/protocol.schema.json (protocol/.../*.kt) by gen_types.sh. Don't edit; run `make protocol-types`.
- * schema sha256: 4123fdef95e0d84e4a029c1a2038fc3ef09fa295276d79c6c897912884188ffc
+ * schema sha256: 637400523e9cd84e503ce074242d5ec489a23422763940efcc9d603e1808b6b6
  */
 
 /**
@@ -187,6 +187,18 @@ export interface Entity {
   carried_by: string | null;
   place: string | null;
   color: string | null;
+  variant: string | null;
+  motions: MotionView[];
+  readout: string | null;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "MotionView".
+ */
+export interface MotionView {
+  part: string;
+  kind: string;
+  speed: number;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -437,6 +449,9 @@ export interface Invented {
   why: string;
   look: LookShape[];
   tick: number;
+  variants: {
+    [k: string]: VariantChange[];
+  };
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -461,6 +476,20 @@ export interface LookShape {
   arc: number;
   glow: number;
   opacity: number;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "VariantChange".
+ */
+export interface VariantChange {
+  part: string;
+  color: string | null;
+  glow: number | null;
+  rot_x: number | null;
+  rot_y: number | null;
+  rot_z: number | null;
+  scale: number | null;
+  hidden: boolean;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -734,6 +763,7 @@ export interface BehaviorView {
   tick: number;
   day: number | null;
   time: string | null;
+  every: number | null;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema

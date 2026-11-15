@@ -74,7 +74,7 @@ object WorldDocs {
         if (content.verbs.any { v -> v.effects.any { it is dev.lilguy.sim.DefineOp } }) add(
             DocSection(
                 "rules:code", "code: writing his own verbs and what his things do, and the world API it uses",
-                "At his desk he writes JavaScript: a verb has function finish(world) (and canDo(world) to say why not), a thing's behavior has function hourly(world, thing), run every game hour while he owns it. Nothing caps what code does; code that throws fails the verb with the error. A thing he invents gets its code written with it. The API: " +
+                "At his desk he writes JavaScript: a verb has function finish(world) (and canDo(world) to say why not), a thing's behavior has one or more trigger functions run while he owns it (" + dev.lilguy.sim.Triggers.ALL.joinToString("; ") { it.second } + "); a thing's code reaches only its own place, and what it does where he isn't he hears of when he next goes there. Nothing caps what code does; code that throws fails the verb with the error. A thing he invents gets its code written with it. The API: " +
                     dev.lilguy.sim.ScriptApi.reference().replace("\n", " "),
             ),
         )

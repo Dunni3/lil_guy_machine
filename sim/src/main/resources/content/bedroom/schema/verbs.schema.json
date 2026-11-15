@@ -477,7 +477,7 @@
                       "type": "object",
                       "properties": {},
                       "additionalProperties": false,
-                      "description": "Puts in the code he wrote in the verb's `write: { with: verb_code, timing: before }`: new verbs of his own (kind `scripted`) and what his things do by themselves each hour (`hourly(world, thing)`). Each part is checked (it parses, it has its function, names fit) and goes in or is reported; naming one of his verbs rewrites it. (at the finish)"
+                      "description": "Puts in the code he wrote in the verb's `write: { with: verb_code, timing: before }`: new verbs of his own (kind `scripted`) and what his things do by themselves (`hourly`, `every`, `onArrive`, `onLeave`, `onFinish`, `onSleep`, `onWake`, `onTimer`). Each part is checked (it parses, it has its function, names fit) and goes in or is reported; naming one of his verbs rewrites it. (at the finish)"
                     },
                     {
                       "type": "null"

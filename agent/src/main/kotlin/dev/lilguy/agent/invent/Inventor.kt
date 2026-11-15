@@ -21,6 +21,11 @@ import dev.lilguy.sim.Design
 import dev.lilguy.sim.InventRules
 import dev.lilguy.sim.LookPart
 import dev.lilguy.sim.Observation
+import dev.lilguy.agent.code.Coded
+import dev.lilguy.sim.BehaviorDesign
+import dev.lilguy.sim.VerbDesign
+import dev.lilguy.sim.CodeDesign
+import dev.lilguy.sim.PartChange
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
@@ -47,9 +52,16 @@ data class DesignReply(
     val look: List<LookPart>,
     val book: BookDesign?,
     val why: String,
+    /** Other looks its code can show, as a list a strict schema can hold. */
+    val variants: List<VariantPick> = emptyList(),
 ) {
-    fun design() = Design(name, use, qualities.associate { it.quality to it.strength.toDouble() }, place, look, book, why)
+    fun design() = Design(name, use, qualities.associate { it.quality to it.strength.toDouble() }, place, look, book, why, variants.associate { it.name.trim() to it.changes })
 }
+
+/** A variant of a look as the model writes it: its [name] and the [changes] it makes to named parts. */
+@Serializable
+@SerialName("variant_pick")
+data class VariantPick(val name: String, val changes: List<PartChange>)
 
 /**
  * One go at the workbench, for logs: the [design] he settled on (null when there's none), what was
@@ -122,9 +134,10 @@ class Inventor(private val model: DecisionModel, private val timeout: Duration =
                     "design_reply.look" to "Its shapes, up to ${rules.lookParts}, one per part of the thing.",
                     "design_reply.book" to "Only for a readable thing: the book it is. Null otherwise.",
                     "design_reply.why" to "Why you're making it, first person, under $WHY_CAP words.",
+                    "design_reply.variants" to VARIANTS_HINT,
                     "book_design.chapters" to "${rules.book.minChapters} to ${rules.book.maxChapters} chapters, one sentence each of what's in it.",
                     "book_design.skill" to "The one skill reading it raises, or null.",
-                ) + Workbench.partHints(rules).descriptions,
+                ) + Workbench.partHints(rules).descriptions + Workbench.variantHints,
                 enums = mapOf(
                     "design_reply.use" to rules.uses.keys.toList(),
                     "design_reply.place" to listOf(InventRules.FLOOR, InventRules.WALL),
@@ -229,8 +242,11 @@ class Inventor(private val model: DecisionModel, private val timeout: Duration =
         val INSTRUCTIONS = """
             |Right now you are not choosing an action: you are at your workbench, inventing. Design one new thing of your own that you'd like to have, and that isn't like what you already own. Make it yours: what you like, how you feel, what your room or your days are missing.
             |
-            |For this reply only, ignore the reply format above: reply with a JSON object {"name": ..., "use": ..., "qualities": [{"quality": ..., "strength": ...}], "place": ..., "look": [{"shape": ..., "w": ..., "h": ..., "d": ..., "x": ..., "y": ..., "z": ..., "rot_x": ..., "rot_y": ..., "rot_z": ..., "color": ..., "part": ..., "taper": ..., "cut": ..., "hole": ..., "arc": ..., "glow": ..., "opacity": ...}], "book": ..., "why": ...} and nothing else.
+            |For this reply only, ignore the reply format above: reply with a JSON object {"name": ..., "use": ..., "qualities": [{"quality": ..., "strength": ...}], "place": ..., "look": [{"shape": ..., "w": ..., "h": ..., "d": ..., "x": ..., "y": ..., "z": ..., "rot_x": ..., "rot_y": ..., "rot_z": ..., "color": ..., "part": ..., "taper": ..., "cut": ..., "hole": ..., "arc": ..., "glow": ..., "opacity": ...}], "book": ..., "why": ..., "variants": [{"name": ..., "changes": [{"part": ..., ...}]}]} and nothing else.
         """.trimMargin()
+
+        /** What `variants` are, for the design's schema and the workbench's `build`. */
+        const val VARIANTS_HINT = "Other looks it can show when its code says (world.show), up to ${InventRules.MAX_VARIANTS}; often none. Each is a name (\"spraying\", \"off\") and changes to parts you named: a new color or glow, a turn, a scale, or hidden. Empty for none."
 
         /** A writer that calls tools gets this in place of [INSTRUCTIONS]. */
         val BENCH_INSTRUCTIONS = """
@@ -262,6 +278,8 @@ class Inventor(private val model: DecisionModel, private val timeout: Duration =
                 |- arc (cylinders, [360]): the degrees of the ring there are, centred on the front: 180, with a hole, for a handle or an arch. rot_x -90 stands a ring upright with its arc on top.
                 |- glow ([0]): how it lights the room at night, 1 for a lamp's bulb or a flame.
                 |- opacity ([1]): less for glass, 0.4 for a clear pane.
+                |
+                |A thing that does something can have variants: other looks its code shows, each changing named parts (a lamp's "off" with its bulb's glow 0; a sprinkler's "spraying" with its spray shown, hidden in its own look). Its code can also set a named part moving (spin, bob, sway, pulse, shake). So name the parts that change or move.
                 |
                 |How a lantern goes together, to show how the shapes fit (make your own thing, not this):
                 |$example
@@ -372,7 +390,7 @@ class Inventor(private val model: DecisionModel, private val timeout: Duration =
  * A few fixed designs, built one after another: a dev aid for watching him invent with no endpoint
  * (`LILGUY_INVENTOR`), as the random painter is for art.
  */
-class CannedInventor(private val designs: List<Design> = DESIGNS) : Inventing {
+class CannedInventor(private val designs: List<Design> = DESIGNS, private val codes: Map<String, CodeDesign> = emptyMap()) : Inventing {
     private var world: BedroomWorld? = null
 
     override val id = "canned-inventor"
@@ -383,10 +401,78 @@ class CannedInventor(private val designs: List<Design> = DESIGNS) : Inventing {
 
     override suspend fun invent(call: AuthorCall): Drafted {
         val made = world?.inventions.orEmpty().size
-        return Drafted(call.obs.tick, call.obs.clock?.day, call.obs.clock?.time, id, designs[made % designs.size], emptyList(), null, Usage(), Duration.ZERO)
+        val design = designs[made % designs.size]
+        val code = codes[design.name]?.let { Coded(call.obs.tick, call.obs.clock?.day, call.obs.clock?.time, id, it, emptyList(), null, Usage(), Duration.ZERO, forThing = design.name) }
+        return Drafted(call.obs.tick, call.obs.clock?.day, call.obs.clock?.time, id, design, emptyList(), null, Usage(), Duration.ZERO, code = code)
     }
 
     companion object {
+        /** `LILGUY_INVENTOR=machines`: things that do something by themselves, with their code. Anything else: [DESIGNS], which only sit there. */
+        fun of(which: String): CannedInventor = if (which == "machines") CannedInventor(listOf(SPRINKLER), mapOf(SPRINKLER.name to SPRINKLER_CODE)) else CannedInventor()
+
+        /** A garden sprinkler: a spinning head over a mist dome, which swells and glows in its `spraying` variant. */
+        val SPRINKLER = Design(
+            name = "garden sprinkler", use = "viewable", qualities = mapOf("natural" to 1.0, "lively" to 1.0), place = InventRules.FLOOR,
+            look = listOf(
+                LookPart("cylinder", 0.36, 0.04, 0.36, color = "#6b7a5a", part = "base"),
+                LookPart("cylinder", 0.05, 0.34, 0.05, y = 0.04, color = "#9aa3a8", part = "pipe"),
+                LookPart("cylinder", 0.12, 0.06, 0.12, y = 0.38, color = "#c9b458", part = "head"),
+                LookPart("box", 0.36, 0.025, 0.04, y = 0.41, color = "#c9b458", part = "head"),
+                LookPart("sphere", 0.06, 0.06, 0.06, x = -0.18, y = 0.4, color = "#4f8fc0", part = "head"),
+                LookPart("sphere", 0.06, 0.06, 0.06, x = 0.18, y = 0.4, color = "#4f8fc0", part = "head"),
+                LookPart("sphere", 0.5, 0.26, 0.5, y = 0.44, color = "#cfe8f3", part = "spray", cut = 0.5, opacity = 0.25),
+            ),
+            why = "the seed-pod bush takes a day and a half to grow back, and it could use some help",
+            variants = mapOf(
+                "spraying" to listOf(
+                    PartChange("spray", color = "#8fd0ee", glow = 0.6, scale = 1.8),
+                    PartChange("head", color = "#e8d36a"),
+                ),
+            ),
+        )
+
+        /** Every half hour, a bare patch in its place gets two hours' growth, and it shows it: spraying, its head spinning, a readout. */
+        val SPRINKLER_CODE = CodeDesign(
+            verbs = listOf(
+                VerbDesign(
+                    called = "set out the sprinkler", phrase = "set the sprinkler out in the garden", says = "carries it out to the garden bench, where it can water what grows there", minutes = 10,
+                    what = CodeDesign.THIS, at = "what",
+                    code = """
+                        function canDo(world) {
+                          if (world.place(world.args.what) === "garden") return "it's out in the garden already";
+                          if (!world.spots().free.floor.includes("by_garden_bench")) return "there's nowhere free in the garden to set it";
+                        }
+                        function finish(world) {
+                          world.move(world.args.what, "by_garden_bench");
+                          return "set it out by the garden bench";
+                        }
+                    """.trimIndent(),
+                ),
+            ),
+            behaviors = listOf(
+                BehaviorDesign(
+                    CodeDesign.THIS, "every half hour it waters whatever's bare in its place, so it grows back sooner",
+                    """
+                        function every(world, thing) {
+                          const dry = world.patches(world.place(thing.id)).filter(p => p.bare);
+                          if (dry.length === 0) {
+                            world.show(thing.id, null);
+                            world.motion(thing.id, "head", null);
+                            world.readout(thing.id, null);
+                            return;
+                          }
+                          dry.forEach(p => world.regrow(p.id, 2));
+                          world.show(thing.id, "spraying");
+                          world.motion(thing.id, "head", "spin", 2);
+                          world.readout(thing.id, "watering");
+                        }
+                    """.trimIndent(),
+                    everyMinutes = 30,
+                ),
+            ),
+            why = "so it looks after the garden while I'm inside",
+        )
+
         val DESIGNS = listOf(
             Design(
                 name = "pebble lamp", use = "viewable", qualities = mapOf("calm" to 2.0, "natural" to 2.0), place = InventRules.FLOOR,
@@ -450,7 +536,8 @@ class InventionHandler(
 
     override suspend fun author(call: AuthorCall): Drafted {
         val drafted = inventor.invent(call)
-        val code = drafted.design?.let { d -> coder?.forThing(call, d) }
+        // A canned inventor brings its own code.
+        val code = drafted.code ?: drafted.design?.let { d -> coder?.forThing(call, d) }
         return drafted.copy(code = code).also(onDraft)
     }
 

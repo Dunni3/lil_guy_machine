@@ -199,6 +199,16 @@
                             "type": "null"
                         }
                     ]
+                },
+                "every": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
                 }
             },
             "required": [
@@ -209,7 +219,8 @@
                 "failures",
                 "tick",
                 "day",
-                "time"
+                "time",
+                "every"
             ],
             "additionalProperties": false
         },
@@ -1180,6 +1191,32 @@
                             "type": "null"
                         }
                     ]
+                },
+                "variant": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "motions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/MotionView"
+                    }
+                },
+                "readout": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
                 }
             },
             "required": [
@@ -1192,7 +1229,10 @@
                 "state",
                 "carried_by",
                 "place",
-                "color"
+                "color",
+                "variant",
+                "motions",
+                "readout"
             ],
             "additionalProperties": false
         },
@@ -1537,6 +1577,15 @@
                 },
                 "tick": {
                     "type": "integer"
+                },
+                "variants": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/$defs/VariantChange"
+                        }
+                    }
                 }
             },
             "required": [
@@ -1550,7 +1599,8 @@
                 "cost",
                 "why",
                 "look",
-                "tick"
+                "tick",
+                "variants"
             ],
             "additionalProperties": false
         },
@@ -2042,6 +2092,27 @@
                 "scorer",
                 "artist",
                 "search"
+            ],
+            "additionalProperties": false
+        },
+        "MotionView": {
+            "title": "MotionView",
+            "type": "object",
+            "properties": {
+                "part": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "speed": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "part",
+                "kind",
+                "speed"
             ],
             "additionalProperties": false
         },
@@ -3376,6 +3447,89 @@
                 "state",
                 "size",
                 "rows"
+            ],
+            "additionalProperties": false
+        },
+        "VariantChange": {
+            "title": "VariantChange",
+            "type": "object",
+            "properties": {
+                "part": {
+                    "type": "string"
+                },
+                "color": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "glow": {
+                    "anyOf": [
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "rot_x": {
+                    "anyOf": [
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "rot_y": {
+                    "anyOf": [
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "rot_z": {
+                    "anyOf": [
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "scale": {
+                    "anyOf": [
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "hidden": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "part",
+                "color",
+                "glow",
+                "rot_x",
+                "rot_y",
+                "rot_z",
+                "scale",
+                "hidden"
             ],
             "additionalProperties": false
         },

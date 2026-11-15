@@ -275,7 +275,8 @@ abstract class GridWorld protected constructor(
         return Work.Walk(ArrayDeque(path.cells))
     }
 
-    protected fun event(text: String) = addEvent(WorldEvent(ticks, text))
+    /** Something that happened around him; [place] when it happened somewhere of its own ([WorldEvent.place]). */
+    protected fun event(text: String, place: String? = null) = addEvent(WorldEvent(ticks, text, place = place))
 
     /**
      * An event that says how the running intent ended: what it did when it finished (its ops'
@@ -303,6 +304,10 @@ abstract class GridWorld protected constructor(
     /** [recentEvents] without the ones that are an intent's outcome: what happened around him. */
     protected fun news(): List<String> = events.takeLast(OBSERVED_EVENTS).filter { !it.outcome }.map { "${stamp(it.tick)}: ${it.text}" }
 
+    /** The [news] lines that happened in a place of their own, to that place's name by [name]. */
+    protected fun newsPlaces(name: (String) -> String?): Map<String, String> =
+        events.takeLast(OBSERVED_EVENTS).filter { !it.outcome && it.place != null }.mapNotNull { e -> name(e.place!!)?.let { "${stamp(e.tick)}: ${e.text}" to it } }.toMap()
+
     protected fun agentSnapshot(): AgentSnapshot = AgentSnapshot(
         id = guy.id,
         intent = last?.intent,
@@ -328,7 +333,7 @@ abstract class GridWorld protected constructor(
         check(atRest) { "can't save the world while an intent is running or queued" }
         return GridState(
             tick = ticks, x = guy.x, y = guy.y, facing = guy.facing,
-            events = events.map { GridState.Event(it.tick, it.text, it.outcome) },
+            events = events.map { GridState.Event(it.tick, it.text, it.outcome, it.place) },
             last = last?.let { GridState.Last(it.intent, it.status, it.outcome) },
             saying = saying, sayUntil = sayUntil,
         )
@@ -341,7 +346,7 @@ abstract class GridWorld protected constructor(
         guy.y = s.y
         guy.facing = s.facing
         events.clear()
-        s.events.forEach { events.addLast(WorldEvent(it.tick, it.text, it.outcome)) }
+        s.events.forEach { events.addLast(WorldEvent(it.tick, it.text, it.outcome, it.place)) }
         last = s.last?.let { l -> Handle(l.intent).also { it.status = l.status ?: IntentStatus.Submitted; it.outcome = l.outcome } }
         saying = s.saying
         sayUntil = s.sayUntil

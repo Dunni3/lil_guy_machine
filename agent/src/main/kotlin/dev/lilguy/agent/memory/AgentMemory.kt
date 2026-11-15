@@ -382,7 +382,8 @@ class AgentMemory(
             append(obs, EventKind.Outcome, Describe.outcome(c.intent, status, obs.outcome, minutes))
             chosen = null
         }
-        obs.news.filter { it !in lastNews }.forEach { append(obs, EventKind.World, it.substringAfter(": ")) }
+        // An event that happened in a place of its own (a machine of his, out in the garden) is filed there, not where he is.
+        obs.news.filter { it !in lastNews }.forEach { append(obs, EventKind.World, it.substringAfter(": "), obs.newsPlaces[it]) }
         lastNews = obs.news.toSet()
         val day = obs.clock?.day
         val woke = (obs.lastIntent as? Intent.Do)?.activity in restVerbs
@@ -393,8 +394,8 @@ class AgentMemory(
         authors.observed(obs)
     }
 
-    private fun append(obs: Observation, kind: EventKind, text: String) =
-        store.appendEvent(run, obs.tick, obs.clock?.day, obs.clock?.time, kind, text)
+    private fun append(obs: Observation, kind: EventKind, text: String, place: String? = null) =
+        store.appendEvent(run, obs.tick, obs.clock?.day, obs.clock?.time, kind, text, place)
 
     /**
      * He chose [intent] at [obs]: runs its verb's `before` authored ops now (a thought) and returns
