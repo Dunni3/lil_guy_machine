@@ -138,19 +138,23 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   `Main.kt` (env config, one `SyncWorker` per process).
 - Web renderer (phase 4; `docs/decisions/2026-11-08-the-web-renderer-is-*`): `web/`, TypeScript, Three.js and Vite, served by the
   host at `/room/`, or from anywhere with `make web-dev`. URL settings in `src/settings.ts`: `life`, `broadcast` (no menu, keys or cursor, the camera
-  follows him, the HUD in a 16:9 frame's title-safe area), `scale` (canvas resolution, CSS scales it up), `fps` (frame cap), `camera` (`room` or `follow`).
+  follows him, the HUD in a 16:9 frame's title-safe area), `scale` (canvas resolution, CSS scales it up), `fps` (frame cap), `camera` (`room` or `follow`),
+  `hour` (light the room as at that hour, for looking). `lilguy.draw()` in the console draws one frame: a hidden tab (browser-use's) gets no animation frames.
   `src/stream/`: `state.ts` (snapshot and deltas in seq order, the mirror of `LifeState.apply`), `client.ts`
-  (socket, version check, rejoin, the content cache behind `?have=`, the heartbeat that rejoins a silent socket), `track.ts` (his position between publishes). `src/crayon/`: the hand-drawn look, ported
-  from `Crayon.kt`, `CrayonModel.kt`, `CrayonRenderer.kt` and `CrayonCanvas.kt` (`shaders.ts`, `geometry.ts`, `model.ts`, `renderer.ts`, `canvas.ts`). `src/room/`:
-  `view.ts` (`RoomView.kt`: things, shelf, music), `camera.ts` (the viewer's own camera: the whole room or following him), `shell.ts` (floor and walls), `paint.ts` (`RoomPaint.kt`), `light.ts`, `parts.ts` (the export as
-  models), `room.ts` (the room's layout the map doesn't give: walls' height, window, clock, shelf, guitar peg, stands where pieces are made, wall spots where they hang),
+  (socket, version check, rejoin, the content cache behind `?have=`, the heartbeat that rejoins a silent socket), `track.ts` (his position between publishes). `src/clay/`: the clay look of
+  `world_sketches/fable_field_lab.html` (`docs/decisions/2026-11-15-clay-replaces-crayon-*`): `renderer.ts` (`ClayRenderer`: standard materials, the sun's shadow map
+  drawn again only when something moved, sky light, lamp lights from glowing parts; `ClayModel`, a part list merged per material), `geometry.ts` (each shape),
+  `day.ts` (the light by hour), `textures.ts` (planks, rug, poster, dial, his face per expression). `src/room/`:
+  `view.ts` (`RoomView.kt`: things, shelf, music, lamps), `camera.ts` (the viewer's own isometric camera: the whole room or following him), `shell.ts` (plinth, floor, the two standing walls and the two cut to a sill, window), `parts.ts` (the export as
+  models: an item's clay list, else its crayon one), `room.ts` (the room's layout the map doesn't give: walls' height, window, clock, shelf, guitar peg, stands where pieces are made, wall spots where they hang),
   `art.ts` (hung frames, the pieces on the desk and easel, brush, palette and sparkles; `PaintScene.kt`), `easel.ts` (the piece under way played out
-  stroke by stroke at the host's pace from `state.easel`). `src/guy/`: `blob.ts` and `face.ts` (`Blob.kt`). `src/ui/`: what's drawn over the room, in the
+  stroke by stroke at the host's pace from `state.easel`). `src/guy/`: `blob.ts` (`Blob.kt`'s animation, his clay pieces and the lantern that follows him). `src/ui/`: what's drawn over the room, in the
   same canvas as panels from 2D canvases redrawn only when they change (`layer.ts`; no DOM over the room but the sign-in box): `hud.ts` (needs card, bubble,
   banner, the catalogue while he buys; `RoomView.kt`), `menu.ts` and `pages.ts` (the menu's keys, and clicks and the wheel on the spots `menuCard.ts` records as it draws, and its RUN, SHOP, THOUGHTS, MEMORY, SELF and TRIPS tabs;
   `GameMenu.kt`), `menuCard.ts` (drawing it), `run.ts` (`RunControls.kt`), `keys.ts` (`RemoteInput.kt`'s keys), `admin.ts` (the password sign-in and commands).
-- Part lists: `parts/` (pure Kotlin): `Part.kt` (`Part`, `PartList`), `RoomParts.kt` (furniture, props, the room's constants), `DecorParts.kt`, `PartExport.kt`
-  (writes `parts/export/parts.json`, the web renderer's copy, checked by `make test`). `:app` builds meshes from the same lists.
+- Part lists: `parts/` (pure Kotlin): `Part.kt` (`Part`, `PartList`; the clay fields `cut`, `hole`, `arc`, `glow`, `opacity` and `ring`/`dome`, which `:app` ignores),
+  `ClayParts.kt` (the clay models and the guy's pieces), `RoomParts.kt` (the crayon furniture, props, the room's constants), `DecorParts.kt`, `PartExport.kt`
+  (writes `parts/export/parts.json`, the web renderer's copy, checked by `make test`). `:app` builds meshes from the crayon lists.
 - Token accounting: `agent/.../TokenLedger.kt`. `ledger.meter(model, purpose)` wraps a model so every call
   (decision, think, summary, self, recall, significance, art) is recorded with its sim tick and game day; `TokenReport` prints
   tokens per game day and the 30-day projection. The CLI and the app (`SimSession`, the TOKENS page) wire it and

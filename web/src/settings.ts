@@ -8,7 +8,9 @@ import type { CameraMode } from "./room/camera";
  * - `scale`: draw the canvas at this fraction of the window and let CSS scale it up (0.25 to 1,
  *   for a weak GPU such as the TV's: 0.5 or 0.67);
  * - `fps`: draw at most this many frames a second (for example 30);
- * - `camera`: `room` (the whole room, the app's view) or `follow` (nearer, following him).
+ * - `camera`: `room` (the whole room, the app's view) or `follow` (nearer, following him);
+ * - `hour`: light the room as at this hour (0 to 24) whatever the game clock says, for looking at
+ *   the look; the clock on the wall and the HUD still tell the game's time.
  */
 export interface PageSettings {
   life: string;
@@ -16,6 +18,7 @@ export interface PageSettings {
   scale: number;
   fps: number | null;
   camera: CameraMode;
+  hour: number | null;
 }
 
 export function readSettings(search: string): PageSettings {
@@ -24,7 +27,9 @@ export function readSettings(search: string): PageSettings {
   const scale = Number(p.get("scale"));
   const fps = Number(p.get("fps"));
   const camera = p.get("camera");
+  const hour = p.get("hour") === null ? NaN : Number(p.get("hour"));
   return {
+    hour: Number.isFinite(hour) ? Math.min(Math.max(hour, 0), 24) : null,
     life: p.get("life") || "main",
     broadcast,
     scale: scale > 0 ? Math.min(Math.max(scale, 0.25), 1) : 1,

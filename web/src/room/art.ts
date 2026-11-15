@@ -1,9 +1,8 @@
-import { DataTexture, Matrix4, NearestFilter, RGBAFormat, UnsignedByteType, type Mesh, type ShaderMaterial, type Texture } from "three";
+import { DataTexture, Matrix4, NearestFilter, RGBAFormat, SRGBColorSpace, UnsignedByteType, type Mesh, type MeshStandardMaterial, type Texture } from "three";
 import type { DrawingView, Entity, LifeState } from "../../../protocol/ts/protocol";
-import { Z_AXIS, rotate, scale, translate } from "../crayon/math";
-import type { CrayonModel } from "../crayon/model";
-import type { CrayonRenderer, Placed } from "../crayon/renderer";
+import type { ClayModel, ClayRenderer, Placed } from "../clay/renderer";
 import type { Blob, Pose } from "../guy/blob";
+import { Z_AXIS, rotate, scale, translate } from "../math";
 import { EaselPlay, pictureColors, toBytes } from "./easel";
 import { constants, type Models } from "./parts";
 import type { RoomDef, Stand } from "./room";
@@ -26,10 +25,11 @@ const luma = (rgb: number) => (0.3 * ((rgb >> 16) & 0xff) + 0.59 * ((rgb >> 8) &
 const lighten = (rgb: number, by: number) =>
   [16, 8, 0].reduce((out, shift) => out | (Math.trunc(((rgb >> shift) & 0xff) + (255 - ((rgb >> shift) & 0xff)) * by) << shift), 0);
 
-/** A picture's texture: nearest-filtered, so the cells stay crisp. */
+/** A picture's texture: nearest-filtered, so the cells stay crisp, and in sRGB, so its colours are the ones he picked. */
 function pictureTexture(bytes: Uint8Array, size: number): DataTexture {
   const t = new DataTexture(bytes, size, size, RGBAFormat, UnsignedByteType);
   t.magFilter = t.minFilter = NearestFilter;
+  t.colorSpace = SRGBColorSpace;
   t.needsUpdate = true;
   return t;
 }
@@ -80,7 +80,7 @@ export class ArtLayer {
   private readonly sparkles: Sparkle[] = [];
   private readonly at = new Matrix4();
 
-  constructor(private readonly r: CrayonRenderer, private readonly models: Models, private readonly room: RoomDef) {}
+  constructor(private readonly r: ClayRenderer, private readonly models: Models, private readonly room: RoomDef) {}
 
   /**
    * Plays the easel on by [delta] seconds and returns the stand of the piece he's at, or null. He's
@@ -221,10 +221,10 @@ export class ArtLayer {
   }
 
   /** [current] shown at [at] when [show], rebuilt when its [key] changes. */
-  private swap(current: { key: string; placed: Placed } | null, show: boolean, key: string, model: () => CrayonModel, at: Matrix4) {
+  private swap(current: { key: string; placed: Placed } | null, show: boolean, key: string, model: () => ClayModel, at: Matrix4) {
     if (show && current?.key !== key) {
       if (current) this.r.remove(current.placed);
-      current = { key, placed: this.r.add(model()) };
+      current = { key, placed: this.r.add(model(), false) };
     }
     current?.placed.show(show);
     if (show) current!.placed.set(at);
@@ -241,7 +241,7 @@ export class ArtLayer {
     const colors = light.length ? light : [GOLD];
     const y = stand.flat ? stand.y + 0.05 : stand.y + stand.size / 2;
     for (let i = 0; i < SPARKLES; i++) {
-      const placed = this.r.add(this.models.prop("sparkle", hex(colors[i % colors.length]))).show(false);
+      const placed = this.r.add(this.models.prop("sparkle", hex(colors[i % colors.length])), false).show(false);
       this.sparkles.push({ placed, x: e.x + stand.x, y, z: e.y + stand.z + 0.05, phase: Math.random() * Math.PI * 2, age: 0 });
     }
   }
@@ -272,7 +272,7 @@ export class ArtLayer {
 
   /** A square for a piece's picture, [size] wide, upright or flat; hidden until it has one. */
   private picture(size: number, flat: boolean): Mesh {
-    const mesh = this.r.surface(quad(size, flat), BLANK);
+    const mesh = this.r.picture(quad(size, flat), BLANK);
     mesh.visible = false;
     return mesh;
   }
@@ -280,7 +280,7 @@ export class ArtLayer {
   private setPicture(mesh: Mesh, texture: Texture | null, at: Matrix4) {
     mesh.visible = texture !== null;
     if (!texture) return;
-    (mesh.material as ShaderMaterial).uniforms.u_texture.value = texture;
+    (mesh.material as MeshStandardMaterial).map = texture;
     mesh.matrix.copy(at);
     mesh.matrixWorldNeedsUpdate = true;
   }

@@ -5,16 +5,17 @@ room:
   # One string per row. '#' wall, '.' floor, '@' where he starts; other letters are slots
   # (below). A slot is empty until he owns the item that goes there.
   rows:
-    - "##l##oF#w###"
-    - "#bvf...t.sn#"
-    - "m.........p#"
-    - "iq...r.....a"
-    - "k..........H"
-    - "#e.........u"
-    - "#y@....cd.xg"
-    - "############"
+    - "#l###F#g#w#o##"
+    - "ubvf......stn#"
+    - "m...........p#"
+    - "H.....r......#"
+    - "i..........q.#"
+    - "ke...........#"
+    - "ay@.....cd.x.#"
+    - "##############"
   # H is the mail hatch in the wall, where the shop delivers and art is sold.
-  # The rest are decor: on the floor along the walls, and in the walls.
+  # The rest are decor: on the floor along the walls, and in the walls. Wall slots are in the back
+  # (top) and left walls, the two the cutaway leaves standing; the right and front walls are cut low.
   slots:
     { b: bed, d: desk, c: chair, e: easel, s: shelf, p: plant, o: poster, r: rug, H: hatch, F: rail,
       v: lava_lamp, f: sunflowers, t: mushroom_lamp, n: beanbag, q: fishbowl, y: teddy_bear, x: cactus,

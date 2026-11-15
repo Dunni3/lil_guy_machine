@@ -1,5 +1,6 @@
 import type { LifeState, Settings } from "../../protocol/ts/protocol";
-import { CrayonRenderer } from "./crayon/renderer";
+import { ClayRenderer } from "./clay/renderer";
+import { ClayTextures } from "./clay/textures";
 import { RoomView } from "./room/view";
 import { readSettings } from "./settings";
 import { StreamClient } from "./stream/client";
@@ -33,20 +34,23 @@ stream.onChange = (snapshot) => {
   track.push(seconds(), guy.x, guy.y, snapshot);
 };
 
-let renderer: CrayonRenderer;
+const textures = new ClayTextures();
+let view: RoomView | null = null;
+let renderer: ClayRenderer;
 try {
-  renderer = new CrayonRenderer(canvas);
+  renderer = new ClayRenderer(canvas, (name) => textures.texture(name));
 } catch (e) {
   status.textContent = "this browser can't draw the room: WebGL isn't available";
   throw e;
 }
-// A fraction of the window's pixels, scaled up by CSS: the TV's GPU can't fill all of them.
+// A fraction of the window's pixels, scaled up by CSS, for a slow GPU (`?scale=`).
 renderer.webgl.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2) * settings.scale);
 const layer = new Layer();
 const resize = () => {
   const w = canvas.clientWidth || window.innerWidth;
   const h = canvas.clientHeight || window.innerHeight;
   renderer.resize(w, h);
+  view?.resize(w / Math.max(1, h));
   layer.resize(w, h, renderer.webgl.getPixelRatio());
 };
 window.addEventListener("resize", resize);
@@ -233,7 +237,6 @@ if (!settings.broadcast) {
   }, { passive: false });
 }
 
-let view: RoomView | null = null;
 let last = seconds();
 let next = 0;
 /** Null until the first frame sets it, so a page whose first frame is already live still hides the "connecting" it loaded with. */
@@ -242,6 +245,11 @@ const stats = { frames: 0, worst: 0, since: last, fps: 0 };
 
 function frame() {
   requestAnimationFrame(frame);
+  draw();
+}
+
+/** One frame, now. A hidden tab gets no animation frames, so a headless check calls this itself (`lilguy.draw`). */
+function draw() {
   const now = seconds();
   // The frame cap: skip this one if the last drew too recently, with half a 60 Hz frame's slack for the display's own timing.
   if (settings.fps && now < next - 0.008) return;
@@ -259,10 +267,14 @@ function frame() {
       runId = life.run.run_id;
       menu.reset();
     }
-    // Painting the textures takes a moment, so it waits until there's a room to draw.
-    view ??= new RoomView(renderer, settings.camera);
+    // The room waits until there's one to draw.
+    if (!view) {
+      view = new RoomView(renderer, settings.camera, textures);
+      view.lightHour = settings.hour;
+      view.resize(canvas.clientWidth / Math.max(1, canvas.clientHeight));
+    }
     view.render(life, content, track.sample(now), delta);
-    renderer.render(view.background);
+    renderer.render();
     const f = frameFor(layer.width, layer.height, settings.broadcast);
     const v = settings.broadcast ? null : pageView(life);
     const open = menu.open && v !== null;
@@ -313,7 +325,7 @@ function describe(): string {
 }
 
 // What a person or a headless browser checking the page can read from the console.
-(window as unknown as { lilguy: unknown }).lilguy = { stream, track, renderer, stats, menu, card, admin, hud, settings, get view() { return view; } };
+(window as unknown as { lilguy: unknown }).lilguy = { stream, track, renderer, stats, menu, card, admin, hud, settings, draw, get view() { return view; } };
 
 stream.start();
 requestAnimationFrame(frame);

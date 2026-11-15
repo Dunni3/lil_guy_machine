@@ -1,7 +1,7 @@
 ---
 title: "The part-list format, and one world light for everything"
 date: 2026-10-31
-status: active
+status: superseded
 ---
 
 # The part-list format, and one world light for everything

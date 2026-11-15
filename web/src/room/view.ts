@@ -1,16 +1,15 @@
-import { Matrix4, Vector3, type BufferGeometry, type Mesh } from "three";
+import { Matrix4, MeshStandardMaterial, Vector3, type Mesh } from "three";
 import type { Content, Entity, LifeState } from "../../../protocol/ts/protocol";
-import { Y_AXIS, Z_AXIS, rotate, scale, translate } from "../crayon/math";
-import type { CrayonRenderer, Placed } from "../crayon/renderer";
+import { ClayModel, type ClayRenderer, type Glow, type Placed } from "../clay/renderer";
+import type { ClayTextures } from "../clay/textures";
 import { Blob, newPose } from "../guy/blob";
+import { Y_AXIS, Z_AXIS, rotate, scale, translate } from "../math";
 import type { Place } from "../stream/track";
 import { ArtLayer } from "./art";
 import { CameraRig, type CameraMode } from "./camera";
-import { lightAt, type Light } from "./light";
-import { RoomPaint } from "./paint";
-import { Models, constants, flatItem, wallItem } from "./parts";
+import { Models, constants, wallItem } from "./parts";
 import { BEDROOM } from "./room";
-import { Terrain, buildShell } from "./shell";
+import { Terrain, paneParts, shellParts } from "./shell";
 
 /** The record's turn (degrees a second), and the notes: seconds apart, how long each lasts, and how fast it rises (metres a second). */
 const DISC_SPEED = 200;
@@ -21,10 +20,9 @@ const NOTE_RISE = 0.3;
 const NOTE_SIZE = 1.7;
 const NOTE_COLORS = ["#f2928a", "#8fb0ec", "#9fd49a", "#c9a0e6"];
 /** What he stands, sits or lies on, by item id, and how high its top is. */
-const SURFACES: Record<string, number> = { bed: 0.3, chair: 0.38 };
-/** Furniture shadows: how high over the floor (above the rug), and how much wider than the footprint. */
-const SHADOW_LIFT = 0.04;
-const SHADOW_SPREAD = 1.2;
+const SURFACES: Record<string, number> = { bed: 0.38, chair: 0.38 };
+/** How far out from the wall's tiles a wall's inside face is: its blush panel. */
+const WALL_FACE = 0.03;
 /** (dx, dy) toward the room, from a wall tile. */
 const INWARD: [number, number][] = [[0, 1], [1, 0], [-1, 0], [0, -1]];
 const ACTIVE = new Set(["executing", "validated", "submitted"]);
@@ -39,42 +37,42 @@ interface Note {
   age: number;
 }
 
-/** One thing on the map: its model and shadow, and where it stands. */
+/** One thing on the map: its model, and where it stands. */
 interface Thing {
   placed: Placed;
-  shadow: Mesh | null;
   at: Matrix4;
   key: string;
 }
 
 /**
- * The room in 3D, ported from `RoomView.kt`: a cutaway of the room (no front wall, no ceiling) seen
- * from the viewer's own [CameraRig], furniture placed where the state says, the guy as an animated [Blob], light and the
- * window's sky following the game clock. What he's busy with shows: the book in his hands, the guitar
- * off its peg and in his arms, the record turning and notes rising from it.
+ * The room in 3D, in clay: the Field Lab's isometric cutaway (the back and left walls standing, the
+ * near ones cut to a sill) seen from the viewer's own [CameraRig], furniture placed where the state
+ * says, the guy as an animated [Blob] with his lantern, and the light following the game clock: the
+ * sun's angle and colour, the sky, the window's glass, and the lamps glowing and lighting the room at
+ * night. What he's busy with shows: the book in his hands, the guitar off its peg and in his arms, the
+ * record turning and notes rising from it.
  *
- * Everything is drawn in the hand-drawn look by one [CrayonRenderer]. His art is [ArtLayer]'s, and
- * the room's layout beyond its map (walls, window, clock, shelf, where pieces are made and hang) is
- * its [RoomDef]. The HUD is drawn over it (`ui/`), from [speech] and [making].
+ * His art is [ArtLayer]'s, and the room's layout beyond its map (walls, window, clock, shelf, where
+ * pieces are made and hang) is its [RoomDef]. The HUD is drawn over it (`ui/`), from [speech] and [making].
  */
 export class RoomView {
-  private readonly paint = new RoomPaint();
-  private readonly models = new Models((name) => this.paint.texture(name));
+  private readonly models = new Models();
   private readonly blob: Blob;
   private readonly pose = newPose();
   private readonly art: ArtLayer;
-  private readonly glassTint = { value: new Vector3(1, 1, 1) };
+  private readonly pane = new MeshStandardMaterial({ roughness: 0.4, metalness: 0 });
 
   private framedRows = "";
   private map: Terrain | null = null;
-  private surfaces: Mesh[] = [];
+  private shell: Placed | null = null;
   private glass: Mesh | null = null;
-  private fixtures: Placed | null = null;
+  private clock: Placed | null = null;
   private hourHand: Placed | null = null;
   private minuteHand: Placed | null = null;
 
   private readonly things = new Map<string, Thing>();
   private thingsFrom: LifeState["things"] | null = null;
+  private glows: Glow[] = [];
 
   private shelf: Placed | null = null;
   private shelfFrom: LifeState["shop"] | null = null;
@@ -93,25 +91,29 @@ export class RoomView {
   private guitarNoteIn = 0;
 
   private readonly workAt = new Vector3();
+  private readonly middle = new Vector3();
   private readonly at = new Matrix4();
-  private light: Light = lightAt(12);
   readonly camera: CameraRig;
   private readonly room = BEDROOM;
+  private aspect = 16 / 9;
 
   /** For his bubble: where his head is, and whether he's asleep or thinking. The finished piece's title is [ArtLayer.announced]. */
   readonly speech = { head: new Vector3(), asleep: false, thinking: false, announced: null as string | null };
   /** The stand of the piece he's at this frame, or null: the HUD says how far along it is. */
   making: { canvas: boolean } | null = null;
 
-  constructor(private readonly r: CrayonRenderer, camera: CameraMode) {
+  /** Light as at this hour whatever the clock says (`?hour=`), or null to follow the clock. */
+  lightHour: number | null = null;
+
+  constructor(private readonly r: ClayRenderer, camera: CameraMode, private readonly textures: ClayTextures) {
     this.camera = new CameraRig(camera);
-    this.blob = new Blob(r, constants.TOOL_TIP);
+    this.blob = new Blob(r, this.models, textures, constants.TOOL_TIP);
     this.art = new ArtLayer(r, this.models, this.room);
   }
 
-  /** What's beyond the room, for clearing to. */
-  get background() {
-    return this.light.background;
+  /** The screen is this wide for its height. */
+  resize(aspect: number) {
+    this.aspect = aspect;
   }
 
   /** One frame of the live world; [place] is where he is between publishes. */
@@ -149,10 +151,10 @@ export class RoomView {
     pose.workSlide = station?.slide ?? 0;
     this.art.pose(pose, making, making ? stand : undefined);
     this.blob.update(delta, pose);
-    this.camera.update(this.r.camera, place.x, place.y, delta);
+    this.camera.update(this.r.camera, place.x, place.y, this.aspect, delta);
     this.making = making;
 
-    this.r.begin(this.light.tint, delta);
+    this.r.setLamps(this.glows, this.middle);
     this.art.draw(state, making, (id) => this.things.get(id)?.at ?? null, this.blob, delta);
     this.drawHeld(intent?.type === "do" ? intent.item : null);
     this.drawMusic(fast.music !== null, delta);
@@ -163,55 +165,57 @@ export class RoomView {
     speech.announced = this.art.announced;
   }
 
-  /** Builds the room (once per map) and frames it for the camera. The shell is shaded from the camera's direction, which moving it never changes. */
+  /** Builds the room (once per map) and frames it for the camera. */
   private frame(content: Content) {
     const rows = content.map.rows.join("\n");
     if (rows === this.framedRows) return;
     this.framedRows = rows;
     const map = (this.map = new Terrain(content.map.rows));
-    this.camera.frame(map.width, map.height);
-    this.camera.update(this.r.camera, map.width / 2, map.height / 2, 0);
     const room = this.room;
-    const back = room.backWall;
+    this.camera.frame(room.backWall - 0.4, room.backWall - 0.4, map.width - 1 + 0.4, map.height - 1 + 0.4, room.wallHeight);
+    this.r.aim(map.width / 2, map.height / 2);
+    this.middle.set(map.width / 2, 0, map.height / 2);
+    this.blob.lanternBounds = [room.backWall + 0.35, room.backWall + 0.35, map.width - 1.35, map.height - 1.35];
+    const floor = this.textures.texture("floor")!;
+    floor.repeat.set((map.width - 2) / 3, (map.height - 2) / 3);
 
-    for (const m of this.surfaces) this.r.removeMesh(m);
-    if (this.fixtures) this.r.remove(this.fixtures);
-    const shell = buildShell(map, room, this.r.worldLight());
-    const surface = (g: BufferGeometry, name: string) => this.r.surface(g, this.paint.texture(name)!);
-    this.glass = this.r.surface(shell.glass, this.paint.texture("white")!, this.glassTint);
-    const glassAt = new Matrix4().makeTranslation(map.width * room.window.along, (room.window.bottom + room.window.top) / 2, back + 0.012);
-    this.glass.matrix.copy(glassAt);
-    this.glass.matrixWorldNeedsUpdate = true;
-    this.surfaces = [surface(shell.floor, "floor"), surface(shell.walls, "wall"), surface(shell.section, "section"), this.glass];
-    this.fixtures = this.r.add(this.models.fixtures(map.width * room.window.along, map.width * room.clock.along));
-    this.hourHand ??= this.r.add(this.models.prop("hand_hour"));
-    this.minuteHand ??= this.r.add(this.models.prop("hand_minute"));
-    this.guitarAt.makeTranslation(map.width * room.guitar.along, room.guitar.y, back);
+    if (this.shell) this.r.remove(this.shell);
+    this.shell = this.r.add(new ClayModel(shellParts(map, room)));
+    this.shell.set(this.at.identity());
+    if (this.glass) this.r.removeMesh(this.glass);
+    const pane = new ClayModel(paneParts(room)).batches[0].geometry;
+    this.glass = this.r.mesh(pane, this.pane);
+    this.glass.matrix.identity();
+    const wall = room.backWall + WALL_FACE;
+    this.clock ??= this.r.add(this.models.prop("wall_clock"));
+    this.clock.set(this.at.makeTranslation(room.clock.x, 0, wall));
+    this.hourHand ??= this.r.add(this.models.prop("hand_hour"), false);
+    this.minuteHand ??= this.r.add(this.models.prop("hand_minute"), false);
+    this.guitarAt.makeTranslation(room.guitar.x, room.guitar.y, wall);
     this.thingsFrom = null;
     this.shelfKey = "";
     this.shelfFrom = null;
   }
 
-  /** Ambient, sun, sky, background and the wall clock for the time of day; [time] "HH:MM", or noon without one. */
+  /** The light, the window's glass and the wall clock for the time of day; [time] "HH:MM", or noon without one. */
   private lightFor(time: string | null) {
     let hour = 12;
     if (time) {
       const [h, m] = time.split(":").map((v) => parseInt(v, 10) || 0);
       hour = h + m / 60;
     }
-    this.light = lightAt(hour);
-    const { r, g, b } = this.light.sky;
-    this.glassTint.value.set(r, g, b);
+    this.r.setHour(this.lightHour ?? hour);
+    const day = this.r.light;
+    this.pane.color.copy(day.pane);
+    this.pane.emissive.copy(day.pane);
+    this.pane.emissiveIntensity = 0.5;
     const { clock, backWall } = this.room;
-    const clockX = this.map!.width * clock.along;
-    this.hourHand!.set(rotate(this.at.makeTranslation(clockX, clock.y, backWall + 0.06), Z_AXIS, -30 * hour));
-    this.minuteHand!.set(rotate(this.at.makeTranslation(clockX, clock.y, backWall + 0.07), Z_AXIS, -360 * hour));
+    const z = backWall + WALL_FACE + 0.06;
+    this.hourHand!.set(rotate(this.at.makeTranslation(clock.x, clock.y, z), Z_AXIS, -30 * hour));
+    this.minuteHand!.set(rotate(this.at.makeTranslation(clock.x, clock.y, z + 0.01), Z_AXIS, -360 * hour));
   }
 
-  /**
-   * Things go at their tile; wall items sit against the wall face that looks into the room. Things
-   * standing on the floor get a hatched shadow the size of their footprint. Runs when [state]'s things change.
-   */
+  /** Things go at their tile; wall items against the wall face that looks into the room. Runs when [state]'s things change. */
   private syncThings(state: LifeState) {
     if (state.things === this.thingsFrom) return;
     this.thingsFrom = state.things;
@@ -224,41 +228,30 @@ export class RoomView {
     for (const [id, t] of this.things) {
       if (seen.has(id)) continue;
       this.r.remove(t.placed);
-      if (t.shadow) this.r.removeMesh(t.shadow);
       this.things.delete(id);
     }
+    // What glows lights the room at night: each lamp's glow, where it stands.
+    this.glows = [];
+    for (const t of this.things.values()) for (const g of t.placed.model.glows) this.glows.push({ at: g.at.clone().applyMatrix4(t.at), strength: g.strength });
   }
 
   private place(e: Entity) {
     const key = `${e.kind}/${e.x}/${e.y}`;
     if (this.things.get(e.id)?.key === key) return;
     const old = this.things.get(e.id);
-    if (old) {
-      this.r.remove(old.placed);
-      if (old.shadow) this.r.removeMesh(old.shadow);
-    }
+    if (old) this.r.remove(old.placed);
     const map = this.map!;
     const model = this.models.item(e.id, e.kind);
     const at = new Matrix4();
     const tx = Math.trunc(e.x);
     const ty = Math.trunc(e.y);
-    let shadow: Mesh | null = null;
     if (map.at(tx, ty) === "#" && wallItem(e.id, e.kind)) {
       const [dx, dy] = INWARD.find(([ix, iy]) => map.at(tx + ix, ty + iy) === ".") ?? [0, 1];
       const yaw = dx === 1 ? 90 : dx === -1 ? -90 : dy === -1 ? 180 : 0;
-      rotate(at.makeTranslation(tx + 0.5 + dx * 0.5, 0, ty + 0.5 + dy * 0.5), Y_AXIS, yaw);
-    } else {
-      at.makeTranslation(e.x, 0, e.y);
-      if (!flatItem(e.id, e.kind)) {
-        const b = model.bounds;
-        shadow = this.r.shadow();
-        shadow.matrix.copy(at);
-        translate(shadow.matrix, (b[0] + b[3]) / 2, SHADOW_LIFT, (b[2] + b[5]) / 2);
-        scale(shadow.matrix, (b[3] - b[0]) * SHADOW_SPREAD, 1, (b[5] - b[2]) * SHADOW_SPREAD);
-        shadow.matrixWorldNeedsUpdate = true;
-      }
-    }
-    this.things.set(e.id, { placed: this.r.add(model).set(at), shadow, at, key });
+      const out = 0.5 + WALL_FACE;
+      rotate(at.makeTranslation(tx + 0.5 + dx * out, 0, ty + 0.5 + dy * out), Y_AXIS, yaw);
+    } else at.makeTranslation(e.x, 0, e.y);
+    this.things.set(e.id, { placed: this.r.add(model).set(at), at, key });
   }
 
   /** His books and records on the wall shelf, and his guitar on the wall, once he owns any. Runs when what the shop knows changes. */
@@ -275,7 +268,7 @@ export class RoomView {
       if (this.shelf) this.r.remove(this.shelf);
       this.shelf = books.length || records.length ? this.r.add(this.models.shelf(books, records)) : null;
       const { shelf, backWall } = this.room;
-      this.shelf?.set(this.at.makeTranslation(this.map!.width * shelf.along, shelf.y, backWall));
+      this.shelf?.set(this.at.makeTranslation(shelf.x, shelf.y, backWall + WALL_FACE));
     }
     if (owned.some((c) => c.id === "guitar") && !this.guitar) this.guitar = this.r.add(this.models.prop("guitar")).set(this.guitarAt);
     else if (!owned.some((c) => c.id === "guitar") && this.guitar) {
@@ -290,12 +283,12 @@ export class RoomView {
     const color = this.models.bookColor(what);
     if (blob.held === "book" && color !== this.heldBookColor) {
       if (this.heldBook) this.r.remove(this.heldBook);
-      this.heldBook = this.r.add(this.models.prop("held_book", color));
+      this.heldBook = this.r.add(this.models.prop("held_book", color), false);
       this.heldBookColor = color;
     }
     this.heldBook?.show(blob.held === "book");
     if (blob.held === "book") this.heldBook!.set(blob.heldAt);
-    if (blob.held === "guitar") this.heldGuitar ??= this.r.add(this.models.prop("held_guitar"));
+    if (blob.held === "guitar") this.heldGuitar ??= this.r.add(this.models.prop("held_guitar"), false);
     this.heldGuitar?.show(blob.held === "guitar");
     if (blob.held === "guitar") this.heldGuitar!.set(blob.heldAt);
     this.guitar?.show(blob.held !== "guitar");
@@ -309,7 +302,7 @@ export class RoomView {
     const player = this.things.get("record_player")?.at ?? null;
     if (playing) this.discTurn = (this.discTurn + delta * DISC_SPEED) % 360;
     if (player) {
-      this.disc ??= this.r.add(this.models.prop("disc"));
+      this.disc ??= this.r.add(this.models.prop("disc"), false);
       this.at.copy(player);
       rotate(translate(this.at, constants.DISC_X, constants.DISC_Y, 0), Y_AXIS, -this.discTurn);
       this.disc.show(true).set(this.at);
@@ -345,7 +338,7 @@ export class RoomView {
 
   private spawnNote(x: number, y: number, z: number) {
     const color = NOTE_COLORS[Math.floor(Math.random() * NOTE_COLORS.length)];
-    const placed = this.r.add(this.models.prop("note", color));
+    const placed = this.r.add(this.models.prop("note", color), false);
     this.notes.push({ placed, x: x + (Math.random() - 0.5) * 0.24, y, z, phase: Math.random() * Math.PI * 2, age: 0 });
   }
 }

@@ -26,15 +26,15 @@ export interface WallSpot {
   z: number;
 }
 
-/** A fixture on the back wall, [along] as a fraction of the wall's width from the left, [y] up from the floor. */
+/** A fixture on the back wall, its centre [x] metres from the map's left edge, [y] up from the floor. */
 export interface WallFixture {
-  along: number;
+  x: number;
   y: number;
 }
 
-/** The window in the back wall: its centre [along] it, as a fraction of its width, and its size in metres. */
+/** The window in the back wall: its centre [x] metres from the map's left edge, and its size in metres. */
 export interface WindowDef {
-  along: number;
+  x: number;
   bottom: number;
   top: number;
   width: number;
@@ -43,14 +43,14 @@ export interface WindowDef {
 /**
  * One room's layout beyond its map: its walls' height, what hangs on the back wall, where pieces
  * are made and where they hang. The size and the walls' plan come from the map; this is what the
- * map doesn't say. Only the bedroom so far, so nothing in the protocol names a room yet: a second
- * room is a second one of these.
+ * map doesn't say, so it follows the map's wall slots (`room.yaml`). Only the bedroom so far, so
+ * nothing in the protocol names a room yet: a second room is a second one of these.
  */
 export interface RoomDef {
-  /** Walls stand this tall, and the front wall is cut down to [lip]. */
+  /** The back and left walls stand this tall; the right and front walls, nearer the camera, are cut down to [lip]. */
   wallHeight: number;
   lip: number;
-  /** How far into the room the back wall's face is, from the map's edge (its tiles' depth). */
+  /** How far into the room the back and left walls' faces are, from the map's edge (their tiles' depth). */
   backWall: number;
   window: WindowDef;
   clock: WallFixture;
@@ -73,14 +73,15 @@ const PAINTING: Stand = {
   x: 0, y: constants.CANVAS_Y, z: constants.CANVAS_Z + 0.025, size: 0.44, flat: false, canvas: true, slide: 0.38,
 };
 
+/** The bedroom: 12 x 6 inside. Along the back wall, between its wall slots: the clock, the guitar's peg, the window (over the sills' plants) and the shelf. */
 export const BEDROOM: RoomDef = {
-  wallHeight: constants.WALL_HEIGHT,
-  lip: constants.LIP,
+  wallHeight: 2.4,
+  lip: 0.22,
   backWall: 1,
-  window: { along: constants.WINDOW_AT, bottom: constants.WINDOW_BOTTOM, top: constants.WINDOW_TOP, width: constants.WINDOW_WIDTH },
-  clock: { along: constants.CLOCK_AT, y: constants.CLOCK_Y },
-  shelf: { along: constants.SHELF_AT, y: 0 },
-  guitar: { along: constants.GUITAR_AT, y: 0 },
+  window: { x: 9.5, bottom: 1.05, top: 1.95, width: 1.0 },
+  clock: { x: 3.5, y: constants.CLOCK_Y },
+  shelf: { x: 12.45, y: 0 },
+  guitar: { x: 8.42, y: 0 },
   stands: [SKETCH, PAINTING],
   work: { sketch: SKETCH, journal: SKETCH, paint: PAINTING },
   wallSpots: constants.FRAME_XS.map((x) => ({ on: "picture_rail", x, y: constants.FRAME_BOTTOM, z: 0 })),
