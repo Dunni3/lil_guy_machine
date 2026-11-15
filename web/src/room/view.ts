@@ -11,6 +11,8 @@ import { Models, SAMPLE_COLORS, constants, wallItem } from "./parts";
 import { ADDED_ROOM, BEDROOM } from "./room";
 import { groundTexture, landParts, treeParts } from "./land";
 import { Terrain, paneParts, shellParts } from "./shell";
+import { Rain } from "./weather";
+import { SKIES } from "../settings";
 
 /** The record's turn (degrees a second), and the notes: seconds apart, how long each lasts, and how fast it rises (metres a second). */
 const DISC_SPEED = 200;
@@ -115,11 +117,15 @@ export class RoomView {
 
   /** Light as at this hour whatever the clock says (`?hour=`), or null to follow the clock. */
   lightHour: number | null = null;
+  /** This weather whatever the sim's is (`?sky=`), or null to follow the sim. */
+  sky: string | null = null;
+  private readonly rain: Rain;
 
   constructor(private readonly r: ClayRenderer, camera: CameraMode, private readonly textures: ClayTextures) {
     this.camera = new CameraRig(camera);
     this.blob = new Blob(r, this.models, textures, constants.TOOL_TIP);
     this.art = new ArtLayer(r, this.models, this.room);
+    this.rain = new Rain(r.scene);
   }
 
   /** The screen is this wide for its height. */
@@ -134,7 +140,8 @@ export class RoomView {
     if (!guy) return;
     this.frame(state.world);
     this.framePlace(state.world, guy.place);
-    this.lightFor(fast.clock?.time ?? null);
+    const weather = this.sky ? { sky: this.sky, daylight: SKIES[this.sky] } : (fast.weather ?? null);
+    this.lightFor(fast.clock?.time ?? null, weather);
     this.syncThings(state);
     this.syncShelf(state, content);
 
@@ -168,6 +175,7 @@ export class RoomView {
     this.making = making;
 
     this.r.setLamps(this.glows, this.middle);
+    this.rain.update(weather?.sky ?? null, place.x, place.y, this.map, delta);
     this.art.draw(state, making, (id) => this.things.get(id)?.at ?? null, this.blob, delta);
     this.drawHeld(intent?.type === "do" ? intent.item : null);
     this.drawMusic(fast.music !== null, delta);
@@ -298,14 +306,15 @@ export class RoomView {
     this.r.aim(x, z, reach);
   }
 
-  /** The light, the window's glass and the wall clock for the time of day; [time] "HH:MM", or noon without one. */
-  private lightFor(time: string | null) {
+  /** The light, the window's glass and the wall clock for the time of day; [time] "HH:MM", or noon without one. [weather] dims and greys it. */
+  private lightFor(time: string | null, weather: { sky: string; daylight: number } | null) {
     let hour = 12;
     if (time) {
       const [h, m] = time.split(":").map((v) => parseInt(v, 10) || 0);
       hour = h + m / 60;
     }
     this.r.setHour(this.lightHour ?? hour);
+    this.r.setWeather(weather);
     const day = this.r.light;
     this.pane.color.copy(day.pane);
     this.pane.emissive.copy(day.pane);

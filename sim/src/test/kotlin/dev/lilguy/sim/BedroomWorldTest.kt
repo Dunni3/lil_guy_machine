@@ -13,7 +13,7 @@ class BedroomWorldTest {
         "workbench", "invent",
         "canvas", "easel", "record_player", "jazz_record", "ambient_record", "folk_record", "novel", "poetry_book",
         "field_guide", "painting", "paint", "read", "listen", "play_record",
-        "drawing_book", "music_book", "guitar", "play_guitar", "build_room", "microscope", "study_sample",
+        "drawing_book", "music_book", "guitar", "play_guitar", "build_room", "microscope", "study_sample", "weather_station", "check_station",
     ) + BedroomContent.default().items.filter { it.group == "decor" || it.group == "room" || (it.group == "food" && it.id !in setOf("meal", "oats")) }.map { it.id }
     /** Books here teach nothing, so painting and the guitar are there from the start; [shipped] is the file as it is. */
     private val content = BedroomContent.default().let { c ->

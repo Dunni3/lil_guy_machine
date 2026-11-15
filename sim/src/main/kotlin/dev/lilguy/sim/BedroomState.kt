@@ -82,6 +82,8 @@ data class BedroomState(
     val custom: Map<String, Custom> = emptyMap(),
     /** What his things do by themselves: item id to its `hourly` code. */
     val behaviors: Map<String, ThingCode> = emptyMap(),
+    /** What his recorders logged: thing id to key to its latest readings, oldest first ([Records]). */
+    val records: Map<String, Map<String, List<Reading>>> = emptyMap(),
 ) {
     /** One thing as his code left it: its [slot], [name] and [color], each null when unchanged. */
     @Serializable

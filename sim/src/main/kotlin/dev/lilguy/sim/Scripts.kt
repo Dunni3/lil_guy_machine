@@ -55,6 +55,13 @@ interface ScriptWorld {
     fun move(id: String, spot: String): String
     fun recolor(id: String, color: String)
     fun rename(id: String, name: String)
+
+    /** Logs [value] under [key] on a thing he owns ([Records]); how many readings that key keeps now. */
+    fun record(id: String, key: String, value: Double): Int = throw ScriptProblem("nothing is logged here")
+    /** What [id] has logged under [key], oldest first: `[{ time: "d3 04:00", value }]`. */
+    fun readings(id: String, key: String): List<Map<String, Any?>> = emptyList()
+    /** The weather where [id] stands now: `{ sky, temperature, rain, pressure, light, outdoors }`. */
+    fun conditions(id: String): Map<String, Any?> = throw ScriptProblem("there's no weather here")
 }
 
 /** A bad call from his code, in words he can act on; his script sees it as an `Error`. */
@@ -100,6 +107,9 @@ object ScriptApi {
         Fn("move", "world.move(id, spot)", "moves a thing of yours to another spot of the same kind (floor or wall); if another of your things stands there they swap; returns where it went", true) { w, a -> w.move(a.str(0, "id"), a.str(1, "spot")) },
         Fn("recolor", "world.recolor(id, color)", "paints a thing of yours a colour, hex like \"#7aa3c9\"; null or \"\" puts its own colours back", true) { w, a -> w.recolor(a.str(0, "id"), a.optStr(1) ?: "") },
         Fn("rename", "world.rename(id, name)", "gives a thing of yours a new name", true) { w, a -> w.rename(a.str(0, "id"), a.str(1, "name")) },
+        Fn("record", "world.record(id, key, value)", "logs a number under key on a thing of yours; each key keeps its latest readings (two days of hours); returns how many it keeps", true) { w, a -> w.record(a.str(0, "id"), a.str(1, "key"), a.num(2, "value")) },
+        Fn("readings", "world.readings(id, key)", "what a thing of yours has logged under key, oldest first: [{ time: \"d3 04:00\", value }]; a weather station logs temperature, rain, pressure and light", false) { w, a -> w.readings(a.str(0, "id"), a.str(1, "key")) },
+        Fn("conditions", "world.conditions(id)", "the weather where a thing of yours stands now: { sky, temperature, rain (mm in the last hour), pressure (hPa), light (0 to 100), outdoors }", false) { w, a -> w.conditions(a.str(0, "id")) },
     )
 
     /** The API as lines for a prompt: one per function, plus `say` and the verb's arguments. */

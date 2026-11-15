@@ -9,7 +9,8 @@ vocabulary:
   # Outdoors: `explorable` (a lookout he explores a place from), `forageable` (a patch things grow
   # on) and `specimen` (a sample, with a price at the hatch like sellable's).
   # Rooms: `buildable` (a room's plan) and `site` (where one can stand).
-  affords: [readable, playable, edible, sellable, hangable, viewable, combinable, wearable, drawable, staple, explorable, forageable, specimen, buildable, site]
+  # `recorder`: a thing outdoors that logs the weather where it stands (weather.yaml), read there.
+  affords: [readable, playable, edible, sellable, hangable, viewable, combinable, wearable, drawable, staple, explorable, forageable, specimen, buildable, site, recorder]
   # What an item is like to him, each with a strength from 0 to 3, scored by his affinities.
   qualities: [cozy, calm, warm, soft, bright, pretty, natural, lively, strange, loud]
   # What he can get better at, each a number from 0 with no cap: `practice` ops and reading a

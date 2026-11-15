@@ -32,7 +32,7 @@ object ClayParts {
         "bed", "desk", "chair", "easel", "record_player", "plant", "rug", "mail_hatch", "picture_rail", "poster",
         "lava_lamp", "mushroom_lamp", "string_lights", "cloud_light",
         "microscope", "garden_bench", "forest_trail", "clearing_log", "pond_edge",
-        "lab_bench", "lab_shelf", "armchair", "floor_lamp",
+        "lab_bench", "lab_shelf", "armchair", "floor_lamp", "weather_station",
     ) + PATCHES.flatMap { listOf(it, "${it}_bare") }
 
     /** The clay model of item [id]. */
@@ -64,6 +64,7 @@ object ClayParts {
             "lab_shelf" -> labShelf()
             "armchair" -> armchair()
             "floor_lamp" -> floorLamp()
+            "weather_station" -> weatherStation()
             else -> {
                 val bare = id.endsWith("_bare")
                 when (id.removeSuffix("_bare")) {
@@ -348,6 +349,31 @@ object ClayParts {
         for (sx in listOf(-0.42f, 0.42f)) box(WOOD_D, sx, 0f, 0f, 0.08f, 0.32f, 0.34f, round = 0.03f)
         box(WOOD, 0f, 0.32f, 0f, 1.0f, 0.06f, 0.38f, round = 0.03f)
         box(WOOD, 0f, 0.38f, -0.17f, 1.0f, 0.3f, 0.05f, round = 0.025f)
+    }
+
+    /**
+     * The weather station: a white louvred box on a post (the thermometer's screen), a cup
+     * anemometer on top, a rain gauge on an arm, and a little glowing dial on the front where its log shows.
+     */
+    private fun PartList.weatherStation() {
+        cylinder(WOOD_D, 0f, 0f, 0f, 0.08f, 1.05f, 0.08f, round = 0.02f)
+        box(TRIM, 0f, 0.82f, 0f, 0.42f, 0.36f, 0.34f, round = 0.03f)
+        for (i in 0..3) box(CREAM, 0f, 0.86f + i * 0.075f, 0.172f, 0.36f, 0.025f, 0.012f, round = 0.006f)
+        box(TRIM, 0f, 1.18f, 0f, 0.5f, 0.04f, 0.42f, round = 0.02f)
+        box(INK, 0.12f, 0.9f, 0.18f, 0.1f, 0.08f, 0.01f, round = 0.01f)
+        box(AMBER, 0.12f, 0.9f, 0.186f, 0.07f, 0.05f, 0.006f, round = 0.006f, glow = 0.7f)
+        // The anemometer: a mast and three cups on spokes.
+        cylinder(INK, 0f, 1.2f, 0f, 0.025f, 0.3f, 0.025f)
+        for (k in 0..2) {
+            val a = k * 2 * PI.toFloat() / 3
+            val (cx, cz) = cos(a) * 0.14f to sin(a) * 0.14f
+            capsule(INK, cx / 2, 1.5f, cz / 2, 0.015f, 0.14f, 0.015f, rotZ = 90f)
+            sphere(CORAL, cx, 1.47f, cz, 0.07f, 0.06f, 0.07f)
+        }
+        // The rain gauge, on an arm off the post.
+        box(WOOD_D, -0.2f, 0.55f, 0f, 0.28f, 0.04f, 0.05f, round = 0.015f)
+        cylinder(LENS, -0.32f, 0.57f, 0f, 0.09f, 0.2f, 0.09f, opacity = 0.7f)
+        cylinder(BLANKET, -0.32f, 0.58f, 0f, 0.07f, 0.06f, 0.07f)
     }
 
     /** A post with a little sign pointing into the trees. */

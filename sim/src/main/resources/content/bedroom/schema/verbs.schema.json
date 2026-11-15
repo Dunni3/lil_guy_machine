@@ -23,6 +23,7 @@
               "expressive",
               "social",
               "economic",
+              "perceptual",
               "scripted",
               "rest"
             ]
@@ -482,6 +483,13 @@
                       "type": "null"
                     }
                   ]
+                },
+                "read_log": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Reads the log of the recorder bound to `what` (a thing with the `recorder` affordance, which logs the weather at its spot each hour, weather.yaml), standing at it: the last day of it summed up (rain spells, where the pressure is going and since when, the coldest and warmest, the brightest hour). Locked until it has logged something. (at the finish)"
                 }
               },
               "minProperties": 1,

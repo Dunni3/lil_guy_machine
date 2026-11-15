@@ -43,6 +43,7 @@ import dev.lilguy.protocol.DoorView
 import dev.lilguy.protocol.PlaceView
 import dev.lilguy.protocol.RectView
 import dev.lilguy.protocol.WorldView
+import dev.lilguy.protocol.Weather
 import dev.lilguy.protocol.MemoryView
 import dev.lilguy.protocol.Mind
 import dev.lilguy.protocol.Models
@@ -234,6 +235,7 @@ class StateReader(private val dbEvery: Duration = 1.seconds) {
             fastForward = s.fastForward,
             thinkingMs = s.thinkingFor?.inWholeMilliseconds,
             easelTime = s.show.phaseTime,
+            weather = life?.weather?.let { Weather(it.sky, it.temperature, it.rain, it.daylight) },
         )
     }
 

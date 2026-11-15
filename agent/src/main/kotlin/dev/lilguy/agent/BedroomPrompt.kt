@@ -21,6 +21,7 @@ import dev.lilguy.sim.PracticeOp
 import dev.lilguy.sim.ProduceOp
 import dev.lilguy.sim.ProgressOp
 import dev.lilguy.sim.RateOp
+import dev.lilguy.sim.ReadLogOp
 import dev.lilguy.sim.SellOp
 import dev.lilguy.sim.SetStateOp
 import dev.lilguy.sim.Spots
@@ -178,6 +179,17 @@ object BedroomPrompt {
     }
 
     /**
+     * "- Weather: ...": what the weather does and what he sees of it, plus the recorder's verb when there is one; null without weather.
+     */
+    private fun weatherHint(content: BedroomContent): String? {
+        val w = content.weather ?: return null
+        val regrow = if (w.rain.regrow > 1 && content.world?.finds?.isNotEmpty() == true) " Rain makes what you've collected grow back faster." else ""
+        val cold = w.cold?.let { " Out in the cold, your mood falls." }.orEmpty()
+        val station = content.verbs.firstOrNull { v -> v.ops<ReadLogOp>().isNotEmpty() }?.let { v -> " A weather station outdoors logs the weather where it stands each hour; you read its log there (${v.id})." }.orEmpty()
+        return "- Weather: it changes through the day. `weather` is what you see of it now: outside, how it feels; inside, only the sky through the window.$regrow$cold$station"
+    }
+
+    /**
      * The code line: he can write what he and his things do, or null when nothing writes code. His own
      * verbs, once he has some, are in the list of what he can do like any other.
      */
@@ -299,6 +311,7 @@ object BedroomPrompt {
             varietyHint(content),
             learningHint(content),
             outdoorsHint(content),
+            weatherHint(content),
             codeHint(content),
             artHint(content),
             reflectionHint(content),
@@ -450,6 +463,7 @@ ${lookText(looks)}
             put("situation", Persona.short(content) + " He lives in ${if (obs.places != null) "a small house with land round it" else "this bedroom"} and needs money for food. His needs fall over time; nothing ends the game.")
             obs.place?.let { put("where", it) }
             obs.clock?.let { put("time", "day ${it.day}, ${it.time}") }
+            obs.weather?.let { put("weather", it) }
             put("money", obs.money ?: 0)
             obs.needs?.let { n ->
                 putJsonObject("needs") {

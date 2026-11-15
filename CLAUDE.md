@@ -75,7 +75,9 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   (`decision/.../BeamSearch.kt`, `beam` on the endpoint) instead of picking from one flat list. Skills
   (`vocabulary.skills`, rules.yaml `skills`) rise with `practice` and reading. Needs are energy,
   fullness, mood, stimulation and frustration. The house holds only so much comfort (rules.yaml `comfort`: more for each room
-  built), and his observation's `lately` says what he's done most, and what he hasn't for days or ever. `make content-docs` regenerates the content's
+  built), and his observation's `lately` says what he's done most, and what he hasn't for days or ever. Weather: `sim/.../Weather.kt` (a seeded hourly sky
+  chain, temperature, a hidden pressure that leads rain; numbers in `weather.yaml`) and `Records.kt` (what a
+  `recorder` logs each hour, and `StationLog`, the summary `check_station` reads standing at it). `make content-docs` regenerates the content's
   JSON Schemas (`content/bedroom/schema/`, checked by a test) and `build/grammar-reference.html`
   (`agent/.../ContentDocs.kt`).
 - Scenario wiring, scripted policies, lockstep runner: `agent/.../Scenario.kt` (`Scenario` enum),

@@ -10,7 +10,8 @@ import type { CameraMode } from "./room/camera";
  * - `fps`: draw at most this many frames a second (for example 30);
  * - `camera`: `room` (the whole room, the app's view) or `follow` (nearer, following him);
  * - `hour`: light the room as at this hour (0 to 24) whatever the game clock says, for looking at
- *   the look; the clock on the wall and the HUD still tell the game's time.
+ *   the look; the clock on the wall and the HUD still tell the game's time;
+ * - `sky`: draw this weather (clear, cloudy, rain, fog) whatever the sim's is, for looking at the look.
  */
 export interface PageSettings {
   life: string;
@@ -19,6 +20,7 @@ export interface PageSettings {
   fps: number | null;
   camera: CameraMode;
   hour: number | null;
+  sky: string | null;
 }
 
 export function readSettings(search: string): PageSettings {
@@ -30,6 +32,7 @@ export function readSettings(search: string): PageSettings {
   const hour = p.get("hour") === null ? NaN : Number(p.get("hour"));
   return {
     hour: Number.isFinite(hour) ? Math.min(Math.max(hour, 0), 24) : null,
+    sky: (p.get("sky") ?? "") in SKIES ? p.get("sky") : null,
     life: p.get("life") || "main",
     broadcast,
     scale: scale > 0 ? Math.min(Math.max(scale, 0.25), 1) : 1,
@@ -37,3 +40,6 @@ export function readSettings(search: string): PageSettings {
     camera: camera === "room" || camera === "follow" ? camera : broadcast ? "follow" : "room",
   };
 }
+
+/** The skies `?sky=` takes, with how much of the sun each lets through (weather.yaml `daylight`). */
+export const SKIES: Record<string, number> = { clear: 1, cloudy: 0.6, rain: 0.4, fog: 0.5 };

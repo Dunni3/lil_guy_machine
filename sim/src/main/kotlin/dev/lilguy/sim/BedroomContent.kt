@@ -66,6 +66,8 @@ data class BedroomContent(
     val comfort: ComfortRules? = null,
     /** Letters he writes to people who have written to him; null and he writes none. */
     val letters: LetterRules? = null,
+    /** The sky, temperature and hidden pressure over the land, and what a recorder keeps (Weather.kt); null for no weather. */
+    val weather: WeatherRules? = null,
 ) {
     @Transient private val byId = items.associateBy { it.id }
 
@@ -150,6 +152,7 @@ data class BedroomContent(
             "library" to listOf("books"),
             "menu" to listOf("menu"),
             "world" to listOf("world"),
+            "weather" to listOf("weather"),
         )
 
         /** Content from [files], file name (no extension) to its text. Each file may hold only its own keys ([FILES]). */
@@ -166,8 +169,10 @@ data class BedroomContent(
             return yaml.decodeFromYamlNode(serializer(), YamlMap(entries, YamlPath.root)).also { it.validate() }
         }
 
-        /** Content from a directory of the [FILES]; `world.yaml` may be left out, for a bedroom with no land around it. */
-        fun load(dir: File): BedroomContent = parse(FILES.keys.filter { it != "world" || File(dir, "$it.yaml").exists() }.associateWith { File(dir, "$it.yaml").readText() })
+        /** Content from a directory of the [FILES]; `world.yaml` and `weather.yaml` may be left out, for a bedroom with no land around it or no weather. */
+        fun load(dir: File): BedroomContent = parse(FILES.keys.filter { it !in OPTIONAL_FILES || File(dir, "$it.yaml").exists() }.associateWith { File(dir, "$it.yaml").readText() })
+
+        private val OPTIONAL_FILES = setOf("world", "weather")
 
         /** The content shipped with the sim. */
         fun default(): BedroomContent = parse(defaultFiles())
@@ -306,8 +311,14 @@ data class BedroomContent(
         val slotted = items.mapNotNull { it.slot }
         require(slotted.size == slotted.toSet().size) { "two items can't share a slot: ${slotted.groupBy { it }.filterValues { it.size > 1 }.keys}" }
         invent?.problems(this)?.takeIf { it.isNotEmpty() }?.let { throw IllegalArgumentException(it.joinToString("; ")) }
+        weather?.problems()?.firstOrNull()?.let { throw IllegalArgumentException(it) }
+        // A recorder logs the weather at its spot, so it stands outdoors, on one of the land's slots.
+        items.filter { RECORDER in it.affords }.forEach { require(it.slot != null && it.slot in world?.slots.orEmpty()) { "item ${it.id} is a recorder, so it needs a slot on the land (world.yaml `slots`)" } }
     }
 }
+
+/** The affordance of a thing that logs the weather where it stands ([Records], [StationLog]). */
+const val RECORDER = "recorder"
 
 @Serializable
 data class RoomContent(

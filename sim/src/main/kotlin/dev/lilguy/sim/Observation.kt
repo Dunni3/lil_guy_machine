@@ -70,6 +70,8 @@ data class Observation(
     @Transient val news: List<String> = emptyList(),
     /** The tile at [localMap]'s top-left, where the map is part of a bigger world; null when it's all of it. */
     @EncodeDefault(EncodeDefault.Mode.NEVER) val localMapAt: Cell? = null,
+    /** The weather as he sees it now ("raining, cold"; indoors only the sky through the window); null without weather. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val weather: String? = null,
 )
 
 /** A place he could go to: its id (for `move_to` a place), its name, what it is, and the game minutes to walk there. */
@@ -279,6 +281,8 @@ data class LifeSnapshot(
     val stored: Map<String, Map<String, String>> = emptyMap(),
     /** What his code changed about his things (where they stand, their names and colours), by item id. */
     val custom: Map<String, BedroomState.Custom> = emptyMap(),
+    /** The weather now, for drawing it; null without weather. */
+    val weather: WeatherView? = null,
 )
 
 data class EntitySnapshot(
