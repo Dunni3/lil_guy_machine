@@ -32,7 +32,8 @@ data class BookDesign(val title: String, val blurb: String, val chapters: List<S
 /**
  * One shape of an invention's look: the fields of a part list's part (`parts/Part.kt`) a model may
  * set. Metres, the model's pivot at the bottom centre, front facing +Z; ([x], [y], [z]) is the
- * bottom centre of the shape, and rotations are degrees.
+ * bottom centre of the shape, and rotations are degrees. The clay fields after [color] are the ones
+ * the room's own furniture is made with; a look saved before them gets their defaults.
  */
 @Serializable
 @SerialName("look_part")
@@ -48,9 +49,28 @@ data class LookPart(
     @SerialName("rot_y") val rotY: Double = 0.0,
     @SerialName("rot_z") val rotZ: Double = 0.0,
     val color: String = "#ffffff",
+    /** What this shape is of the thing ("rim", "handle"): the writer names each so it builds the thing up from its parts. */
+    val part: String = "",
+    /** Cylinders only: the top's width as a fraction of the bottom's (a vase, a lampshade, a spout). */
+    val taper: Double = 1.0,
+    /** Spheres only: the part of the height that's there, from the top; 0.5 is a dome. */
+    val cut: Double = 1.0,
+    /** Cylinders only: the hole's width as a fraction of the outside's, for a ring, a rim or a tube. */
+    val hole: Double = 0.0,
+    /** Cylinders only: the degrees of the ring that are there, centred on the front; 180 is a handle or an arch. */
+    val arc: Double = 360.0,
+    /** How brightly it glows at night: 1 is a lamp's, 0 not at all. */
+    val glow: Double = 0.0,
+    /** 1 for solid, less for glass. */
+    val opacity: Double = 1.0,
 ) {
     companion object {
         val SHAPES = listOf("box", "sphere", "cylinder", "capsule")
+        const val MAX_TAPER = 3.0
+        const val MIN_CUT = 0.1
+        const val MAX_HOLE = 0.95
+        const val MIN_ARC = 10.0
+        const val MIN_OPACITY = 0.2
     }
 }
 
@@ -127,7 +147,7 @@ data class InventRules(
         if (design.qualities.size > qualities.most) problems += "at most ${qualities.most} qualities"
         if (design.qualities.values.sum() > qualities.total) problems += "its qualities' strengths can add up to at most ${signed(qualities.total).removePrefix("+")}"
         if (design.look.size > lookParts) problems += "its look can have at most $lookParts shapes"
-        design.look.forEachIndexed { i, p -> lookProblem(p)?.let { problems += "shape ${i + 1} of its look: $it" } }
+        design.look.forEachIndexed { i, p -> partProblem(p)?.let { problems += "shape ${i + 1} of its look: $it" } }
         var slot: String? = null
         if (design.use == VIEWABLE) {
             when (design.place) {
@@ -174,12 +194,19 @@ data class InventRules(
         return if (use in c.vocabulary.affords) "nothing you could build at a workbench is '$use' yet; $open" else "'$use' isn't something a thing can be; $open"
     }
 
-    private fun lookProblem(p: LookPart): String? = when {
+    /** What's wrong with one shape of a look, in words he can act on, or null when it's fine. */
+    fun partProblem(p: LookPart): String? = when {
         p.shape !in LookPart.SHAPES -> "'${p.shape}' isn't a shape; they are ${LookPart.SHAPES.joinToString()}"
         listOf(p.w, p.h, p.d).any { it.isNaN() || it < MIN_SIZE || it > MAX_SIZE } -> "each of w, h and d must be from $MIN_SIZE to $MAX_SIZE"
         listOf(p.x, p.z).any { it.isNaN() || it < -REACH || it > REACH } || p.y.isNaN() || p.y < 0 || p.y > MAX_SIZE -> "it must sit inside one tile: x and z from -$REACH to $REACH, y from 0 to $MAX_SIZE"
         listOf(p.rotX, p.rotY, p.rotZ).any { it.isNaN() || it < -360 || it > 360 } -> "rotations are degrees from -360 to 360"
         !p.color.matches(COLOR) -> "its color must be hex, like #c96f4a"
+        p.taper.isNaN() || p.taper < 0 || p.taper > LookPart.MAX_TAPER -> "taper is from 0 to ${LookPart.MAX_TAPER}"
+        p.cut.isNaN() || p.cut < LookPart.MIN_CUT || p.cut > 1 -> "cut is from ${LookPart.MIN_CUT} to 1"
+        p.hole.isNaN() || p.hole < 0 || p.hole > LookPart.MAX_HOLE -> "hole is from 0 to ${LookPart.MAX_HOLE}"
+        p.arc.isNaN() || p.arc < LookPart.MIN_ARC || p.arc > 360 -> "arc is from ${LookPart.MIN_ARC.toInt()} to 360 degrees"
+        p.glow.isNaN() || p.glow < 0 || p.glow > 1 -> "glow is from 0 to 1"
+        p.opacity.isNaN() || p.opacity < LookPart.MIN_OPACITY || p.opacity > 1 -> "opacity is from ${LookPart.MIN_OPACITY} to 1"
         else -> null
     }
 

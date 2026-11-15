@@ -54,7 +54,13 @@ function lookParts(made: Invented): Part[] {
     color: p.color,
     texture: null,
     round: -1,
-    taper: 1,
+    // A look from a host before these fields came has none of them: the defaults.
+    taper: p.taper ?? 1,
+    cut: p.cut ?? 1,
+    hole: p.hole ?? 0,
+    arc: p.arc ?? 360,
+    glow: p.glow ?? 0,
+    opacity: p.opacity ?? 1,
   }));
 }
 

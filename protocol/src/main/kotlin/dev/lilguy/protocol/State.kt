@@ -296,7 +296,11 @@ data class Invented(
     val look: List<LookShape>,
 )
 
-/** One shape of an invention: metres, the model's pivot at its bottom centre, ([x], [y], [z]) the shape's bottom centre, rotations in degrees. */
+/**
+ * One shape of an invention: metres, the model's pivot at its bottom centre, ([x], [y], [z]) the shape's bottom centre, rotations in degrees.
+ * [part]: what it is of the thing. The rest are a part list's clay fields (`parts/Part.kt`): [taper] (cylinders), [cut] (spheres),
+ * [hole] and [arc] (cylinders), [glow] and [opacity].
+ */
 @Serializable
 data class LookShape(
     val shape: String,
@@ -310,6 +314,13 @@ data class LookShape(
     @SerialName("rot_y") val rotY: Float,
     @SerialName("rot_z") val rotZ: Float,
     val color: String,
+    val part: String,
+    val taper: Float,
+    val cut: Float,
+    val hole: Float,
+    val arc: Float,
+    val glow: Float,
+    val opacity: Float,
 )
 
 @Serializable

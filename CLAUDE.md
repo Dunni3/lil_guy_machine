@@ -100,8 +100,10 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   it at the finish; while there's a trip, everything (food too) is bought on trips and models deciding
   see no `shop` (`BedroomPrompt.deciding`).
 - Inventing (`docs/decisions/2026-11-13-he-invents-items-*`): at the workbench the `invent` verb's `invention` write has the
-  writer design one new item (`agent/.../invent/Inventor.kt`: one use, some qualities, a look, with one retry on the sim's
-  reasons; `CannedInventor` for `LILGUY_INVENTOR=1`), staged like a trip's basket, and the `build` op (`Ops.kt`) checks it,
+  writer design one new item (`agent/.../invent/Inventor.kt`: one use, some qualities, a look of named shapes with the clay part
+  features; a writer that calls tools builds it a shape at a time with the workbench tools in `Workbench.kt`, one without writes it
+  as JSON with one retry on the sim's reasons; either way it's looked over once; `docs/decisions/2026-11-15-he-builds-what-he-invents-*`;
+  `CannedInventor` for `LILGUY_INVENTOR=1`), staged like a trip's basket, and the `build` op (`Ops.kt`) checks it,
   prices its materials and adds it to the run's content (`sim/.../Invention.kt`: `Design`, `InventRules` from rules.yaml
   `invent`, `Invention`; `BedroomContent.plus`). `BedroomWorld.content` grows during a run, so read it when needed. Inventions
   are saved in `BedroomState.inventions`, go to viewers in the protocol's `shop.inventions`, and the web renderer builds their
