@@ -85,6 +85,12 @@ class BedroomWorld private constructor(
     /** Habits he has finished at least once, for the novelty bonus; a subject he has drawn is "subject:whale" ([subjectNovelty]). */
     private val tried = mutableSetOf<String>()
 
+    /** How familiar what he does is, by what it was like ([features]); null without `familiarity`, and verbs wear by id. */
+    private val familiar: Familiarity? = startContent.familiarity?.let { Familiarity(it, clock.ticks(60).toLong()) }
+
+    /** Item id to the tick he first had it, for comfort's `adapt`. */
+    private val ownedSince = LinkedHashMap<String, Long>()
+
     /** The commission nouns he has drawn a piece of, so a drawing model can tell him which are new. Readable from any thread. */
     @Volatile var subjectsDrawn: Set<String> = emptySet()
         private set
@@ -624,11 +630,18 @@ class BedroomWorld private constructor(
         val seen = { cell: Cell? -> if (content.comfort == null) 1.0 else cell?.let(::seenWeight) ?: 0.0 }
         val here = layout.placeOf(guy.cell)?.id
         return (
-            placed().sumOf { (spec, cell) -> comfortOf(spec) * seen(cell) } +
+            placed().sumOf { (spec, cell) -> comfortOf(spec) * seen(cell) * usedTo(spec.id) } +
                 hung().size * content.gallery.comfortEach * seen(layout.slotCells["rail"]) +
                 collectionComfort() * seen(layout.slotCells["shelf"]) +
                 house.keys.sumOf { id -> roomComfort(id) * if (content.comfort == null) 1.0 else if (id == here) seen(guy.cell) else 0.0 }
             ).roundToInt()
+    }
+
+    /** How much of a thing's comfort is left now he's used to it ([ComfortRules.Adapt]): 1 when new, or without `adapt`. */
+    private fun usedTo(id: String): Double {
+        val adapt = content.comfort?.adapt ?: return 1.0
+        val since = ownedSince[id] ?: return 1.0
+        return adapt.share((ticks - since).toDouble() / clock.ticks(60) / 24)
     }
 
     /** How much a thing at [cell] counts toward what he sees now, 0 to 1: near and lit ([Lighting.viewWeight]). */
@@ -1283,13 +1296,47 @@ class BedroomWorld private constructor(
     /** What wears: the [habit], or the verb alone for one that wears as a whole (reading any book wears "read"). */
     private fun wearKey(a: VerbSpec, args: Map<String, String>): String = if (a.wear == Wear.Verb) a.id else habit(a, args)
 
-    /** 1 when fresh, down to 0 when worn out; always 1 for routine verbs or without habituation. */
+    /**
+     * 1 when fresh, down to 0 when worn out; always 1 for routine verbs, or without habituation or
+     * familiarity. With [familiar], how unfamiliar what it would be like is ([features]); else its wear by id.
+     */
     private fun freshness(a: VerbSpec, args: Map<String, String> = emptyMap()): Double {
-        val h = content.habituation ?: return 1.0
         if (a.isRoutine || fixing(a)) return 1.0
+        familiar?.let { return if (upkeep(a)) 1.0 else it.freshness(features(a, args), ticks) }
+        val h = content.habituation ?: return 1.0
         val (level, since) = wear[wearKey(a, args)] ?: return 1.0
         val hours = (ticks - since).toDouble() / clock.ticks(60)
         return 1.0 - (level - h.recoverPerHour * hours).coerceIn(0.0, 1.0)
+    }
+
+    /**
+     * What doing [a] with [args] is like, as the sim knows it ([Feature]): the verb and its kind; the place it's
+     * done (where the first thing it's done at or with stands, else where he is) and the sky there when it's
+     * outdoors; each thing it's done at or with, needs or uses, with its group and qualities; the skills it
+     * practises; what it makes. Never anything he wrote, so a new name for the same thing isn't new.
+     */
+    private fun features(a: VerbSpec, args: Map<String, String>): List<Feature> {
+        val ids = (args.values + a.at + a.requires).filter { it != VerbSpec.HERE && it !in a.args }.distinct()
+        val things = ids.mapNotNull { content.item(it) }
+        val stands = placed()
+        val cell = things.firstNotNullOfOrNull { s -> stands.firstOrNull { it.first.id == s.id }?.second } ?: guy.cell
+        val place = layout.placeOf(cell)
+        return buildList {
+            add(Feature("verb", a.id))
+            add(Feature("kind", a.kind.id))
+            place?.let { p ->
+                add(Feature("place", p.id))
+                if (p.kind == PlaceKind.Outdoor) conditionsAt(cell)?.let { add(Feature("sky", it.sky.id)) }
+            }
+            things.forEach { s ->
+                add(Feature("thing", s.id))
+                add(Feature("group", s.group))
+                s.qualities.keys.forEach { add(Feature("quality", it)) }
+            }
+            a.ops<PracticeOp>().forEach { op -> op.gains.keys.forEach { add(Feature("skill", it)) } }
+            a.ops<ProgressOp>().forEach { op -> args[op.book]?.let { id -> content.books.firstOrNull { it.id == id } }?.skill?.keys?.forEach { add(Feature("skill", it)) } }
+            a.ops<ProduceOp>().forEach { op -> op.items.keys.forEach { add(Feature("makes", it)) } }
+        }
     }
 
     /** Whether [a] writes code while some of his code is broken: fixing it is work, not a habit, so it doesn't wear. */
@@ -1304,10 +1351,15 @@ class BedroomWorld private constructor(
     /** Whether [a] is something he can be bored of ([BoredLock]): it wears thin, has mood or stimulation gains to wear, and doesn't feed energy or fullness. */
     private fun boring(a: VerbSpec): Boolean {
         if (a.isRoutine) return false
-        val gains = a.needEffects.entries + a.ops<RateOp>().flatMap { it.perHour.entries } + a.ops<BackgroundOp>().flatMap { it.rates.entries }
-        fun gains(n: Need) = gains.any { it.key == n.id && it.value > 0 }
-        return (gains(Need.Mood) || gains(Need.Stimulation)) && !gains(Need.Energy) && !gains(Need.Fullness)
+        return (gains(a, Need.Mood) || gains(a, Need.Stimulation)) && !gains(a, Need.Energy) && !gains(a, Need.Fullness)
     }
+
+    /** Whether [a] raises [n]: at the finish, an hour while it lasts, or by what it plays. */
+    private fun gains(a: VerbSpec, n: Need): Boolean =
+        (a.needEffects.entries + a.ops<RateOp>().flatMap { it.perHour.entries } + a.ops<BackgroundOp>().flatMap { it.rates.entries }).any { it.key == n.id && it.value > 0 }
+
+    /** Looking after his body, which isn't an experience ([familiar] leaves it out): routine, or it feeds energy or fullness (the oats). */
+    private fun upkeep(a: VerbSpec): Boolean = a.isRoutine || gains(a, Need.Energy) || gains(a, Need.Fullness)
 
     /** [a]'s freshness when he's bored and it's worn past [BoredLock.worn], or null. Unbound (null [args]), a verb that wears per item leaves it to each binding. */
     private fun boredOf(a: VerbSpec, args: Map<String, String>?): Double? {
@@ -1326,12 +1378,19 @@ class BedroomWorld private constructor(
     private fun boredLock(a: VerbSpec, args: Map<String, String>?): String? {
         val fresh = boredOf(a, args) ?: return null
         if (a.work && !canAffordNew()) return null
-        return "you're bored, and you've done it a lot lately (gains at ${percent(fresh)}, stimulation ${needs.level(Need.Stimulation)})"
+        val why = if (familiar != null) "it's all familiar to you" else "you've done it a lot lately"
+        return "you're bored, and $why (gains at ${percent(fresh)}, stimulation ${needs.level(Need.Stimulation)})"
     }
 
-    /** Whether the shop has something new to him that he can afford: a thing for the room he likes, or something for a verb he hasn't done. */
-    private fun canAffordNew(): Boolean = shopItems().any { spec ->
-        heldBack(spec) == null && ledger.canAfford(spec.price!!) && (newThingRate(spec) > 0 || usesOf(spec).any { isNew(it) })
+    /**
+     * Whether the shop has something new to him that he can afford and still keep the bored lock's `keep` for food:
+     * a thing for the room he likes, or something for a verb he hasn't done.
+     */
+    private fun canAffordNew(): Boolean {
+        val keep = content.habituation?.boredLock?.keep ?: 0
+        return shopItems().any { spec ->
+            heldBack(spec) == null && ledger.canAfford(spec.price!! + keep) && (newThingRate(spec) > 0 || usesOf(spec).any { isNew(it) })
+        }
     }
 
     /** What [spec], bought at [since], feeds stimulation an hour now ([NewThings]): 0 out of sight, once it's old, or if he doesn't like it. */
@@ -1349,9 +1408,36 @@ class BedroomWorld private constructor(
     /** [d] as paid at [fresh]: gains in mood and stimulation shrink with wear; costs and other needs don't. */
     private fun paid(need: Need, d: Double, fresh: Double): Double = if (d > 0 && (need == Need.Mood || need == Need.Stimulation)) d * fresh else d
 
-    /** Wears the habit, charges stimulation if it was already worn, and pays the novelty bonus the first time. */
+    /**
+     * What finishing [a] at [fresh] does to his fun with [familiar] ([familiarFun]): the novelty bonus at
+     * [fresh], and the stale cost at 1 - [fresh]. Need id to change, unscaled by anything else.
+     */
+    private fun familiarFun(fresh: Double): Map<String, Double> {
+        val bonus = content.novelty?.let { novelty() }.orEmpty().mapValues { it.value * fresh }
+        val stale = content.habituation?.staleStimulation?.takeIf { it < 0 }?.let { it * (1 - fresh) } ?: 0.0
+        return bonus + (Need.Stimulation.id to (bonus[Need.Stimulation.id] ?: 0.0) + stale)
+    }
+
+    /** "familiar (gains at 20%): stimulation -3, mood +1" or "fresh to you (gains at 90%): ...". */
+    private fun familiarText(fresh: Double, changes: Map<String, Double>): String =
+        "${if (isFresh(fresh)) "fresh to you" else "familiar"} (gains at ${percent(fresh)})" +
+            changes.entries.filter { it.value.roundToInt() != 0 }.joinToString("") { (need, d) -> ", $need ${signed(d.roundToInt().toDouble())}" }
+
+    /**
+     * Wears the habit, charges stimulation if it was already worn, and pays the novelty bonus the first time.
+     * With [familiar] instead: pays [familiarFun] every time and makes what it was like more familiar.
+     */
     private fun habituate(a: VerbSpec, args: Map<String, String>, fresh: Double, parts: MutableList<String>, wears: Boolean = true) {
         val key = habit(a, args)
+        familiar?.let { f ->
+            if (upkeep(a) || !wears) return
+            val paid = familiarFun(fresh).mapValues { (need, d) -> needs.change(ticks, needOf(need), d, if (isFresh(fresh)) "fresh: ${a.id}" else "familiar: ${a.id}") }
+            parts += familiarText(fresh, paid)
+            f.meet(features(a, args), ticks)
+            tried += key
+            version++
+            return
+        }
         content.habituation?.takeIf { !a.isRoutine && wears }?.let { h ->
             val worn = 1.0 - fresh
             if (worn > 0) {
@@ -1964,6 +2050,10 @@ class BedroomWorld private constructor(
             }
         }
         newThings.entries.removeIf { (id, since) -> count(id) == 0 || newThingRate(item(id), since) <= 0 }
+        if (content.comfort?.adapt != null) {
+            ownedSince.keys.retainAll(owned.keys)
+            owned.keys.forEach { ownedSince.putIfAbsent(it, ticks) }
+        }
         val asleep = d != null && d.activity.effects.any { !it.awake }
         rate(Need.Fullness, if (asleep) r.asleepFullnessPerHour ?: r.fullnessPerHour else r.fullnessPerHour, "hunger")
         content.frustration?.let { rate(Need.Frustration, it.perHour, "fading") }
@@ -2028,6 +2118,8 @@ class BedroomWorld private constructor(
             behaviors = behaviors,
             records = records.export(),
             machines = machines.export(),
+            familiar = familiar?.export().orEmpty(),
+            ownedSince = LinkedHashMap(ownedSince),
         )
     }
 
@@ -2120,7 +2212,26 @@ class BedroomWorld private constructor(
         syncHolding()
         // Before version 2 the bedroom was the whole map: his position moves with the room onto the lot.
         restoreGrid(if (s.version >= 2) s.grid else s.grid.copy(x = s.grid.x + layout.roomOrigin.x, y = s.grid.y + layout.roomOrigin.y))
+        ownedSince.clear()
+        // An older save: he has had everything he owns since the start.
+        s.ownedSince?.let { ownedSince.putAll(it.filterKeys { id -> id in owned }) } ?: owned.keys.forEach { ownedSince[it] = 0L }
+        familiar?.let { f ->
+            f.restore(s.familiar)
+            if (s.familiar.isEmpty()) familiarFromTallies(f)
+        }
         return dropped
+    }
+
+    /**
+     * A save from before familiarity: rebuild it from his tallies, each verb's finishes spread evenly from its
+     * first to its last, met in order. Without the items each was done with, so it's only near.
+     */
+    private fun familiarFromTallies(f: Familiarity) {
+        done.flatMap { (id, t) ->
+            val v = content.verb(id)?.takeIf { !it.isRoutine } ?: return@flatMap emptyList()
+            val fs = features(v, emptyMap())
+            (0 until t.count).map { i -> (if (t.count == 1) t.lastTick else t.firstTick + (t.lastTick - t.firstTick) * i / (t.count - 1)) to fs }
+        }.sortedBy { it.first }.forEach { (tick, fs) -> f.meet(fs, tick) }
     }
 
     /** A world [restore]d from a checkpoint, and what of it the content no longer has. */
@@ -2183,11 +2294,15 @@ class BedroomWorld private constructor(
         val parts = a.effects.flatMapTo(mutableListOf()) { it.describe(ops, b, forSale) }
         if (forSale) return parts.joinToString("; ")
         val fresh = b.fresh
-        content.habituation?.takeIf { fresh < 1 }?.let { h ->
-            val stale = (h.staleStimulation * (1 - fresh)).roundToInt()
-            parts += "done a lot lately: gains at ${percent(fresh)}" + if (stale < 0) ", and stimulation $stale" else ""
+        if (familiar != null) {
+            if (!upkeep(a) && !fixing(a)) parts += familiarText(fresh, familiarFun(fresh))
+        } else {
+            content.habituation?.takeIf { fresh < 1 }?.let { h ->
+                val stale = (h.staleStimulation * (1 - fresh)).roundToInt()
+                parts += "done a lot lately: gains at ${percent(fresh)}" + if (stale < 0) ", and stimulation $stale" else ""
+            }
+            if (isNew(a, args)) parts += "new to you: " + novelty().entries.joinToString { (need, d) -> "$need ${signed(d.roundToInt().toDouble())}" }
         }
-        if (isNew(a, args)) parts += "new to you: " + novelty().entries.joinToString { (need, d) -> "$need ${signed(d.roundToInt().toDouble())}" }
         // Offered while bored of it: only work, while he can't afford anything new.
         if (boredOf(a, args) != null) parts += "you're bored of it, but you can't afford anything new yet, so you keep at it"
         return parts.joinToString("; ")
@@ -2527,6 +2642,11 @@ class BedroomWorld private constructor(
         /** Hours in a row a thing's code may break before it stops. */
         /** What a thing's code wears by, before its id. */
         private const val THING_WEAR = "thing:"
+        /** At this freshness or more, as shown to a tenth, what he does reads "fresh to you"; below it, "familiar". */
+        private const val FRESH = 0.5
+
+        /** Whether [fresh] reads "fresh to you": judged as [percent] shows it, so "50%" is never "familiar". */
+        private fun isFresh(fresh: Double): Boolean = (fresh * 10).roundToInt() >= (FRESH * 10).roundToInt()
 
         /** How a lock for want of light begins. */
         private const val DARK = "too dark to "

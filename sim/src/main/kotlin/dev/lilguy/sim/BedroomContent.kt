@@ -40,8 +40,10 @@ data class BedroomContent(
     val gallery: GalleryRules = GalleryRules(),
     /** Repeating an activity pays less; null turns it off. */
     val habituation: HabituationRules? = null,
-    /** The first time with an activity pays a bonus; null turns it off. */
+    /** The first time with an activity pays a bonus; null turns it off. With [familiarity], it's paid every time, at how fresh it was. */
     val novelty: NoveltyRules? = null,
+    /** How familiar what he does is by what it was like (Familiarity.kt); null and verbs wear by id ([habituation]). */
+    val familiarity: FamiliarityRules? = null,
     val vocabulary: Vocabulary = Vocabulary(),
     /** His default affinities and curiosity; a run can swap in another ([withPersonality]). */
     val personality: Personality = Personality(),
@@ -147,7 +149,7 @@ data class BedroomContent(
         /** The content's files, each with the top-level keys it holds. */
         val FILES: Map<String, List<String>> = linkedMapOf(
             "room" to listOf("room", "start"),
-            "rules" to listOf("needs", "night", "habituation", "novelty", "frustration", "skills", "shop", "reflection", "commissions", "gallery", "quality_value", "invent", "collection", "comfort", "light", "letters"),
+            "rules" to listOf("needs", "night", "habituation", "novelty", "familiarity", "frustration", "skills", "shop", "reflection", "commissions", "gallery", "quality_value", "invent", "collection", "comfort", "light", "letters"),
             "vocabulary" to listOf("vocabulary"),
             "personality" to listOf("personality"),
             "items" to listOf("items"),
@@ -264,7 +266,7 @@ data class BedroomContent(
                 t.problems("item ${item.id} light.timer").firstOrNull()?.let { throw IllegalArgumentException(it) }
             }
         }
-        (light?.problems().orEmpty() + comfort?.problems().orEmpty()).firstOrNull()?.let { throw IllegalArgumentException(it) }
+        (light?.problems().orEmpty() + comfort?.problems().orEmpty() + familiarity?.problems().orEmpty()).firstOrNull()?.let { throw IllegalArgumentException(it) }
         (room.windows + world?.rooms?.flatMap { it.windows }.orEmpty()).forEach { require(it.size == 2) { "a window is [x, y]: $it" } }
         night?.let { GameClock.parseHhmm(it.from); GameClock.parseHhmm(it.to) }
         needs.workFloor.forEach { needOf(it.need) }
@@ -472,7 +474,12 @@ data class HabituationRules(
  * or stimulation gains to wear, never lock, so there's always a way back to food and sleep.
  */
 @Serializable
-data class BoredLock(val below: Double, val worn: Double)
+data class BoredLock(
+    val below: Double,
+    val worn: Double,
+    /** Money he keeps for food: work stays open until he could buy something new and still have this. */
+    val keep: Int = 0,
+)
 
 /**
  * The closed lists items are described in. [affords]: what can be done with an item; verbs

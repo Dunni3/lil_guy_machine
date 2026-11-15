@@ -206,6 +206,22 @@ object BedroomPrompt {
     /** The variety line of the prompt: novelty and habituation, or null when the content has neither. */
     private fun varietyHint(content: BedroomContent): String? {
         val parts = buildList {
+            content.familiarity?.let { f ->
+                add(
+                    "What you do is fresh or familiar by what it's like, not what it's called: where you do it, what you do it with and what those things are like, " +
+                        "the skill it uses and what it makes. Each time you finish something, all of that gets more familiar, and it fades back over a few days " +
+                        "(half in ${num(f.halfLifeDays)}). Its mood and stimulation gains are paid at how fresh it is" +
+                        (content.novelty?.let { n -> ", and finishing it gives up to " + n.effects.entries.joinToString(" and ") { (need, d) -> "${d.toInt()} $need" } + " more the fresher it was" } ?: "") +
+                        (content.habituation?.takeIf { it.staleStimulation < 0 }?.let { h -> ", or costs up to ${num(-h.staleStimulation)} stimulation when it's all familiar" } ?: "") +
+                        ". So something you do every day stays familiar, and the same thing under a new name is not new; somewhere you haven't been, or things unlike what you usually use, are.",
+                )
+                val routine = content.verbs.filter { it.isRoutine }.map { it.phrase ?: it.id }
+                if (routine.isNotEmpty()) add("Routine things (${routine.joinToString(", ")}) don't count.")
+                content.habituation?.boredLock?.let { add("While you're bored (stimulation below ${num(it.below)}), anything ${num((1 - it.worn) * 100)}% fresh or less is off limits, what it pays included, unless you've never done it.") }
+                content.novelty?.things?.let { add("Something new for your room that you like lifts your stimulation for ${num(it.days)} days, fading as you get used to it.") }
+                content.comfort?.adapt?.let { add("You get used to what you have: a thing's comfort falls to ${num(it.floor * 100)}% of it over ${num(it.days)} days.") }
+            }
+            if (content.familiarity != null) return@buildList
             content.novelty?.let { n -> add("The first time you do something it gives " + n.effects.entries.joinToString(" and ") { (need, d) -> "${d.toInt()} $need" } + " on top.") }
             content.habituation?.let { h ->
                 val stale = if (h.staleStimulation < 0) ", and doing something you've worn thin costs stimulation" else ""
@@ -524,7 +540,8 @@ ${lookText(looks)}
         return ChoiceSet(
             instructions = "What should the character in `state` do next? He lives here for the long run and looks after himself: his `needs` fall over time, " +
                 "and he needs money for food. Choose what serves him best over the coming days, not just the next hour. " +
-                (if (content.habituation != null) "Doing the same thing over and over bores him: its gains shrink and his stimulation falls, which drags his mood down; new things and hobbies lift it. " else "") +
+                (if (content.familiarity != null) "What he does every day grows familiar and bores him, whatever it's called: its gains shrink and his stimulation falls, which drags his mood down; somewhere new, or things unlike what he usually uses, lift it. "
+                else if (content.habituation != null) "Doing the same thing over and over bores him: its gains shrink and his stimulation falls, which drags his mood down; new things and hobbies lift it. " else "") +
                 (if (thinking) "Thinking lets him work out what he wants and plan; he also stops to think on his own every few decisions. " else "") +
                 "Read `state.last_action` and `state.recent_actions`: don't repeat an action that just failed.",
             state = state,

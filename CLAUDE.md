@@ -74,7 +74,9 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   `docs/decisions/2026-11-15-he-searches-the-real-web-*`), so he isn't offered think. `menu.yaml` groups his options into a tree for Jev, who walks down it by beam search
   (`decision/.../BeamSearch.kt`, `beam` on the endpoint) instead of picking from one flat list. Skills
   (`vocabulary.skills`, rules.yaml `skills`) rise with `practice` and reading. Needs are energy,
-  fullness, mood, stimulation and frustration. Comfort is what he can see lit from where he stands (rules.yaml `comfort`: near
+  fullness, mood, stimulation and frustration. Fun (stimulation) comes from how unfamiliar what he does is, by what it's like, not
+  what it's called (`sim/.../Familiarity.kt`, `BedroomWorld.features`, rules.yaml `familiarity`; `docs/decisions/2026-11-15-fun-comes-from-what-is-unfamiliar.md`),
+  and things he owns comfort him less as he gets used to them (`comfort.adapt`). Comfort is what he can see lit from where he stands (rules.yaml `comfort`: near
   and far, in tiles; `Lighting.viewWeight`), and his observation's `lately` says what he's done most, and what he hasn't for days or ever. Weather: `sim/.../Weather.kt` (a seeded hourly sky
   chain, temperature, a hidden pressure that leads rain; numbers in `weather.yaml`) and `Records.kt` (what a
   `recorder` logs each hour, and `StationLog`, the summary `check_station` reads standing at it). `make content-docs` regenerates the content's

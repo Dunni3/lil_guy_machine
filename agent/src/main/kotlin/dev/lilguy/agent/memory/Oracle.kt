@@ -64,7 +64,8 @@ object WorldDocs {
         content.night?.let { add(DocSection("rules:night", "night and day", enc(it))) }
         add(DocSection("rules:shop", "the shop: ordering and delivery, and what it holds back", "$SHOP_RULE ${enc(content.shop)}"))
         content.habituation?.let { add(DocSection("rules:habituation", "repeating things pays less", enc(it))) }
-        content.novelty?.let { add(DocSection("rules:novelty", "doing something for the first time", enc(it))) }
+        content.novelty?.let { add(DocSection("rules:novelty", if (content.familiarity != null) "what a fresh finish pays" else "doing something for the first time", enc(it))) }
+        content.familiarity?.let { add(DocSection("rules:familiarity", "what makes something fresh or familiar: features of what it's like (verb, kind, place, thing, group, quality, skill, makes, sky), each fading by half every half_life_days", enc(it))) }
         content.frustration?.let { add(DocSection("rules:frustration", "frustration", enc(it))) }
         add(DocSection("rules:skills", "what skills do", enc(content.skills)))
         content.commissions?.let { c -> add(DocSection("rules:commissions", "requests for a piece of art", "A request comes each day at ${c.arrive}: an adjective and a noun. The first piece sold that matches it (the adjective in its title or tags, a shape of the noun drawn in it) earns $${c.reward} on top of its price.")) }

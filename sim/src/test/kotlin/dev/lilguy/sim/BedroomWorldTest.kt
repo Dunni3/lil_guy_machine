@@ -92,7 +92,7 @@ class BedroomWorldTest {
         assertEquals("not bedtime yet; by day only a nap, when exhausted (energy 80)", w.activity("sleep").locked)
         assertNull(w.activity("sketch").locked)
         assertEquals("1h", w.activity("sketch").takes)
-        assertEquals("1 sketch, sells for $5; art skill +0.1; energy -3; mood -1; stimulation +4; new to you: stimulation +8, mood +3", w.activity("sketch").gives)
+        assertEquals("1 sketch, sells for $5; art skill +0.1; energy -3; mood -1; stimulation +4; fresh to you (gains at 100%), stimulation +8, mood +3", w.activity("sketch").gives)
         assertEquals("uses a meal (you have 2); fullness +45", w.activity("eat").gives)
         assertEquals("needs a record player ($150)", w.activity("play_record").locked, "what it happens at first: the shop holds records back until then")
 
@@ -113,7 +113,7 @@ class BedroomWorldTest {
         assertTrue(desk.inReach)
         // Awake decay over the walk and the hour, plus the sketch's -3.
         assertTrue(obs.needs!!.energy in 72..73, "energy ${obs.needs!!.energy}")
-        assertTrue(obs.recentEvents.last().endsWith("finished sketch: +1 sketch, art skill 0.1 (+0.1), energy -3, mood -1, stimulation +4, new to you: stimulation +8, mood +3"), obs.recentEvents.last())
+        assertTrue(obs.recentEvents.last().endsWith("finished sketch: +1 sketch, art skill 0.1 (+0.1), energy -3, mood -1, stimulation +4, fresh to you (gains at 100%), stimulation +8, mood +3"), obs.recentEvents.last())
         assertEquals("$5 for the 1 sketch you hold", w.activity("sell_art").gives)
     }
 
@@ -265,7 +265,7 @@ class BedroomWorldTest {
         w.run(Intent.Buy("record_player"))
         w.run(Intent.Buy("jazz_record"))
         assertEquals(
-            ActivityOption("play_record", "jazz_record", "record_player", "1 min", "you like it: mood +2; music for 45 min: mood +2/h, stimulation +6/h; new to you: stimulation +8, mood +3"),
+            ActivityOption("play_record", "jazz_record", "record_player", "1 min", "you like it: mood +2; music for 45 min: mood +2/h, stimulation +6/h; fresh to you (gains at 100%), stimulation +8, mood +3"),
             w.activity("play_record"),
         )
         assertTrue("do(verb, what, on)" in failure(w.run(Intent.Use("jazz_record", on = "record_player"))))
@@ -275,7 +275,7 @@ class BedroomWorldTest {
         assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("play_record", what = "jazz_record")).status)
         assertTrue(w.obs().music!!.startsWith("jazz_record, 4"), w.obs().music)
         assertEquals("playing jazz_record", w.obs().nearby.first { it.id == "record_player" }.state)
-        assertEquals(ActivityOption("listen", null, null, "30 min", "the jazz record that's playing: you like it: mood +2; mood +4; stimulation +12; new to you: stimulation +8, mood +3"), w.activity("listen"))
+        assertEquals(ActivityOption("listen", null, null, "30 min", "the jazz record that's playing: you like it: mood +1; mood +3; stimulation +8; fresh to you (gains at 70%), stimulation +4, mood +2"), w.activity("listen"))
         assertTrue("takes no `what`" in failure(w.run(Intent.Do("listen", what = "jazz_record"))))
 
         // Music plays while he does something else, and its mood shows in the need log.
@@ -338,34 +338,40 @@ class BedroomWorldTest {
     }
 
     @Test
-    fun `the first time pays more, repeating pays less, and boredom lowers the mood he settles to`() {
-        val w = world()
+    fun `what he does grows familiar by what it's like, not what it's called, and boredom lowers the mood he settles to`() {
+        // Sketching under another name: the same place, things, skill and product.
+        val doodle = content.verb("sketch")!!.copy(id = "doodle", phrase = "doodle in the sketchbook")
+        val w = BedroomWorld.create(content.copy(verbs = content.verbs + doodle), granted = content.gated)
         w.run(Intent.Do("sketch"))
-        assertTrue(w.obs().recentEvents.last().endsWith("new to you: stimulation +8, mood +3"), w.obs().recentEvents.last())
-        assertTrue("done a lot lately: gains at 80%" in w.activity("sketch").gives!!, w.activity("sketch").gives)
+        assertTrue(w.obs().recentEvents.last().endsWith("fresh to you (gains at 100%), stimulation +8, mood +3"), w.obs().recentEvents.last())
         w.run(Intent.Do("sketch"))
-        val again = w.obs().recentEvents.last()
-        assertTrue("new to you" !in again && "done a lot lately, so it paid 80%, stimulation -1" in again, again)
-        // Eating is routine: never new, never worn.
+        assertTrue("fresh to you (gains at 50%)" in w.obs().recentEvents.last(), w.obs().recentEvents.last())
+        w.run(Intent.Do("sketch"))
+        assertTrue(w.activity("sketch").gives!!.endsWith("familiar (gains at 30%), stimulation -2, mood +1"), w.activity("sketch").gives)
+        // He has never doodled, but only its name is new: barely fresher than sketching.
+        val doodles = w.activity("doodle").gives!!
+        val percent = Regex("""familiar \(gains at (\d+)%\)""").find(doodles)?.groupValues?.get(1)?.toInt()
+        assertTrue(percent != null && percent <= 40, doodles)
+        // Eating is routine: neither fresh nor familiar.
         w.run(Intent.Do("eat"))
-        assertTrue(w.obs().recentEvents.last().let { "finished eat: used 1 meal, fullness +" in it && "new" !in it && "lately" !in it }, w.obs().recentEvents.last())
+        assertTrue(w.obs().recentEvents.last().let { "finished eat: used 1 meal, fullness +" in it && "fresh" !in it && "familiar" !in it }, w.obs().recentEvents.last())
 
         assertEquals(34.0, world(needs = NeedLevels(80, 70, 50, stimulation = 0)).snapshot().life!!.moodTarget)
     }
 
     @Test
-    fun `bored, what he has worn thin is refused until it wears off`() {
-        val w = world(needs = NeedLevels(80, 70, 50, stimulation = 10))
+    fun `bored, what is familiar is refused until it fades`() {
+        val w = world(money = 100, needs = NeedLevels(80, 70, 50, stimulation = 10))
         repeat(3) { assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("sketch")).status) }
         val locked = w.activity("sketch").locked
-        assertTrue(locked!!.startsWith("you're bored, and you've done it a lot lately"), locked)
+        assertTrue(locked!!.startsWith("you're bored, and it's all familiar to you"), locked)
         assertTrue(failure(w.run(Intent.Do("sketch"))).startsWith("can't sketch: you're bored"))
-        // Upkeep and the oats never lock, and the sketching wears off within a few hours.
+        // Upkeep and the oats never lock, and sketching fades back to fresh enough within two days.
         assertNull(w.activity("eat").locked)
         val since = w.tick
-        while (w.activity("sketch").locked != null) {
-            w.step()
-            assertTrue(w.tick - since < w.clock.ticks(9 * 60), "still locked 9h later: ${w.activity("sketch").locked}")
+        while (w.activity("sketch").locked?.startsWith("you're bored") == true) {
+            repeat(w.clock.ticks(60)) { w.step() }
+            assertTrue(w.tick - since < w.clock.ticks(48 * 60), "still locked 2 days later: ${w.activity("sketch").locked}")
         }
 
         // Broke, work stays open however bored he is: it's his way to the money for something new.
