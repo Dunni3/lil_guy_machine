@@ -6,6 +6,8 @@ import dev.lilguy.agent.invent.InventionHandler
 import dev.lilguy.agent.shop.Shopper
 import dev.lilguy.agent.shop.ShoppingHandler
 import dev.lilguy.agent.shop.Trip
+import dev.lilguy.agent.web.Search
+import dev.lilguy.agent.web.Searcher
 
 import dev.lilguy.agent.art.ArtStudio
 import dev.lilguy.agent.art.Underway
@@ -85,6 +87,10 @@ class AgentMemory(
     private val inventor: Inventing? = null,
     /** Every design, built or not; called from the agent coroutine. */
     private val onDraft: (Drafted) -> Unit = {},
+    /** Searches the real web for him (the `search` look); without one he can't. */
+    private val searcher: Searcher? = null,
+    /** Every web search, found or not; called from the agent coroutine. */
+    private val onSearch: (Search) -> Unit = {},
 ) {
     /** What authored ops are written from: who he is, his state in the decision prompt's words, and that prompt's system message. */
     class Brief(val persona: String, val situation: String, val system: String)
@@ -116,6 +122,8 @@ class AgentMemory(
     private val keptAnswers = CopyOnWriteArrayList<Answer>()
 
     private val tripLog = CopyOnWriteArrayList<Trip>()
+    /** Every web search, oldest first; an entry is replaced when his thought and what he did next are known. */
+    private val searchLog = CopyOnWriteArrayList<Search>()
     private val revisionLog = CopyOnWriteArrayList<SelfRevision>()
 
     /** His latest kept thought shown as his plan (`shows_as: plan`), or null. */
@@ -199,6 +207,8 @@ class AgentMemory(
         val thoughts: List<SavedThought>,
         val answers: List<SavedAnswer>,
         val plan: SavedThought?,
+        /** His latest web searches, for the viewer and the day's count. */
+        val searches: List<Search> = emptyList(),
     )
 
     @Serializable
@@ -228,6 +238,7 @@ class AgentMemory(
         thoughts = keptThoughts.map { (id, t) -> SavedThought.of(t, id) },
         answers = keptAnswers.map { SavedAnswer(it.question, it.opened, SavedThought.of(it.reply)) },
         plan = plan?.let { SavedThought.of(it) },
+        searches = searchLog.toList().takeLast(KEPT_SEARCHES),
     )
 
     /** Puts back a checkpoint's [State]. Call before the run starts, after [connect]. */
@@ -244,6 +255,9 @@ class AgentMemory(
         keptAnswers.clear()
         s.answers.forEach { keptAnswers += Answer(it.question, it.opened, it.reply.thought()) }
         plan = s.plan?.thought()
+        searchLog.clear()
+        searchLog.addAll(s.searches)
+        searcher?.counted(s.searches)
     }
 
     /** Runs authored ops for [world]. Call before the run starts. */
@@ -262,6 +276,36 @@ class AgentMemory(
 
     /** Every thought so far, failed ones included, oldest first. Readable from any thread. */
     fun thoughts(): List<Thought> = thoughtLog.toList()
+
+    /** Every web search so far, failed and refused ones included, oldest first. Readable from any thread. */
+    fun searches(): List<Search> = searchLog.toList()
+
+    /** His latest [n] searches that found something, oldest first: what later prompts show of what he looked up. */
+    fun lookedUp(n: Int = SHOWN_ANSWERS): List<Search> = searchLog.filter { it.found }.takeLast(n)
+
+    /** True when he can search the web. */
+    val canSearch: Boolean get() = searcher != null
+
+    /** What searches the web for him, or null. */
+    val searcherId: String? get() = searcher?.id
+
+    /**
+     * He searches the real web for [query]: what comes back goes into the event stream (so his
+     * memories and recall have it) and his next prompts. Null when nothing searches ([canSearch]).
+     */
+    suspend fun searchWeb(query: String, obs: Observation): Search? {
+        val s = searcher ?: return null
+        val search = s.search(query, obs)
+        searchLog += search
+        onSearch(search)
+        search.remembered()?.let { append(obs, EventKind.Search, it) }
+        return search
+    }
+
+    /** The searches of the decision at [tick] that don't have it yet get [change]. */
+    private fun annotateSearches(tick: Long, change: (Search) -> Search?) {
+        searchLog.forEachIndexed { i, s -> if (s.tick == tick) change(s)?.let { searchLog[i] = it } }
+    }
 
     /** Every shopping trip so far, failed ones included, oldest first. Readable from any thread. */
     fun trips(): List<Trip> = tripLog.toList()
@@ -338,6 +382,7 @@ class AgentMemory(
      */
     suspend fun acted(obs: Observation, intent: Intent, brief: Brief? = null) {
         chosen = Chosen(intent, obs.clock)
+        annotateSearches(obs.tick) { s -> if (s.then == null) s.copy(then = Describe.action(intent)) else null }
         brief?.let { authors.acted(obs, intent, it.persona, it.situation, it.system) }
         studio?.word(obs)
         if (scorer != null) {
@@ -362,6 +407,7 @@ class AgentMemory(
      */
     fun thought(obs: Observation, text: String, thinker: String): Thought? {
         val words = text.trim()
+        if (words.isNotEmpty()) annotateSearches(obs.tick) { s -> if (s.thought == null) s.copy(thought = words) else null }
         if (words.isEmpty() || words == plan?.text) return null
         decidingThinker = thinker
         val t = Thought(obs.tick, obs.clock?.day, obs.clock?.time, thinker, words, raw = null, usage = dev.lilguy.decision.Usage(), latency = kotlin.time.Duration.ZERO)
@@ -514,8 +560,11 @@ class AgentMemory(
         /** Most events scored for significance in one request. */
         const val SCORE_BATCH = 200
 
-        /** How many of his latest answers each prompt shows. */
+        /** How many of his latest answers (and, apart, searches) each prompt shows. */
         const val SHOWN_ANSWERS = 2
+
+        /** How many searches a checkpoint keeps: as many as the viewer's log. */
+        const val KEPT_SEARCHES = 300
 
         /** Most recollections one [search] returns, of the latest [SEARCHED] it looks through. */
         const val SEARCH_RESULTS = 5

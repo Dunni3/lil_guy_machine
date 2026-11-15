@@ -1,10 +1,10 @@
-import type { CatalogItem, CatalogState, Content, LifeState, SavedRun, SelfModelView, Settings, ThoughtView, TripView } from "../../../protocol/ts/protocol";
+import type { CatalogItem, CatalogState, Content, LifeState, SavedRun, SearchView, SelfModelView, Settings, ThoughtView, TripView } from "../../../protocol/ts/protocol";
 import { COLORS, GROUP_COLORS } from "./paper";
 import { ADMIN_ROWS, LABELS, SIGN_IN, clockNote, help, isAction, pickedRun, plural, runLine, runsValue, stamp, summary, value, type RunRow } from "./run";
 
-export type TabId = "run" | "shop" | "thoughts" | "memory" | "self" | "trips";
+export type TabId = "run" | "shop" | "thoughts" | "web" | "memory" | "self" | "trips";
 export const TABS: { id: TabId; title: string }[] = [
-  { id: "run", title: "RUN" }, { id: "shop", title: "SHOP" }, { id: "thoughts", title: "THOUGHTS" },
+  { id: "run", title: "RUN" }, { id: "shop", title: "SHOP" }, { id: "thoughts", title: "THOUGHTS" }, { id: "web", title: "WEB" },
   { id: "memory", title: "MEMORY" }, { id: "self", title: "SELF" }, { id: "trips", title: "TRIPS" },
 ];
 
@@ -76,14 +76,25 @@ export function entries(tab: TabId, v: PageView): Entry[] {
       });
     case "thoughts": {
       const plan = life.mind.plan?.seq;
-      return [...life.logs.thoughts].reverse().map((t) => ({
+      return [...life.logs.thoughts].reverse().map((t) => {
+        const searched = searchedAt(life, t.tick).length;
+        return {
         key: String(t.seq),
-        title: at(t.day, t.time, t.tick, life) + (t.seq === plan ? " · his plan" : "") + (t.asked.length ? ` · asked ${t.asked.length}` : ""),
+        title: at(t.day, t.time, t.tick, life) + (t.seq === plan ? " · his plan" : "") + (t.asked.length ? ` · asked ${t.asked.length}` : "") + (searched ? ` · searched ${searched}` : ""),
         sub: t.text ?? `no thought: ${t.error ?? "?"}`,
         subColor: t.text === null ? COLORS.failed : COLORS.muted,
         mark: t.seq === plan ? COLORS.accent : null,
-      }));
+        };
+      });
     }
+    case "web":
+      return [...life.logs.searches].reverse().map((s) => ({
+        key: String(s.seq),
+        title: `${at(s.day, s.time, s.tick, life)} · "${s.query}"`,
+        sub: s.refused ? "not searched: enough for today" : s.error !== null ? `failed: ${s.error}` : s.thought ?? s.summary ?? s.sources.map((x) => x.title).join(", "),
+        subColor: s.error !== null && !s.refused ? COLORS.failed : COLORS.muted,
+        mark: s.error !== null ? (s.refused ? COLORS.barBg : COLORS.failed) : COLORS.accent,
+      }));
     case "memory": {
       const recent = outcomes(life).length;
       return [
@@ -131,6 +142,9 @@ export function empty(tab: TabId, v: PageView): string {
   switch (tab) {
     case "shop": return "There's no shop in this room.";
     case "thoughts": return life.run.models.thoughts ? "He hasn't thought anything yet." : "Nothing writes his thoughts in this setup: the run needs a writer endpoint (WRITER_ENDPOINT).";
+    case "web": return life.run.models.search === null
+      ? "He can't search the web in this setup: it needs a model that calls tools deciding (ENDPOINT=gemini) and a search: block in config/endpoints.yaml."
+      : `He hasn't searched the web yet. He can, with ${life.run.models.search}, whenever he's curious.`;
     case "self": return "Nothing revises his self-model in this setup: the run needs a writer endpoint.";
     case "trips": return life.run.state === "ready" ? "No trips yet: the run hasn't started." : "He hasn't been shopping yet. Trips need a shopper: a writer endpoint, or a picking model.";
     default: return "";
@@ -147,6 +161,11 @@ export function detail(tab: TabId, v: PageView, entry: Entry): Para[] {
     case "thoughts": {
       const t = life.logs.thoughts.find((x) => String(x.seq) === entry.key);
       if (t) thoughtDetail(out, life, t);
+      break;
+    }
+    case "web": {
+      const s = life.logs.searches.find((x) => String(x.seq) === entry.key);
+      if (s) searchDetail(out, life, s);
       break;
     }
     case "memory": {
@@ -269,6 +288,49 @@ function thoughtDetail(out: Detail, life: LifeState, t: ThoughtView) {
     if (a.opened.length) out.para(`the oracle opened: ${a.opened.join(", ")}`, SCALE.small, COLORS.muted);
     out.para(a.answer ?? "no answer", SCALE.body, a.answer === null ? COLORS.failed : COLORS.code, 24);
   });
+  const searched = searchedAt(life, t.tick);
+  searched.forEach((s, i) => {
+    out.head(`HE SEARCHED THE WEB FIRST${searched.length > 1 ? ` (${i + 1} of ${searched.length})` : ""} · more under WEB`);
+    out.para(`"${s.query}"`, SCALE.body, COLORS.ink);
+    out.para(s.summary ?? (s.error !== null ? `failed: ${s.error}` : s.sources.map((x) => x.title).join(", ")), SCALE.small, s.error !== null ? COLORS.failed : COLORS.code, 24);
+  });
+}
+
+/** His searches made at the decision of [tick]: the ones he did before the thought of that tick. */
+function searchedAt(life: LifeState, tick: number): SearchView[] {
+  return life.logs.searches.filter((s) => s.tick === tick && !s.refused);
+}
+
+function searchDetail(out: Detail, life: LifeState, s: SearchView) {
+  out.head(`${at(s.day, s.time, s.tick, life).toUpperCase()} · HE SEARCHED THE WEB FOR`);
+  out.para(`"${s.query}"`, SCALE.title, COLORS.ink);
+  if (s.queries.length) out.para(`sent as: ${s.queries.join(" · ")}`, SCALE.small, COLORS.muted);
+  out.head("WHAT WENT THROUGH HIS HEAD, AS HE CHOSE WHAT TO DO NEXT");
+  out.para(s.thought ?? (s.then === null ? "(still deciding)" : "(no thought)"), SCALE.body, s.thought ? COLORS.code : COLORS.muted);
+  if (s.then) out.para(`then: ${s.then}`, SCALE.small, COLORS.ink, 0, 6);
+  const others = life.logs.searches.filter((x) => x.tick === s.tick && x.seq !== s.seq);
+  if (others.length) out.para(`also searched then: ${others.map((x) => `"${x.query}"`).join(", ")}`, SCALE.small, COLORS.muted, 0, 4);
+  if (s.refused) {
+    out.head("NOT SEARCHED");
+    out.para(s.error ?? "He'd searched enough for today.", SCALE.body, COLORS.muted);
+    return;
+  }
+  if (s.error !== null) {
+    out.head("THE SEARCH FAILED");
+    out.para(s.error, SCALE.body, COLORS.failed);
+    return;
+  }
+  if (s.summary) {
+    out.head("WHAT THE RESULTS SAY");
+    out.para(s.summary);
+  }
+  out.head(s.sources.length ? `WHERE FROM · ${plural(s.sources.length, "page")}` : "NO PAGES CAME BACK");
+  for (const x of s.sources) {
+    out.para(x.title, SCALE.body, COLORS.ink, 0, 8);
+    out.para(x.url, SCALE.small, COLORS.muted, 16);
+    if (x.snippet) out.para(x.snippet, SCALE.small, COLORS.code, 16);
+  }
+  out.para(`${s.searcher} · ${(s.latency_ms / 1000).toFixed(1)} s`, SCALE.small, COLORS.muted, 0, 14);
 }
 
 /** What he did lately: the outcomes in the events log, newest last. */

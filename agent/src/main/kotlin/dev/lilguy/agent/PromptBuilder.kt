@@ -55,6 +55,8 @@ class PromptBuilder(
         val tools: (Observation) -> ToolSet,
         val status: (Observation) -> Observation,
         val call: (Intent) -> Pair<String, JsonObject>,
+        /** A line before the closing instruction, when there's something to point out (that he hasn't searched today). */
+        val note: (Observation) -> String? = { null },
     )
 
     /** A fixed system prompt and persona. */
@@ -138,6 +140,7 @@ class PromptBuilder(
             appendLine(STATUS_HEADER)
             appendLine(statusJson.encodeToString(Observation.serializer(), turn.status(obs)))
             recall(memories, thought, found)
+            turn.note(obs)?.let { appendLine(it) }
             append(if (tools.looks.isEmpty()) CALL else LOOK_THEN_CALL)
         }
         messages += Message(Message.Role.User, user)
@@ -177,7 +180,7 @@ class PromptBuilder(
         }
         if (found.isNotEmpty()) {
             state = JsonObject(state + ("found_out" to JsonArray(found.map(::JsonPrimitive))))
-            instructions += " `state.found_out` is what he found out lately by asking how his world works: questions he asked and their answers, oldest first."
+            instructions += " `state.found_out` is what he found out lately by asking how his world works or looking things up online: questions he asked and their answers, oldest first."
         }
         return set.copy(state = state, instructions = instructions)
     }
@@ -186,7 +189,7 @@ class PromptBuilder(
         private const val OBSERVATION_HEADER = "Observation:"
         const val MEMORY_HEADER = "What you remember from earlier (memories, and thoughts you had), oldest first:"
         const val THOUGHT_HEADER = "What you decided the last time you stopped to think (your plan for now):"
-        const val FOUND_HEADER = "What you found out lately by asking how your world works, oldest first:"
+        const val FOUND_HEADER = "What you found out lately, by asking how your world works or looking things up online, oldest first:"
         private const val ASK = "Choose your next action."
         private const val STATUS_HEADER = "How things stand now:"
         private const val HISTORY_HEADER = "Your recent actions, oldest first, are the calls below; each result says when it started and how it ended."

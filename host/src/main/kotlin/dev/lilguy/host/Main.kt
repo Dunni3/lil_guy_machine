@@ -30,6 +30,7 @@ import kotlin.time.Duration.Companion.seconds
  * - `LILGUY_ENDPOINT` names the deciding endpoint in `LILGUY_CONFIG` (config/endpoints.yaml), with
  *   `LILGUY_MEMORY_ENDPOINT`, `LILGUY_WRITER_ENDPOINT`, `LILGUY_RECALL_ENDPOINT`, `LILGUY_PAINTER_ENDPOINT` and `LILGUY_BEAM` as for
  *   the desktop; unset, the scripted policy runs and nothing calls a model;
+ * - `LILGUY_SEARCH=none` keeps him off the web even when the config has a `search:` block (he searches only when a model that calls tools decides);
  * - `LILGUY_INVENTOR=1` has him invent from a few fixed designs, so he invents with no endpoint;
  * - `LILGUY_PAINTER=<seconds>` draws his art with random picks at that latency, so he paints with no endpoint;
  * - `LILGUY_START_ITEMS` and `LILGUY_SCRIPT`, as for the desktop's screenshots: what he starts with, and verbs the scripted policy does first;
@@ -59,6 +60,7 @@ fun main() {
         painterEndpoint = get("LILGUY_PAINTER_ENDPOINT"),
         beam = get("LILGUY_BEAM")?.toIntOrNull(),
         days = days,
+        search = get("LILGUY_SEARCH"),
     )).let { s -> get("LILGUY_PAINTER")?.toDoubleOrNull()?.let { secs -> s.copy(painter = { RandomPicker(secs.seconds, seed = System.nanoTime()) }) } ?: s }
         .let { s -> if (get("LILGUY_INVENTOR").isNullOrEmpty()) s else s.copy(inventor = { CannedInventor() }) }.let { s ->
         val extra = get("LILGUY_START_ITEMS").orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
@@ -103,6 +105,7 @@ private fun roles(setup: ModelSetup, get: (String) -> String?): String = listOfN
     get("LILGUY_WRITER_ENDPOINT")?.takeIf { setup.writerModel != null }?.let { "writer $it" },
     get("LILGUY_RECALL_ENDPOINT")?.takeIf { setup.recallScorer != null }?.let { "recall $it" },
     get("LILGUY_PAINTER_ENDPOINT")?.takeIf { setup.painter != null && get("LILGUY_PAINTER")?.toDoubleOrNull() == null }?.let { "painter $it" },
+    setup.search?.let { "searches the web" },
 ).takeIf { it.isNotEmpty() }?.joinToString(", ", " (", ")").orEmpty()
 
 private const val PLATFORM = "host"

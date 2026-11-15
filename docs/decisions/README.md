@@ -87,3 +87,4 @@ these hold the outcome. Skim this index before related changes.
 - 2026-11-15 [A text model decides by calling his verbs as tools; Jev keeps recall, significance and painting](2026-11-15-a-text-model-decides-by-calling-his-verbs-as-tools.md)
 - 2026-11-15 [A model that calls tools can look before it acts, and thinks as it chooses; no think verb for it](2026-11-15-a-tool-model-looks-before-it-acts-and-thinks-as-it-chooses.md)
 - 2026-11-15 [He builds what he invents at the workbench a shape at a time](2026-11-15-he-builds-what-he-invents-at-the-workbench-a-shape-at-a-time.md)
+- 2026-11-15 [He searches the real web as a look, read-only, through Gemini grounded on Google Search](2026-11-15-he-searches-the-real-web-as-a-look.md)

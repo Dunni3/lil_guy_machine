@@ -10,7 +10,10 @@ import dev.lilguy.decision.EndpointConfig
 import dev.lilguy.decision.ScoreRequest
 import dev.lilguy.decision.ScoreResult
 import dev.lilguy.decision.Scorer
+import dev.lilguy.decision.SearchConfig
 import dev.lilguy.decision.Usage
+import dev.lilguy.decision.WebResults
+import dev.lilguy.decision.WebSearch
 import dev.lilguy.sim.GameClock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -44,15 +47,21 @@ enum class TokenPurpose {
     @SerialName("shop") Shop,
     /** The design of something he invents. */
     @SerialName("invent") Invent,
+    /** A search of the real web, and what its results say. */
+    @SerialName("search") Search,
 }
 
-/** Dollars per million tokens, from an endpoint's `price_in` and `price_out`. */
-data class TokenPrice(val inPerMillion: Double, val outPerMillion: Double) {
-    fun cost(usage: Usage) = (usage.promptTokens * inPerMillion + usage.completionTokens * outPerMillion) / 1_000_000
+/** Dollars per million tokens, from an endpoint's `price_in` and `price_out`, plus [perCall] for APIs that bill by the request. */
+data class TokenPrice(val inPerMillion: Double, val outPerMillion: Double, val perCall: Double = 0.0) {
+    fun cost(usage: Usage) = (usage.promptTokens * inPerMillion + usage.completionTokens * outPerMillion) / 1_000_000 + perCall
 
     companion object {
         fun of(config: EndpointConfig): TokenPrice? =
             if (config.priceIn == null && config.priceOut == null) null else TokenPrice(config.priceIn ?: 0.0, config.priceOut ?: 0.0)
+
+        fun of(config: SearchConfig): TokenPrice? =
+            if (config.priceIn == null && config.priceOut == null && config.pricePerSearch == null) null
+            else TokenPrice(config.priceIn ?: 0.0, config.priceOut ?: 0.0, config.pricePerSearch ?: 0.0)
     }
 }
 
@@ -152,6 +161,39 @@ class TokenLedger {
                 throw e
             }
         }
+    }
+
+    /** [search], reporting every search here as [TokenPurpose.Search], with the query and what came back. */
+    fun meter(search: WebSearch, price: TokenPrice? = null): WebSearch = object : WebSearch {
+        override val id: String get() = search.id
+
+        override suspend fun search(query: String): WebResults {
+            val tick = tickNow()
+            val started = TimeSource.Monotonic.markNow()
+            val request = buildJsonObject { put("query", JsonPrimitive(query)) }
+            try {
+                return search.search(query).also { r ->
+                    record(tick, TokenPurpose.Search, id, price, r.usage, 1, r.latency.inWholeMilliseconds, failed = false)
+                    sink?.modelCall(tick, TokenPurpose.Search, id, price, r.usage, 1, r.latency.inWholeMilliseconds, false, request = request, response = resultsJson(r))
+                }
+            } catch (e: DecisionFailed) {
+                record(tick, TokenPurpose.Search, id, price, e.usage, 1, started.elapsedNow().inWholeMilliseconds, failed = true)
+                sink?.modelCall(tick, TokenPurpose.Search, id, price, e.usage, 1, started.elapsedNow().inWholeMilliseconds, true, request = request, response = LifeRecorder.responseJson(null, e.attempts, e.message))
+                throw e
+            }
+        }
+    }
+
+    private fun resultsJson(r: WebResults) = buildJsonObject {
+        r.summary?.let { put("summary", JsonPrimitive(it)) }
+        put("queries", JsonArray(r.queries.map { JsonPrimitive(it) }))
+        put("sources", JsonArray(r.sources.map { s ->
+            buildJsonObject {
+                put("title", JsonPrimitive(s.title))
+                put("url", JsonPrimitive(s.url))
+                s.snippet?.let { put("snippet", JsonPrimitive(it)) }
+            }
+        }))
     }
 
     /** Writes every call so far to [file] as JSONL, replacing it. */

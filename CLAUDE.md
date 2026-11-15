@@ -63,7 +63,9 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   A model that calls tools (an `openai_compat` endpoint) decides by calling one of his verbs as a tool
   (`agent/.../BedroomTools.kt`, `PromptBuilder.ToolTurn`; `docs/decisions/2026-11-15-a-text-model-decides-*`): his recent actions
   go back as his own calls with their outcomes as results; each call's `thought` is his thought of the moment (`AgentMemory.thought`), and before
-  acting he may look (`ToolSet.looks`: `recall`, `AgentMemory.search`; `ask`, the oracle), so he isn't offered think. `menu.yaml` groups his options into a tree for Jev, who walks down it by beam search
+  acting he may look (`ToolSet.looks`: `recall`, `AgentMemory.search`; `ask`, the oracle; `search`, the real web: `agent/.../web/Searcher.kt` over
+  `decision/.../WebSearch.kt`, Gemini grounded on Google Search or Brave, from endpoints.yaml's `search:` block, shown in the web menu's WEB tab;
+  `docs/decisions/2026-11-15-he-searches-the-real-web-*`), so he isn't offered think. `menu.yaml` groups his options into a tree for Jev, who walks down it by beam search
   (`decision/.../BeamSearch.kt`, `beam` on the endpoint) instead of picking from one flat list. Skills
   (`vocabulary.skills`, rules.yaml `skills`) rise with `practice` and reading. Needs are energy,
   fullness, mood, stimulation and frustration. `make content-docs` regenerates the content's
@@ -162,7 +164,7 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   `art.ts` (hung frames, the pieces on the desk and easel, brush, palette and sparkles; `PaintScene.kt`), `easel.ts` (the piece under way played out
   stroke by stroke at the host's pace from `state.easel`). `src/guy/`: `blob.ts` (`Blob.kt`'s animation, his clay pieces and the lantern that follows him). `src/ui/`: what's drawn over the room, in the
   same canvas as panels from 2D canvases redrawn only when they change (`layer.ts`; no DOM over the room but the sign-in box): `hud.ts` (needs card, bubble,
-  banner, the catalogue while he buys; `RoomView.kt`), `menu.ts` and `pages.ts` (the menu's keys, and clicks and the wheel on the spots `menuCard.ts` records as it draws, and its RUN, SHOP, THOUGHTS, MEMORY, SELF and TRIPS tabs;
+  banner, the catalogue while he buys; `RoomView.kt`), `menu.ts` and `pages.ts` (the menu's keys, and clicks and the wheel on the spots `menuCard.ts` records as it draws, and its RUN, SHOP, THOUGHTS, WEB, MEMORY, SELF and TRIPS tabs;
   `GameMenu.kt`), `menuCard.ts` (drawing it), `run.ts` (`RunControls.kt`), `keys.ts` (`RemoteInput.kt`'s keys), `admin.ts` (the password sign-in and commands).
 - Part lists: `parts/` (pure Kotlin): `Part.kt` (`Part`, `PartList`; the clay fields `cut`, `hole`, `arc`, `glow`, `opacity` and `ring`/`dome`, which `:app` ignores),
   `ClayParts.kt` (the clay models and the guy's pieces), `RoomParts.kt` (the crayon furniture, props, the room's constants), `DecorParts.kt`, `PartExport.kt`

@@ -1273,6 +1273,12 @@
                     "items": {
                         "$ref": "#/$defs/DrawingView"
                     }
+                },
+                "searches": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/SearchView"
+                    }
                 }
             },
             "required": [
@@ -1283,7 +1289,8 @@
                 "memories",
                 "revisions",
                 "trips",
-                "drawings"
+                "drawings",
+                "searches"
             ],
             "additionalProperties": false
         },
@@ -1552,6 +1559,16 @@
                             "type": "null"
                         }
                     ]
+                },
+                "search": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
                 }
             },
             "required": [
@@ -1560,7 +1577,8 @@
                 "thoughts",
                 "self",
                 "scorer",
-                "artist"
+                "artist",
+                "search"
             ],
             "additionalProperties": false
         },
@@ -2021,6 +2039,119 @@
             ],
             "additionalProperties": false
         },
+        "SearchView": {
+            "title": "SearchView",
+            "type": "object",
+            "properties": {
+                "seq": {
+                    "type": "integer"
+                },
+                "tick": {
+                    "type": "integer"
+                },
+                "day": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "time": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "query": {
+                    "type": "string"
+                },
+                "searcher": {
+                    "type": "string"
+                },
+                "summary": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "sources": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/SourceView"
+                    }
+                },
+                "queries": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "error": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "refused": {
+                    "type": "boolean"
+                },
+                "latency_ms": {
+                    "type": "integer"
+                },
+                "thought": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "then": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "seq",
+                "tick",
+                "day",
+                "time",
+                "query",
+                "searcher",
+                "summary",
+                "sources",
+                "queries",
+                "error",
+                "refused",
+                "latency_ms",
+                "thought",
+                "then"
+            ],
+            "additionalProperties": false
+        },
         "SelfModelView": {
             "title": "SelfModelView",
             "type": "object",
@@ -2169,6 +2300,34 @@
             "required": [
                 "type",
                 "state"
+            ],
+            "additionalProperties": false
+        },
+        "SourceView": {
+            "title": "SourceView",
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                },
+                "snippet": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "title",
+                "url",
+                "snippet"
             ],
             "additionalProperties": false
         },

@@ -3,9 +3,12 @@ package dev.lilguy.decision
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.request.HttpRequestBuilder
+import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
@@ -23,7 +26,12 @@ import kotlin.time.Duration.Companion.seconds
  * JSON over HTTP for the backends: bearer auth, and 429 / 5xx (including 529 "overloaded")
  * retried with backoff 1 s, 2 s, 4 s. Anything else fails at once as [DecisionFailed].
  */
-internal class JsonHttp(timeout: Duration, private val apiKey: String?) : AutoCloseable {
+internal class JsonHttp(
+    timeout: Duration,
+    private val apiKey: String?,
+    /** Sent with every request, after the bearer key (an API's own key header, say). */
+    private val extraHeaders: Map<String, String> = emptyMap(),
+) : AutoCloseable {
     private val client = HttpClient(OkHttp) {
         expectSuccess = false
         install(HttpTimeout) {
@@ -33,14 +41,32 @@ internal class JsonHttp(timeout: Duration, private val apiKey: String?) : AutoCl
     }
 
     /** [attempts] and [usage] so far go into any [DecisionFailed], for the log. */
-    suspend fun post(url: String, body: JsonObject, attempts: List<Attempt> = emptyList(), usage: Usage = Usage()): JsonObject {
+    suspend fun post(url: String, body: JsonObject, attempts: List<Attempt> = emptyList(), usage: Usage = Usage()): JsonObject =
+        send(url, attempts, usage) {
+            client.post(url) {
+                auth()
+                setBody(TextContent(body.toString(), ContentType.Application.Json))
+            }
+        }
+
+    /** A GET of [url] (its query already encoded), retried as [post] is. */
+    suspend fun get(url: String): JsonObject = send(url, emptyList(), Usage()) {
+        client.get(url) {
+            auth()
+            header(HttpHeaders.Accept, "application/json")
+        }
+    }
+
+    private fun HttpRequestBuilder.auth() {
+        apiKey?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+        extraHeaders.forEach { (k, v) -> header(k, v) }
+    }
+
+    private suspend fun send(url: String, attempts: List<Attempt>, usage: Usage, request: suspend () -> HttpResponse): JsonObject {
         var backoff = 1.seconds
         while (true) {
             val (status, text) = try {
-                val response = client.post(url) {
-                    apiKey?.let { header(HttpHeaders.Authorization, "Bearer $it") }
-                    setBody(TextContent(body.toString(), ContentType.Application.Json))
-                }
+                val response = request()
                 response.status to response.bodyAsText()
             } catch (e: CancellationException) {
                 throw e

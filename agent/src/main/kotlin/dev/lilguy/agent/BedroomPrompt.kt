@@ -310,14 +310,15 @@ ${lookText(looks)}
         |After that you may see what you remember from earlier (memories, and thoughts you had), and what you decided the last time you stopped to think. Those thoughts are your own words: let the plans in them shape what you do with your hours.
     """.trimMargin()
 
-    /** The system prompt's paragraph on [looks] ("recall", "ask"), with its blank line before; empty for none. */
+    /** The system prompt's paragraph on [looks] ("recall", "ask", "search"), with its blank line before; empty for none. */
     private fun lookText(looks: Set<String>): String {
         val what = listOfNotNull(
             "`recall` searches your memories and earlier thoughts for something you're trying to remember".takeIf { "recall" in looks },
             "`ask` asks how something in your world works".takeIf { "ask" in looks },
+            "`search` searches the real internet, outside your room, for anything you're curious about".takeIf { "search" in looks },
         )
         if (what.isEmpty()) return ""
-        return "\n        |\n        |Before you act you may look, up to ${BedroomTools.MAX_LOOKS} times a turn, and looking takes no time: ${what.joinToString(", and ")}. Look when it would change what you do: what you meant to do, how something went last time, how to reach something you can't do yet."
+        return "\n        |\n        |Before you act you may look, up to ${BedroomTools.MAX_LOOKS} times a turn, and looking takes no time: ${what.joinToString(", and ")}. Look when it would change what you do: what you meant to do, how something went last time, how to reach something you can't do yet.${if ("search" in looks) " And you're curious about the world outside your room: the internet is how you learn about it. When something you do or see makes you wonder (a subject to draw, how a technique works, a book or record, an idea you had), search for it; what you find may give you ideas for what to do next." else ""}"
     }
 
     /**

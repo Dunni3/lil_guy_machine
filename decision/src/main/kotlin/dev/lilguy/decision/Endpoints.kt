@@ -16,6 +16,8 @@ import kotlin.time.Duration.Companion.milliseconds
 data class EndpointsFile(
     val endpoints: Map<String, EndpointConfig> = emptyMap(),
     val agents: List<AgentConfig> = emptyList(),
+    /** How he searches the web, if he does ([WebSearches]); a model that calls tools gets a `search` look. */
+    val search: SearchConfig? = null,
 ) {
     /** The endpoint the first character is configured to use, if any. */
     val defaultEndpoint: String? get() = agents.firstOrNull()?.endpoint
