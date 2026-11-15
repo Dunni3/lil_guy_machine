@@ -83,7 +83,7 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
 - Effects with reach (`docs/decisions/2026-11-15-light-is-an-effect-with-reach-*`): `sim/.../Effects.kt` (the engine: an
   `EffectKind`, `Emitter`s, a `Field` per kind over the map's tiles, walls block, recomputed only when its inputs change) and
   `sim/.../Lighting.kt` (light, the first kind: rules.yaml `light`, daylight by hour and through room `windows`, items' `light`,
-  his lantern; the weather's `daylight()` dims it, and a station logs it at its tile; the landmark phrases in `Observation.light`; `viewWeight` for comfort).
+  his lantern; a `lamp` (the affordance) is lit on its timer unless he switches it, the `switch` op and `BedroomWorld.lampLit`, `docs/decisions/2026-11-15-lamps-run-on-timers-*`; the weather's `daylight()` dims it, and a station logs it at its tile; the landmark phrases in `Observation.light`; `viewWeight` for comfort).
   `BedroomWorld.lightField()`; a verb's `needs: { light: N }` locks it where it would be done (`darkLock`); at night `nearby`
   holds what's lit, the rest `remembered` if he knows it's there. The protocol's `Entity.light` is what the web lights the scene with.
 - Scenario wiring, scripted policies, lockstep runner: `agent/.../Scenario.kt` (`Scenario` enum),

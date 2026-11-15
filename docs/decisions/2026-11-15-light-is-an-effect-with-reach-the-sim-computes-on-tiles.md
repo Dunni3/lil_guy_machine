@@ -66,5 +66,5 @@ gone), the same every decision, so cacheable.
 With the amber floor lamp put at `pond_shore`, at 22:00 the pond is explorable and he sees its edge
 and the lamp.
 
-**Not done.** Lamps are always on (no switch). His code can't read or emit effects (`Scripts.kt`, a later session).
+**Not done.** Lamps were always on here; they now run on timers he switches (`2026-11-15-lamps-run-on-timers-he-switches.md`). His code can't read or emit effects (`Scripts.kt`, a later session).
 Shade from furniture, and a carried lantern as an item, are possible next steps.

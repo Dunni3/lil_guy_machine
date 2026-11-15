@@ -146,6 +146,9 @@ light:
   indoors: 0.5
   window: { share: 0.8, radius: 8 }
   daylight: { "00:00": 0.5, "05:00": 0.5, "06:30": 6, "09:00": 10, "17:30": 9, "19:30": 4, "20:30": 1, "21:00": 0.5 }
+  # When a lamp (the `lamp` affordance) is lit if it has no `light.timer` of its own and he hasn't
+  # switched it on or off. Across midnight when off is earlier.
+  timer: { on: "18:00", off: "00:00" }
 
 # Samples he keeps are his collection, on a shelf in his room: each kind he has adds comfort, up to `max` kinds.
 collection:

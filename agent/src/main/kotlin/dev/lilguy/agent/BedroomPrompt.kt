@@ -277,7 +277,7 @@ object BedroomPrompt {
         val wants = if (forSale.any { it.group != "food" }) "for food and for anything you want to own" else "for food"
         val bored = if (r.stimulationPerHour < 0 && r.boredMood > 0) ", less boredom" else ""
         val seen = content.comfort?.let { " Comfort is what you can see from where you are: the things near you count most, and ${if (content.light != null) "only what's lit; a dim one counts less, and in the dark nothing does" else "far ones count less"}." }.orEmpty()
-        val dark = content.light?.let { " Daylight comes in through the windows by day; at night it's dark but where a lamp reaches, and you can't make out what's in the dark. Some things need light where they're done (reading, art, exploring): in the dark they're locked." }.orEmpty()
+        val dark = content.light?.let { " Daylight comes in through the windows by day; at night it's dark but where a lamp reaches, and you can't make out what's in the dark. Some things need light where they're done (reading, art, exploring): in the dark they're locked. Lamps run on timers, and you can switch one on or off or back to its timer." }.orEmpty()
         val mood = if (decor) {
             "Mood drifts ${r.moodDriftPerHour.toInt()} an hour toward ${r.moodBaseline.toInt()} plus the comfort of what's round you$bored; nice things raise it for a while, and decor raises comfort by as much as you like it.$seen$dark"
         } else {

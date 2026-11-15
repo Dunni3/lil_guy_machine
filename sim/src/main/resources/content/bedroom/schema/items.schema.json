@@ -61,7 +61,8 @@
                 "specimen",
                 "buildable",
                 "site",
-                "recorder"
+                "recorder",
+                "lamp"
               ]
             },
             "additionalProperties": {
@@ -158,6 +159,29 @@
                   },
                   "radius": {
                     "type": "number"
+                  },
+                  "timer": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "on": {
+                            "type": "string"
+                          },
+                          "off": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "on",
+                          "off"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 },
                 "required": [

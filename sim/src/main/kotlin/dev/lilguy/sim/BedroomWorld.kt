@@ -110,6 +110,9 @@ class BedroomWorld private constructor(
     /** Patch to the tick it has grown back by, while it's bare. */
     private val bareUntil = linkedMapOf<String, Long>()
 
+    /** Lamps he has switched on or off (or back to their timer, which drops them from here); the rest are on their timers. */
+    private val lampModes = linkedMapOf<String, LampMode>()
+
     /** The run's weather, from the seed (Weather.kt); null without weather.yaml. */
     val weather: Weather? = startContent.weather?.let { Weather(it, seed) }
 
@@ -476,6 +479,37 @@ class BedroomWorld private constructor(
             return "design a new thing of your own and build it: ${r.uses.keys.joinToString(" or ") { useNoun(it) }}; materials from $${r.cheapest}"
         }
 
+        override fun switchLock(lamp: String, to: LampMode): String? {
+            val spec = content.item(lamp) ?: return null
+            if (lampMode(lamp) != to) return null
+            return when (to) {
+                LampMode.On -> "the ${spec.name} is already switched on"
+                LampMode.Off -> "the ${spec.name} is already switched off"
+                LampMode.Timer -> "the ${spec.name} is already on its timer (lit ${timerOf(spec).text})"
+            }
+        }
+
+        override fun switch(lamp: String, to: LampMode): String {
+            if (to == LampMode.Timer) lampModes.remove(lamp) else lampModes[lamp] = to
+            version++
+            val name = item(lamp).name
+            return when (to) {
+                LampMode.On -> "switched the $name on: "
+                LampMode.Off -> "switched the $name off: "
+                LampMode.Timer -> "put the $name "
+            } + switchText(lamp, to)
+        }
+
+        // Short: the option already names the lamp.
+        override fun switchText(lamp: String, to: LampMode): String {
+            val spec = item(lamp)
+            return when (to) {
+                LampMode.On -> "it stays on until you switch it again"
+                LampMode.Off -> "it stays off until you switch it again"
+                LampMode.Timer -> "back on its timer, lit ${timerOf(spec).text}" + if (lampLit(spec, to)) "" else " (off now)"
+            }
+        }
+
         override fun hangLock(tag: String): String? {
             if (countTag(tag) == 0) return "you have no ${noun(tag)} to hang"
             if (hung().size >= content.gallery.max) return "your wall is full (${content.gallery.max} pieces)"
@@ -609,9 +643,29 @@ class BedroomWorld private constructor(
 
     // --- light -----------------------------------------------------------------------------------
 
-    /** What gives off light now: each placed thing with a `light` (one he's carrying, where he is), but a patch that's been picked bare, and his [lantern]. */
+    /** How [lamp] is set: on its timer unless he has switched it. */
+    private fun lampMode(lamp: String): LampMode = lampModes[lamp] ?: LampMode.Timer
+
+    /** When [spec], a lamp, is lit on its timer: its own, or rules.yaml's. */
+    private fun timerOf(spec: ItemSpec): LampTimer = spec.light?.timer ?: content.light?.timer ?: LampTimer("18:00", "00:00")
+
+    /**
+     * Whether [spec]'s light is on now, set to [mode]: a lamp by its switch or its timer, a patch
+     * unless it's been picked bare, and anything else with a light always.
+     */
+    private fun lampLit(spec: ItemSpec, mode: LampMode = lampMode(spec.id)): Boolean {
+        if (spec.light == null || (bareUntil[spec.id] ?: 0) > ticks) return false
+        if (LAMP !in spec.affords) return true
+        return when (mode) {
+            LampMode.On -> true
+            LampMode.Off -> false
+            LampMode.Timer -> timerOf(spec).covers(clock.minuteOfDay(ticks))
+        }
+    }
+
+    /** What gives off light now: each placed thing whose light is on ([lampLit]; one he's carrying, where he is), and his [lantern]. */
     private fun lamps(lantern: Boolean = true): List<Emitter> = placed().mapNotNull { (spec, cell) ->
-        spec.light?.takeIf { (bareUntil[spec.id] ?: 0) <= ticks }?.let { Emitter(spec.id, "the ${spec.name}", EffectKind.Light, if (spec.id == carrying) guy.cell else cell, it.strength, it.radius) }
+        spec.light?.takeIf { lampLit(spec) }?.let { Emitter(spec.id, "the ${spec.name}", EffectKind.Light, if (spec.id == carrying) guy.cell else cell, it.strength, it.radius) }
     } + listOfNotNull(content.light?.lantern?.takeIf { lantern }?.let { Emitter(LANTERN, "your lantern", EffectKind.Light, guy.cell, it.strength, it.radius) })
 
     /**
@@ -1387,7 +1441,7 @@ class BedroomWorld private constructor(
             is Target.Tile -> walkTo(tile(t), describe(t))
         }
         is Intent.PickUp -> reject("there's nothing to pick up here: what you own is already yours, and do and buy fetch it for you")
-        is Intent.Use -> reject("use is for other rooms; here an item is used through a verb, do(verb, what, on)" + (content.verbs.firstOrNull { "on" in it.args }?.let { "; ${it.id} puts a ${noun(it.args.getValue("what"))} on the ${noun(it.args.getValue("on"))}" } ?: ""))
+        is Intent.Use -> reject("use is for other rooms; here an item is used through a verb, do(verb, what, on)" + (content.verbs.firstOrNull { "on" in it.args && "what" in it.args }?.let { "; ${it.id} puts a ${noun(it.args.getValue("what"))} on the ${noun(it.args.getValue("on"))}" } ?: ""))
         is Intent.Say -> say(intent)
         is Intent.Wait -> waitFor(intent)
         is Intent.Do -> planDo(intent)
@@ -1963,6 +2017,7 @@ class BedroomWorld private constructor(
             explored = explored.toList(),
             house = LinkedHashMap(house),
             bare = bareUntil.filterValues { it > ticks },
+            lamps = lampModes.mapValues { it.value.id },
             mail = mailbox.toList(),
             opened = opened.toList(),
             read = read.toList(),
@@ -2003,6 +2058,7 @@ class BedroomWorld private constructor(
         }
         explored.clear(); explored.addAll(s.explored.filter { layout.place(it) != null })
         bareUntil.clear(); s.bare.forEach { (id, t) -> if (content.item(id) != null) bareUntil[id] = t }
+        lampModes.clear(); s.lamps.forEach { (id, m) -> if (content.item(id)?.affords?.containsKey(LAMP) == true) lampModes[id] = LampMode.of(m) else dropped += "lamp '$id' is no longer a lamp in the content" }
         s.pieces.forEach { p ->
             if (has(p.item, "piece ${p.id}'s item")) pieces += Piece(p.id, p.item, p.commission, p.skill).also {
                 it.state = PieceState.valueOf(p.state.replaceFirstChar(Char::uppercase))
@@ -2180,7 +2236,8 @@ class BedroomWorld private constructor(
             ops.teaching(b.id)?.let { parts += "finishing it teaches you $it" }
         }
         // What it's for. When it's what a locked activity is missing, say so and what that activity gives.
-        usesOf(spec).forEach { a ->
+        // Switching a lamp is said with its light, below.
+        usesOf(spec).filter { a -> a.ops<SwitchOp>().isEmpty() }.forEach { a ->
             val locked = lockReason(a)
             val after = lockReason(a, extra = spec.id)
             val what = takes(a) + gives(a, forSale = true).let { if (it.isEmpty()) "" else ": $it" }
@@ -2196,7 +2253,7 @@ class BedroomWorld private constructor(
             comfort > 0 -> parts += "comfort +$comfort$seen: mood settles $comfort higher"
             comfort < 0 -> parts += "comfort $comfort$seen: you don't like it, so mood settles ${-comfort} lower"
         }
-        spec.light?.let { parts += "gives light ${Lighting.level(it.strength)}, reaching ${Lighting.level(it.radius)} tiles" }
+        spec.light?.let { parts += "gives light ${Lighting.level(it.strength)}, reaching ${Lighting.level(it.radius)} tiles" + if (LAMP in spec.affords) ", on a timer (lit ${timerOf(spec).text}) you can switch" else "" }
         newThingRate(spec).takeIf { it > 0 }?.let { parts += "new to you: ${newThingText(it)}" }
         if (spec.qualities.isNotEmpty()) parts += spec.qualities.keys.joinToString(", ")
         // What owning it opens up: items the shop holds back until he has this.
@@ -2221,10 +2278,11 @@ class BedroomWorld private constructor(
                 val state = when {
                     spec.id == music?.on -> "playing ${music!!.itemId}"
                     (bareUntil[spec.id] ?: 0) > ticks -> "bare"
+                    LAMP in spec.affords && !lampLit(spec) -> "off"
                     else -> null
                 }
                 val look = machines.look(spec.id)
-                val light = spec.light?.takeIf { state != "bare" }
+                val light = spec.light?.takeIf { lampLit(spec) }
                 add(
                     EntitySnapshot(
                         EntityId(spec.id), spec.group, cell.x + 0.5f, cell.y + 0.5f, if (spec.blocks) 1f else 0.2f, 0f, state, carriedBy = guy.id.takeIf { spec.id == carrying }, place = layout.placeOf(cell)?.id, color = custom[spec.id]?.color,
