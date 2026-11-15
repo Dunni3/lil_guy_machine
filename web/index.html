@@ -28,6 +28,26 @@
       background: #fde9c6; border: 0; border-radius: 12px; outline: 5px solid #e07f74; outline-offset: 3px;
     }
     #signin p { margin: 18px 0 0; color: #8a7464; font-size: 18px; text-align: center; }
+    /* The camera's buttons (ui/look.ts), bottom left, and the how-to line over them until the viewer first looks round. */
+    #look { position: fixed; left: 16px; bottom: 14px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+    #look[hidden], #look-teach[hidden] { display: none; }
+    #look-teach {
+      margin: 0; padding: 8px 14px; max-width: calc(100vw - 32px); box-sizing: border-box;
+      font: 600 14px/1.35 ui-rounded, system-ui, sans-serif; color: #4a3a4f;
+      background: #fff8ee; border: 3px solid #e8cfb2; border-radius: 14px;
+    }
+    #look-teach b { color: #c0504a; }
+    #look .bar { display: flex; gap: 4px; padding: 4px; background: #fff8ee; border: 4px solid #e8cfb2; border-radius: 999px; }
+    #look .bar span { width: 2px; margin: 6px 3px; background: #e8cfb2; border-radius: 1px; }
+    #look button {
+      min-width: 38px; height: 34px; padding: 0 12px; border: 0; border-radius: 999px; cursor: pointer;
+      font: 600 16px/1 ui-rounded, system-ui, sans-serif; color: #3a2a20; background: none;
+    }
+    #look button[data-look="left"], #look button[data-look="right"] { font-size: 22px; }
+    #look button:hover { background: #fde9c6; }
+    #look button.on { background: #e07f74; color: #fff8ee; }
+    /* On a phone, above the letters button rather than beside it. */
+    @media (max-width: 560px) { #look { bottom: 70px; } }
     /* Letters to him (ui/mail.ts): a button in the corner, and the panel it opens over the room. */
     #mail-open {
       position: fixed; right: 16px; bottom: 14px; padding: 10px 18px;
@@ -73,6 +93,18 @@
     <input id="password" type="password" autocomplete="current-password" spellcheck="false">
     <p id="signin-note">Enter signs in · Escape gives up</p>
   </form>
+  <div id="look" hidden>
+    <p id="look-teach" hidden><b>Look around:</b> drag to move · scroll or pinch to zoom · right-drag to turn</p>
+    <div class="bar" role="group" aria-label="Camera">
+      <button type="button" data-look="out" title="Zoom out (−)" aria-label="Zoom out">−</button>
+      <button type="button" data-look="in" title="Zoom in (+)" aria-label="Zoom in">+</button>
+      <button type="button" data-look="left" title="Turn left (Q)" aria-label="Turn left">⟲</button>
+      <button type="button" data-look="right" title="Turn right (E)" aria-label="Turn right">⟳</button>
+      <span aria-hidden="true"></span>
+      <button type="button" data-look="room" title="The whole room (UP)">Room</button>
+      <button type="button" data-look="follow" title="Follow him (DOWN)">Follow him</button>
+    </div>
+  </div>
   <button id="mail-open" type="button" hidden>Write to him</button>
   <section id="mail" hidden aria-label="Letters">
     <button id="mail-close" class="link" type="button" aria-label="Close">close</button>

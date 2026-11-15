@@ -11,6 +11,7 @@ import { Mail } from "./ui/mail";
 import { Hud } from "./ui/hud";
 import { lookOf, pressOf } from "./ui/keys";
 import { ThingLabel } from "./ui/label";
+import { LookControls } from "./ui/look";
 import { Layer } from "./ui/layer";
 import { Menu, type Act, type Spot } from "./ui/menu";
 import { MenuCard } from "./ui/menuCard";
@@ -65,6 +66,13 @@ const mail = new Mail(settings.life, settings.broadcast);
 const menu = new Menu();
 const hud = new Hud(layer, settings.broadcast);
 const card = new MenuCard(layer);
+const look = new LookControls(settings.broadcast, {
+  zoom: (factor) => view?.camera.zoom(factor),
+  orbit: (yaw) => view?.camera.orbit(yaw, 0),
+  mode: (mode) => {
+    if (view) view.camera.mode = mode;
+  },
+});
 const label = new ThingLabel(layer);
 
 /** The settings the admin last asked for, shown until the host's match (or the ask fails). */
@@ -110,13 +118,14 @@ const KEY_PAN = 0.1;
 /** The remote's keys, as `RemoteInput.kt` lays them out, and the keyboard's for looking round; nothing here moves the guy. */
 window.addEventListener("keydown", (e) => {
   if (settings.broadcast || signIn.open || mail.open) return;
-  const look = view && !menu.open ? lookOf(e) : null;
-  if (view && look) {
+  const step = view && !menu.open ? lookOf(e) : null;
+  if (view && step) {
     e.preventDefault();
     const h = canvas.clientHeight || window.innerHeight;
-    if (look.type === "pan") view.camera.pan(look.x * h * KEY_PAN, look.y * h * KEY_PAN, h);
-    else if (look.type === "orbit") view.camera.orbit(look.yaw, look.pitch);
-    else view.camera.zoom(look.factor);
+    if (step.type === "pan") view.camera.pan(step.x * h * KEY_PAN, step.y * h * KEY_PAN, h);
+    else if (step.type === "orbit") view.camera.orbit(step.yaw, step.pitch);
+    else view.camera.zoom(step.factor);
+    look.used();
     return;
   }
   const press = pressOf(e);
@@ -300,6 +309,7 @@ if (!settings.broadcast) {
     if (pointer.room.has(e.pointerId) && e.buttons) {
       // On the room, a press that moves is looking round; a still one is a click (the menu).
       lookRound(e.pointerId, e.clientX, e.clientY);
+      if (pointer.dragged) look.used();
       if (pointer.dragged) canvas.style.cursor = pointer.turn ? "ew-resize" : "grabbing";
       return;
     }
@@ -332,6 +342,7 @@ if (!settings.broadcast) {
       const r = canvas.getBoundingClientRect();
       const px = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? canvas.clientHeight : 1);
       view.camera.zoom(Math.exp(-px * (e.ctrlKey ? 0.01 : 0.0015)), ((e.clientX - r.left) / r.width) * 2 - 1, 1 - ((e.clientY - r.top) / r.height) * 2);
+      look.used();
       return;
     }
     const spot = v && menu.open ? spotAt(e) : null;
@@ -386,6 +397,13 @@ function draw() {
       life, content, speech: view.speech, making: view.making, banner: banner(life, open), hint: hint(open), menuOpen: open,
     }, renderer.camera, f, delta);
     if (!open && card.hover) setHover(null, null);
+    look.update(view.camera.mode, open || signIn.open || mail.open, delta);
+    // Over the room, the hand says it can be dragged; over the menu, the pointer is the card's.
+    if (!settings.broadcast && !pointer.room.size) {
+      const c = canvas.style.cursor;
+      if (!open && c === "") canvas.style.cursor = "grab";
+      else if (open && c === "grab") canvas.style.cursor = "";
+    }
     label.update(open ? null : hovered(), life, content, renderer.camera, f.u, delta);
     card.update(menu, v, f, pressed, delta);
     pressed = false;
