@@ -33,6 +33,8 @@ object Wire {
     fun encode(v: Viewer): String = json.encodeToString(Viewer.serializer(), v)
     fun encode(r: RunList): String = json.encodeToString(RunList.serializer(), r)
     fun runs(text: String): RunList = json.decodeFromString(RunList.serializer(), text)
+    fun <T> encode(serializer: kotlinx.serialization.KSerializer<T>, v: T): String = json.encodeToString(serializer, v)
+    fun <T> decode(serializer: kotlinx.serialization.KSerializer<T>, text: String): T = json.decodeFromString(serializer, text)
 }
 
 /**

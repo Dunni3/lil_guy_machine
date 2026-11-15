@@ -19,6 +19,24 @@
         },
         "runs": {
             "$ref": "#/$defs/RunList"
+        },
+        "credentials": {
+            "$ref": "#/$defs/Credentials"
+        },
+        "signed_in": {
+            "$ref": "#/$defs/SignedIn"
+        },
+        "account": {
+            "$ref": "#/$defs/Account"
+        },
+        "letter_draft": {
+            "$ref": "#/$defs/LetterDraft"
+        },
+        "mailbag": {
+            "$ref": "#/$defs/Mailbag"
+        },
+        "mail_error": {
+            "$ref": "#/$defs/MailError"
         }
     },
     "required": [
@@ -26,10 +44,29 @@
         "command",
         "result",
         "viewer",
-        "runs"
+        "runs",
+        "credentials",
+        "signed_in",
+        "account",
+        "letter_draft",
+        "mailbag",
+        "mail_error"
     ],
     "additionalProperties": false,
     "$defs": {
+        "Account": {
+            "title": "Account",
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "email"
+            ],
+            "additionalProperties": false
+        },
         "AgentView": {
             "title": "AgentView",
             "type": "object",
@@ -433,6 +470,23 @@
                 "scenario",
                 "catalog",
                 "verbs"
+            ],
+            "additionalProperties": false
+        },
+        "Credentials": {
+            "title": "Credentials",
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "email",
+                "password"
             ],
             "additionalProperties": false
         },
@@ -1186,6 +1240,23 @@
             ],
             "additionalProperties": false
         },
+        "LetterDraft": {
+            "title": "LetterDraft",
+            "type": "object",
+            "properties": {
+                "from": {
+                    "type": "string"
+                },
+                "body": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "from",
+                "body"
+            ],
+            "additionalProperties": false
+        },
         "LifeState": {
             "title": "LifeState",
             "type": "object",
@@ -1430,6 +1501,47 @@
                 "arc",
                 "glow",
                 "opacity"
+            ],
+            "additionalProperties": false
+        },
+        "MailError": {
+            "title": "MailError",
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "error"
+            ],
+            "additionalProperties": false
+        },
+        "Mailbag": {
+            "title": "Mailbag",
+            "type": "object",
+            "properties": {
+                "letters": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/SentLetter"
+                    }
+                },
+                "per_day": {
+                    "type": "integer"
+                },
+                "left": {
+                    "type": "integer"
+                },
+                "max_length": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "letters",
+                "per_day",
+                "left",
+                "max_length"
             ],
             "additionalProperties": false
         },
@@ -2272,6 +2384,46 @@
             ],
             "additionalProperties": false
         },
+        "SentLetter": {
+            "title": "SentLetter",
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "from": {
+                    "type": "string"
+                },
+                "body": {
+                    "type": "string"
+                },
+                "sent_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "opened_at": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "id",
+                "from",
+                "body",
+                "sent_at",
+                "status",
+                "opened_at"
+            ],
+            "additionalProperties": false
+        },
         "ServerMessage": {
             "title": "ServerMessage",
             "oneOf": [
@@ -2373,6 +2525,27 @@
                 "catalog",
                 "verbs",
                 "inventions"
+            ],
+            "additionalProperties": false
+        },
+        "SignedIn": {
+            "title": "SignedIn",
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "token": {
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "email",
+                "token",
+                "expires_at"
             ],
             "additionalProperties": false
         },

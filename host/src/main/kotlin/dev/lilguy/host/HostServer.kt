@@ -44,9 +44,10 @@ import kotlinx.serialization.builtins.ListSerializer
  *   anyone, read-only (anything a client sends is ignored);
  * - `POST /v1/lives/{life}/commands`: one [dev.lilguy.protocol.Command], for admins only ([auth]);
  * - `GET /v1/lives/{life}/runs`: the recorded runs it can resume, as a [dev.lilguy.protocol.RunList], for admins only;
- * - `GET /auth/me`: whether the caller's `Authorization` header is an admin's, as a [Viewer].
+ * - `GET /auth/me`: whether the caller's `Authorization` header is an admin's, as a [Viewer];
+ * - with [accounts], viewers' accounts and the letters they write him ([mail]).
  */
-fun Application.host(lives: Map<String, Life>, auth: AdminAuth) {
+fun Application.host(lives: Map<String, Life>, auth: AdminAuth, accounts: Accounts? = null) {
     install(WebSockets) {
         pingPeriodMillis = 15_000
         timeoutMillis = 30_000
@@ -67,6 +68,7 @@ fun Application.host(lives: Map<String, Life>, auth: AdminAuth) {
             call.respondText(Wire.encode(Snapshot(p.state)), ContentType.Application.Json)
         }
         webSocket("/v1/lives/{life}/stream") { stream(lives) }
+        if (accounts != null) mail(accounts, lives)
         get("/v1/lives/{life}/runs") {
             if (!auth.admits(call.request.headers[HttpHeaders.Authorization])) {
                 call.response.header(HttpHeaders.WWWAuthenticate, "Bearer")

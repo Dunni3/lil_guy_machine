@@ -76,6 +76,8 @@ class BedroomPolicy(
                 Intent.Do("sleep") to "Energy ${needs.energy} at ${obs.clock?.time}; sleep."
             "eat" in can && needs.fullness < HUNGRY ->
                 Intent.Do("eat") to "Fullness ${needs.fullness}; eat a meal."
+            "read_mail" in can ->
+                Intent.Do("read_mail") to "A letter is waiting at the hatch; open it."
             meals < MEAL_STOCK && "meal" in affordable ->
                 Intent.Buy("meal") to "Only $meals meals left and $$money; restock food first."
             "sell_art" in can && meals < MEAL_STOCK && money < mealPrice && money + held >= mealPrice ->

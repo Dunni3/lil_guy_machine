@@ -28,12 +28,16 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import dev.lilguy.sim.BedroomWorld
+import dev.lilguy.sim.Letter
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import java.util.concurrent.Executors
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
 /**
@@ -52,6 +56,9 @@ class Life(
     private val db: RunDatabase?,
     private val frame: Duration = 50.milliseconds,
     private val publishEvery: Duration = 100.milliseconds,
+    /** Where viewers' letters to this life wait; null for no mail. */
+    private val mail: Accounts? = null,
+    private val mailEvery: Duration = 2.seconds,
 ) {
     /** What a viewer joining now gets: the run's static content and its whole state. */
     class Published(val content: Content, val state: LifeState)
@@ -62,6 +69,12 @@ class Life(
     private val reader = StateReader()
     private val out = MutableSharedFlow<ServerMessage>(extraBufferCapacity = BUFFER, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     private var job: Job? = null
+    private var poller: Job? = null
+    /** Letters read from [mail] on the IO side, handed to the life's thread; [wake] has the poller look at once. */
+    private val mailIn = Channel<List<Letter>>(Channel.CONFLATED)
+    private val wake = Channel<Unit>(Channel.CONFLATED)
+    /** Opened letters already told to [mail]. */
+    private val reported = mutableSetOf<Long>()
     private lateinit var session: SimSession
 
     private class Pending(val command: Command, val done: CompletableDeferred<CommandResult>)
@@ -86,6 +99,17 @@ class Life(
             publish()
         }
         job = scope.launch(thread) { loop() }
+        if (mail != null) poller = scope.launch(Dispatchers.IO) {
+            while (isActive) {
+                runCatching { mail.waiting(id) }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { mailIn.trySend(it) }
+                withTimeoutOrNull(mailEvery) { wake.receive() }
+            }
+        }
+    }
+
+    /** A letter to this life was just sent: look for it now rather than at the next poll. */
+    fun mailSent() {
+        wake.trySend(Unit)
     }
 
     /**
@@ -121,6 +145,7 @@ class Life(
     }
 
     fun stop() {
+        poller?.cancel()
         job?.cancel()
         runCatching { kotlinx.coroutines.runBlocking(thread) { session.dispose() } }
         agents.cancel()
@@ -135,6 +160,7 @@ class Life(
                 val p = commands.tryReceive().getOrNull() ?: break
                 p.done.complete(run(p.command))
             }
+            mailIn.tryReceive().getOrNull()?.let(::post)
             val now = TimeSource.Monotonic.markNow()
             val delta = now - last
             last = now
@@ -175,8 +201,31 @@ class Life(
         }
     }
 
+    /**
+     * Puts [letters] through the hatch of the run that's going, and tells [mail] which run has them. Only while it runs:
+     * otherwise they wait for the next poll, so nothing is on its way in when a stopped run is saved.
+     */
+    private fun post(letters: List<Letter>) {
+        val world = session.world as? BedroomWorld ?: return
+        if (session.state != SimSession.RunState.Running) return
+        letters.forEach(world::post)
+        val run = session.runId
+        agents.launch(Dispatchers.IO) { runCatching { mail!!.delivered(letters.map { it.id }, run) } }
+    }
+
+    /** Tells [mail] about letters he has opened since the last time. */
+    private fun reportOpened() {
+        val m = mail ?: return
+        val opened = (session.world as? BedroomWorld)?.lettersOpened ?: return
+        val new = opened - reported
+        if (new.isEmpty()) return
+        reported += new
+        agents.launch(Dispatchers.IO) { runCatching { m.opened(new) } }
+    }
+
     /** Reads the session, and sends what changed: a delta, or for a new run its content and a snapshot. */
     private fun publish() {
+        reportOpened()
         val before = latest
         val newRun = before == null || before.state.run.runId != session.runId || before.state.run.run != session.run
         val content = if (newRun) reader.content(session) else before!!.content

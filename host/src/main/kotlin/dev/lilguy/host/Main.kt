@@ -40,7 +40,8 @@ import kotlin.time.Duration.Companion.seconds
  *   real day goes with it;
  * - `LILGUY_DB` (runs/lilguy.db; "none" for off), `LILGUY_RESUME`: a run id, or "none" for a fresh run; unset or "latest",
  *   the host carries on the run it was last on (the host's run played most recently), or starts fresh when there's none; and
- *   `LILGUY_SYNC_URL` / `LILGUY_SYNC_TOKEN` to sync the store to the server, one worker for the process.
+ *   `LILGUY_SYNC_URL` / `LILGUY_SYNC_TOKEN` to sync the store to the server, one worker for the process;
+ * - `LILGUY_ACCOUNTS_DB` (runs/accounts.db; "none" for off): viewers' accounts and the letters they send him ([Accounts]).
  */
 fun main() {
     val env: (String) -> String? = { System.getenv(it) }
@@ -85,18 +86,19 @@ fun main() {
         exitProcess(2)
     }
     val auth = AdminPassword(password)
-    val life = Life("main", setup, db)
+    val accounts = (get("LILGUY_ACCOUNTS_DB") ?: "runs/accounts.db").takeIf { it != "none" }?.let { Accounts(JdbcSqlDriver(File(it))) }
+    val life = Life("main", setup, db, mail = accounts)
     runBlocking { life.start(scope, autostart = get("LILGUY_AUTOSTART") == "1") }
     println(
         "lil guy host on http://$bind:$port/ (protocol ${dev.lilguy.protocol.PROTOCOL_VERSION}): life 'main', model ${setup.notice ?: if (endpoint == null) "scripted" else endpoint}${roles(setup, ::get)}, speed ${setup.speed}" +
             "${if (get("LILGUY_PAINTER")?.toDoubleOrNull() != null) ", painting with random picks" else ""}; " +
-            "run database ${if (store == null) "off" else if (sync == null) "local only" else "syncing"}; commands ${if (auth.enabled) "need the admin password" else "refused (no LILGUY_ADMIN_PASSWORD)"}",
+            "run database ${if (store == null) "off" else if (sync == null) "local only" else "syncing"}; commands ${if (auth.enabled) "need the admin password" else "refused (no LILGUY_ADMIN_PASSWORD)"}; letters ${if (accounts == null) "off" else "on"}",
     )
     Runtime.getRuntime().addShutdownHook(Thread {
         life.stop()
         if (sync != null) runBlocking { withTimeoutOrNull(10.seconds) { sync.syncAll() } }
     })
-    embeddedServer(CIO, port = port, host = bind) { host(mapOf(life.id to life), auth) }.start(wait = true)
+    embeddedServer(CIO, port = port, host = bind) { host(mapOf(life.id to life), auth, accounts) }.start(wait = true)
 }
 
 /** Which endpoints write and score, for the startup line: those named that are in use. */

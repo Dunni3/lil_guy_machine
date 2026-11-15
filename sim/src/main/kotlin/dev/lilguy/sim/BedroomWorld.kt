@@ -150,6 +150,14 @@ class BedroomWorld private constructor(
     private var commission: Commission? = null
     private var commissions = 0
     private val notes = ConcurrentLinkedQueue<ArtNote>()
+    /** Letters on their way in ([post]), the ones waiting at the mail hatch, oldest first, and the ids of those he has opened. */
+    private val posted = ConcurrentLinkedQueue<Letter>()
+    private val mailbox = ArrayDeque<Letter>()
+    private val opened = linkedSetOf<Long>()
+
+    /** The ids of the letters he has opened, for whoever sent them. Readable from any thread. */
+    @Volatile var lettersOpened: Set<Long> = emptySet()
+        private set
 
     /** Authored ops whose verb succeeded, newest last ([AuthoredView]); the oldest drop off. */
     private val authored = ArrayDeque<AuthoredView>()
@@ -284,6 +292,19 @@ class BedroomWorld private constructor(
         override fun roomLock(plan: String, site: String) = this@BedroomWorld.roomLock(plan, site)
 
         override fun placeRoom(plan: String, site: String) = this@BedroomWorld.placeRoom(plan, site)
+
+        override fun mailLock(): String? = if (mailbox.isEmpty()) "no letters are waiting at the mail hatch" else null
+
+        override fun openMail(): List<String> {
+            val l = mailbox.removeFirst()
+            opened += l.id
+            lettersOpened = opened.toSet()
+            version++
+            val left = if (mailbox.isEmpty()) "" else "${mailbox.size} more waiting"
+            return listOfNotNull("a letter from ${l.from}, someone outside your world, reads: \"${l.body}\"", left.ifEmpty { null })
+        }
+
+        override fun mailText(): String? = mailbox.firstOrNull()?.let { l -> "a letter from ${l.from}" + if (mailbox.size > 1) " (${mailbox.size} waiting)" else "" }
 
         override fun build(verb: VerbSpec): List<String> {
             val design = designs.remove(verb.id)!!.design!!
@@ -950,6 +971,14 @@ class BedroomWorld private constructor(
     }
 
     /**
+     * Puts [letter] through the mail hatch: it arrives at the start of the next tick and waits there
+     * until he opens it. Safe from any thread; one already waiting or opened is dropped.
+     */
+    fun post(letter: Letter) {
+        posted.add(letter)
+    }
+
+    /**
      * Hands over the result of authored op [id] ([AuthoredView], from the observation): applied at
      * the start of the next tick. Safe from any thread; an id that isn't waiting is dropped.
      */
@@ -975,6 +1004,13 @@ class BedroomWorld private constructor(
                 is AuthoredResult.Designed -> designs[verb] = staged
                 else -> {}
             }
+        }
+        while (true) {
+            val l = posted.poll() ?: break
+            if (l.id in opened || mailbox.any { it.id == l.id }) continue
+            mailbox.addLast(l)
+            version++
+            event("a letter from ${l.from} came through the mail hatch")
         }
         while (true) {
             when (val note = notes.poll() ?: break) {
@@ -1173,7 +1209,7 @@ class BedroomWorld private constructor(
      * agent side's to say (with no handler for an op, none ever is).
      */
     val canExport: Boolean
-        get() = atRest && doing == null && notes.isEmpty() && deliveries.isEmpty() && staging.isEmpty() && baskets.isEmpty() && designs.isEmpty()
+        get() = atRest && doing == null && notes.isEmpty() && posted.isEmpty() && deliveries.isEmpty() && staging.isEmpty() && baskets.isEmpty() && designs.isEmpty()
 
     /** Everything a [restore] needs to carry on from here. Only when [canExport]; call on the sim thread. */
     fun exportState(): BedroomState {
@@ -1202,6 +1238,8 @@ class BedroomWorld private constructor(
             explored = explored.toList(),
             house = LinkedHashMap(house),
             bare = bareUntil.filterValues { it > ticks },
+            mail = mailbox.toList(),
+            opened = opened.toList(),
         )
     }
 
@@ -1260,6 +1298,9 @@ class BedroomWorld private constructor(
         commission = s.commission?.let { Commission(it.id, it.adjective, it.noun, it.wants, it.until).also { c -> c.request = it.request; c.fulfilled = it.fulfilled } }
         commissions = s.commissions
         authored.clear(); authored.addAll(s.authored)
+        mailbox.clear(); mailbox.addAll(s.mail)
+        opened.clear(); opened.addAll(s.opened)
+        lettersOpened = opened.toSet()
         authoredCount = s.authoredCount
         lastPlanned = s.grid.last?.intent
         version++

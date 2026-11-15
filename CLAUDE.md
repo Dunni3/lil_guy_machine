@@ -156,6 +156,11 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   `HostServer.kt` (routes: stream, commands, debug page in `resources/debug/index.html`), `AdminAuth.kt` (who may send commands: one password,
   `docs/decisions/2026-11-08-v0-admin-login-is-*`; setup in `host/README.md`),
   `Main.kt` (env config, one `SyncWorker` per process).
+- Letters (`docs/decisions/2026-11-15-anyone-with-an-account-*`): viewers' accounts (an email and a password) and the letters they
+  write him, in `host/.../Accounts.kt` (its own SQLite file, `LILGUY_ACCOUNTS_DB`, never synced) and `MailRoutes.kt`, with the wire
+  types in `protocol/.../Mail.kt`. `Life` polls for waiting letters and posts them into the running world (`BedroomWorld.post`); the
+  mailbox and the ids he has opened are in `BedroomState`; `read_mail` (kind `social`, op `open_mail`, `sim/.../Mail.kt`) opens one at
+  the mail hatch, its words in the event. On the web: `src/ui/mail.ts`, a DOM panel from the "Write to him" button.
 - Web renderer (phase 4; `docs/decisions/2026-11-08-the-web-renderer-is-*`): `web/`, TypeScript, Three.js and Vite, served by the
   host at `/room/`, or from anywhere with `make web-dev`. URL settings in `src/settings.ts`: `life`, `broadcast` (no menu, keys or cursor, the camera
   follows him, the HUD in a 16:9 frame's title-safe area), `scale` (canvas resolution, CSS scales it up), `fps` (frame cap), `camera` (`room` or `follow`),
@@ -171,7 +176,7 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   stroke by stroke at the host's pace from `state.easel`). `src/guy/`: `blob.ts` (`Blob.kt`'s animation, his clay pieces and the lantern that follows him). `src/ui/`: what's drawn over the room, in the
   same canvas as panels from 2D canvases redrawn only when they change (`layer.ts`; no DOM over the room but the sign-in box): `hud.ts` (needs card, bubble,
   banner, the catalogue while he buys; `RoomView.kt`), `menu.ts` and `pages.ts` (the menu's keys, and clicks and the wheel on the spots `menuCard.ts` records as it draws, and its RUN, SHOP, THOUGHTS, WEB, MEMORY, SELF and TRIPS tabs;
-  `GameMenu.kt`), `menuCard.ts` (drawing it), `run.ts` (`RunControls.kt`), `keys.ts` (`RemoteInput.kt`'s keys), `admin.ts` (the password sign-in and commands).
+  `GameMenu.kt`), `menuCard.ts` (drawing it), `run.ts` (`RunControls.kt`), `keys.ts` (`RemoteInput.kt`'s keys), `admin.ts` (the password sign-in and commands), `mail.ts` (accounts and letters).
 - Part lists: `parts/` (pure Kotlin): `Part.kt` (`Part`, `PartList`; the clay fields `cut`, `hole`, `arc`, `glow`, `opacity` and `ring`/`dome`, which `:app` ignores),
   `ClayParts.kt` (the clay models and the guy's pieces), `RoomParts.kt` (the crayon furniture, props, the room's constants), `DecorParts.kt`, `PartExport.kt`
   (writes `parts/export/parts.json`, the web renderer's copy, checked by `make test`). `:app` builds meshes from the crayon lists.

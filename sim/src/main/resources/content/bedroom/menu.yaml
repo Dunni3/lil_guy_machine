@@ -42,6 +42,9 @@ menu:
     says: the outdoors - go out to the garden, the forest or the pond, explore them, collect samples, and study or sell the samples
     verbs: [explore, collect, study_sample, sell_sample]
     go: true
+  - id: mail
+    says: open a letter someone outside his world sent him through the mail hatch
+    verbs: [read_mail]
   - id: mind
     says: stop to think things over and plan, asking how things in his world work
     verbs: [think]
