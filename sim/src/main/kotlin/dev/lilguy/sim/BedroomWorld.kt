@@ -609,9 +609,9 @@ class BedroomWorld private constructor(
 
     // --- light -----------------------------------------------------------------------------------
 
-    /** What gives off light now: each placed thing with a `light`, but a patch that's been picked bare, and his lantern. */
+    /** What gives off light now: each placed thing with a `light` (one he's carrying, where he is), but a patch that's been picked bare, and his lantern. */
     private fun lamps(): List<Emitter> = placed().mapNotNull { (spec, cell) ->
-        spec.light?.takeIf { (bareUntil[spec.id] ?: 0) <= ticks }?.let { Emitter(spec.id, "the ${spec.name}", EffectKind.Light, cell, it.strength, it.radius) }
+        spec.light?.takeIf { (bareUntil[spec.id] ?: 0) <= ticks }?.let { Emitter(spec.id, "the ${spec.name}", EffectKind.Light, if (spec.id == carrying) guy.cell else cell, it.strength, it.radius) }
     } + listOfNotNull(content.light?.lantern?.let { Emitter(LANTERN, "your lantern", EffectKind.Light, guy.cell, it.strength, it.radius) })
 
     /** The light on every tile now, worked out again only when the daylight, the layout or the lamps change. */

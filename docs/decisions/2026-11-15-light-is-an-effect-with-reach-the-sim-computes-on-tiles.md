@@ -54,9 +54,13 @@ an effect with reach, that perception, verb conditions and needs read. Light is 
 **Why tiles and phrases.** The lot is 40x30 tiles and A* already works per tile, so the sim's light
 matches the renderer. Models read landmark phrases better than coordinates, and the phrases cost
 little: over two scripted days the `light` field was present on 23 to 43% of decisions, at 44 to 70
-tokens when present (about 13 to 30 a decision overall, by characters / 4). The prompt's new
-sentences on light and comfort are about 100 tokens, once, in the cached system prompt.
+tokens when present (about 13 to 30 a decision overall, by characters / 4). The system prompt's new
+sentences on light and comfort are about 130 tokens (net about 90, since the house-cap sentence is
+gone), the same every decision, so cacheable.
 
-**Not done.** Lamps are always on (no switch). Nothing lets him carry a lamp or place one outdoors yet
-(the `place` tool is phase 0's). His code can't read or emit effects (`Scripts.kt`, a later session).
+**With phase 0's `put`.** A lamp he carries lights where he is, and one put down lights its new spot.
+With the amber floor lamp put at `pond_shore`, at 22:00 the pond is explorable and he sees its edge
+and the lamp.
+
+**Not done.** Lamps are always on (no switch). His code can't read or emit effects (`Scripts.kt`, a later session).
 Shade from furniture, and a carried lantern as an item, are possible next steps.
