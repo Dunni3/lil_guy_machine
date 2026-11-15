@@ -64,6 +64,8 @@ data class EndpointConfig(
     @SerialName("price_in") val priceIn: Double? = null,
     /** Dollars per million output tokens. */
     @SerialName("price_out") val priceOut: Double? = null,
+    /** Dollars per million input tokens read from the server's prompt cache; unset, they cost [priceIn]. */
+    @SerialName("price_cached") val priceCached: Double? = null,
     /** TypeSafe: how many paths [BeamSearch] keeps when the options come in groups; 0 asks over the flat list. */
     val beam: Int = 3,
 ) {

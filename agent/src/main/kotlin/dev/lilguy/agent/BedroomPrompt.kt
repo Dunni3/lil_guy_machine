@@ -292,12 +292,12 @@ object BedroomPrompt {
     private fun toolSystem(content: BedroomContent, self: String?, wants: String, life: String, music: String, looks: Set<String>): String = """
         |${Persona.text(content, self)}
         |
-        |You live in this bedroom. You need money $wants. Each turn you choose what to do next by calling one tool; the game carries it out, then tells you how it went and how things stand.
+        |You live in this bedroom. You need money $wants. Each turn you choose what to do next; the game carries it out, then tells you how it went and how things stand.
         |
         |How your life works:
         |$life
         |
-        |Each turn ends with one tool that acts: the one thing you do next. Its `thought` is what goes through your head as you choose it, in your own voice: it's your thought of the moment, and it's what you'll remember of it later. Use only the values its arguments allow.
+        |Think, look if it would help, and act when you know what you want. What you write is what goes through your head, in your own voice: it's your thought of the moment, and it's what you'll remember of it later, so keep it short. To act, call one of the tools that act: the one thing you do next, which ends the turn. Use only the values its arguments allow. Thinking takes no time, but after ${BedroomTools.MAX_STEPS} replies without acting you've sat and thought for a while, and some minutes pass.
 ${lookText(looks)}
         |
         |Your earlier calls are your recent actions; each result says when it started and how it ended. Then comes how things stand now, as JSON:
@@ -318,7 +318,7 @@ ${lookText(looks)}
             "`search` searches the real internet, outside your room, for anything you're curious about".takeIf { "search" in looks },
         )
         if (what.isEmpty()) return ""
-        return "\n        |\n        |Before you act you may look, up to ${BedroomTools.MAX_LOOKS} times a turn, and looking takes no time: ${what.joinToString(", and ")}. Look when it would change what you do: what you meant to do, how something went last time, how to reach something you can't do yet.${if ("search" in looks) " And you're curious about the world outside your room: the internet is how you learn about it. When something you do or see makes you wonder (a subject to draw, how a technique works, a book or record, an idea you had), search for it; what you find may give you ideas for what to do next." else ""}"
+        return "\n        |\n        |Looking takes no time: ${what.joinToString(", and ")}. Look whenever it would help: what you meant to do, how something went last time, what you'd like to have, how to reach something you can't do yet.${if ("search" in looks) " And you're curious about the world outside your room: the internet is how you learn about it. When something you do or see makes you wonder (a subject to draw, how a technique works, a book or record, an idea you had), search for it; what you find may give you ideas for what to do next." else ""}"
     }
 
     /**

@@ -47,6 +47,12 @@ data class DecisionLogEntry(
     val think: LoggedThink? = null,
     /** What a model that calls tools looked at first, in order. */
     val looks: List<LoggedLook> = emptyList(),
+    /** What it wrote along the way without acting, in order. */
+    val musings: List<String> = emptyList(),
+    /** The turn ran out of steps with no action: he sat and thought. */
+    val pondered: Boolean = false,
+    /** The part of [promptTokens] read from the server's prompt cache. */
+    @SerialName("cached_tokens") val cachedTokens: Int = 0,
 )
 
 @Serializable
@@ -265,6 +271,9 @@ class DecisionLog(val file: File, private val run: String, private val model: St
                 LoggedThink(t.thinker, t.text, t.raw, t.latency.inWholeMilliseconds, t.usage.promptTokens, t.usage.completionTokens, t.error)
             },
             looks = r.looks.map { LoggedLook(it.name, it.arguments, it.result) },
+            musings = r.musings,
+            pondered = r.pondered,
+            cachedTokens = r.usage.cachedTokens,
         )
 
         /** The decisions in a log, leaving out art lines (and journal lines from older logs). */

@@ -51,17 +51,21 @@ enum class TokenPurpose {
     @SerialName("search") Search,
 }
 
-/** Dollars per million tokens, from an endpoint's `price_in` and `price_out`, plus [perCall] for APIs that bill by the request. */
-data class TokenPrice(val inPerMillion: Double, val outPerMillion: Double, val perCall: Double = 0.0) {
-    fun cost(usage: Usage) = (usage.promptTokens * inPerMillion + usage.completionTokens * outPerMillion) / 1_000_000 + perCall
+/**
+ * Dollars per million tokens, from an endpoint's `price_in`, `price_out` and `price_cached` (input read from the prompt cache; null: [inPerMillion]),
+ * plus [perCall] for APIs that bill by the request.
+ */
+data class TokenPrice(val inPerMillion: Double, val outPerMillion: Double, val cachedPerMillion: Double? = null, val perCall: Double = 0.0) {
+    fun cost(usage: Usage) =
+        ((usage.promptTokens - usage.cachedTokens) * inPerMillion + usage.cachedTokens * (cachedPerMillion ?: inPerMillion) + usage.completionTokens * outPerMillion) / 1_000_000 + perCall
 
     companion object {
         fun of(config: EndpointConfig): TokenPrice? =
-            if (config.priceIn == null && config.priceOut == null) null else TokenPrice(config.priceIn ?: 0.0, config.priceOut ?: 0.0)
+            if (config.priceIn == null && config.priceOut == null) null else TokenPrice(config.priceIn ?: 0.0, config.priceOut ?: 0.0, config.priceCached)
 
         fun of(config: SearchConfig): TokenPrice? =
             if (config.priceIn == null && config.priceOut == null && config.pricePerSearch == null) null
-            else TokenPrice(config.priceIn ?: 0.0, config.priceOut ?: 0.0, config.pricePerSearch ?: 0.0)
+            else TokenPrice(config.priceIn ?: 0.0, config.priceOut ?: 0.0, perCall = config.pricePerSearch ?: 0.0)
     }
 }
 
@@ -82,6 +86,8 @@ data class TokenCall(
     @SerialName("latency_ms") val latencyMs: Long,
     @SerialName("cost_usd") val costUsd: Double? = null,
     val failed: Boolean = false,
+    /** The part of [promptTokens] read from the server's prompt cache. */
+    @SerialName("cached_tokens") val cachedTokens: Int = 0,
 )
 
 /** Sums of [TokenCall]s: a day, a purpose, a whole run. */
@@ -225,16 +231,16 @@ class TokenLedger {
             val started = TimeSource.Monotonic.markNow()
             try {
                 val d = inner.decide(request, schema)
-                record(tick, purpose, id, price, d.usage, d.attempts.size, d.latency.inWholeMilliseconds, failed = false)
+                record(tick, purpose, id, price, d.usage, d.attempts.size + d.steps, d.latency.inWholeMilliseconds, failed = false)
                 sink?.modelCall(
-                    tick, purpose, id, price, d.usage, d.attempts.size, d.latency.inWholeMilliseconds, false,
+                    tick, purpose, id, price, d.usage, d.attempts.size + d.steps, d.latency.inWholeMilliseconds, false,
                     system = request.system, request = LifeRecorder.requestJson(request, schema.jsonSchema), response = LifeRecorder.responseJson(d.raw, d.attempts),
                 )
                 return d
             } catch (e: DecisionFailed) {
-                record(tick, purpose, id, price, e.usage, e.attempts.size, 0, failed = true)
+                record(tick, purpose, id, price, e.usage, e.attempts.size + e.steps, 0, failed = true)
                 sink?.modelCall(
-                    tick, purpose, id, price, e.usage, e.attempts.size, started.elapsedNow().inWholeMilliseconds, true,
+                    tick, purpose, id, price, e.usage, e.attempts.size + e.steps, started.elapsedNow().inWholeMilliseconds, true,
                     system = request.system, request = LifeRecorder.requestJson(request, schema.jsonSchema), response = LifeRecorder.responseJson(null, e.attempts, e.message),
                 )
                 throw e
@@ -269,7 +275,7 @@ class TokenLedger {
         log += TokenCall(
             tick, reading?.day, reading?.time, purpose, model,
             calls = attempts.coerceAtLeast(1), usage.promptTokens, usage.completionTokens, latencyMs,
-            costUsd = price?.cost(usage), failed = failed,
+            costUsd = price?.cost(usage), failed = failed, cachedTokens = usage.cachedTokens,
         )
     }
 }

@@ -128,10 +128,11 @@ class PromptBuilder(
             messages += Message(Message.Role.User, HISTORY_HEADER)
             recent.forEachIndexed { i, e ->
                 val (name, args) = turn.call(e.intent)
-                val call = ToolCall("call_${e.tick}_$i", name, JsonObject(mapOf(BedroomTools.THOUGHT to JsonPrimitive(e.reason.orEmpty())) + args))
+                // What he thought as he chose it is his own words, said before the call.
+                val call = ToolCall("call_${e.tick}_$i", name, args)
                 val ended = e.result?.let(::describe) ?: "still going"
                 val result = "Started ${stamp(e.tick)}. " + (e.outcome?.let { "$ended: $it" } ?: ended) + (e.thought?.let { " You thought: \"$it\"" } ?: "")
-                messages += Message(Message.Role.Assistant, "", call)
+                messages += Message(Message.Role.Assistant, e.reason.orEmpty(), call)
                 messages += Message(Message.Role.Tool, result, call)
             }
         }
@@ -141,7 +142,14 @@ class PromptBuilder(
             appendLine(statusJson.encodeToString(Observation.serializer(), turn.status(obs)))
             recall(memories, thought, found)
             turn.note(obs)?.let { appendLine(it) }
-            append(if (tools.looks.isEmpty()) CALL else LOOK_THEN_CALL)
+            append(
+                when {
+                    tools.ponder != null && tools.looks.isEmpty() -> THINK
+                    tools.ponder != null -> THINK_LOOK
+                    tools.looks.isEmpty() -> CALL
+                    else -> LOOK_THEN_CALL
+                },
+            )
         }
         messages += Message(Message.Role.User, user)
         return DecisionRequest(system = turn.system(), messages = messages, timeout = timeout, tools = tools)
@@ -195,13 +203,15 @@ class PromptBuilder(
         private const val HISTORY_HEADER = "Your recent actions, oldest first, are the calls below; each result says when it started and how it ended."
         private const val CALL = "Call one tool: what you do next."
         private const val LOOK_THEN_CALL = "If something you'd remember, or don't know about how your world works, would change what you do, look first. Then call one tool that acts: what you do next."
+        private const val THINK = "Think it over, and act when you know what you want."
+        private const val THINK_LOOK = "Think, remember or act: say what you're thinking, recall something or ask how something works, or do what you want to do next."
 
         /**
          * His situation, for authored ops: the request's last user message without the closing ask,
          * and, when the request put his recent actions as tool calls, those as lines first.
          */
         fun situationOf(request: DecisionRequest): String {
-            val now = request.messages.lastOrNull { it.role == Message.Role.User }?.content?.removeSuffix(ASK)?.removeSuffix(CALL)?.removeSuffix(LOOK_THEN_CALL)?.trimEnd().orEmpty()
+            val now = request.messages.lastOrNull { it.role == Message.Role.User }?.content?.removeSuffix(ASK)?.removeSuffix(CALL)?.removeSuffix(LOOK_THEN_CALL)?.removeSuffix(THINK)?.removeSuffix(THINK_LOOK)?.trimEnd().orEmpty()
             val calls = request.messages.filter { it.role == Message.Role.Tool && it.call != null }.map { m ->
                 val c = m.call!!
                 "- ${c.name} ${JsonObject(c.arguments - BedroomTools.THOUGHT)}: ${m.content}"

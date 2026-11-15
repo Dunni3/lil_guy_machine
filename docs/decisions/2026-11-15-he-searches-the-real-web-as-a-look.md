@@ -13,7 +13,7 @@ read-only for now, and to see every search in the viewer's menu with what he was
 - **A look, not a verb.** For a model that calls tools, `search` is a third look
   (`ToolSet.looks`, `BedroomTools.looks`), like `recall` and `ask`: it takes no game time, is
   answered with what the results say and which sites said it, and counts toward the turn's
-  `maxLooks`. Jev and the scripted policy don't search. Nothing he reads can act on the room.
+  `maxSteps`. Jev and the scripted policy don't search. Nothing he reads can act on the room.
 - **The backend is pluggable** (`decision/.../WebSearch.kt`): `gemini`, a Gemini model with the
   `google_search` tool that writes what the top results say (under 120 words, no advice) and names
   the pages from its grounding; or `brave`, the Brave Search API's results as they are. Gemini is
