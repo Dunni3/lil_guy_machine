@@ -521,6 +521,17 @@ internal interface OpWorld {
 
     /** "write the code for a new thing to do: you've written 2", for the option. */
     fun defineText(): String
+
+    // Machines ([Works]).
+    /** Why tending machine [id] would do nothing now, or null. */
+    fun tendLock(id: String): String?
+    fun tendText(id: String): String
+    /** Fills machine [id] and takes out what it made; the event's parts. */
+    fun tend(id: String): List<String>
+    /** Why machine [id] doesn't need mending, or null. */
+    fun repairLock(id: String): String?
+    fun repairText(id: String): String
+    fun repair(id: String): List<String>
 }
 
 /**
@@ -659,6 +670,8 @@ internal data class OpEntry(
     val define: NoParams? = null,
     @SerialName("read_log") val readLog: String? = null,
     val switch: Switch? = null,
+    val tend: String? = null,
+    val repair: String? = null,
 ) {
     /** `switch: { target: on, to: off }`: to is on, off or timer. */
     @Serializable
@@ -701,7 +714,7 @@ internal data class OpEntry(
             sleep?.let { SleepOp }, enjoy?.let(::EnjoyOp), hear?.let(::HearOp), progress?.let { ProgressOp(it.book) }, practice?.let(::PracticeOp),
             write?.let { WriteOp(it.with, it.into, it.timing, it.showsAs, it.optional) }, draw?.let(::DrawOp), build?.let { BuildOp },
             survey?.let(::SurveyOp), gather?.let(::GatherOp), placeRoom?.let { PlaceRoomOp(it.room, it.site) }, openMail?.let { OpenMailOp }, postLetter?.let { PostLetterOp },
-            script?.let { ScriptOp }, define?.let { DefineOp }, readLog?.let(::ReadLogOp), switch?.let { SwitchOp(it.target, LampMode.of(it.to)) },
+            script?.let { ScriptOp }, define?.let { DefineOp }, readLog?.let(::ReadLogOp), switch?.let { SwitchOp(it.target, LampMode.of(it.to)) }, tend?.let(::TendOp), repair?.let(::RepairOp),
         )
         require(set.size == 1) { "an effect is one op, such as `- need: { mood: 2 }`; this one has ${if (set.isEmpty()) "none" else set.joinToString { it.key }}" }
         return set.single()
@@ -734,6 +747,8 @@ internal data class OpEntry(
             DefineOp -> OpEntry(define = NoParams())
             is ReadLogOp -> OpEntry(readLog = op.what)
             is SwitchOp -> OpEntry(switch = Switch(op.target, op.to.id))
+            is TendOp -> OpEntry(tend = op.on)
+            is RepairOp -> OpEntry(repair = op.on)
         }
     }
 }

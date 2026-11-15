@@ -101,6 +101,7 @@ class BedroomRunTest {
             "canvas", "easel", "record_player", "jazz_record", "ambient_record", "folk_record", "novel", "poetry_book",
             "field_guide", "drawing_book", "music_book", "guitar", "painting", "paint", "read",
             "listen", "play_record", "play_guitar", "build_room", "microscope", "study_sample", "weather_station", "check_station",
+            "compost_bin", "planter", "spare_parts", "tend", "repair",
         ) + c.items.filter { it.group == "decor" || it.group == "room" || (it.group == "food" && it.id !in setOf("meal", "oats")) }.map { it.id }
         c.copy(
             items = c.items.map { if (it.id in tier1) it.copy(tier = 1) else it },

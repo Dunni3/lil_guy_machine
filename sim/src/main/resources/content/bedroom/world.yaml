@@ -58,6 +58,9 @@ world:
     pond_patch: [26, 25]
     garden_bench: [6, 17]
     seedpod_bush: [10, 20]
+    # His machines in the garden's corner, the planter within the compost bin's reach (rules.yaml `machines`).
+    compost_corner: [4, 21]
+    garden_bed: [6, 21]
     # Free spots: nothing in items.yaml stands in these, so his things can be put down here (the
     # `put` intent, or world.move in his code). Each is named by what it's beside. On the ground
     # only: a thing that goes in a wall stays indoors.

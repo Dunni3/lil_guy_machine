@@ -72,6 +72,8 @@ data class BedroomContent(
     val letters: LetterRules? = null,
     /** The sky, temperature and hidden pressure over the land, and what a recorder keeps (Weather.kt); null for no weather. */
     val weather: WeatherRules? = null,
+    /** What machines make from what, how they wear and how they're mended ([Works]); null and nothing is a machine. */
+    val machines: MachineRules? = null,
 ) {
     @Transient private val byId = items.associateBy { it.id }
 
@@ -140,7 +142,15 @@ data class BedroomContent(
             menu = menu.map { n -> n.copy(verbs = n.verbs.filter { it in ids }) },
             // A room whose plan is gated isn't there until the plan is.
             world = world?.copy(rooms = world.rooms.filter { it.plan in ids }),
-        ).also { it.validate() }
+        ).let { c ->
+            // Nor is a recipe whose inputs or outputs are, nor a machine's run of it.
+            val recipes = machines?.recipes.orEmpty().filter { r -> (r.takes.keys + r.makes.keys).all { it in ids } }
+            val runs = recipes.map { it.id }.toSet()
+            c.copy(
+                machines = machines?.copy(recipes = recipes),
+                items = c.items.map { i -> i.machine?.let { m -> i.copy(machine = m.copy(runs = m.runs.filter { it in runs })) } ?: i },
+            )
+        }.also { it.validate() }
     }
 
     companion object {
@@ -149,7 +159,7 @@ data class BedroomContent(
         /** The content's files, each with the top-level keys it holds. */
         val FILES: Map<String, List<String>> = linkedMapOf(
             "room" to listOf("room", "start"),
-            "rules" to listOf("needs", "night", "habituation", "novelty", "familiarity", "frustration", "skills", "shop", "reflection", "commissions", "gallery", "quality_value", "invent", "collection", "comfort", "light", "letters"),
+            "rules" to listOf("needs", "night", "habituation", "novelty", "familiarity", "frustration", "skills", "shop", "reflection", "commissions", "gallery", "quality_value", "invent", "collection", "comfort", "light", "letters", "machines"),
             "vocabulary" to listOf("vocabulary"),
             "personality" to listOf("personality"),
             "items" to listOf("items"),
@@ -334,6 +344,7 @@ data class BedroomContent(
         require(slotted.size == slotted.toSet().size) { "two items can't share a slot: ${slotted.groupBy { it }.filterValues { it.size > 1 }.keys}" }
         invent?.problems(this)?.takeIf { it.isNotEmpty() }?.let { throw IllegalArgumentException(it.joinToString("; ")) }
         weather?.problems()?.firstOrNull()?.let { throw IllegalArgumentException(it) }
+        (machines ?: MachineRules().takeIf { items.any { it.machine != null } })?.problems(this)?.firstOrNull()?.let { throw IllegalArgumentException(it) }
         // A recorder logs the weather at its spot, so it stands outdoors, on one of the land's slots.
         items.filter { RECORDER in it.affords }.forEach { require(it.slot != null && it.slot in world?.slots.orEmpty()) { "item ${it.id} is a recorder, so it needs a slot on the land (world.yaml `slots`)" } }
     }
@@ -692,9 +703,11 @@ data class ItemSpec(
     val tier: Int = 0,
     /** The light it gives off where it stands; null for none. */
     val light: LightSpec? = null,
+    /** What it makes from what (rules.yaml `machines`); null when it isn't a machine. */
+    val machine: MachineSpec? = null,
 ) {
-    /** What an activity can ask for it by: its id and its affordances. */
-    @Transient val names: Set<String> = setOf(id) + affords.keys
+    /** What an activity can ask for it by: its id and its affordances, and `machine` for a machine. */
+    @Transient val names: Set<String> = setOf(id) + affords.keys + listOfNotNull(Works.MACHINE.takeIf { machine != null })
 
     /** What one sells for, when it's `sellable`, before any skill raises it. */
     val sellPrice: Int? get() = affords["sellable"]?.price ?: affords["specimen"]?.price

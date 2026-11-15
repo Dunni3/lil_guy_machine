@@ -1,0 +1,78 @@
+package dev.lilguy.sim
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
+
+/** The compost-to-planter-to-food chain, wear and mending, and code that makes nothing from nothing. */
+class WorksTest {
+    private fun content(vararg items: Pair<String, Int>) = BedroomContent.default().let { it.copy(start = it.start.copy(money = 100, items = it.start.items + items)) }
+
+    private fun BedroomWorld.finish(intent: Intent): IntentStatus {
+        val handle = submit(agentId, intent)
+        repeat(40_000) {
+            step()
+            val s = handle.status
+            if (s is IntentStatus.Succeeded || s is IntentStatus.Failed) return s
+        }
+        error("$intent never ended")
+    }
+
+    private fun BedroomWorld.done(intent: Intent) = finish(intent).also { assertIs<IntentStatus.Succeeded>(it, (it as? IntentStatus.Failed)?.reason) }
+
+    private fun BedroomWorld.store(id: String) = exportState().works[id] ?: Store()
+
+    private fun BedroomWorld.open(verb: String, on: String) = observe(agentId).activities!!.any { it.id == verb && it.on == on && it.locked == null }
+
+    @Test
+    fun `scraps from a meal become compost, the planter beside the bin takes it and grows a tomato, and the bin wears, jams and is mended`() {
+        val w = BedroomWorld.create(content("compost_bin" to 1, "planter" to 1, "food_scrap" to 20, "spare_parts" to 1, "meal" to 1))
+        w.done(Intent.Do("eat", what = "meal"))
+        assertEquals(21, w.count("food_scrap"), "eating leaves a scrap")
+
+        // He carries the scraps over; the bin works through them, and the planter within reach takes what it makes.
+        var hours = 0
+        while (!w.store("compost_bin").broken && hours < 200) {
+            if (w.open("tend", "compost_bin") && w.count("food_scrap") >= 3) w.done(Intent.Do("tend", on = "compost_bin"))
+            if (w.open("tend", "planter") && "take out" in w.observe(w.agentId).activities!!.first { it.id == "tend" && it.on == "planter" }.gives.orEmpty()) w.done(Intent.Do("tend", on = "planter"))
+            repeat(3) { w.finish(Intent.Wait(GridWorld.MAX_WAIT)) }
+            hours += 2
+        }
+        val bin = w.store("compost_bin")
+        assertTrue(bin.broken, "the bin jams after enough batches: $bin")
+        assertTrue(w.count("tomato") >= 1, "the planter grew food from the bin's compost: ${w.exportState().works}")
+        val log = w.snapshot().events.joinToString("\n") { it.text }
+        assertTrue("the planter took 1 compost brick from the compost bin" in log && "jammed and needs repairing" in log, log)
+        val entity = w.snapshot().entities.first { it.id.value == "compost_bin" }
+        assertEquals("jammed", entity.readout)
+
+        // Jammed, it makes nothing (what it made before can still be taken out) until he mends it with a spare part, which raises his tinkering.
+        w.done(Intent.Do("tend", on = "compost_bin"))
+        val jammed = w.store("compost_bin")
+        repeat(12) { w.finish(Intent.Wait(GridWorld.MAX_WAIT)) }
+        assertEquals(jammed.copy(outputs = emptyMap()), w.store("compost_bin").copy(outputs = emptyMap()))
+        w.done(Intent.Do("repair", on = "compost_bin"))
+        assertTrue(w.store("compost_bin").wear < 100 && w.skill("tinkering") > 0 && w.count("spare_parts") == 0, "${w.store("compost_bin")}")
+        assertTrue(w.observe(w.agentId).activities!!.first { it.id == "repair" }.locked != null, "no spare part left")
+    }
+
+    @Test
+    fun `his code can't print money, and takes out what a machine made only from beside it`() {
+        val w = BedroomWorld.create(content("compost_bin" to 1))
+        fun write(called: String, code: String) {
+            w.stage("devise", AuthoredResult.Coded(CodeDesign(verbs = listOf(VerbDesign(called, called, "tries something", 5, code = code)))))
+            w.done(Intent.Do("devise"))
+        }
+        val money = w.observe(w.agentId).money
+        write("print_money", "function finish(world) { world.earn(1000, 'printing'); }")
+        val printed = assertIs<IntentStatus.Failed>(w.finish(Intent.Do("print_money"))).reason
+        assertTrue("money doesn't come from nothing" in printed, printed)
+        assertEquals(money, w.observe(w.agentId).money)
+
+        // From the desk the bin is out of reach.
+        write("empty_bin", "function finish(world) { return 'took ' + world.transfer('compost_bin', 'self', 'compost_brick', 1); }")
+        val far = assertIs<IntentStatus.Failed>(w.finish(Intent.Do("empty_bin"))).reason
+        assertTrue("too far apart" in far, far)
+    }
+}

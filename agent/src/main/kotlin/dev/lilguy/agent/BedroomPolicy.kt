@@ -95,8 +95,22 @@ class BedroomPolicy(
                 Intent.Do("sketch") to "Sketch: $$money and $$held in art, short of the next pack of meals ($$mealPrice)."
             "sell_art" in can && meals == 0 ->
                 Intent.Do("sell_art") to "No food and too tired to sketch; sell what I hold."
-            else -> watching(obs, night) ?: (Intent.Wait(BedroomPrompt.WAIT_TICKS) to "Nothing I need to do right now; wait.")
+            else -> tending(obs, night) ?: watching(obs, night) ?: (Intent.Wait(BedroomPrompt.WAIT_TICKS) to "Nothing I need to do right now; wait.")
         }
+    }
+
+    /**
+     * With machines, his spare daylight looks after them: mend one that's jammed or worn, and fill one
+     * when he has a batch's worth of scraps or it has something to take out. Without, nothing.
+     */
+    private fun tending(obs: Observation, night: Boolean): Pair<Intent, String>? {
+        if (night) return null
+        val open = obs.activities.orEmpty().filter { it.locked == null }
+        open.firstOrNull { it.id == "repair" }?.let { return Intent.Do("repair", on = it.on) to "The ${it.on} is worn; mend it." }
+        val scraps = obs.owns.orEmpty()["food_scrap"] ?: 0
+        open.firstOrNull { it.id == "tend" && (it.gives.orEmpty().contains("take out") || scraps >= SCRAPS) }
+            ?.let { return Intent.Do("tend", on = it.on) to "Tend the ${it.on}: ${it.gives}." }
+        return null
     }
 
     /** Game minutes at his last check of the station. */
@@ -134,6 +148,8 @@ class BedroomPolicy(
         const val MEAL_STOCK = 2
         const val SKETCH_ENERGY = 22
         const val CHECK_HOURS = 8
+        /** Scraps worth a walk to the compost bin: a batch's. */
+        const val SCRAPS = 3
         /** How many packs of meals' worth of cash and art to earn before stopping. */
         const val RESERVE_PACKS = 1
         val DOLLARS = Regex("""\$(\d+) for""")

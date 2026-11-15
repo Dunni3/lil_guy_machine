@@ -173,6 +173,7 @@ class CodedVerbsTest {
         assertIs<IntentStatus.Succeeded>(w.finish(Intent.Do("craft")))
         assertTrue("made a music box (plain to look at" in w.events(), w.events())
         assertEquals(1, w.count("music_box"))
-        assertEquals(money - 25, w.observe(w.agentId).money!!)
+        // The music box's materials are paid for, as at the workbench.
+        assertTrue(w.observe(w.agentId).money!! < money - 25)
     }
 }

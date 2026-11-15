@@ -54,8 +54,10 @@ data class DesignReply(
     val why: String,
     /** Other looks its code can show, as a list a strict schema can hold. */
     val variants: List<VariantPick> = emptyList(),
+    /** The recipes it runs as a machine; empty for a thing that isn't one. */
+    val runs: List<String> = emptyList(),
 ) {
-    fun design() = Design(name, use, qualities.associate { it.quality to it.strength.toDouble() }, place, look, book, why, variants.associate { it.name.trim() to it.changes })
+    fun design() = Design(name, use, qualities.associate { it.quality to it.strength.toDouble() }, place, look, book, why, variants.associate { it.name.trim() to it.changes }, runs)
 }
 
 /** A variant of a look as the model writes it: its [name] and the [changes] it makes to named parts. */
@@ -135,6 +137,7 @@ class Inventor(private val model: DecisionModel, private val timeout: Duration =
                     "design_reply.book" to "Only for a readable thing: the book it is. Null otherwise.",
                     "design_reply.why" to "Why you're making it, first person, under $WHY_CAP words.",
                     "design_reply.variants" to VARIANTS_HINT,
+                    "design_reply.runs" to runsHint(content),
                     "book_design.chapters" to "${rules.book.minChapters} to ${rules.book.maxChapters} chapters, one sentence each of what's in it.",
                     "book_design.skill" to "The one skill reading it raises, or null.",
                 ) + Workbench.partHints(rules).descriptions + Workbench.variantHints,
@@ -242,8 +245,13 @@ class Inventor(private val model: DecisionModel, private val timeout: Duration =
         val INSTRUCTIONS = """
             |Right now you are not choosing an action: you are at your workbench, inventing. Design one new thing of your own that you'd like to have, and that isn't like what you already own. Make it yours: what you like, how you feel, what your room or your days are missing.
             |
-            |For this reply only, ignore the reply format above: reply with a JSON object {"name": ..., "use": ..., "qualities": [{"quality": ..., "strength": ...}], "place": ..., "look": [{"shape": ..., "w": ..., "h": ..., "d": ..., "x": ..., "y": ..., "z": ..., "rot_x": ..., "rot_y": ..., "rot_z": ..., "color": ..., "part": ..., "taper": ..., "cut": ..., "hole": ..., "arc": ..., "glow": ..., "opacity": ...}], "book": ..., "why": ..., "variants": [{"name": ..., "changes": [{"part": ..., ...}]}]} and nothing else.
+            |For this reply only, ignore the reply format above: reply with a JSON object {"name": ..., "use": ..., "qualities": [{"quality": ..., "strength": ...}], "place": ..., "look": [{"shape": ..., "w": ..., "h": ..., "d": ..., "x": ..., "y": ..., "z": ..., "rot_x": ..., "rot_y": ..., "rot_z": ..., "color": ..., "part": ..., "taper": ..., "cut": ..., "hole": ..., "arc": ..., "glow": ..., "opacity": ...}], "book": ..., "why": ..., "variants": [{"name": ..., "changes": [{"part": ..., ...}]}], "runs": [...]} and nothing else.
         """.trimMargin()
+
+        /** What `runs` is, with the world's recipes: for the design's schema and the workbench's `build`. */
+        fun runsHint(content: BedroomContent): String = "For a machine that makes things (it stands somewhere, so it's viewable): the recipes it runs, " +
+            (content.machines?.recipes.orEmpty().joinToString("; ") { r -> "${r.id}: ${r.takes.entries.joinToString { (i, n) -> "$n $i" }} into ${r.makes.entries.joinToString { (i, n) -> "$n $i" }} in ${r.hours.toInt()}h" }.ifEmpty { "none yet" }) +
+            ". It wears with each batch and needs mending. Empty for anything else."
 
         /** What `variants` are, for the design's schema and the workbench's `build`. */
         const val VARIANTS_HINT = "Other looks it can show when its code says (world.show), up to ${InventRules.MAX_VARIANTS}; often none. Each is a name (\"spraying\", \"off\") and changes to parts you named: a new color or glow, a turn, a scale, or hidden. Empty for none."

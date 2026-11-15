@@ -24,6 +24,8 @@ data class Design(
     val why: String = "",
     /** Other looks it can show (`world.show(id, name)`): each a list of changes to named parts of [look] ([PartChange]). */
     val variants: Map<String, List<PartChange>> = emptyMap(),
+    /** The recipes it runs as a machine (rules.yaml `machines.recipes`), so it joins a chain: a thing that stands somewhere. */
+    val runs: List<String> = emptyList(),
 )
 
 /**
@@ -175,6 +177,12 @@ data class InventRules(
         if (design.look.size > lookParts) problems += "its look can have at most $lookParts shapes"
         design.look.forEachIndexed { i, p -> partProblem(p)?.let { problems += "shape ${i + 1} of its look: $it" } }
         problems += variantProblems(design)
+        val runs = design.runs.map { it.trim() }.distinct()
+        if (runs.isNotEmpty()) {
+            val recipes = c.machines?.recipes.orEmpty()
+            runs.filter { r -> recipes.none { it.id == r } }.forEach { problems += "'$it' isn't something a machine makes; " + if (recipes.isEmpty()) "this world has no recipes" else "the recipes are ${recipes.joinToString { r -> r.id }}" }
+            if (design.use != VIEWABLE) problems += "a machine stands somewhere, so it's a thing to look at (viewable) with a place"
+        }
         var slot: String? = null
         if (design.use == VIEWABLE) {
             when (design.place) {
@@ -210,6 +218,7 @@ data class InventRules(
             stackable = design.use == EDIBLE,
             affords = mapOf(design.use to params),
             qualities = design.qualities,
+            machine = runs.takeIf { it.isNotEmpty() }?.let { MachineSpec(runs = it) },
         )
         val spec = book?.let { BookSpec(id, it.title.trim(), it.blurb.trim(), it.chapters.map(String::trim), it.skill?.let { s -> mapOf(s to this.book.skillGain) }.orEmpty()) }
         return Checked.Ok(Invention(item, spec, design.look, cost, design.why.trim(), variants = design.variants.mapKeys { it.key.trim() }))

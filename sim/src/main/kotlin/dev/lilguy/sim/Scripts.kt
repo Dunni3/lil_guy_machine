@@ -22,7 +22,9 @@ import org.mozilla.javascript.WrappedException
  * The world as the code he writes sees it: what each verb of his own can look at and change. Every
  * function of the JavaScript `world` object ([ScriptApi.FUNCTIONS]) calls one of these. A bad
  * argument throws [ScriptProblem], which the script sees as a JavaScript `Error` it may catch.
- * Nothing here is capped: what his code does is what happens (Ian's call, 2026-11-15).
+ * What his code does is what happens, but it makes nothing from nothing: money comes from selling
+ * things, things from machines fed with inputs, and machines wear with use
+ * (`docs/decisions/2026-11-15-machines-are-fed-and-wear-out-instead-of-uncapped.md`).
  */
 interface ScriptWorld {
     /** `{ day, time: "14:05", hour, minute, night }`. */
@@ -44,10 +46,8 @@ interface ScriptWorld {
     fun state(id: String): Map<String, Any?>
 
     fun need(name: String, delta: Double): Double
-    fun earn(amount: Int, why: String): Int
     fun spend(amount: Int, why: String): Boolean
     fun practice(skill: String, amount: Double): Double
-    fun give(id: String, n: Int): Int
     fun take(id: String, n: Int): Int
     /** Builds a new kind of thing from [design] (the invention fields) and gives him one; its id. */
     fun make(design: Map<String, Any?>): String
@@ -83,6 +83,14 @@ interface ScriptWorld {
     fun readout(id: String, text: String?)
     /** In [minutes] game minutes, thing [id]'s `onTimer(world, thing, key)` runs. */
     fun after(minutes: Int, key: String, id: String?)
+
+    // Machines: what they take and make, and moving things between them ([Works]).
+    /** What machine [id] runs, holds and has made, its wear, and what it's doing. */
+    fun machine(id: String): Map<String, Any?> = throw ScriptProblem("there are no machines here")
+    /** Moves [n] of [item] from [from] to [to] (a machine of his, or `self`); how many moved. */
+    fun transfer(from: String, to: String, item: String, n: Int): Int = throw ScriptProblem("nothing moves here")
+    /** Sells [n] of something of his that sells; the dollars it fetched. */
+    fun sell(id: String, n: Int): Int = throw ScriptProblem("nothing sells here")
 }
 
 /** A bad call from his code, in words he can act on; his script sees it as an `Error`. */
@@ -114,10 +122,8 @@ object ScriptApi {
         Fn("here", "world.here()", "the name of the place you're in", false) { w, _ -> w.here() },
         Fn("state", "world.state(id)", "what's stored on a thing you own, or on yourself with \"self\": an object of keys", false) { w, a -> w.state(a.str(0, "id")) },
         Fn("need", "world.need(name, delta)", "changes a need by delta (it stays 0 to 100); returns its new level", true) { w, a -> w.need(a.str(0, "name"), a.num(1, "delta")) },
-        Fn("earn", "world.earn(dollars, why)", "adds money; returns your money", true) { w, a -> w.earn(a.int(0, "dollars"), a.optStr(1) ?: "") },
         Fn("spend", "world.spend(dollars, why)", "takes money if you have it; returns true, or false and takes nothing", true) { w, a -> w.spend(a.int(0, "dollars"), a.optStr(1) ?: "") },
         Fn("practice", "world.practice(skill, amount)", "raises a skill; returns its new level", true) { w, a -> w.practice(a.str(0, "skill"), a.num(1, "amount")) },
-        Fn("give", "world.give(id, n)", "gives you n more of a kind of thing that exists (an id from world.catalog()); returns how many you have", true) { w, a -> w.give(a.str(0, "id"), a.optInt(1) ?: 1) },
         Fn("take", "world.take(id, n)", "uses up n of something you own (an id, or a use like \"edible\"); returns how many it took", true) { w, a -> w.take(a.str(0, "id"), a.optInt(1) ?: 1) },
         Fn(
             "make", "world.make({ name, use, qualities, place, look, book, why })",
@@ -144,6 +150,16 @@ object ScriptApi {
         Fn("motion", "world.motion(id, part, kind, speed)", "moves a named part of your invention: kind is ${Machines.MOTIONS.joinToString()}; speed 0.1 to ${Machines.MAX_SPEED.toInt()} (1 is gentle); null kind or speed 0 stops it", true) { w, a -> w.motion(a.str(0, "id"), a.str(1, "part"), a.optStr(2), a.optNum(3) ?: 1.0) },
         Fn("readout", "world.readout(id, text)", "a short label (up to ${Machines.READOUT} characters) floating over a thing of yours, like \"62%\" or \"watering\"; null clears it", true) { w, a -> w.readout(a.str(0, "id"), a.optStr(1)) },
         Fn("after", "world.after(minutes, key, id)", "in that many game minutes (1 to ${Machines.MOST_TIMER}), runs onTimer(world, thing, key) of a thing of yours (id; this thing when left out); the same key again resets it", true) { w, a -> w.after(a.int(0, "minutes"), a.str(1, "key"), a.optStr(2)) },
+        // Machines: what they take and make.
+        Fn("machine", "world.machine(id)", "a machine of yours: { runs: [{ id, takes, makes, hours, needs }], holds, in, out, wear (0 to 100; it slows past ${MachineRules().slowAt.toInt()} and jams at 100), broken, making, done (%), stuck }", false) { w, a -> w.machine(a.str(0, "id")) },
+        Fn("transfer", "world.transfer(from, to, item, n)", "moves n of a thing between a machine and you (\"self\") or two machines within a few tiles of each other: out of a machine comes what it made, into one only what it takes; returns how many moved", true) { w, a -> w.transfer(a.str(0, "from"), a.str(1, "to"), a.str(2, "item"), a.optInt(3) ?: 1) },
+        Fn("sell", "world.sell(id, n)", "sells n of something you own that sells (samples, not art: that's sold at the mail hatch); returns the dollars", true) { w, a -> w.sell(a.str(0, "id"), a.optInt(1) ?: 1) },
+    )
+
+    /** Functions there used to be, and where what they did comes from now: calling one throws this. */
+    val RETIRED: Map<String, String> = mapOf(
+        "earn" to "money doesn't come from nothing: sell something with world.sell(id, n), or make things that sell",
+        "give" to "things don't come from nothing: a machine makes them from what it takes (world.machine), and world.transfer(machine, \"self\", item) takes them out; or collect or buy them",
     )
 
     /** The API as lines for a prompt: one per function, plus `say` and the verb's arguments. */
@@ -283,6 +299,7 @@ class ScriptSandbox(private val steps: Int = STEPS) {
                 fn.run(world, a)
             })
         }
+        ScriptApi.RETIRED.forEach { (name, why) -> ScriptableObject.putProperty(api, name, lambda(scope, name) { throw ScriptProblem(why) }) }
         ScriptableObject.putProperty(api, "say", lambda(scope, "say") { a ->
             if (readOnly) throw ScriptProblem("canDo can only look; say it from finish")
             say(says, a.firstOrNull()?.let(::text) ?: "")

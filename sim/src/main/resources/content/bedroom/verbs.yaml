@@ -48,6 +48,8 @@ verbs:
       - consume: { what: 1 }
       - need: { fullness: 45 }
       - enjoy: what
+      # What's left over goes in the compost bin, if he has one (rules.yaml `machines`).
+      - produce: { food_scrap: 1 }
   # The floor under hunger: the oats in the cupboard never run out and cost nothing, so he can't be
   # left starving with no way to eat, and so no way to sleep (hunger wakes him) or work. Offered at
   # rules.yaml's `low` fullness, where hunger starts pulling his mood down, so oats can always lift
@@ -312,6 +314,29 @@ verbs:
     effects:
       - read_log: what
       - need: { stimulation: 3 }
+  # His machines (rules.yaml `machines`): he fills one with what it takes that he has and takes out
+  # what it made, standing at it; and he mends a worn or jammed one with a spare part, which raises
+  # his tinkering, so each mend takes off more. Anything of his with code is a machine to mend too.
+  - id: tend
+    kind: upkeep
+    phrase: fill a machine and take out what it made
+    args: { on: machine }
+    at: [on]
+    minutes: 10
+    routine: true
+    effects:
+      - tend: on
+  - id: repair
+    kind: upkeep
+    phrase: mend a worn or jammed machine
+    args: { on: machine }
+    at: [on]
+    minutes: 45
+    effects:
+      - repair: on
+      - consume: { spare_parts: 1 }
+      - practice: { tinkering: 0.2 }
+      - need: { energy: -3, stimulation: 4 }
   - id: study_sample
     kind: study
     phrase: study a sample under the microscope
