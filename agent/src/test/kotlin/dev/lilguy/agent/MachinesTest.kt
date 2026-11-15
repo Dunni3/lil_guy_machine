@@ -21,9 +21,7 @@ import kotlin.test.assertTrue
 /** The sprinkler of the machines plan: a thing he invents that acts on its own place, shows it, and is remembered there. */
 class MachinesTest {
     private val content = BedroomContent.default().let { c ->
-        // A free spot in the garden (the place-outdoors work adds the same one to world.yaml).
-        val world = c.world!!.copy(slots = c.world!!.slots + ("by_garden_bench" to listOf(7, 17)))
-        c.copy(world = world, start = c.start.copy(money = 100, items = c.start.items + ("workbench" to 1)))
+        c.copy(start = c.start.copy(money = 100, items = c.start.items + ("workbench" to 1)))
     }
 
     private fun BedroomWorld.finish(intent: Intent): IntentStatus {
@@ -46,6 +44,7 @@ class MachinesTest {
         w.stage("invent", AuthoredResult.Designed(CannedInventor.SPRINKLER, code = CannedInventor.SPRINKLER_CODE))
         w.ok(Intent.Do("invent"))
         assertEquals(30, w.behaviors["garden_sprinkler"]?.every, w.observe(w.agentId).recentEvents.joinToString("\n"))
+        // It goes out to world.yaml's free spot by the garden bench.
         w.ok(Intent.Do("set_out_the_sprinkler", what = "garden_sprinkler"))
         w.ok(Intent.Do("explore", on = "garden_bench"))
         w.ok(Intent.Do("collect", on = "seedpod_bush"))
