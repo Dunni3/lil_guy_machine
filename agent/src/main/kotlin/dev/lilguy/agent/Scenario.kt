@@ -56,10 +56,12 @@ fun bedroomScenario(
     dropped: (List<String>) -> Unit = {},
     onDecision: (AgentRuntime.DecisionRecord) -> Unit = {},
 ): Pair<BedroomWorld, AgentRuntime> {
-    // A model that calls tools says what it thinks with every choice and can look things up first, so it isn't offered
-    // the reflection verb (think) and isn't made to think every few decisions.
+    // A model that calls tools thinks in its own words as it decides and can look things up first, so it isn't offered
+    // the reflection verb (think) and isn't made to think every few decisions. It ends a turn with think when it has
+    // only thought and looked for as long as a turn allows: he sat and thought (BedroomTools.of's ponder).
     val tooling = model.capabilities.let { it.toolCalls && !it.closedChoice }
     val reflecting = content.reflection?.verb?.takeIf { !tooling }
+    val pondering = content.reflection?.verb?.takeIf { tooling && content.verb(it) != null }
     // A verb whose result nothing writes (no thinker) isn't offered to models. The sim still has it, and the reply schema
     // still takes it.
     fun offered(v: VerbSpec): Boolean = (reflecting != null || v.id != content.reflection?.verb) && (longTerm?.offers(v) ?: v.authored.none { it.essential })
@@ -94,7 +96,7 @@ fun bedroomScenario(
                         ask = if (!m.canAsk) null else { q -> m.ask(q, obs, Describe.state(obs))?.reply?.let { it.text ?: "No answer came (${it.error})." } ?: "No one can answer that now." },
                     )
                 }.orEmpty()
-                BedroomTools.of(obs, ticksPerMinute, looks)
+                BedroomTools.of(obs, ticksPerMinute, looks, ponder = pondering?.let { Intent.Do(it) })
             },
             status = BedroomTools::view,
             call = { BedroomTools.call(it, ticksPerMinute) },
@@ -102,7 +104,12 @@ fun bedroomScenario(
     )
     val runtime = AgentRuntime(
         world, world.agentId, model, prompts,
-        schemaFor = { BedroomPrompt.replySchema(BedroomPrompt.deciding(it, shown()), ticksPerMinute) },
+        // The reply schema takes what he's offered, and think for a turn that ends in thought.
+        schemaFor = { obs ->
+            val known = shown()
+            val takes = pondering?.takeIf { known.verb(it) == null }?.let { v -> known.copy(verbs = known.verbs + listOfNotNull(world.content.verb(v))) } ?: known
+            BedroomPrompt.replySchema(BedroomPrompt.deciding(obs, takes), ticksPerMinute)
+        },
         longTerm = longTerm,
         fallback = { Intent.Wait(BedroomPrompt.WAIT_TICKS) },
         reflection = start.reflection?.takeIf { reflecting != null && start.verb(it.verb) != null }?.let { it.verb to it.every },

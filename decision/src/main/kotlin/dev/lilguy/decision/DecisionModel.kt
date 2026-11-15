@@ -86,10 +86,17 @@ data class Decision<A>(
     val attempts: List<Attempt> = emptyList(),
     /** What it looked at first ([ToolSet.looks]), in order. */
     val looks: List<Looked> = emptyList(),
+    /** What it wrote along the way without acting, in order ([ToolSet.ponder]). */
+    val musings: List<String> = emptyList(),
+    /** True when [value] is [ToolSet.ponder]'s: the turn's steps ran out with no action. */
+    val pondered: Boolean = false,
+    /** Replies that weren't tries at acting (looks, thinking): each one more HTTP call besides [attempts]. */
+    val steps: Int = 0,
 )
 
-data class Usage(val promptTokens: Int = 0, val completionTokens: Int = 0) {
-    operator fun plus(other: Usage) = Usage(promptTokens + other.promptTokens, completionTokens + other.completionTokens)
+/** [cachedTokens] are the part of [promptTokens] the server read from its prompt cache. */
+data class Usage(val promptTokens: Int = 0, val completionTokens: Int = 0, val cachedTokens: Int = 0) {
+    operator fun plus(other: Usage) = Usage(promptTokens + other.promptTokens, completionTokens + other.completionTokens, cachedTokens + other.cachedTokens)
 }
 
 /** One reply from the model and, if it was rejected, why. */
@@ -106,4 +113,8 @@ class DecisionFailed(
     cause: Throwable? = null,
     /** What it looked at before it failed. */
     val looked: List<Looked> = emptyList(),
+    /** What it wrote along the way before it failed. */
+    val musings: List<String> = emptyList(),
+    /** Replies that weren't tries at acting (looks, thinking). */
+    val steps: Int = 0,
 ) : Exception(message, cause)
