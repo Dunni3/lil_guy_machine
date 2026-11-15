@@ -23,7 +23,7 @@ an effect with reach, that perception, verb conditions and needs read. Light is 
   same engine, not new systems.
 - **Light** (`sim/.../Lighting.kt`, rules.yaml `light`) runs from 0 to 10, where 10 is noon outdoors.
   Outdoors it is the daylight by time of day (a curve of `HH:MM` keys that matches the web's `day.ts`).
-  In a room it is `indoors` (0.4) of the daylight, plus each window (room.yaml and world.yaml room
+  In a room it is `indoors` (0.5) of the daylight, plus each window (room.yaml and world.yaml room
   `windows`), which lets in 0.8 of the daylight over 8 tiles. At night the moon gives 0.5.
   The weather's `daylight()` (1 clear, less under cloud, rain or fog) scales it, and a weather
   station logs this light at its own tile (0 to 10), so a lamp beside it shows in its log. Items give light with
@@ -35,8 +35,9 @@ an effect with reach, that perception, verb conditions and needs read. Light is 
   the things in a place he has explored. Anything else isn't listed at all. `Observation.light` gives a
   few landmark phrases ("where you stand: light 3.2, from the sunroom lamp", "lit by the sunroom lamp
   (light 2.9 to 6.2): the picture rail, the bed and the mail hatch", "too dark to see the rest of the
-  room; you remember the desk and the chair there"). They appear only when something in his place is
-  darker than the most light any verb needs, so by day there's usually nothing to say.
+  room; you remember the desk and the chair there"), at most four. They appear only when light limits
+  something: a verb locked as too dark, something in his place too dark to see, or him standing in the
+  dark. On a clear or cloudy day there's usually nothing to say.
 - **Verbs need light where they're done.** `needs: { light: N }` on a verb (verbs.yaml) is checked on
   the tile it would be done at: one of the things in `at`, or where he stands for `here`. Below N the
   verb is locked as "too dark to read at the bed or the chair (light 0.4; it needs 3)", after the need
@@ -44,7 +45,7 @@ an effect with reach, that perception, verb conditions and needs read. Light is 
   the nearest that is lit enough. Read, sketch, paint, invent, devise, write_letter, study_sample,
   explore and collect all need 3, more than his lantern and the moon (2), so he can't forage by lantern
   alone. The desk has its own little lamp (3.5 over 0.8 tiles), as its model shows: enough for desk
-  work at night, not for reading in the chair beside it. By day the room's 4 is enough everywhere. From about 19:30 a
+  work at night, not for reading in the chair beside it. On a clear day the room's 5 is enough everywhere, and a cloudy day's 3 just is; in rain (2) he reads by the window or a lamp. From about 19:30 a
   spot needs a window or a lamp.
 - **The web lights the scene from the sim.** The protocol's `Entity.light` (`{ strength, radius }`)
   carries every sim light, his lantern included. The renderer's fixed pool of 4 point lights takes the
@@ -54,8 +55,9 @@ an effect with reach, that perception, verb conditions and needs read. Light is 
 
 **Why tiles and phrases.** The lot is 40x30 tiles and A* already works per tile, so the sim's light
 matches the renderer. Models read landmark phrases better than coordinates, and the phrases cost
-little: over two scripted days the `light` field was present on 23 to 43% of decisions, at 44 to 70
-tokens when present (about 13 to 30 a decision overall, by characters / 4). The system prompt's new
+little. Over scripted runs (characters / 4) the `light` field was on 22 to 24% of decisions, at 48 to
+80 tokens when present: 11 a decision overall with a novel only, 20 with every piece of decor and six
+lamps. Measured with the weather on (#66), whose rain dims the room. The system prompt's new
 sentences on light and comfort are about 130 tokens (net about 90, since the house-cap sentence is
 gone), the same every decision, so cacheable.
 

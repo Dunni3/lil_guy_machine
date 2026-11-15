@@ -38,15 +38,15 @@ place things and to buy lamps, without a cost made up for it.
 
 | | main (cap) | this change, reach 3 to 8 | this change, reach 2 to 6 (shipped) |
 |---|---|---|---|
-| mood, by day | 59-74 | 80-98 | 52-79 |
+| mood, by day | 59-74 | 80-98 | 53-79 |
 | comfort at the bed, desk, easel, chair, hatch, noon, no lamps | 25 (capped) | 24, 45, 31, 38, 31 | 17, 26, 23, 20, 22 |
 | same, 22:30, no lamps | 25 | 0 | 0 |
 | same, 22:30, with the six lamps | 25 | 44, 50, 28, 46, 45 | 35, 31, 12, 18, 29 |
 
 So mood doesn't pin at 100, and it moves with where he is and the hour. In the scripted run he was
-bored (stimulation near 0) and mood still ranged 52-79, so boredom still shows in it. Over 2 scripted
-days with a novel only, the dark evenings cost two sketches out of nine. Money and food were the same
-as main.
+bored (stimulation near 0) and mood still ranged 53-79, so boredom still shows in it. Over 2 scripted
+days with a novel only he sketched as often as on main (nine times), since the desk has its own lamp.
+Money and food were the same as main. The last column was measured with the weather (#66) on.
 
 **Not measured.** Whether a model notices and acts on it (moves a lamp to where it reads, buys one for
 the dark evenings) needs a live run, and the `place` tool from phase 0 to move things.

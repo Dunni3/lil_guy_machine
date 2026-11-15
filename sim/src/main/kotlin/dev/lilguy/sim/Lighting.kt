@@ -18,7 +18,7 @@ data class LightSpec(val strength: Double, val radius: Double)
 data class LightRules(
     val see: Double = 1.0,
     val daylight: Map<String, Double>,
-    val indoors: Double = 0.4,
+    val indoors: Double = 0.5,
     val window: WindowLight = WindowLight(0.8, 8.0),
     /** The lantern that goes with him, or null for none: enough to make out what's beside him, not to work by. */
     val lantern: LightSpec? = null,
@@ -126,16 +126,16 @@ class Lighting(private val effects: Effects = Effects()) {
         }
 
         /**
-         * A few landmark phrases for how the light is where he stands, or null when nothing in his
-         * place is darker than [enough] (the most light any verb needs) and he isn't in the dark: by
-         * day that's most of the time. [things]: the things in his place by name, with their tiles and
-         * whether he knows of them without seeing them ([Landmark.known]).
+         * A few landmark phrases for how the light is where he stands, or null when it limits nothing:
+         * no verb is [limited] (locked as too dark), nothing in his place is too dark to see, and he
+         * isn't standing in the dark. By day that's most of the time. [things]: the things in his place
+         * by name, with their tiles and whether he knows of them without seeing them ([Landmark.known]).
          */
-        fun describe(field: Field, rules: LightRules, at: Cell, outdoors: Boolean, things: List<Landmark>, enough: Double): List<String>? {
+        fun describe(field: Field, rules: LightRules, at: Cell, outdoors: Boolean, things: List<Landmark>, limited: Boolean): List<String>? {
             val here = field[at]
             val lit = things.filter { field[it.cell] >= rules.see }
             val dark = things - lit.toSet()
-            if (here >= enough && lit.all { field[it.cell] >= enough } && dark.isEmpty()) return null
+            if (!limited && dark.isEmpty() && here >= rules.see) return null
             fun from(c: Cell): String = field.source(c)?.name ?: "daylight"
             return buildList {
                 add("where you stand: " + if (here < rules.see) "dark (light ${level(here)})" else "light ${level(here)}, from ${from(at)}")
@@ -147,7 +147,7 @@ class Lighting(private val effects: Effects = Effects()) {
                     val range = level(levels.min()).let { lo -> level(levels.max()).let { hi -> if (lo == hi) lo else "$lo to $hi" } }
                     add("lit by $src (light $range): " + names(ts.take(3)))
                 }
-                glowing.filter { g -> groups.none { it.key == "the ${g.name}" } }.takeIf { it.isNotEmpty() }?.let { add("glowing: " + names(it.take(2))) }
+                if (groups.size < 2) glowing.filter { g -> groups.none { it.key == "the ${g.name}" } }.takeIf { it.isNotEmpty() }?.let { add("glowing: " + names(it.take(2))) }
                 if (dark.isNotEmpty()) {
                     val known = dark.filter { it.known }
                     add(

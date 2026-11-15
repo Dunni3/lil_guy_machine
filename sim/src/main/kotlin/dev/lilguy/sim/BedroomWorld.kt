@@ -639,7 +639,7 @@ class BedroomWorld private constructor(
         val best = at.maxOf { f[it.second] }
         if (best >= need) return null
         val where = if (at.first().first == null) "here" else "at " + at.joinToString(" or ") { "the ${it.first}" }
-        return "too dark to ${a.id} $where (light ${Lighting.level(best)}; it needs ${Lighting.level(need)})"
+        return "$DARK${a.id} $where (light ${Lighting.level(best)}; it needs ${Lighting.level(need)})"
     }
 
     /** Whether he knows [e] is there without seeing it: his house's things, and what's in a place he has explored. */
@@ -2265,7 +2265,7 @@ class BedroomWorld private constructor(
         }.sortedBy { it.distance }
         val light = content.light?.let { rules ->
             val things = around.map { Landmark(item(it.id.value).name, Cell(it.x.toInt(), it.y.toInt()), knownThere(it), key = item(it.id.value).group in KEY_GROUPS) }
-            Lighting.describe(field, rules, guy.cell, layout.placeOf(guy.cell)?.kind == PlaceKind.Outdoor, things, content.verbs.maxOfOrNull { it.needs[EffectKind.Light.id] ?: 0.0 } ?: 0.0)
+            Lighting.describe(field, rules, guy.cell, layout.placeOf(guy.cell)?.kind == PlaceKind.Outdoor, things, current.activities.any { it.locked?.startsWith(DARK) == true })
         }
         return Observation(
             place = whereText(),
@@ -2451,6 +2451,9 @@ class BedroomWorld private constructor(
         /** Hours in a row a thing's code may break before it stops. */
         /** What a thing's code wears by, before its id. */
         private const val THING_WEAR = "thing:"
+
+        /** How a lock for want of light begins. */
+        private const val DARK = "too dark to "
 
         /** His lantern's emitter id. */
         private const val LANTERN = "lantern"
