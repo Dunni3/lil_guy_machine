@@ -54,6 +54,9 @@ class BedroomWorld private constructor(
     /** Rooms built onto the house: room id to the site it stands on. */
     private val house = linkedMapOf<String, String>()
 
+    /** Daylight, windows and lamps ([Lighting]); weather sets [Lighting.daylightScale]. */
+    val lighting = Lighting()
+
     /** Rooms built onto the house, room id to site id. */
     fun houseRooms(): Map<String, String> = LinkedHashMap(house)
 
@@ -452,7 +455,7 @@ class BedroomWorld private constructor(
             ledger.debit(ticks, made.cost, "materials for the ${spec.name}")
             add(spec.id, 1)
             val like = spec.qualities.entries.joinToString { (q, s) -> "$q ${s.toInt()}" }
-            val comfortNote = if (comfortOf(spec) != 0) "comfort ${comfort()}, so mood settles toward ${moodTarget().toInt()}" else null
+            val comfortNote = if (comfortOf(spec) != 0) comfortText() else null
             val newNote = newThingRate(spec).takeIf { it > 0 }?.let { newThings[spec.id] = ticks; "new: ${newThingText(it)}" }
             return listOfNotNull(
                 "built the ${spec.name}, ${article(spec.group)} of your own design" + if (like.isEmpty()) "" else " ($like)",
@@ -482,10 +485,7 @@ class BedroomWorld private constructor(
         override fun hang(tag: String) = this@BedroomWorld.hang(tag)
 
         override fun hangText(tag: String) = listOfNotNull(held(tag).lastOrNull()?.let { "hangs ${pieceName(it)}" }) +
-            fits(content.gallery.comfortEach).let { c ->
-                if (c > 0) "comfort +$c: mood settles $c higher (${hung().size} of ${content.gallery.max} on the wall)"
-                else "comfort +0: ${fullText()} (${hung().size} of ${content.gallery.max} on the wall)"
-            }
+            "comfort +${content.gallery.comfortEach} while you can see it${if (content.light != null) " lit" else ""} (${hung().size} of ${content.gallery.max} on the wall)"
 
         override fun await(op: AuthoredOp, b: Bound, piece: Int?) {
             authored.addLast(AuthoredView(++authoredCount, b.verb.id, op.handler, ticks, piece))
@@ -581,36 +581,74 @@ class BedroomWorld private constructor(
         }
     }
 
-    /** Everything in view, as if the house held all of it. */
-    private fun rawComfort(): Int = placed().sumOf { (spec, _) -> comfortOf(spec) } + hung().size * content.gallery.comfortEach + collectionComfort() + roomsComfort()
-
-    /** [rawComfort], up to what the house holds ([ComfortRules]). */
-    private fun comfort(): Int = rawComfort().let { raw -> holds()?.let { minOf(raw, it) } ?: raw }
-
-    /** How much comfort the house holds now, more for each room he has built; null with no limit. */
-    private fun holds(): Int? = content.comfort?.let { it.holds + it.perRoom * house.size }
-
-    /** How much of [c] more comfort the house has room for now. */
-    private fun fits(c: Int): Int {
-        val h = holds() ?: return c
-        return if (c <= 0) c else minOf(c, (h - rawComfort()).coerceAtLeast(0))
+    /**
+     * The comfort of what he can see from where he stands ([ComfortRules]): each thing's value by how
+     * near and how lit it is, hung art where it hangs, his collection at its shelf, and the room he's in.
+     * Without comfort rules, everything in its slot counts in full.
+     */
+    private fun comfort(): Int {
+        val seen = { cell: Cell? -> if (content.comfort == null) 1.0 else cell?.let(::seenWeight) ?: 0.0 }
+        val here = layout.placeOf(guy.cell)?.id
+        return (
+            placed().sumOf { (spec, cell) -> comfortOf(spec) * seen(cell) } +
+                hung().size * content.gallery.comfortEach * seen(layout.slotCells["rail"]) +
+                collectionComfort() * seen(layout.slotCells["shelf"]) +
+                house.keys.sumOf { id -> roomComfort(id) * if (content.comfort == null) 1.0 else if (id == here) seen(guy.cell) else 0.0 }
+            ).roundToInt()
     }
 
-    /** "comfort 30, so mood settles toward 80", saying when the house is full and [fit] is false (what was added didn't fit). */
-    private fun comfortText(fit: Boolean = true): String =
-        "comfort ${comfort()}" + (if (!fit) ", all ${fullText().removePrefix("your ")}" else "") + ", so mood settles toward ${moodTarget().toInt()}"
-
-    /** "your house is full (it holds 35 comfort; each room you build holds 10 more)". */
-    private fun fullText(): String {
-        val r = content.comfort!!
-        val rooms = if (r.perRoom > 0 && content.world?.rooms?.isNotEmpty() == true) "; each room you build holds ${r.perRoom} more" else ""
-        return "your house is full (it holds ${holds()} comfort$rooms)"
+    /** How much a thing at [cell] counts toward what he sees now, 0 to 1: near and lit ([Lighting.viewWeight]). */
+    private fun seenWeight(cell: Cell): Double {
+        val rules = content.comfort ?: return 1.0
+        val asleep = doing?.activity?.effects?.any { !it.awake } == true
+        return Lighting.viewWeight(rules, content.light, layout, lightField(), guy.cell, cell, asleep)
     }
 
-    /** What the rooms he has built are like to him: their qualities, by his affinities, as decor's are. */
-    private fun roomsComfort(): Int = house.keys.sumOf { id ->
-        val r = content.world?.room(id) ?: return@sumOf 0
-        (r.qualities.entries.sumOf { (q, s) -> s * content.personality.affinity(q) } * content.qualityValue.inView).roundToInt()
+    /** "comfort 30 from what you can see here, so mood settles toward 80". */
+    private fun comfortText(): String = "comfort ${comfort()}" + (if (content.comfort != null) " from what you can see here" else "") + ", so mood settles toward ${moodTarget().toInt()}"
+
+    // --- light -----------------------------------------------------------------------------------
+
+    /** What gives off light now: each placed thing with a `light`, but a patch that's been picked bare. */
+    private fun lamps(): List<Emitter> = placed().mapNotNull { (spec, cell) ->
+        spec.light?.takeIf { (bareUntil[spec.id] ?: 0) <= ticks }?.let { Emitter(spec.id, "the ${spec.name}", EffectKind.Light, cell, it.strength, it.radius) }
+    }
+
+    /** The light on every tile now, worked out again only when the daylight, the layout or the lamps change. */
+    fun lightField(): Field = lighting.field(content, layout, house, clock.minuteOfDay(ticks), lamps())
+
+    /** The things [a] is done at with [args] that are lit enough for it, of [ids]; all of them when it needs no light. */
+    private fun litEnough(a: VerbSpec, ids: List<String>): List<String> {
+        val need = a.needs[EffectKind.Light.id] ?: return ids
+        val f = lightField()
+        return placed().filter { (spec, cell) -> spec.id in ids && f[cell] >= need }.map { it.first.id }.ifEmpty { ids }
+    }
+
+    /** "too dark to read at the bed or the chair (light 0.4; it needs 3)": where [a] would be done is too dark; null when one is lit enough, or arguments still to bind decide. */
+    private fun darkLock(a: VerbSpec, args: Map<String, String>?): String? {
+        val need = a.needs[EffectKind.Light.id] ?: return null
+        val f = lightField()
+        val at: List<Pair<String?, Cell>> = if (VerbSpec.HERE in a.at) {
+            listOf(null to guy.cell)
+        } else {
+            if (args == null && a.at.any { it in a.args }) return null
+            val ids = a.at.map { args?.get(it) ?: it }
+            placed().filter { it.first.id in ids }.map { (spec, cell) -> spec.name to cell }
+        }
+        if (at.isEmpty()) return null
+        val best = at.maxOf { f[it.second] }
+        if (best >= need) return null
+        val where = if (at.first().first == null) "here" else "at " + at.joinToString(" or ") { "the ${it.first}" }
+        return "too dark to ${a.id} $where (light ${Lighting.level(best)}; it needs ${Lighting.level(need)})"
+    }
+
+    /** Whether he knows [e] is there without seeing it: his house's things, and what's in a place he has explored. */
+    private fun knownThere(e: EntitySnapshot): Boolean = layout.place(e.place ?: "")?.kind == PlaceKind.Room || e.place in explored
+
+    /** What room [id] is like to him while he's in it: its qualities, by his affinities, as decor's are. */
+    private fun roomComfort(id: String): Double {
+        val r = content.world?.room(id) ?: return 0.0
+        return r.qualities.entries.sumOf { (q, s) -> s * content.personality.affinity(q) } * content.qualityValue.inView
     }
 
     /** Why [plan]'s room can't go on [site] now, or null. */
@@ -1235,7 +1273,7 @@ class BedroomWorld private constructor(
 
     /** Whether the shop has something new to him that he can afford: a thing for the room he likes, or something for a verb he hasn't done. */
     private fun canAffordNew(): Boolean = shopItems().any { spec ->
-        heldBack(spec) == null && ledger.canAfford(spec.price!!) && ((feelsNew(spec) && newThingRate(spec) > 0) || usesOf(spec).any { isNew(it) })
+        heldBack(spec) == null && ledger.canAfford(spec.price!!) && (newThingRate(spec) > 0 || usesOf(spec).any { isNew(it) })
     }
 
     /** What [spec], bought at [since], feeds stimulation an hour now ([NewThings]): 0 out of sight, once it's old, or if he doesn't like it. */
@@ -1246,12 +1284,9 @@ class BedroomWorld private constructor(
         return if (left <= 0) 0.0 else value(spec).coerceAtLeast(0.0) * t.stimulationPerValue * content.personality.curiosity * left
     }
 
-    /** Whether [spec], bought now, would feel new: only while the house has room for its comfort ([ComfortRules]). */
-    private fun feelsNew(spec: ItemSpec): Boolean = comfortOf(spec) <= 0 || fits(comfortOf(spec)) > 0
-
-    /** "stimulation +2/h while you're awake, fading over 3 days". */
+    /** "stimulation +2/h while you're awake and can see it, fading over 3 days". */
     private fun newThingText(rate: Double): String =
-        "stimulation ${signed((rate * 10).roundToInt() / 10.0)}/h while you're awake, fading over ${signed(content.novelty!!.things!!.days).removePrefix("+")} days"
+        "stimulation ${signed((rate * 10).roundToInt() / 10.0)}/h while you're awake${if (content.comfort != null) " and can see it" else ""}, fading over ${signed(content.novelty!!.things!!.days).removePrefix("+")} days"
 
     /** [d] as paid at [fresh]: gains in mood and stimulation shrink with wear; costs and other needs don't. */
     private fun paid(need: Need, d: Double, fresh: Double): Double = if (d > 0 && (need == Need.Mood || need == Need.Stimulation)) d * fresh else d
@@ -1296,6 +1331,7 @@ class BedroomWorld private constructor(
         a.effects.firstNotNullOfOrNull { it.lockReason(ops, b) }?.let { return it }
         val blocks = a.block + byDay(a)?.block.orEmpty() + if (a.work) content.needs.workFloor else emptyList()
         blocks.firstOrNull { it.blocks(needs[needOf(it.need)]) }?.let { return "${it.reason} (${it.need} ${needs.level(needOf(it.need))})" }
+        darkLock(a, args)?.let { return it }
         // Started now, it would end as soon as it began: sleep while starving wakes him in a minute.
         a.stopBelow.entries.firstOrNull { (need, level) -> needs[needOf(need)] < level }?.let { (need, level) ->
             return "it ends below $need ${level.toInt()} ($need ${needs.level(needOf(need))})"
@@ -1489,7 +1525,7 @@ class BedroomWorld private constructor(
         lockReason(a, args)?.let { reject("can't ${a.id}: $it") }
         val places = a.at.mapNotNull { if (it == VerbSpec.HERE) null else args[it] ?: it }
         if (VerbSpec.HERE in a.at) return activity(a, guy.cell, args) { complete(a, args) }
-        val (walk, at) = walkToNearest(places)
+        val (walk, at) = walkToNearest(litEnough(a, places))
         return Work.Steps(walk, activity(a, at, args) { complete(a, args) })
     }
 
@@ -1799,11 +1835,10 @@ class BedroomWorld private constructor(
     /** Pays for [spec] and adds it; "bought 1 easel for $17 (money $5)". */
     private fun bought(spec: ItemSpec, price: Int): String {
         val what = quantity(spec.id, spec.pack)
-        val new = feelsNew(spec)
         ledger.debit(ticks, price, "bought $what")
         add(spec.id, spec.pack)
-        val comfortNote = if (comfortOf(spec) != 0) "; ${comfortText(new)}" else ""
-        val newNote = newThingRate(spec).takeIf { new && it > 0 }?.let { newThings[spec.id] = ticks; "; new: ${newThingText(it)}" } ?: ""
+        val comfortNote = if (comfortOf(spec) != 0) "; ${comfortText()}" else ""
+        val newNote = newThingRate(spec).takeIf { it > 0 }?.let { newThings[spec.id] = ticks; "; new: ${newThingText(it)}" } ?: ""
         return "bought $what for $$price (money $${ledger.balance})$comfortNote$newNote"
     }
 
@@ -1851,7 +1886,10 @@ class BedroomWorld private constructor(
         if (d == null || d.activity.effects.all { it.awake }) {
             rate(Need.Energy, r.awakeEnergyPerHour, "awake")
             rate(Need.Stimulation, stimulationDrain(), "awake")
-            newThings.forEach { (id, since) -> rate(Need.Stimulation, newThingRate(item(id), since), "new: ${item(id).name}") }
+            newThings.forEach { (id, since) ->
+                val seen = item(id).slot?.let { layout.slotCells[it] }?.let(::seenWeight) ?: 0.0
+                rate(Need.Stimulation, newThingRate(item(id), since) * seen, "new: ${item(id).name}")
+            }
         }
         newThings.entries.removeIf { (id, since) -> count(id) == 0 || newThingRate(item(id), since) <= 0 }
         val asleep = d != null && d.activity.effects.any { !it.awake }
@@ -2135,14 +2173,13 @@ class BedroomWorld private constructor(
             }
         }
         val comfort = comfortOf(spec)
-        val fit = fits(comfort)
+        val seen = if (content.comfort != null) " in view (near you${if (content.light != null) ", lit" else ""})" else ""
         when {
-            comfort > 0 && fit == 0 -> parts += "comfort +0: ${fullText()}, so it adds nothing and doesn't feel new"
-            comfort > 0 && fit < comfort -> parts += "comfort +$fit: mood settles $fit higher (it's worth $comfort, but that's all the room your house has left)"
-            comfort > 0 -> parts += "comfort +$comfort: mood settles $comfort higher"
-            comfort < 0 -> parts += "comfort $comfort: you don't like it, so mood settles ${-comfort} lower"
+            comfort > 0 -> parts += "comfort +$comfort$seen: mood settles $comfort higher"
+            comfort < 0 -> parts += "comfort $comfort$seen: you don't like it, so mood settles ${-comfort} lower"
         }
-        if (feelsNew(spec)) newThingRate(spec).takeIf { it > 0 }?.let { parts += "new to you: ${newThingText(it)}" }
+        spec.light?.let { parts += "gives light ${Lighting.level(it.strength)}, reaching ${Lighting.level(it.radius)} tiles" }
+        newThingRate(spec).takeIf { it > 0 }?.let { parts += "new to you: ${newThingText(it)}" }
         if (spec.qualities.isNotEmpty()) parts += spec.qualities.keys.joinToString(", ")
         // What owning it opens up: items the shop holds back until he has this.
         shopItems().filter { other -> other.id != spec.id && heldBack(other) != null && usesOf(other).any { a -> placesOf(a).any { it in spec.names } } }
@@ -2169,10 +2206,11 @@ class BedroomWorld private constructor(
                     else -> null
                 }
                 val look = machines.look(spec.id)
+                val light = spec.light?.takeIf { state != "bare" }
                 add(
                     EntitySnapshot(
                         EntityId(spec.id), spec.group, cell.x + 0.5f, cell.y + 0.5f, if (spec.blocks) 1f else 0.2f, 0f, state, carriedBy = guy.id.takeIf { spec.id == carrying }, place = layout.placeOf(cell)?.id, color = custom[spec.id]?.color,
-                        variant = look?.variant, motions = look?.motions.orEmpty(), readout = look?.readout,
+                        variant = look?.variant, motions = look?.motions.orEmpty(), readout = look?.readout, light = light,
                     ),
                 )
             }
@@ -2215,14 +2253,23 @@ class BedroomWorld private constructor(
     private fun observe(entities: List<EntitySnapshot>): Observation {
         // What's near him is what's in his place, and only what he knows of.
         val here = layout.placeOf(guy.cell)?.id
-        val nearby = entities.filter { it.id != guy.id && (!layout.outdoors || it.place == here) && isKnown(it.id.value) }.map { e ->
+        // At night only what's lit is seen; what he knows is there shows as remembered, and the rest not at all.
+        val field = lightField()
+        val see = content.light?.see ?: 0.0
+        val around = entities.filter { it.id != guy.id && (!layout.outdoors || it.place == here) && isKnown(it.id.value) }
+        val nearby = around.filter { e -> field[Cell(e.x.toInt(), e.y.toInt())] >= see || knownThere(e) }.map { e ->
             val dx = e.x - guy.x
             val dy = e.y - guy.y
             val cell = Cell(e.x.toInt(), e.y.toInt())
-            SeenEntity(e.id.value, e.kind, cell.x, cell.y, Direction.of(dx, dy), round(hypot(dx, dy), 1), e.state, chebyshev(guy.cell, cell) <= REACH)
+            SeenEntity(e.id.value, e.kind, cell.x, cell.y, Direction.of(dx, dy), round(hypot(dx, dy), 1), e.state.takeIf { field[cell] >= see }, chebyshev(guy.cell, cell) <= REACH, remembered = field[cell] < see)
         }.sortedBy { it.distance }
+        val light = content.light?.let { rules ->
+            val things = around.map { Landmark(item(it.id.value).name, Cell(it.x.toInt(), it.y.toInt()), knownThere(it)) }
+            Lighting.describe(field, rules, guy.cell, layout.placeOf(guy.cell)?.kind == PlaceKind.Outdoor, things, content.verbs.maxOfOrNull { it.needs[EffectKind.Light.id] ?: 0.0 } ?: 0.0)
+        }
         return Observation(
             place = whereText(),
+            light = light,
             places = placeOptions(),
             put = putOptions(),
             tick = ticks,

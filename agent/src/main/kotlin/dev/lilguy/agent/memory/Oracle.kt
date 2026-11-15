@@ -70,6 +70,8 @@ object WorldDocs {
         content.commissions?.let { c -> add(DocSection("rules:commissions", "requests for a piece of art", "A request comes each day at ${c.arrive}: an adjective and a noun. The first piece sold that matches it (the adjective in its title or tags, a shape of the noun drawn in it) earns $${c.reward} on top of its price.")) }
         add(DocSection("rules:gallery", "hanging art", enc(content.gallery)))
         add(DocSection("rules:qualities", "what items are worth to him", enc(content.qualityValue)))
+        content.comfort?.let { add(DocSection("rules:comfort", "comfort: what he can see from where he stands", "A thing counts toward comfort in full within `near` tiles of him and fades out by `far`; it counts in full at `lit` light, less when dimmer, none in the dark. Only the place he's in counts. Asleep, what's round him counts lit or not. ${enc(it)}")) }
+        content.light?.let { add(DocSection("rules:light", "light: daylight, windows, lamps and the dark", "Light runs 0 to about 10. Outdoors it's the daylight by time of day; in a room, `indoors` of it everywhere, plus each window's `share` reaching `radius` tiles. Lamps (an item's `light`) add their strength, fading to nothing a tile past their radius; walls and trees block light, and a lamp in a room lights only that room. He sees a thing with `see` light on it. A verb's `needs: { light: N }` is locked where it would be done below N. ${enc(it)}")) }
         content.invent?.let { add(DocSection("rules:invent", "inventing: what he can design and build at a workbench, and what it costs", "$INVENT_RULE ${enc(it)}")) }
         if (content.verbs.any { v -> v.effects.any { it is dev.lilguy.sim.DefineOp } }) add(
             DocSection(

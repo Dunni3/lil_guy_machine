@@ -473,16 +473,59 @@
         {
           "type": "object",
           "properties": {
-            "holds": {
-              "type": "integer"
+            "near": {
+              "type": "number"
             },
-            "per_room": {
-              "type": "integer"
+            "far": {
+              "type": "number"
+            },
+            "lit": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "light": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "see": {
+              "type": "number"
+            },
+            "daylight": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number"
+              }
+            },
+            "indoors": {
+              "type": "number"
+            },
+            "window": {
+              "type": "object",
+              "properties": {
+                "share": {
+                  "type": "number"
+                },
+                "radius": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "share",
+                "radius"
+              ],
+              "additionalProperties": false
             }
           },
           "required": [
-            "holds",
-            "per_room"
+            "daylight"
           ],
           "additionalProperties": false
         },

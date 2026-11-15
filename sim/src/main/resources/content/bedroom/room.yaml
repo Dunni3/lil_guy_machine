@@ -32,6 +32,9 @@ room:
   # Spare spots nothing in items.yaml stands in: a thing he invents to look at takes the first
   # free one, on the floor or in a wall, and when they're full he can't build another.
   spots: { floor: [spot_1, spot_2, spot_3, spot_4], wall: [wall_1, wall_2] }
+  # Windows: wall tiles [x, y] from the top-left where daylight comes in (rules.yaml `light`). The back
+  # wall's, over the windowsill succulents.
+  windows: [[9, 0]]
   # The side he works a slot from when it's free: at the desk he sits on the chair, and he paints
   # from beside the easel so he isn't standing between the camera and the canvas.
   approach: { desk: W, easel: E }

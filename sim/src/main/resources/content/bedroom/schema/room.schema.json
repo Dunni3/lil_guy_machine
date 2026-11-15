@@ -58,6 +58,15 @@
             }
           },
           "additionalProperties": false
+        },
+        "windows": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          }
         }
       },
       "required": [

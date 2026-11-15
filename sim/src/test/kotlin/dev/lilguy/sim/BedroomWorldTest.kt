@@ -142,7 +142,7 @@ class BedroomWorldTest {
         val shop = w.obs().shop!!.associateBy { it.id }
         assertEquals(ShopOption("meal", 24, false, "3 meals; for eat"), shop["meal"])
         assertEquals(ShopOption("easel", 17, false, "for paint (3h: 1 painting, sells for $40; uses a canvas), which also needs a canvas ($15)"), shop["easel"])
-        assertEquals("comfort +4: mood settles 4 higher; new to you: stimulation +2/h while you're awake, fading over 3 days; natural, calm", shop.getValue("plant").gives)
+        assertEquals("comfort +4 in view (near you, lit): mood settles 4 higher; new to you: stimulation +2/h while you're awake and can see it, fading over 3 days; natural, calm", shop.getValue("plant").gives)
         assertEquals("the easel costs $17 and you have $10", failure(w.run(Intent.Buy("easel"))))
         // What's no use without something else isn't sold until he has it; the thing it needs says what it opens up.
         assertTrue(listOf("canvas", "jazz_record", "folk_record").none { it in shop }, "held back: ${shop.keys}")
@@ -327,7 +327,8 @@ class BedroomWorldTest {
         assertEquals(50.0, w.snapshot().life!!.moodTarget)
         w.run(Intent.Buy("rug"))
         w.run(Intent.Buy("plant"))
-        assertEquals(60.0, w.snapshot().life!!.moodTarget)
+        // Each counts by how near and lit it is from where he stands (at the hatch, across the room from the plant).
+        assertTrue(w.snapshot().life!!.moodTarget in 51.0..60.0, "${w.snapshot().life!!.moodTarget}")
         assertTrue(w.obs().nearby.any { it.id == "rug" } && w.obs().localMap.any { 'r' in it })
         // The plant blocks its tile; the rug doesn't.
         val plant = w.obs().nearby.first { it.id == "plant" }
@@ -384,7 +385,8 @@ class BedroomWorldTest {
 
     @Test
     fun `a new thing he likes feeds stimulation for a few days, fading`() {
-        val w = world(money = 500)
+        // Without comfort rules it's felt wherever he is; with them, while he can see it.
+        val w = BedroomWorld.create(content.copy(comfort = null, start = content.start.copy(money = 500)), granted = content.gated)
         val bought = w.tick
         w.run(Intent.Buy("plant"))
         repeat(w.clock.ticks(4 * 24 * 60).toInt()) { w.step() }
@@ -409,7 +411,7 @@ class BedroomWorldTest {
 
         val fond = content.withPersonality(content.personality.copy(affinities = content.personality.affinities + mapOf("cozy" to 2.0, "lively" to -1.0)))
         val w = BedroomWorld.create(fond.copy(start = fond.start.copy(money = 500)), granted = content.gated)
-        assertEquals("comfort +9: mood settles 9 higher; new to you: stimulation +4.5/h while you're awake, fading over 3 days; cozy, soft, warm", w.obs().shop!!.first { it.id == "rug" }.gives)
+        assertEquals("comfort +9 in view (near you, lit): mood settles 9 higher; new to you: stimulation +4.5/h while you're awake and can see it, fading over 3 days; cozy, soft, warm", w.obs().shop!!.first { it.id == "rug" }.gives)
         w.run(Intent.Buy("record_player"))
         w.run(Intent.Buy("jazz_record"))
         assertTrue(w.activity("play_record").gives!!.startsWith("you don't like it: mood -1;"), w.activity("play_record").gives)

@@ -147,6 +147,15 @@
                     "items": {
                       "type": "string"
                     }
+                  },
+                  "windows": {
+                    "type": "array",
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer"
+                      }
+                    }
                   }
                 },
                 "required": [

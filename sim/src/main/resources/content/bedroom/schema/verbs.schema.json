@@ -658,6 +658,12 @@
                 "type": "null"
               }
             ]
+          },
+          "needs": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
           }
         },
         "required": [

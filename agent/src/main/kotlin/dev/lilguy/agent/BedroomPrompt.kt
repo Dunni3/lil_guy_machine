@@ -276,12 +276,10 @@ object BedroomPrompt {
         val forSale = content.items.filter { it.price != null }
         val wants = if (forSale.any { it.group != "food" }) "for food and for anything you want to own" else "for food"
         val bored = if (r.stimulationPerHour < 0 && r.boredMood > 0) ", less boredom" else ""
-        val holds = content.comfort?.let { c ->
-            " Your house holds only so much comfort: ${c.holds}" + (if (c.perRoom > 0 && content.world?.rooms?.isNotEmpty() == true) ", and ${c.perRoom} more for each room you build onto it" else "") +
-                ". Past that, more things add nothing and don't feel new."
-        }.orEmpty()
+        val seen = content.comfort?.let { " Comfort is what you can see from where you are: the things near you count most, and ${if (content.light != null) "only what's lit; a dim one counts less, and in the dark nothing does" else "far ones count less"}." }.orEmpty()
+        val dark = content.light?.let { " Daylight comes in through the windows by day; at night it's dark but where a lamp reaches, and you can't make out what's in the dark. Some things need light where they're done (reading, art, exploring): in the dark they're locked." }.orEmpty()
         val mood = if (decor) {
-            "Mood drifts ${r.moodDriftPerHour.toInt()} an hour toward ${r.moodBaseline.toInt()} plus your room's comfort$bored; nice things raise it for a while, and decor raises comfort by as much as you like it.$holds"
+            "Mood drifts ${r.moodDriftPerHour.toInt()} an hour toward ${r.moodBaseline.toInt()} plus the comfort of what's round you$bored; nice things raise it for a while, and decor raises comfort by as much as you like it.$seen$dark"
         } else {
             "Mood drifts ${r.moodDriftPerHour.toInt()} an hour toward ${r.moodBaseline.toInt()}$bored; some activities raise it for a while."
         }
@@ -339,7 +337,7 @@ object BedroomPrompt {
             |- holding: art you're carrying, to sell. owns: everything else you own, id to count.$music${if (content.vocabulary.skills.isNotEmpty()) "\n            |- skills: your skills, name to level." else ""}${if (content.books.isNotEmpty()) "\n            |- books: the books you own, how many chapters you've read of how many, what studying one raises, and what finishing it would teach you." else ""}
             |- art: the pieces you have made and still have, held to sell or hung on your wall, with their titles. commission: today's request for a piece, if one is open.
             |- $options: your options, as above.
-            |- ${if (map != null) "place: where you are, and places: where else you could go, with the walk there. put: your things you could move, and the free spots by place. " else ""}self and nearby: where you are and the furniture around you, with tile x and y. localMap: ${if (map != null) "the room you're in, or the land round you, one string per row, north at the top; localMapAt is its top-left tile" else "the room, one string per row, north at the top"}.
+            |- ${if (map != null) "place: where you are, and places: where else you could go, with the walk there. put: your things you could move, and the free spots by place. " else ""}${if (content.light != null) "light: how lit it is round you, when anything near you is too dark for something. " else ""}self and nearby: where you are and the furniture around you, with tile x and y${if (content.light != null) " (remembered: too dark to see, but you know it's there)" else ""}. localMap: ${if (map != null) "the room you're in, or the land round you, one string per row, north at the top; localMapAt is its top-left tile" else "the room, one string per row, north at the top"}.
             |- lastIntent and lastResult: your previous action and how it ended (succeeded, failed with a reason, or interrupted).
             |- recentEvents: the last few things that happened, stamped with day and time.
             |- lately: what you've done most in the last 2 days, what you could do now but haven't for 2 days or more, and what you could do and never have.
@@ -364,6 +362,7 @@ ${lookText(looks)}
         |- clock: day and time. money: dollars. needs: ${needNames(content).let { it.dropLast(1).joinToString(", ") + " and " + it.last() }}, 0 to 100.
         |- holding: art you're carrying, to sell. owns: everything else you own, id to count.$music${if (content.vocabulary.skills.isNotEmpty()) "\n        |- skills: your skills, name to level." else ""}${if (content.books.isNotEmpty()) "\n        |- books: the books you own, how many chapters you've read of how many, what studying one raises, and what finishing it would teach you." else ""}
         |- art: the pieces you have made and still have, held to sell or hung on your wall, with their titles. commission: today's request for a piece, if one is open.
+        |- place: where you are.${if (content.light != null) " light: how lit it is round you, when anything near you is too dark for something." else ""}
         |- activities: what you can't do right now, and why.${if (trips(content)) "" else " shop: what the shop will sell you now: its price, whether you can afford it, and what it's for."}
         |- recentEvents: the last few things that happened besides what you did, stamped with day and time.
         |- lately: what you've done most in the last 2 days, what you could do now but haven't for 2 days or more, and what you could do and never have.

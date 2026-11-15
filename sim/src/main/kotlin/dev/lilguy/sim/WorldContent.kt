@@ -104,6 +104,8 @@ data class RoomModule(
     val slots: Map<String, String> = emptyMap(),
     /** Items that come with the room, standing in its slots. */
     val items: List<String> = emptyList(),
+    /** Windows: wall tiles [x, y] from its top-left, where daylight comes in. */
+    val windows: List<List<Int>> = emptyList(),
 )
 
 /** Where a room can stand: its top-left tile on the lot, the doorway into the room it joins, and the site whose room that is (null: the bedroom). */
