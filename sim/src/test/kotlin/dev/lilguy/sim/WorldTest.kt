@@ -56,6 +56,19 @@ class WorldTest {
     }
 
     @Test
+    fun `he walks over to a thing anywhere on the land, and is told where he went`() {
+        val w = BedroomWorld.create()
+        assertIs<IntentStatus.Succeeded>(w.run(Intent.MoveTo(Target.Entity("garden_bench"))).status)
+        assertEquals("garden", w.guyPlace())
+        val obs = w.observe(w.agentId)
+        assertTrue(obs.recentEvents.last().contains("walked over to the garden bench in the garden"), obs.recentEvents.last())
+        assertTrue(obs.nearby.first { it.id == "garden_bench" }.inReach)
+        assertIs<IntentStatus.Succeeded>(w.run(Intent.MoveTo(Target.Entity("garden_bench"))).status)
+        assertTrue(w.observe(w.agentId).recentEvents.last().contains("already by the garden bench"))
+        assertTrue("nothing called" in failure(w.run(Intent.MoveTo(Target.Entity("dragon")))))
+    }
+
+    @Test
     fun `exploring the clearing finds what grows there, and he collects, keeps and sells a sample`() {
         val w = BedroomWorld.create()
         fun obs() = w.observe(w.agentId)
