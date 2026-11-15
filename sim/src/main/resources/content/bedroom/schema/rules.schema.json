@@ -533,6 +533,29 @@
                     },
                     "radius": {
                       "type": "number"
+                    },
+                    "timer": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "on": {
+                              "type": "string"
+                            },
+                            "off": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "on",
+                            "off"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -545,6 +568,22 @@
                   "type": "null"
                 }
               ]
+            },
+            "timer": {
+              "type": "object",
+              "properties": {
+                "on": {
+                  "type": "string"
+                },
+                "off": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "on",
+                "off"
+              ],
+              "additionalProperties": false
             }
           },
           "required": [

@@ -175,6 +175,36 @@ verbs:
     routine: true
     effects:
       - set_state: { target: what, state: hung }
+  # Lamps run on timers (rules.yaml `light.timer`, or the lamp's own). He can switch one on or off,
+  # where it stays until he switches it again, or put it back on its timer. Each is locked when it
+  # would change nothing.
+  - id: switch_on
+    kind: transformative
+    phrase: switch a lamp on, to stay on past its timer
+    args: { on: lamp }
+    at: [on]
+    minutes: 1
+    routine: true
+    effects:
+      - switch: { target: on, to: "on" }
+  - id: switch_off
+    kind: transformative
+    phrase: switch a lamp off, to stay off whatever its timer says
+    args: { on: lamp }
+    at: [on]
+    minutes: 1
+    routine: true
+    effects:
+      - switch: { target: on, to: "off" }
+  - id: lamp_timer
+    kind: transformative
+    phrase: put a lamp back on its timer
+    args: { on: lamp }
+    at: [on]
+    minutes: 1
+    routine: true
+    effects:
+      - switch: { target: on, to: timer }
   # A chapter a session: the story, and the book's skill. It wears as a whole, so a pile of books
   # isn't a pile of fresh hobbies.
   - id: read

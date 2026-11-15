@@ -48,12 +48,12 @@ enum class VerbKind(
         required = listOf(setOf("progress", "practice", "survey")),
     ),
 
-    /** Changing the state of an item he has: hanging a piece. */
+    /** Changing the state of an item he has: hanging a piece, switching a lamp. */
     @SerialName("transformative")
     Transformative(
         "transformative", "changes the state of an item he has",
-        allowed = setOf("need", "rate", "set_state", "place_room"),
-        required = listOf(setOf("set_state", "place_room")),
+        allowed = setOf("need", "rate", "set_state", "place_room", "switch"),
+        required = listOf(setOf("set_state", "place_room", "switch")),
     ),
 
     /** Writing something that persists: a thought, later letters. */

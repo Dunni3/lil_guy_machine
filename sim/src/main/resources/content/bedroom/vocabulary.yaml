@@ -10,7 +10,8 @@ vocabulary:
   # on) and `specimen` (a sample, with a price at the hatch like sellable's).
   # Rooms: `buildable` (a room's plan) and `site` (where one can stand).
   # `recorder`: a thing outdoors that logs the weather where it stands (weather.yaml), read there.
-  affords: [readable, playable, edible, sellable, hangable, viewable, combinable, wearable, drawable, staple, explorable, forageable, specimen, buildable, site, recorder]
+  # `lamp`: a light he can switch (it needs a `light`); on its timer until he does.
+  affords: [readable, playable, edible, sellable, hangable, viewable, combinable, wearable, drawable, staple, explorable, forageable, specimen, buildable, site, recorder, lamp]
   # What an item is like to him, each with a strength from 0 to 3, scored by his affinities.
   qualities: [cozy, calm, warm, soft, bright, pretty, natural, lively, strange, loud]
   # What he can get better at, each a number from 0 with no cap: `practice` ops and reading a

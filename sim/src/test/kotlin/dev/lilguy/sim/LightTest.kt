@@ -32,7 +32,8 @@ class LightTest {
         assertTrue(night.locked("read")!!.startsWith("too dark to read at the bed or the chair"), night.locked("read"))
         assertNull(night.locked("sketch"), "the desk's own lamp lights the desk")
         // The sunroom lamp stands by the bed: the bed is lit, the chair across the room still isn't.
-        val lamp = world("22:00", "novel", "sunroom_lamp")
+        // (21:30, so the hour below ends before its timer puts it out at midnight.)
+        val lamp = world("21:30", "novel", "sunroom_lamp")
         assertNull(lamp.locked("read"))
         assertIs<IntentStatus.Succeeded>(lamp.run(Intent.Do("read", what = "novel")).status)
         val bed = lamp.layout.slotCells.getValue("bed")
@@ -41,6 +42,25 @@ class LightTest {
         val computed = lamp.lighting.computed
         repeat(lamp.clock.ticks(60)) { lamp.step(); lamp.lightField() }
         assertEquals(computed, lamp.lighting.computed)
+    }
+
+    @Test
+    fun `a lamp goes out at its timer's off time, stays on once he switches it, and the switch is saved`() {
+        val w = world("23:40", "novel", "sunroom_lamp")
+        fun lamp(world: BedroomWorld) = world.snapshot().entities.first { it.id.value == "sunroom_lamp" }
+        assertNull(w.locked("read"), "the sunroom lamp is on until midnight")
+        while (w.clock.minuteOfDay(w.tick) in 1..23 * 60 + 59) w.step()
+        repeat(w.clock.ticks(10)) { w.step() }
+        assertTrue(w.locked("read")!!.startsWith("too dark to read"), w.locked("read"))
+        assertEquals("off", lamp(w).state)
+        assertNull(lamp(w).light, "an unlit lamp gives no light to the renderer")
+        assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("switch_on", on = "sunroom_lamp")).status)
+        assertNull(w.locked("read"), "switched on, it stays on past its timer")
+        assertEquals("the sunroom lamp is already switched on", w.locked("switch_on"))
+        val back = BedroomWorld.restore(w.exportState(), w.content, strict = true).world
+        assertNull(back.locked("read"), "the switch survives a save")
+        assertIs<IntentStatus.Succeeded>(back.run(Intent.Do("lamp_timer", on = "sunroom_lamp")).status)
+        assertTrue(back.locked("read")!!.startsWith("too dark to read"), "back on its timer, it's off after midnight")
     }
 
     @Test

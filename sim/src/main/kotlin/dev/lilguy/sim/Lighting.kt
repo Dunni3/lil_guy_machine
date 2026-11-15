@@ -1,12 +1,52 @@
 package dev.lilguy.sim
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlin.math.floor
 import kotlin.math.roundToInt
 
-/** What an item gives off as light (items.yaml `light`): [strength] on its own tile, fading to nothing a tile past [radius]. */
+/**
+ * What an item gives off as light (items.yaml `light`): [strength] on its own tile, fading to nothing a tile past [radius].
+ * A lamp (the `lamp` affordance) is lit on its [timer], or rules.yaml's `light.timer` when it has none,
+ * unless he has switched it on or off ([LampMode]). Anything else with a light always gives it.
+ */
 @Serializable
-data class LightSpec(val strength: Double, val radius: Double)
+data class LightSpec(val strength: Double, val radius: Double, val timer: LampTimer? = null)
+
+/** When a lamp on its timer is lit: from [on] until [off] ("HH:MM"), across midnight when [off] is earlier. */
+@Serializable
+data class LampTimer(val on: String, val off: String) {
+    fun covers(minuteOfDay: Int): Boolean = NightRules(on, off).covers(minuteOfDay)
+
+    /** "18:00 to 00:00". */
+    val text: String get() = "$on to $off"
+
+    fun problems(where: String): List<String> = listOfNotNull(
+        listOf(on, off).firstOrNull { runCatching { GameClock.parseHhmm(it) }.isFailure }?.let { "$where: '$it' isn't HH:MM" },
+        if (on == off) "$where: on and off can't be the same time" else null,
+    )
+}
+
+/**
+ * How a lamp is set: on its timer, or switched [On] or [Off], where it stays until he switches it
+ * again (the `switch` op). A lamp he hasn't touched is on its timer.
+ */
+@Serializable
+enum class LampMode(val id: String) {
+    @SerialName("timer")
+    Timer("timer"),
+
+    @SerialName("on")
+    On("on"),
+
+    @SerialName("off")
+    Off("off"),
+    ;
+
+    companion object {
+        fun of(id: String): LampMode = entries.firstOrNull { it.id == id } ?: throw IllegalArgumentException("a lamp is switched to on, off or timer, not '$id'")
+    }
+}
 
 /**
  * How light works (rules.yaml `light`). Levels run from 0 (black) to about 10 (noon outdoors).
@@ -23,6 +63,8 @@ data class LightRules(
     val window: WindowLight = WindowLight(0.8, 8.0),
     /** The lantern that goes with him, or null for none: enough to make out what's beside him, not to work by. */
     val lantern: LightSpec? = null,
+    /** When a lamp is lit if it has no timer of its own and he hasn't switched it. */
+    val timer: LampTimer = LampTimer("18:00", "00:00"),
 ) {
     @Serializable
     data class WindowLight(val share: Double, val radius: Double)
@@ -47,6 +89,7 @@ data class LightRules(
             if (v < 0) add("light.daylight $t can't be negative")
         }
         if (lantern != null && (lantern.strength <= 0 || lantern.radius < 0)) add("light.lantern needs a strength above 0 and a radius not negative")
+        addAll(timer.problems("light.timer"))
         if (see <= 0 || indoors < 0 || window.share < 0 || window.radius < 0) add("light: see must be positive, and indoors and the window's share and radius not negative")
     }
 }

@@ -144,11 +144,13 @@ export class Models {
   }
 
   /**
-   * The model for item [id] (of [kind], for the fallback); a patch that's [state] "bare" has its own.
+   * The model for item [id] (of [kind], for the fallback); a patch that's [state] "bare" has its own, and a lamp that's "off" glows nowhere.
    * [color]: the colour his code painted it, which every part takes on while keeping its light and dark.
    */
   item(id: string, kind: string, state: string | null = null, color: string | null = null, variant: string | null = null): ClayModel {
     if (color) return this.cached(`painted/${kind}/${id}/${state ?? ""}/${color}/${variant ?? ""}`, () => this.lists.get(this.item(id, kind, state, null, variant))!.map((p) => ({ ...p, color: tinted(p.color, color) })));
+    // A lamp that's off (switched off, or its timer's out) is its own model with nothing glowing.
+    if (state === "off") return this.cached(`off/${kind}/${id}/${variant ?? ""}`, () => this.lists.get(this.item(id, kind, null, null, variant))!.map((p) => ({ ...p, glow: 0 })));
     const made = this.invented.get(id);
     // Each variant is its own model, built once, as a bare patch's is.
     if (made && made.look.length > 0) return this.cached(`invented/${id}/${variant ?? ""}`, () => lookParts(made, variantLook(made, variant)));

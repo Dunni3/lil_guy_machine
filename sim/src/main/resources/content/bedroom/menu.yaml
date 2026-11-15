@@ -33,6 +33,10 @@ menu:
     says: make his home nicer - buy decor or furniture to look at, or build a new room onto the house or move one
     verbs: [build_room]
     buys: [decor, furniture, room]
+  - id: lamps
+    under: room
+    says: switch one of his lamps on or off, or put it back on its timer
+    verbs: [switch_on, switch_off, lamp_timer]
   - id: arrange
     under: room
     says: move one of his things to another spot - elsewhere in the house, or outdoors by the front door, in the garden, by the pond or in the forest
