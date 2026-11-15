@@ -23,6 +23,8 @@ data class WorldContent(
     val rooms: List<RoomModule> = emptyList(),
     /** Where a room can stand. */
     val sites: List<SiteSpec> = emptyList(),
+    /** How long putting a thing somewhere else takes, besides the walks ([Intent.Put]). */
+    val carry: CarrySpec = CarrySpec(),
 ) {
     fun room(id: String): RoomModule? = rooms.firstOrNull { it.id == id }
 
@@ -113,6 +115,10 @@ data class SiteSpec(
     val door: List<Int>,
     @SerialName("next_to") val nextTo: String? = null,
 )
+
+/** Game minutes to lift a thing where it stands and to set it down where it goes. */
+@Serializable
+data class CarrySpec(val lift: Int = 2, @SerialName("set_down") val setDown: Int = 3)
 
 /** A patch ([patch], an item on a lot slot) that [yields] an item when he collects there, then is bare for [regrowHours]. */
 @Serializable

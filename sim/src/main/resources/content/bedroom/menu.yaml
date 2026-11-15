@@ -7,7 +7,8 @@
 # it, each in at most one node. A purchase sits in the node of the first verb the item is for (a
 # record with play_record), else in the node whose `buys` names its item group (decor). Waiting,
 # and anything placed nowhere, stays at the top. A node with nothing on offer is left out, and one
-# with a single option is that option. Going to a place sits in the node with `go: true`.
+# with a single option is that option. Going to a place sits in the node with `go: true`, and
+# putting a thing somewhere else in the node with `put: true`, under a node for each thing.
 menu:
   - id: upkeep
     says: look after his body - eat something or sleep
@@ -32,6 +33,10 @@ menu:
     says: make his home nicer - buy decor or furniture to look at, or build a new room onto the house or move one
     verbs: [build_room]
     buys: [decor, furniture, room]
+  - id: arrange
+    under: room
+    says: move one of his things to another spot - elsewhere in the house, or outdoors by the front door, in the garden, by the pond or in the forest
+    put: true
   - id: workshop
     says: invent something new of his own design at the workbench and build it - a thing for his room, a record, a book, food or something to sell - or write code for a new thing to do, or for what one of his things does
     verbs: [invent, devise]

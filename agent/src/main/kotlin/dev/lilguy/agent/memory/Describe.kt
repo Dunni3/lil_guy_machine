@@ -29,6 +29,7 @@ object Describe {
     fun action(intent: Intent): String = when (intent) {
         is Intent.Do -> intent.activity + (intent.what?.let { " the $it" } ?: "") + (intent.on?.let { " on the $it" } ?: "")
         is Intent.Buy -> "buy ${intent.item}"
+        is Intent.Put -> "put the ${intent.item} at ${intent.spot}"
         is Intent.Wait -> "wait"
         is Intent.MoveTo -> "walk to " + when (val t = intent.target) {
             is Target.Entity -> t.id

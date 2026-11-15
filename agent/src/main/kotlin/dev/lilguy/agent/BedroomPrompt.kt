@@ -6,6 +6,7 @@ import dev.lilguy.decision.SchemaHints
 import dev.lilguy.sim.BackgroundOp
 import dev.lilguy.sim.BasketOp
 import dev.lilguy.sim.BedroomContent
+import dev.lilguy.sim.FreeSpots
 import dev.lilguy.sim.GameClock
 import dev.lilguy.sim.GatherOp
 import dev.lilguy.sim.SurveyOp
@@ -22,6 +23,7 @@ import dev.lilguy.sim.ProgressOp
 import dev.lilguy.sim.RateOp
 import dev.lilguy.sim.SellOp
 import dev.lilguy.sim.SetStateOp
+import dev.lilguy.sim.Spots
 import dev.lilguy.sim.Target
 import dev.lilguy.sim.WriteOp
 import kotlinx.serialization.json.Json
@@ -64,6 +66,9 @@ object BedroomPrompt {
         }
         add(Intent.MoveTo(Target.Entity("bed")) to "walk to something in the room")
         if (places) add(Intent.MoveTo(Target.Place("garden")) to "go to a place from `places`, to be there")
+        val spot = content.world?.slots?.keys?.firstOrNull { s -> content.items.none { it.slot == s } }
+        val thing = content.items.firstOrNull { it.slot != null && it.group != Spots.FIXTURE && it.slot !in content.room.wallSlots }
+        if (places && spot != null && thing != null) add(Intent.Put(thing.id, spot) to "put one of your things at a free spot from `put`, indoors or out; you carry it there")
         add(Intent.Say("one day this room will have a window") to "say something out loud")
         add(Intent.Wait(WAIT_TICKS) to "do nothing for N ticks, at most ${GridWorld.MAX_WAIT} ($ticksPerMinute ticks = 1 game minute)")
     }
@@ -321,7 +326,7 @@ object BedroomPrompt {
             |- holding: art you're carrying, to sell. owns: everything else you own, id to count.$music${if (content.vocabulary.skills.isNotEmpty()) "\n            |- skills: your skills, name to level." else ""}${if (content.books.isNotEmpty()) "\n            |- books: the books you own, how many chapters you've read of how many, what studying one raises, and what finishing it would teach you." else ""}
             |- art: the pieces you have made and still have, held to sell or hung on your wall, with their titles. commission: today's request for a piece, if one is open.
             |- $options: your options, as above.
-            |- ${if (map != null) "place: where you are, and places: where else you could go, with the walk there. " else ""}self and nearby: where you are and the furniture around you, with tile x and y. localMap: ${if (map != null) "the room you're in, or the land round you, one string per row, north at the top; localMapAt is its top-left tile" else "the room, one string per row, north at the top"}.
+            |- ${if (map != null) "place: where you are, and places: where else you could go, with the walk there. put: your things you could move, and the free spots by place. " else ""}self and nearby: where you are and the furniture around you, with tile x and y. localMap: ${if (map != null) "the room you're in, or the land round you, one string per row, north at the top; localMapAt is its top-left tile" else "the room, one string per row, north at the top"}.
             |- lastIntent and lastResult: your previous action and how it ended (succeeded, failed with a reason, or interrupted).
             |- recentEvents: the last few things that happened, stamped with day and time.
             |- lately: what you've done most in the last 2 days, what you could do now but haven't for 2 days or more, and what you could do and never have.
@@ -382,6 +387,8 @@ ${lookText(looks)}
                 "buy.item" to "An item from `shop` that you can afford.",
                 "entity.id" to "An id from nearby.",
                 "place.id" to "A place from `places`.",
+                "put.item" to "A thing of yours from `put.things` (or `put.wall`, for a wall spot).",
+                "put.spot" to "A free spot from `put.spots`.",
                 "wait" to "Do nothing for some ticks ($ticksPerMinute ticks = 1 game minute).",
                 "tile.x" to "Tile column; x grows east.",
                 "tile.y" to "Tile row; y grows south.",
@@ -393,10 +400,12 @@ ${lookText(looks)}
                 "buy.item" to obs.shop.orEmpty().filter { it.affordable }.map { it.id },
                 "entity.id" to obs.nearby.map { it.id },
                 "place.id" to obs.places.orEmpty().map { it.id },
+                "put.item" to obs.put?.let { it.things + it.wall.orEmpty() }.orEmpty(),
+                "put.spot" to obs.put?.spots.orEmpty().flatMap { it.floor + it.wall.orEmpty() },
                 "pick_up.itemId" to emptyList(),
             ),
             ranges = mapOf("wait.ticks" to 1..GridWorld.MAX_WAIT),
-            omit = setOf("use", "think"),
+            omit = setOf("use", "think") + if (obs.put == null) setOf("put") else emptySet(),
         )
         return ActionSchema.of("reply", AgentReply.serializer(), hints) { it.thought }
     }
@@ -415,6 +424,9 @@ ${lookText(looks)}
     fun choices(obs: Observation, recent: List<Memory.Entry>, ticksPerMinute: Int, content: BedroomContent): ChoiceSet {
         val thinking = content.reflection?.let { content.verb(it.verb) } != null
         val offered = obs.activities.orEmpty().filter { content.verb(it.id) != null }
+        // Putting things somewhere is offered only with a menu node for it: a thing to each free spot is too many for the top.
+        val arrange = content.menu.firstOrNull { it.put }
+        val putting = obs.put?.takeIf { arrange != null }
         val options = buildList {
             offered.filter { it.locked == null }.forEach { a ->
                 val with = listOfNotNull(a.what?.let { " with the $it" }, a.on?.let { " on the $it" }).joinToString("")
@@ -425,6 +437,13 @@ ${lookText(looks)}
                 add(option(Intent.Buy(s.id), "Buy ${s.id} for $${s.price}, leaving $${(obs.money ?: 0) - s.price}: ${s.gives}.", content))
             }
             obs.places.orEmpty().forEach { p -> add(option(Intent.MoveTo(Target.Place(p.id)), "Go to ${p.name}: ${p.says}; ${p.walk} min walk.", content)) }
+            putting?.let { put ->
+                fun offer(things: List<String>, spots: (FreeSpots) -> List<String>) = things.forEach { t ->
+                    put.spots.forEach { g -> spots(g).forEach { s -> add(option(Intent.Put(t, s), "Put the $t at $s, in ${g.place}: carry it there and set it down.", content)) } }
+                }
+                offer(put.things) { it.floor }
+                offer(put.wall.orEmpty()) { it.wall.orEmpty() }
+            }
             add(option(Intent.Wait(WAIT_TICKS), "Wait about ${WAIT_TICKS / ticksPerMinute} minutes and do nothing."))
         }
         val state = buildJsonObject {
@@ -496,7 +515,8 @@ ${lookText(looks)}
                 "Read `state.last_action` and `state.recent_actions`: don't repeat an action that just failed.",
             state = state,
             options = options,
-            groups = content.menu.map { ChoiceSet.Group(it.id, it.says, it.under) },
+            groups = content.menu.map { ChoiceSet.Group(it.id, it.says, it.under) } +
+                putting?.let { p -> (p.things + p.wall.orEmpty()).map { ChoiceSet.Group("put:$it", "move the $it somewhere else", arrange!!.id) } }.orEmpty(),
         )
     }
 
@@ -507,6 +527,7 @@ ${lookText(looks)}
     private fun menuNode(intent: Intent, content: BedroomContent): String? = when (intent) {
         is Intent.Do -> content.menu.firstOrNull { intent.activity in it.verbs }?.id
         is Intent.MoveTo -> content.menu.firstOrNull { it.go }?.id
+        is Intent.Put -> content.menu.firstOrNull { it.put }?.let { "put:${intent.item}" }
         is Intent.Buy -> content.item(intent.item)?.let { item ->
             content.verbs.filter { v -> item.id in v.at || (v.requires + v.args.values + v.effects.flatMap { it.asksFor }).any { it in item.names } }
                 .firstNotNullOfOrNull { v -> content.menu.firstOrNull { v.id in it.verbs }?.id }
@@ -535,6 +556,7 @@ ${lookText(looks)}
     private fun label(intent: Intent): String = when (intent) {
         is Intent.Do -> (listOf("do", intent.activity) + listOfNotNull(intent.what, intent.on)).joinToString(":")
         is Intent.Buy -> "buy:${intent.item}"
+        is Intent.Put -> "put:${intent.item}:${intent.spot}"
         is Intent.Use -> "use:${intent.itemId}" + (intent.on?.let { ":$it" } ?: "")
         is Intent.Wait -> "wait:${intent.ticks}"
         is Intent.MoveTo -> "move_to:" + when (val t = intent.target) {

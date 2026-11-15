@@ -58,6 +58,16 @@ world:
     pond_patch: [26, 25]
     garden_bench: [6, 17]
     seedpod_bush: [10, 20]
+    # Free spots: nothing in items.yaml stands in these, so his things can be put down here (the
+    # `put` intent, or world.move in his code). Each is named by what it's beside. On the ground
+    # only: a thing that goes in a wall stays indoors.
+    by_front_door: [15, 13]
+    by_garden_bench: [7, 17]
+    pond_shore: [25, 23]
+    by_clearing_log: [30, 19]
+    trailside: [23, 15]
+  # Putting a thing somewhere else: game minutes to lift it and to set it down, besides the walks.
+  carry: { lift: 2, set_down: 3 }
   # What grows on the land. A patch is hidden until he explores its place (the `survey` op); then
   # `collect` takes what it yields (the `gather` op), and it's bare for `regrow_hours`.
   finds:

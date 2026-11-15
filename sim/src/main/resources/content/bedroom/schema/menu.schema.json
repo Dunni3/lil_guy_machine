@@ -35,6 +35,9 @@
           },
           "go": {
             "type": "boolean"
+          },
+          "put": {
+            "type": "boolean"
           }
         },
         "required": [

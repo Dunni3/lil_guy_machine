@@ -491,7 +491,9 @@ private fun modelSource(scenario: Scenario, endpoint: String, replay: File?, arg
         val entries = DecisionLog.read(replay)
         return Triple("replay", 20.seconds) { ReplayDecisionModel(entries, id = "replay:${entries.firstOrNull()?.model}", upgrade = scenario.upgrade()) }
     }
-    if (endpoint == "scripted") return Triple("scripted", 20.seconds) { scenario.scriptedPolicy() }
+    // LILGUY_SCRIPT=read,put:floor_lamp:pond_shore has the scripted policy do those first, as the host's and desktop's.
+    val script = System.getenv("LILGUY_SCRIPT").orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
+    if (endpoint == "scripted") return Triple("scripted", 20.seconds) { scenario.scriptedPolicy(script = script) }
     var config = Endpoints.load(File(args.string("--config") ?: Endpoints.DEFAULT_PATH))
     args.string("--strategy")?.let { s ->
         val strategy = StructuredOutput.entries.firstOrNull { it.name.equals(s.replace("_", ""), ignoreCase = true) }

@@ -118,7 +118,7 @@ class BedroomRunTest {
         fun enumOf(variant: String, field: String) =
             variants.getValue(variant)["properties"]!!.jsonObject[field]!!.jsonObject["enum"]!!.jsonArray.map { it.jsonPrimitive.content }
         // Tier 0: a shop of meals he can't afford yet ($20 for $24), nothing to pick up, and use is for other rooms.
-        assertEquals(setOf("do", "move_to", "say", "wait"), variants.keys)
+        assertEquals(setOf("do", "move_to", "put", "say", "wait"), variants.keys)
         // The schema takes every verb the sim would; choices only offer what's shown. Sleep isn't: at 08:00 it's only a nap, when exhausted.
         assertEquals(listOf("eat", "sketch", "devise", "shop", "think", "explore"), enumOf("do", "activity"))
         assertEquals(listOf("meal"), obs.shop.orEmpty().map { it.id })
@@ -127,8 +127,10 @@ class BedroomRunTest {
         assertEquals(
             // Then going to each place outdoors, nearest first.
             listOf("do:eat:meal", "do:sketch", "do:devise", "do:shop", "do:think") + listOf("garden_bench", "forest_trail", "clearing_log", "pond_edge").map { "do:explore:$it" } + obs.places!!.map { "move_to:${it.id}" } + "wait:${BedroomPrompt.WAIT_TICKS}",
-            choices.options.map { it.label },
+            choices.options.map { it.label }.filter { !it.startsWith("put:") },
         )
+        // His furniture can go to the free spots, outdoors too.
+        assertTrue("put:chair:pond_shore" in choices.options.map { it.label })
         // Every option's reply passes the same schema a writing model is held to.
         val decoder = ActionSchema("reply", AgentReply.serializer(), schema)
         choices.options.forEach { decoder.decode(it.reply.toString()) }

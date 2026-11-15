@@ -6,6 +6,7 @@ import dev.lilguy.sim.ActivityOption
 import dev.lilguy.sim.GridWorld
 import dev.lilguy.sim.Intent
 import dev.lilguy.sim.Observation
+import dev.lilguy.sim.PutOptions
 import dev.lilguy.sim.Target
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -32,6 +33,9 @@ import kotlinx.serialization.json.putJsonObject
 object BedroomTools {
     const val THOUGHT = "thought"
 
+    /** Tools that aren't verbs, whose names a verb can't take. */
+    private val BUILT_IN = dev.lilguy.sim.CodeRules.BUILT_IN
+
     /** Words his thought may run to. */
     const val THOUGHT_WORDS = 80
 
@@ -45,10 +49,8 @@ object BedroomTools {
     fun of(obs: Observation, ticksPerMinute: Int, looks: List<ToolSet.Look> = emptyList(), ponder: Intent? = null): ToolSet {
         val open = obs.activities.orEmpty().filter { it.locked == null }
         val tools = buildList {
-            open.groupBy { it.id }.forEach { (id, ways) ->
-                require(id != "buy" && id != "wait") { "a verb named \"$id\" would hide the $id tool" }
-                add(verb(id, ways))
-            }
+            // A verb named like a built-in tool would hide it; his own verbs can't be (CodeRules), and the content's aren't.
+            open.groupBy { it.id }.filterKeys { it !in BUILT_IN }.forEach { (id, ways) -> add(verb(id, ways)) }
             obs.places?.takeIf { it.isNotEmpty() }?.let { places ->
                 add(ToolSet.Tool(
                     name = "go",
@@ -57,6 +59,7 @@ object BedroomTools {
                     parameters = parameters(mapOf("place" to places.map { it.id })),
                 ) { args -> reply(args, Intent.MoveTo(Target.Place(string(args, "place")))) })
             }
+            obs.put?.let { add(place(it)) }
             obs.shop.orEmpty().filter { it.affordable }.takeIf { it.isNotEmpty() }?.let { forSale ->
                 add(ToolSet.Tool(
                     name = "buy",
@@ -146,11 +149,29 @@ object BedroomTools {
             localMap = emptyList(),
             localMapAt = null,
             places = null,
+            put = null,
             activities = obs.activities?.filter { it.locked != null },
             lastIntent = null,
             lastResult = null,
             recentEvents = obs.news,
         )
+
+    /**
+     * `place`: put one of his things at a free spot, as [Intent.Put]. The spots are listed by place,
+     * on one line each, so the list stays short as the house and the land grow.
+     */
+    private fun place(put: PutOptions): ToolSet.Tool {
+        val wall = put.wall.orEmpty()
+        val description = "Put one of your things somewhere else, indoors or out: you walk to it, carry it there and set it down, which takes a few minutes besides the walks." +
+            (if (wall.isNotEmpty()) " ${wall.joinToString()} go${if (wall.size == 1) "es" else ""} only in a wall spot." else "") +
+            " Free spots:\n" + put.spots.joinToString("\n") { g ->
+                "- ${g.place}: " + listOfNotNull(g.floor.takeIf { it.isNotEmpty() }?.joinToString(), g.wall?.let { "in the wall " + it.joinToString() }).joinToString("; ")
+            }
+        val spots = put.spots.flatMap { it.floor + it.wall.orEmpty() }
+        return ToolSet.Tool("place", description, parameters(mapOf("what" to put.things + wall, "spot" to spots))) { args ->
+            reply(args, Intent.Put(string(args, "what"), string(args, "spot")))
+        }
+    }
 
     /** One verb, done any of [ways]: each a way to fill its arguments, with what it takes and gives. */
     private fun verb(id: String, ways: List<ActivityOption>): ToolSet.Tool {
@@ -233,6 +254,10 @@ object BedroomTools {
             intent.on?.let { put("on", it) }
         }
         is Intent.Buy -> "buy" to buildJsonObject { put("item", intent.item) }
+        is Intent.Put -> "place" to buildJsonObject {
+            put("what", intent.item)
+            put("spot", intent.spot)
+        }
         is Intent.Wait -> "wait" to buildJsonObject { put("minutes", maxOf(1, intent.ticks / ticksPerMinute)) }
         is Intent.MoveTo -> (intent.target as? Target.Place)?.let { "go" to buildJsonObject { put("place", it.id) } }
             ?: (PromptBuilder.tag(intent) to json.encodeToJsonElement(Intent.serializer(), intent).jsonObject.let { JsonObject(it - "type") })
