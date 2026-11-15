@@ -68,7 +68,13 @@ the reason. Live-run verbs and behaviors that relied on them break until he rewr
 broken runs stop a behavior, as before. The coder's brief replaces "nothing caps it" with one paragraph
 on where things come from and on wear. The API table loses `earn` and `give` and gains `machine`,
 `transfer` and `sell`. The prompt gains `tend` and `repair` (locked until he owns a machine). Jev's menu
-has a `machines` node under the workshop.
+has a `machines` node under the workshop. Measured in characters on the default content (tokens about a
+quarter of that): the coder's brief went from 7,650 to 8,293 (+643, about 160 tokens a code call), the
+inventor's design ask gained about 270 (the `runs` hint with the recipes), and the system prompt about
+260 (the two verbs' phrases, the skill, the code line). Before he owns a machine, a decision's activities
+gain about 95 (tend and repair, locked). The scripted baseline (`BedroomPolicy`) now eats what he grew
+before meals, fills a machine once he has a batch's worth of scraps, takes out tomatoes, and mends a
+machine only once it has jammed.
 
 **Not done.** Recipes he invents, which would need an accounting of what an input is worth; machines
 that make money directly, such as a stall that sells its tray; power or other machine-made effects
