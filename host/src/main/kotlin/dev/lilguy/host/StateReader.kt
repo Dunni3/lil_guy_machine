@@ -18,6 +18,10 @@ import dev.lilguy.protocol.SourceView
 import dev.lilguy.protocol.BookView
 import dev.lilguy.protocol.CatalogItem
 import dev.lilguy.protocol.CatalogState
+import dev.lilguy.protocol.BehaviorView
+import dev.lilguy.protocol.ChangedView
+import dev.lilguy.protocol.CodeState
+import dev.lilguy.protocol.CodedVerbView
 import dev.lilguy.protocol.Invented
 import dev.lilguy.protocol.LookShape
 import dev.lilguy.protocol.CellView
@@ -67,6 +71,7 @@ import dev.lilguy.protocol.Wallet
 import dev.lilguy.protocol.Wire
 import dev.lilguy.sim.EntitySnapshot
 import dev.lilguy.sim.Intent
+import dev.lilguy.sim.LifeSnapshot
 import dev.lilguy.sim.IntentStatus
 import dev.lilguy.sim.Rect
 import dev.lilguy.sim.Terrain
@@ -144,6 +149,7 @@ class StateReader(private val dbEvery: Duration = 1.seconds) {
                                     p.part, p.taper.toFloat(), p.cut.toFloat(), p.hole.toFloat(), p.arc.toFloat(), p.glow.toFloat(), p.opacity.toFloat(),
                                 )
                             },
+                            made.tick,
                         )
                     },
                 )
@@ -151,6 +157,26 @@ class StateReader(private val dbEvery: Duration = 1.seconds) {
             mind = Mind(s.memory.plan?.let { thought(it.tick, it) }, selfText, selfModel, s.memory.summarizing),
             tokens = tokens(s),
             logs = logs(s, now),
+            code = now.life?.let(::code) ?: CodeState(),
+        )
+    }
+
+    /** His verbs, his things' behaviors, and what his code stored on and changed about things. */
+    private fun code(l: LifeSnapshot): CodeState {
+        fun at(tick: Long) = runCatching { l.clockScale.reading(tick) }.getOrNull()
+        return CodeState(
+            verbs = l.coded.mapNotNull { c ->
+                val v = c.verb
+                val code = v.code ?: return@mapNotNull null
+                val when_ = at(c.tick)
+                CodedVerbView(v.id, v.phrase, code.says, v.minutes, v.args["what"], v.at.firstOrNull() ?: "here", code.source, code.version, c.why, c.tick, when_?.day, when_?.time)
+            },
+            behaviors = l.behaviors.map { (thing, b) ->
+                val when_ = at(b.tick)
+                BehaviorView(thing, b.says, b.source, b.version, b.failures, b.tick, when_?.day, when_?.time)
+            },
+            stored = l.stored,
+            changed = l.custom.map { (id, c) -> ChangedView(id, c.slot, c.name, c.color) },
         )
     }
 

@@ -109,6 +109,7 @@ data class Delta(
     val mind: Mind? = null,
     val tokens: Tokens? = null,
     val logs: Logs? = null,
+    val code: CodeState? = null,
 ) : ServerMessage
 
 /**

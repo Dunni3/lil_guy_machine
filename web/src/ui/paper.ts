@@ -76,6 +76,33 @@ export function font(scale: number, u: number, weight = 500): string {
   return `${weight} ${(FONT_PX * scale * u).toFixed(2)}px ${FAMILY}`;
 }
 
+const MONO = `ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace`;
+
+/** The fixed-width font code is shown in, a little smaller than the text at the same [scale]. */
+export function monoFont(scale: number, u: number): string {
+  return `500 ${(FONT_PX * scale * 0.92 * u).toFixed(2)}px ${MONO}`;
+}
+
+/** [source] as lines no wider than [width]: its own line breaks and indentation kept, long lines broken, carried-on parts indented two more. */
+export function wrapCode(ctx: CanvasRenderingContext2D, source: string, width: number): string[] {
+  const out: string[] = [];
+  const char = Math.max(1, ctx.measureText("m").width);
+  const most = Math.max(8, Math.floor(width / char));
+  for (const raw of plain(source).replace(/\t/g, "  ").replace(/\s+$/, "").split("\n")) {
+    const line = raw.replace(/\s+$/, "");
+    const lead = line.length - line.trimStart().length;
+    let rest = line;
+    let first = true;
+    while (rest.length > most) {
+      out.push(rest.slice(0, most));
+      rest = " ".repeat(Math.min(lead + 2, Math.floor(most / 2))) + rest.slice(most).trimStart();
+      first = false;
+    }
+    if (first || rest.trim()) out.push(rest);
+  }
+  return out;
+}
+
 /** The height of a line at [scale]: the app's font is about 17 units a line at scale 1. */
 export function lineHeight(scale: number, u: number): number {
   return 17.5 * scale * u;

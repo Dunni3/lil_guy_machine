@@ -1,5 +1,5 @@
 /* Generated from schema/protocol.schema.json (protocol/.../*.kt) by gen_types.sh. Don't edit; run `make protocol-types`.
- * schema sha256: 81635626fe866579d6ed675ec1f9de98fb7286e87ab2945ebc6f5fd11e8a8a75
+ * schema sha256: 7e0023e40b3a781fbe9020b1ad841e6d5036cce0272d61e80f85d0875ad38420
  */
 
 /**
@@ -85,6 +85,7 @@ export interface Delta {
   mind: Mind | null;
   tokens: Tokens | null;
   logs: Logs | null;
+  code: CodeState | null;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -424,6 +425,7 @@ export interface Invented {
   cost: number;
   why: string;
   look: LookShape[];
+  tick: number;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -678,6 +680,62 @@ export interface SourceView {
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "CodeState".
+ */
+export interface CodeState {
+  verbs: CodedVerbView[];
+  behaviors: BehaviorView[];
+  stored: {
+    [k: string]: {
+      [k: string]: string;
+    };
+  };
+  changed: ChangedView[];
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "CodedVerbView".
+ */
+export interface CodedVerbView {
+  id: string;
+  phrase: string | null;
+  says: string;
+  minutes: number | null;
+  what: string | null;
+  at: string;
+  source: string;
+  version: number;
+  why: string;
+  tick: number;
+  day: number | null;
+  time: string | null;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "BehaviorView".
+ */
+export interface BehaviorView {
+  thing: string;
+  says: string;
+  source: string;
+  version: number;
+  failures: number;
+  tick: number;
+  day: number | null;
+  time: string | null;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "ChangedView".
+ */
+export interface ChangedView {
+  id: string;
+  spot: string | null;
+  name: string | null;
+  color: string | null;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
  * via the `definition` "Refused".
  */
 export interface Refused {
@@ -713,6 +771,7 @@ export interface LifeState {
   mind: Mind;
   tokens: Tokens;
   logs: Logs;
+  code: CodeState;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema

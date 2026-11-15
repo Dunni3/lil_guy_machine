@@ -33,6 +33,8 @@ data class LifeState(
     val mind: Mind,
     val tokens: Tokens,
     val logs: Logs,
+    /** What he wrote as code, and what that code changed. */
+    val code: CodeState = CodeState(),
 ) {
     /** This state with [d] applied; [d] must be for this life and run, the next in sequence. */
     fun apply(d: Delta): LifeState {
@@ -52,6 +54,7 @@ data class LifeState(
             mind = d.mind ?: mind,
             tokens = d.tokens ?: tokens,
             logs = d.logs?.let(logs::merge) ?: logs,
+            code = d.code ?: code,
         )
     }
 
@@ -73,6 +76,7 @@ data class LifeState(
             mind = next.mind.takeIf { it != mind },
             tokens = next.tokens.takeIf { it != tokens },
             logs = logs.takeUnless { it.empty },
+            code = next.code.takeIf { it != code },
         )
         return d.takeUnless { it == Delta(next.life, seq + 1) }
     }
@@ -318,7 +322,8 @@ data class ShopState(val catalog: List<CatalogState>, val verbs: List<VerbState>
  * Something he invented: an item [Content] doesn't have, with how it looks. [use]: the one thing
  * it's for (viewable, playable, readable, edible, sellable). [like]: its qualities and their
  * strengths. [price]: what the shop sends more for, null when it doesn't. [wall]: it hangs in a
- * wall. [cost]: what its materials cost him. [look]: its shapes, as a part list's parts.
+ * wall. [cost]: what its materials cost him. [look]: its shapes, as a part list's parts. [tick]:
+ * when he built it.
  */
 @Serializable
 data class Invented(
@@ -332,6 +337,7 @@ data class Invented(
     val cost: Int,
     val why: String,
     val look: List<LookShape>,
+    val tick: Long = 0,
 )
 
 /**
@@ -360,6 +366,59 @@ data class LookShape(
     val glow: Float,
     val opacity: Float,
 )
+
+/**
+ * What he wrote as code (`docs/decisions/2026-11-15-he-writes-his-verbs-*`): his [verbs], what his
+ * things do by themselves ([behaviors]), and what the code did to his things: values it [stored] on
+ * them (item id, or `self`, to key to the value as JSON) and what it [changed] about them. Its own
+ * section, since code changes far less often than the shop.
+ */
+@Serializable
+data class CodeState(
+    val verbs: List<CodedVerbView> = emptyList(),
+    val behaviors: List<BehaviorView> = emptyList(),
+    val stored: Map<String, Map<String, String>> = emptyMap(),
+    val changed: List<ChangedView> = emptyList(),
+)
+
+/**
+ * A verb he wrote: its [id] and [phrase], what it [says] it does, how many [minutes] it takes, the
+ * thing it takes ([what]: an item id or a use, or null), where it's done ([at]), its JavaScript
+ * [source], which rewrite it is ([version], 1 for the first), [why] he wrote it, and when ([tick],
+ * [day], [time]).
+ */
+@Serializable
+data class CodedVerbView(
+    val id: String,
+    val phrase: String?,
+    val says: String,
+    val minutes: Int?,
+    val what: String?,
+    val at: String,
+    val source: String,
+    val version: Int,
+    val why: String,
+    val tick: Long,
+    val day: Int?,
+    val time: String?,
+)
+
+/** What a thing of his ([thing], an item id) does each game hour: what it [says] it does, its [source], [version], and how many hours in a row it has broken ([failures]; at three it stops). */
+@Serializable
+data class BehaviorView(
+    val thing: String,
+    val says: String,
+    val source: String,
+    val version: Int,
+    val failures: Int,
+    val tick: Long,
+    val day: Int?,
+    val time: String?,
+)
+
+/** What his code changed about a thing ([id]): the [spot] it moved it to, the [name] it gave it, the [color] it painted it; null where it's the thing's own. */
+@Serializable
+data class ChangedView(val id: String, val spot: String?, val name: String?, val color: String?)
 
 @Serializable
 data class CatalogState(val id: String, val owned: Int, val affordable: Boolean, val gives: String, @SerialName("taught_by") val taughtBy: String?)

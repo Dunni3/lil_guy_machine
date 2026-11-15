@@ -1,10 +1,10 @@
-import type { CatalogItem, CatalogState, Content, LifeState, SavedRun, SearchView, SelfModelView, Settings, ThoughtView, TripView } from "../../../protocol/ts/protocol";
+import type { BehaviorView, CatalogItem, CatalogState, CodedVerbView, Content, Invented, LifeState, SavedRun, SearchView, SelfModelView, Settings, ThoughtView, TripView } from "../../../protocol/ts/protocol";
 import { COLORS, GROUP_COLORS } from "./paper";
 import { ADMIN_ROWS, LABELS, SIGN_IN, clockNote, help, isAction, pickedRun, plural, runLine, runsValue, stamp, summary, value, type RunRow } from "./run";
 
-export type TabId = "run" | "shop" | "thoughts" | "web" | "memory" | "self" | "trips";
+export type TabId = "run" | "shop" | "made" | "thoughts" | "web" | "memory" | "self" | "trips";
 export const TABS: { id: TabId; title: string }[] = [
-  { id: "run", title: "RUN" }, { id: "shop", title: "SHOP" }, { id: "thoughts", title: "THOUGHTS" }, { id: "web", title: "WEB" },
+  { id: "run", title: "RUN" }, { id: "shop", title: "SHOP" }, { id: "made", title: "MADE" }, { id: "thoughts", title: "THOUGHTS" }, { id: "web", title: "WEB" },
   { id: "memory", title: "MEMORY" }, { id: "self", title: "SELF" }, { id: "trips", title: "TRIPS" },
 ];
 
@@ -25,6 +25,8 @@ export interface Para {
   color: string;
   indent: number;
   gap: number;
+  /** Code: drawn in a fixed-width font, its lines and indentation kept. */
+  mono?: boolean;
 }
 
 export const SCALE = { title: 1.9, body: 1.5, head: 1.2, small: 1.25 };
@@ -74,6 +76,7 @@ export function entries(tab: TabId, v: PageView): Entry[] {
           mark: hidden ? COLORS.barBg : GROUP_COLORS[item.group] ?? COLORS.barBg,
         };
       });
+    case "made": return madeEntries(v);
     case "thoughts": {
       const plan = life.mind.plan?.seq;
       return [...life.logs.thoughts].reverse().map((t) => {
@@ -141,6 +144,7 @@ export function empty(tab: TabId, v: PageView): string {
   const life = v.life;
   switch (tab) {
     case "shop": return "There's no shop in this room.";
+    case "made": return "He hasn't made anything yet. He invents things at the workbench (invent), and writes verbs of his own, and what his things do, as code at his desk (devise). Both need a writer endpoint, or a text model deciding.";
     case "thoughts": return life.run.models.thoughts ? "He hasn't thought anything yet." : "Nothing writes his thoughts in this setup: the run needs a writer endpoint (WRITER_ENDPOINT).";
     case "web": return life.run.models.search === null
       ? "He can't search the web in this setup: it needs a model that calls tools deciding (ENDPOINT=gemini) and a search: block in config/endpoints.yaml."
@@ -158,6 +162,7 @@ export function detail(tab: TabId, v: PageView, entry: Entry): Para[] {
   switch (tab) {
     case "run": runDetail(out, v, entry.key as RunRow); break;
     case "shop": shopDetail(out, v, entry.key); break;
+    case "made": madeDetail(out, v, entry.key); break;
     case "thoughts": {
       const t = life.logs.thoughts.find((x) => String(x.seq) === entry.key);
       if (t) thoughtDetail(out, life, t);
@@ -202,6 +207,9 @@ class Detail {
   }
   para(text: string, scale = SCALE.body, color = COLORS.ink, indent = 0, gap = 0) {
     this.rows.push({ text, scale, color, indent, gap });
+  }
+  code(source: string) {
+    this.rows.push({ text: source, scale: SCALE.small, color: COLORS.code, indent: 16, gap: 6, mono: true });
   }
 }
 
@@ -264,6 +272,7 @@ function shopDetail(out: Detail, v: PageView, id: string) {
   out.para(`${shopStatus(item, state)} · he has $${life.wallet.money}`, SCALE.body, !state.affordable && !owned(item, state) && !hidden ? COLORS.dear : COLORS.ink, 0, 6);
   out.head("WHAT IT'S FOR");
   out.para(state.gives || "-");
+  if ((life.shop.inventions ?? []).some((i) => i.id === id)) out.para("He invented this: what it does, and its code, are under MADE.", SCALE.small, COLORS.accent, 0, 6);
   if (hidden) {
     out.head("HIDDEN FROM HIM");
     out.para(`He doesn't know it's for sale until a book teaches him: ${state.taught_by}.`, SCALE.body, COLORS.muted);
@@ -428,6 +437,169 @@ function tripDetail(out: Detail, life: LifeState, t: TripView) {
   }
   out.head(`WHAT HE WAS SHOWN · ${t.catalog.length} things`);
   for (const line of t.catalog) out.para(line.replace(/^- /, ""), SCALE.small, t.buy.some((p) => line.startsWith(`- ${p.item} (`)) ? COLORS.ink : COLORS.muted, 8);
+}
+
+// --- MADE: what he invented, and the code he wrote ------------------------------------------------
+
+const INVENTED = "inv:";
+const VERB = "verb:";
+const BEHAVIOR = "by:";
+const CHANGED = "changed";
+
+/** The verbs and behavior that are an invention's function: the ones that take it, are done at it, or are its own. */
+function functionOf(life: LifeState, id: string): { verbs: CodedVerbView[]; behavior: BehaviorView | null } {
+  const code = life.code;
+  return {
+    verbs: (code?.verbs ?? []).filter((x) => x.what === id || x.at === id),
+    behavior: (code?.behaviors ?? []).find((b) => b.thing === id) ?? null,
+  };
+}
+
+function madeEntries(v: PageView): Entry[] {
+  const life = v.life;
+  const code = life.code;
+  const inventions = life.shop.inventions ?? [];
+  const invented = new Set(inventions.map((i) => i.id));
+  const out: Entry[] = [];
+  for (const i of [...inventions].reverse()) {
+    const f = functionOf(life, i.id);
+    const does = [f.verbs.length ? plural(f.verbs.length, "verb") : "", f.behavior ? "does something every hour" : ""].filter(Boolean).join(" · ");
+    out.push({
+      key: INVENTED + i.id, title: thingName(v, i.id),
+      sub: `invented ${stamp(i.tick, life.fast, life.run.ticks_per_minute)} · ${does || `one use: ${i.use}`}`,
+      mark: colorOf(life, i.id) ?? GROUP_COLORS[i.group] ?? COLORS.barBg,
+    });
+  }
+  const own = (x: CodedVerbView) => !(x.what && invented.has(x.what)) && !invented.has(x.at);
+  for (const x of [...(code?.verbs ?? [])].filter(own).reverse()) {
+    out.push({ key: VERB + x.id, title: `${x.phrase ?? x.id.replace(/_/g, " ")}${x.version > 1 ? ` · v${x.version}` : ""}`, sub: `his own verb · ${x.says}`, mark: COLORS.accent });
+  }
+  for (const b of (code?.behaviors ?? []).filter((b) => !invented.has(b.thing))) {
+    out.push({ key: BEHAVIOR + b.thing, title: `${thingName(v, b.thing)} · by itself`, sub: b.says, subColor: b.failures ? COLORS.failed : COLORS.muted, mark: COLORS.stimulation });
+  }
+  const changed = (code?.changed ?? []).length;
+  const stored = Object.keys(code?.stored ?? {}).length;
+  if (changed || stored) {
+    out.push({
+      key: CHANGED, title: "What his code changed",
+      sub: [changed ? `${plural(changed, "thing")} moved, renamed or painted` : "", stored ? `values kept on ${plural(stored, "thing")}` : ""].filter(Boolean).join(" · "),
+      mark: COLORS.ribbon,
+    });
+  }
+  return out;
+}
+
+function madeDetail(out: Detail, v: PageView, key: string) {
+  const life = v.life;
+  if (key.startsWith(INVENTED)) {
+    const i = (life.shop.inventions ?? []).find((x) => x.id === key.slice(INVENTED.length));
+    if (i) inventionDetail(out, v, i);
+  } else if (key.startsWith(VERB)) {
+    const x = (life.code?.verbs ?? []).find((c) => c.id === key.slice(VERB.length));
+    if (x) {
+      out.head(`HIS OWN VERB · ${x.id}`);
+      out.para(x.phrase ?? x.id.replace(/_/g, " "), SCALE.title, COLORS.ink);
+      verbDetail(out, v, x, false);
+    }
+  } else if (key.startsWith(BEHAVIOR)) {
+    const b = (life.code?.behaviors ?? []).find((c) => c.thing === key.slice(BEHAVIOR.length));
+    if (b) {
+      out.head(`WHAT IT DOES BY ITSELF · ${b.thing}`);
+      out.para(thingName(v, b.thing), SCALE.title, COLORS.ink);
+      behaviorDetail(out, life, b);
+    }
+  } else if (key === CHANGED) changedDetail(out, v, null);
+}
+
+function inventionDetail(out: Detail, v: PageView, i: Invented) {
+  const life = v.life;
+  out.head(`${i.group.toUpperCase()} · HIS OWN INVENTION · ${i.id}`);
+  out.para(thingName(v, i.id), SCALE.title, COLORS.ink);
+  const has = life.wallet.owns[i.id] ?? 0;
+  const like = Object.entries(i.like).map(([q, n]) => `${q} ${n}`).join(", ");
+  out.para(`built ${stamp(i.tick, life.fast, life.run.ticks_per_minute)} · materials $${i.cost}` + (i.price !== null ? ` · the shop sends more for $${i.price}` : "") + ` · ${has ? `he has ${has}` : "he doesn't have it now"}`, SCALE.small, COLORS.muted, 0, 4);
+  out.para(`It's ${i.use}${like ? `, and it's ${like}` : ""}${i.wall ? "; it hangs on a wall" : ""}.`, SCALE.body, COLORS.ink, 0, 6);
+  if (i.why) {
+    out.head("WHY HE MADE IT");
+    out.para(i.why);
+  }
+  const f = functionOf(life, i.id);
+  out.head("WHAT IT DOES");
+  if (!f.verbs.length && !f.behavior) out.para(`No code: it's only for its one use (${i.use}).`, SCALE.body, COLORS.muted);
+  for (const x of f.verbs) {
+    out.para(`He can ${x.phrase ?? x.id.replace(/_/g, " ")}: ${x.says}`, SCALE.body, COLORS.ink, 0, 6);
+  }
+  if (f.behavior) out.para(`Every hour, by itself: ${f.behavior.says}`, SCALE.body, COLORS.ink, 0, 6);
+  out.head(`WHAT IT LOOKS LIKE · ${plural(i.look.length, "shape")}`);
+  for (const s of i.look) out.para(`${s.part || "part"}: ${s.shape}, ${s.color}, ${Math.round(s.w * 100)} x ${Math.round(s.h * 100)} x ${Math.round(s.d * 100)} cm${s.glow > 0 ? ", glows" : ""}`, SCALE.small, COLORS.muted, 8);
+  changedDetail(out, v, i.id);
+  for (const x of f.verbs) {
+    out.head(`VERB · ${x.phrase ?? x.id}`);
+    verbDetail(out, v, x, true);
+  }
+  if (f.behavior) {
+    out.head("EVERY HOUR, BY ITSELF");
+    behaviorDetail(out, life, f.behavior);
+  }
+}
+
+/** A verb of his: what it does, how it's done, how often, and its code; [brief] leaves out what the invention's detail says already. */
+function verbDetail(out: Detail, v: PageView, x: CodedVerbView, brief: boolean) {
+  const life = v.life;
+  if (!brief) out.para(x.says, SCALE.body, COLORS.ink, 0, 6);
+  const where = x.at === "here" ? "wherever he is" : x.at === "what" ? "at the thing it takes" : `at the ${thingName(v, x.at)}`;
+  const takes = x.what ? `takes ${x.what === x.at ? "it" : thingName(v, x.what)} · ` : "";
+  out.para(`${takes}done ${where} · ${x.minutes ?? "?"} min · written ${at(x.day, x.time, x.tick, life)}` + (x.version > 1 ? ` · rewrite ${x.version - 1}` : ""), SCALE.small, COLORS.muted, 0, 4);
+  const done = life.growth.done[x.id];
+  const lock = life.shop.verbs.find((s) => s.id === x.id)?.locked ?? null;
+  out.para((done ? `He's done it ${done.count === 1 ? "once" : `${done.count} times`}.` : "He hasn't done it yet.") + (lock ? ` Right now he can't: ${lock}` : ""), SCALE.small, lock ? COLORS.dear : COLORS.ink, 0, 4);
+  if (x.why) {
+    out.para("Why he wrote it", SCALE.small, COLORS.muted, 0, 8);
+    out.para(x.why, SCALE.body, COLORS.ink, 16);
+  }
+  out.para("The code: " + (/\bcanDo\s*\(/.test(x.source) ? "canDo(world) says whether he can, " : "") + "finish(world) runs as he finishes", SCALE.small, COLORS.muted, 0, 8);
+  out.code(x.source);
+}
+
+function behaviorDetail(out: Detail, life: LifeState, b: BehaviorView) {
+  out.para(b.says, SCALE.body, COLORS.ink, 0, 6);
+  out.para(`hourly(world, thing) runs every game hour while he has it · written ${at(b.day, b.time, b.tick, life)}` + (b.version > 1 ? ` · rewrite ${b.version - 1}` : ""), SCALE.small, COLORS.muted, 0, 4);
+  if (b.failures) out.para(`It has broken ${plural(b.failures, "hour")} in a row; at 3 it stops until he writes it again.`, SCALE.small, COLORS.failed, 0, 4);
+  out.code(b.source);
+}
+
+/** What his code changed about things and kept on them: one thing's ([id]), or all of it. */
+function changedDetail(out: Detail, v: PageView, id: string | null) {
+  const code = v.life.code;
+  const changed = (code?.changed ?? []).filter((c) => id === null || c.id === id);
+  const stored = Object.entries(code?.stored ?? {}).filter(([k]) => id === null || k === id);
+  if (changed.length) {
+    out.head(id === null ? "WHAT HIS CODE CHANGED ABOUT HIS THINGS" : "WHAT HIS CODE CHANGED ABOUT IT");
+    for (const c of changed) {
+      const what = [c.name ? `renamed "${c.name}"` : "", c.color ? `painted ${c.color}` : "", c.spot ? `moved to ${c.spot.replace(/_/g, " ")}` : ""].filter(Boolean).join(", ");
+      out.para(id === null ? `${thingName(v, c.id)}: ${what}` : what, SCALE.body, COLORS.ink);
+    }
+  }
+  if (stored.length) {
+    out.head(id === null ? "WHAT HIS CODE KEEPS ON THINGS" : "WHAT HIS CODE KEEPS ON IT");
+    for (const [thing, kept] of stored) {
+      if (id === null) out.para(thing === "self" ? "himself" : thingName(v, thing), SCALE.body, COLORS.ink, 0, 6);
+      for (const [k, value] of Object.entries(kept)) out.para(`${k} = ${value}`, SCALE.small, COLORS.code, 16);
+    }
+  }
+}
+
+/** A thing's name as he sees it: what his code renamed it, else its invented or catalogue name, else its id. */
+function thingName(v: PageView, id: string): string {
+  const renamed = v.life.code?.changed.find((c) => c.id === id)?.name;
+  if (renamed) return renamed;
+  const invented = (v.life.shop.inventions ?? []).find((i) => i.id === id);
+  if (invented) return invented.name;
+  return v.content.catalog.find((c) => c.id === id)?.name ?? id.replace(/_/g, " ");
+}
+
+function colorOf(life: LifeState, id: string): string | null {
+  return life.code?.changed.find((c) => c.id === id)?.color ?? null;
 }
 
 // --- helpers -------------------------------------------------------------------------------------
