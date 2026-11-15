@@ -26,7 +26,8 @@
 # `build` op then builds, rules.yaml `invent`) and `draw: item` (the
 # drawing model draws a piece the verb produced). Results are kept only if the verb succeeds. A
 # verb whose `write` has no handler configured isn't offered to models, unless the write is
-# `optional`; the sim still runs it. `with: reading` writes what stuck with him from a chapter.
+# `optional`; the sim still runs it. `with: reading` writes what stuck with him from a chapter;
+# `with: letter` writes a letter that a `post_letter` op then sends.
 # `wear: verb`: repetition wears the verb as a whole, whatever it's done with (any book wears
 # "read"); by default each item wears on its own (each record). What counts as new stays per item.
 # `no_repeat`: locked right after he did it. `by_day: { block, minutes }`: started outside the night
@@ -132,6 +133,19 @@ verbs:
     effects:
       - open_mail: {}
       - need: { mood: 4, stimulation: 8 }
+  # He writes to someone who has written to him: an answer to their letters, or a letter of his own
+  # when he has something to tell them. The letter is written before he sits down (`with: letter`, who
+  # it's to and what it says), and goes through the hatch as he finishes (`post_letter`), to the host,
+  # which shows it to them. rules.yaml `letters` says how often.
+  - id: write_letter
+    kind: social
+    phrase: write a letter to someone who has written to you
+    at: [desk]
+    minutes: 30
+    effects:
+      - write: { with: letter, into: [events], timing: before }
+      - post_letter: {}
+      - need: { energy: -2, mood: 4, stimulation: 6 }
   - id: hang_art
     kind: transformative
     phrase: hang your art on the wall

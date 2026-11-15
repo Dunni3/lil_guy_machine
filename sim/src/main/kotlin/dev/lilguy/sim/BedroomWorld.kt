@@ -168,6 +168,19 @@ class BedroomWorld private constructor(
     private val baskets = mutableMapOf<String, AuthoredResult.Basket>()
     /** What he designed, staged for each building verb until it finishes. */
     private val designs = mutableMapOf<String, AuthoredResult.Designed>()
+    /** Letters he wrote, as staged for each letter verb until he puts it through the hatch. */
+    private val drafts = mutableMapOf<String, AuthoredResult.Composed>()
+    /** The letters he has opened and the ones he has written, oldest first. */
+    private val read = mutableListOf<Letter>()
+    private val sent = mutableListOf<OutLetter>()
+
+    /** The letters he has written, for the host to send on. Readable from any thread. */
+    @Volatile var lettersSent: List<OutLetter> = emptyList()
+        private set
+
+    /** Who he can write to and what has passed between them, for the letter writer. Readable from any thread. */
+    @Volatile var correspondence: List<Correspondent> = emptyList()
+        private set
     /** What he said on his latest trip that he's saving for, until he owns it. */
     private var savingFor: String? = null
     /** [on]: what it plays on, for the renderer's "playing" state. */
@@ -299,9 +312,47 @@ class BedroomWorld private constructor(
             val l = mailbox.removeFirst()
             opened += l.id
             lettersOpened = opened.toSet()
+            read += l.copy(tick = ticks)
+            correspond()
             version++
             val left = if (mailbox.isEmpty()) "" else "${mailbox.size} more waiting"
             return listOfNotNull("a letter from ${l.from}, someone outside your world, reads: \"${l.body}\"", left.ifEmpty { null })
+        }
+
+        override fun letterLock(): String? {
+            if (content.letters == null) return "you can't write letters"
+            if (correspondence.isEmpty()) return "nobody has written to you yet, so there's nobody to write to"
+            return if (correspondence.all { it.blocked != null }) correspondence.joinToString("; ") { it.blocked!! } else null
+        }
+
+        override fun letterFailed(verb: String): String? {
+            val d = drafts[verb]
+            val why = when {
+                d == null || d.failed != null || d.body.isNullOrBlank() -> "you couldn't find the words, so you didn't send a letter"
+                else -> correspondence.firstOrNull { it.sender == d.to }?.let { it.blocked } ?: if (correspondence.none { it.sender == d.to }) "that's nobody who has written to you" else null
+            } ?: return null
+            drafts.remove(verb)
+            return why
+        }
+
+        override fun postLetter(verb: String): List<String> {
+            val d = drafts.remove(verb)!!
+            val c = correspondence.first { it.sender == d.to }
+            val body = d.body!!.trim().take(content.letters!!.maxLength)
+            val out = OutLetter(sent.size + 1, c.sender, c.name, body, ticks, clock.day(ticks), GameClock.hhmm(clock.minuteOfDay(ticks)), read.lastOrNull { it.sender == c.sender }?.id)
+            sent += out
+            lettersSent = sent.toList()
+            correspond()
+            version++
+            return listOf("wrote to ${c.name} and put the letter through the mail hatch" + if (c.unanswered.isEmpty()) "" else ", answering ${if (c.unanswered.size == 1) "their letter" else "their ${c.unanswered.size} letters"}")
+        }
+
+        override fun letterText(): String? {
+            val open = correspondence.filter { it.blocked == null }
+            if (open.isEmpty()) return null
+            val waiting = open.filter { it.unanswered.isNotEmpty() }
+            if (waiting.isNotEmpty()) return waiting.joinToString(" and ") { it.name } + (if (waiting.size == 1 && waiting[0].unanswered.size == 1) "'s letter is" else " are") + " waiting for an answer"
+            return "write to " + open.joinToString(" or ") { it.name } + ", who wrote to you before"
         }
 
         override fun mailText(): String? = mailbox.firstOrNull()?.let { l -> "a letter from ${l.from}" + if (mailbox.size > 1) " (${mailbox.size} waiting)" else "" }
@@ -979,6 +1030,31 @@ class BedroomWorld private constructor(
     }
 
     /**
+     * Works out [correspondence] again: everyone whose letters he has opened, newest name first, and
+     * whether rules.yaml `letters` lets him write to them now. On the sim thread, when a letter is
+     * opened or written and when a day begins.
+     */
+    private fun correspond() {
+        val rules = content.letters
+        val today = clock.day(ticks)
+        correspondence = read.filter { it.sender != null }.groupBy { it.sender!! }.map { (sender, theirs) ->
+            val name = theirs.last().from
+            val mine = sent.filter { it.to == sender }
+            val lastMine = mine.lastOrNull()?.tick ?: -1
+            val lastTheirs = theirs.last().tick ?: 0
+            val inARow = mine.count { it.tick > lastTheirs }
+            val blocked = when {
+                rules == null -> "you can't write letters"
+                mine.count { it.day == today } >= rules.perDay -> "you've written to $name today"
+                inARow >= rules.unanswered -> "$name hasn't written back to your last ${if (inARow == 1) "letter" else "$inARow letters"}"
+                else -> null
+            }
+            val exchanged = (theirs.map { Correspondent.Exchanged(false, it.body, it.tick ?: 0, stamp(it.tick ?: 0)) } + mine.map { Correspondent.Exchanged(true, it.body, it.tick, stamp(it.tick)) }).sortedBy { it.tick }
+            Correspondent(sender, name, exchanged, theirs.filter { (it.tick ?: 0) > lastMine }, blocked)
+        }.sortedByDescending { c -> c.letters.last().tick }
+    }
+
+    /**
      * Hands over the result of authored op [id] ([AuthoredView], from the observation): applied at
      * the start of the next tick. Safe from any thread; an id that isn't waiting is dropped.
      */
@@ -993,7 +1069,7 @@ class BedroomWorld private constructor(
      * is replaced by the next trip's.
      */
     fun stage(verb: String, result: AuthoredResult) {
-        if (result is AuthoredResult.Basket || result is AuthoredResult.Designed) staging.add(verb to result)
+        if (result is AuthoredResult.Basket || result is AuthoredResult.Designed || result is AuthoredResult.Composed) staging.add(verb to result)
     }
 
     private fun applyNotes() {
@@ -1002,6 +1078,7 @@ class BedroomWorld private constructor(
             when (staged) {
                 is AuthoredResult.Basket -> baskets[verb] = staged
                 is AuthoredResult.Designed -> designs[verb] = staged
+                is AuthoredResult.Composed -> drafts[verb] = staged
                 else -> {}
             }
         }
@@ -1165,7 +1242,10 @@ class BedroomWorld private constructor(
         val minute = clock.minuteOfDay(ticks)
         if (minute % 60 == 0) needs.flush(ticks)
         content.commissions?.let { if (minute == GameClock.parseHhmm(it.arrive)) newCommission(it) }
-        if (minute == 0) event("day ${clock.day(ticks)} begins")
+        if (minute == 0) {
+            event("day ${clock.day(ticks)} begins")
+            correspond()
+        }
     }
 
     /** What stimulation loses an awake hour now: flat, or scaled by his level when the rules say where it's full ([NeedRules.stimulationDrainAt]). */
@@ -1209,7 +1289,7 @@ class BedroomWorld private constructor(
      * agent side's to say (with no handler for an op, none ever is).
      */
     val canExport: Boolean
-        get() = atRest && doing == null && notes.isEmpty() && posted.isEmpty() && deliveries.isEmpty() && staging.isEmpty() && baskets.isEmpty() && designs.isEmpty()
+        get() = atRest && doing == null && notes.isEmpty() && posted.isEmpty() && deliveries.isEmpty() && staging.isEmpty() && baskets.isEmpty() && designs.isEmpty() && drafts.isEmpty()
 
     /** Everything a [restore] needs to carry on from here. Only when [canExport]; call on the sim thread. */
     fun exportState(): BedroomState {
@@ -1240,6 +1320,8 @@ class BedroomWorld private constructor(
             bare = bareUntil.filterValues { it > ticks },
             mail = mailbox.toList(),
             opened = opened.toList(),
+            read = read.toList(),
+            sent = sent.toList(),
         )
     }
 
@@ -1301,6 +1383,10 @@ class BedroomWorld private constructor(
         mailbox.clear(); mailbox.addAll(s.mail)
         opened.clear(); opened.addAll(s.opened)
         lettersOpened = opened.toSet()
+        read.clear(); read.addAll(s.read)
+        sent.clear(); sent.addAll(s.sent)
+        lettersSent = sent.toList()
+        correspond()
         authoredCount = s.authoredCount
         lastPlanned = s.grid.last?.intent
         version++

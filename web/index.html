@@ -83,6 +83,9 @@
     #mail li p { margin: 4px 0 0; font-weight: 500; white-space: pre-wrap; overflow-wrap: anywhere; }
     #mail .mail-status { color: #8a7464; font-size: 13px; }
     #mail .mail-status.opened { color: #5c8a5a; }
+    #mail li.his { background: #fdf1dc; border-radius: 10px; border-top-color: transparent; padding: 10px 12px; margin: 6px 0; }
+    #mail li.his .mail-status { color: #c0645a; }
+    #mail-open.news { background: #e07f74; color: #fff8ee; }
   </style>
 </head>
 <body>
@@ -132,7 +135,7 @@
         <span id="mail-count" class="grow"></span>
       </div>
       <p id="mail-write-note" class="note"></p>
-      <h2 id="mail-sent-title" hidden style="margin-top: 18px">YOUR LETTERS</h2>
+      <h2 id="mail-sent-title" hidden style="margin-top: 18px">LETTERS</h2>
       <ol id="mail-sent"></ol>
       <div class="row"><span class="grow">Signed in as <span id="mail-who"></span></span><button id="mail-signout" class="link" type="button">Sign out</button></div>
     </form>

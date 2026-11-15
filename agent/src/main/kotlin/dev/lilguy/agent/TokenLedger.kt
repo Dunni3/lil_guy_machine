@@ -47,6 +47,8 @@ enum class TokenPurpose {
     @SerialName("shop") Shop,
     /** The design of something he invents. */
     @SerialName("invent") Invent,
+    /** A letter he writes. */
+    @SerialName("letter") Letter,
     /** A search of the real web, and what its results say. */
     @SerialName("search") Search,
 }

@@ -160,7 +160,10 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   write him, in `host/.../Accounts.kt` (its own SQLite file, `LILGUY_ACCOUNTS_DB`, never synced) and `MailRoutes.kt`, with the wire
   types in `protocol/.../Mail.kt`. `Life` polls for waiting letters and posts them into the running world (`BedroomWorld.post`); the
   mailbox and the ids he has opened are in `BedroomState`; `read_mail` (kind `social`, op `open_mail`, `sim/.../Mail.kt`) opens one at
-  the mail hatch, its words in the event. On the web: `src/ui/mail.ts`, a DOM panel from the "Write to him" button.
+  the mail hatch, its words in the event. He writes back with `write_letter` (op `post_letter`, rules.yaml `letters`), to anyone whose
+  letter he has opened, replying or on his own: the writer writes it (`agent/.../mail/LetterWriter.kt`, handler `letter`), the world
+  keeps it in `lettersSent`, and the host keeps it for that account (`his_letters`, the mailbag's `replies`).
+  On the web: `src/ui/mail.ts`, a DOM panel from the "Write to him" button, both ways in one thread.
 - Web renderer (phase 4; `docs/decisions/2026-11-08-the-web-renderer-is-*`): `web/`, TypeScript, Three.js and Vite, served by the
   host at `/room/`, or from anywhere with `make web-dev`. URL settings in `src/settings.ts`: `life`, `broadcast` (no menu, keys or cursor, the camera
   follows him, the HUD in a 16:9 frame's title-safe area), `scale` (canvas resolution, CSS scales it up), `fps` (frame cap), `camera` (`room` or `follow`),

@@ -4,6 +4,7 @@ import dev.lilguy.agent.AgentRuntime
 import dev.lilguy.agent.Carried
 import dev.lilguy.agent.LifeRecorder
 import dev.lilguy.agent.carried
+import dev.lilguy.agent.mail.LetterWriter
 import dev.lilguy.agent.memory.MemoryStore
 import dev.lilguy.agent.memory.RunMemoryStore
 import dev.lilguy.runlog.Ids
@@ -410,6 +411,9 @@ class SimSession(
             // What he invents: the writer designs it; a canned inventor stands in when the setup has one.
             inventor = if (setup.scenario != Scenario.Bedroom) null else setup.inventor?.invoke() ?: jw?.let { Inventor(ledger.meter(it, TokenPurpose.Invent, setup.prices.writer)) },
             onDraft = { d -> lr?.invention(d) },
+            // His letters to people who have written to him: the writer writes them.
+            letterWriter = if (setup.scenario != Scenario.Bedroom) null else jw?.takeIf { !it.capabilities.closedChoice }?.let { LetterWriter(ledger.meter(it, TokenPurpose.Letter, setup.prices.writer)) },
+            onLetter = { l -> lr?.letter(l) },
             // The real web, for a model that calls tools; the session closes it with the run.
             searcher = setup.search?.takeIf { setup.scenario == Scenario.Bedroom }?.invoke()?.let { web ->
                 searchClient = web

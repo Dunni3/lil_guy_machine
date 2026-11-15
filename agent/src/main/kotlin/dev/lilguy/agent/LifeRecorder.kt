@@ -1,6 +1,7 @@
 package dev.lilguy.agent
 
 import dev.lilguy.agent.art.Drawing
+import dev.lilguy.agent.mail.Written
 import dev.lilguy.agent.memory.AgentMemory
 import dev.lilguy.agent.memory.Answer
 import dev.lilguy.agent.memory.RunMemoryStore
@@ -245,6 +246,17 @@ class LifeRecorder(val recorder: RunRecorder, private val autosaveMinutes: Int =
             put("fell_back", t.fellBack)
         },
         error = t.error,
+    )
+
+    fun letter(l: Written) = authored(
+        l.tick, "letter", null, kept = l.body != null, writer = l.writer,
+        result = buildJsonObject {
+            put("to", l.to)
+            put("name", l.name)
+            put("reply", l.reply)
+            put("letter", l.body)
+        },
+        error = l.error,
     )
 
     fun invention(d: Drafted) = authored(

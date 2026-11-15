@@ -490,6 +490,28 @@
           "type": "null"
         }
       ]
+    },
+    "letters": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "per_day": {
+              "type": "integer"
+            },
+            "unanswered": {
+              "type": "integer"
+            },
+            "max_length": {
+              "type": "integer"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "required": [

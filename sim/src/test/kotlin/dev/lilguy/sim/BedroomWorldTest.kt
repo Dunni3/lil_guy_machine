@@ -67,7 +67,7 @@ class BedroomWorldTest {
     fun `tier 0 is the small world, and gated content comes in only when granted`() {
         val w = world(granted = emptySet())
         val obs = w.obs()
-        assertEquals(listOf("eat", "eat_oats", "sketch", "sell_art", "shop", "read_mail", "hang_art", "sleep", "think", "explore", "explore", "explore", "explore", "collect", "sell_sample"), obs.activities!!.map { it.id })
+        assertEquals(listOf("eat", "eat_oats", "sketch", "sell_art", "shop", "read_mail", "write_letter", "hang_art", "sleep", "think", "explore", "explore", "explore", "explore", "collect", "sell_sample"), obs.activities!!.map { it.id })
         assertEquals(listOf("meal"), obs.shop!!.map { it.id })
         assertEquals("you have no sketch to sell; sketch makes some", w.activity("sell_art").locked)
         assertTrue("no activity called 'paint'" in failure(w.run(Intent.Do("paint"))))
@@ -77,7 +77,7 @@ class BedroomWorldTest {
 
         // A grant has to bring what it needs with it, and only gated ids can be granted.
         val painting = setOf("paint", "easel", "canvas", "painting")
-        assertEquals(listOf("eat", "eat_oats", "sketch", "paint", "sell_art", "shop", "read_mail", "hang_art", "sleep", "think", "explore", "explore", "explore", "explore", "collect", "sell_sample"), world(money = 500, granted = painting).obs().activities!!.map { it.id })
+        assertEquals(listOf("eat", "eat_oats", "sketch", "paint", "sell_art", "shop", "read_mail", "write_letter", "hang_art", "sleep", "think", "explore", "explore", "explore", "explore", "collect", "sell_sample"), world(money = 500, granted = painting).obs().activities!!.map { it.id })
         assertTrue("canvas" in assertFailsWith<IllegalArgumentException> { content.unlocked(setOf("paint", "easel")) }.message!!)
         assertTrue("meal" in assertFailsWith<IllegalArgumentException> { content.unlocked(setOf("meal")) }.message!!)
     }
@@ -491,5 +491,24 @@ class BedroomWorldTest {
         back.post(Letter(7, "Sam", "I like your sketches."))
         back.step()
         assertEquals("no letters are waiting at the mail hatch", back.activity("read_mail").locked)
+    }
+
+    @Test
+    fun `he writes back to whoever wrote to him, once a day, and a save keeps it`() {
+        val w = world()
+        assertEquals("nobody has written to you yet, so there's nobody to write to", w.activity("write_letter").locked)
+        w.post(Letter(7, "Sam", "Do you like the rain?", sender = 3))
+        w.step()
+        w.run(Intent.Do("read_mail"))
+        assertEquals("Sam's letter is waiting for an answer", w.activity("write_letter").gives?.substringBefore(";"))
+        w.stage("write_letter", AuthoredResult.Composed(3, "Dear Sam, I love the rain on my window."))
+        w.run(Intent.Do("write_letter"))
+        assertTrue("wrote to Sam and put the letter through the mail hatch, answering their letter" in w.obs().outcome!!)
+        val sent = w.lettersSent.single()
+        assertEquals(listOf(3L, 7L), listOf(sent.to, sent.inReplyTo))
+        assertEquals("Dear Sam, I love the rain on my window.", sent.body)
+        val back = BedroomWorld.restore(w.exportState(), w.content, strict = true).world
+        assertEquals(sent, back.lettersSent.single())
+        assertEquals("you've written to Sam today", back.activity("write_letter").locked)
     }
 }

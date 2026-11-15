@@ -43,8 +43,8 @@ menu:
     verbs: [explore, collect, study_sample, sell_sample]
     go: true
   - id: mail
-    says: open a letter someone outside his world sent him through the mail hatch
-    verbs: [read_mail]
+    says: letters - open one someone outside his world sent him through the mail hatch, or write to someone who has written to him
+    verbs: [read_mail, write_letter]
   - id: mind
     says: stop to think things over and plan, asking how things in his world work
     verbs: [think]

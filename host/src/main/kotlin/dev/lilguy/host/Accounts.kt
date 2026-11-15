@@ -1,8 +1,11 @@
 package dev.lilguy.host
 
+import dev.lilguy.protocol.HisLetter
+import dev.lilguy.protocol.Mailbag
 import dev.lilguy.protocol.SentLetter
 import dev.lilguy.runlog.SqlDriver
 import dev.lilguy.sim.Letter
+import dev.lilguy.sim.OutLetter
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.time.Instant
@@ -19,7 +22,8 @@ import javax.crypto.spec.PBEKeySpec
  * a login name. Passwords are kept as PBKDF2-SHA256 with a salt each; a session is a random token, of
  * which only the SHA-256 is kept. A login that fails [MAX_FAILURES] times in a row locks that email
  * for [LOCKOUT_MS], so nobody can guess a password at speed. Letters are at most [MAX_LENGTH]
- * characters, [PER_DAY] an account in any 24 hours.
+ * characters, [PER_DAY] an account in any 24 hours. The letters he writes back are kept here too, each
+ * for the account whose letters he was answering, which only that account can read.
  *
  * One connection, so every call is synchronized. [now] is epoch milliseconds, for tests.
  */
@@ -46,6 +50,11 @@ class Accounts(private val db: SqlDriver, private val now: () -> Long = System::
             )
             db.execute("CREATE INDEX IF NOT EXISTS letters_by_life ON letters(life, delivered_at)")
             db.execute("CREATE INDEX IF NOT EXISTS letters_by_account ON letters(account, sent_at)")
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS his_letters (id INTEGER PRIMARY KEY, account INTEGER NOT NULL REFERENCES accounts(id), life TEXT NOT NULL, run TEXT NOT NULL, seq INTEGER NOT NULL, " +
+                    "name TEXT NOT NULL, body TEXT NOT NULL, written_at INTEGER NOT NULL, day INTEGER NOT NULL, time TEXT NOT NULL, in_reply_to INTEGER, UNIQUE (life, run, seq))",
+            )
+            db.execute("CREATE INDEX IF NOT EXISTS his_letters_by_account ON his_letters(account, life, id)")
         }
     }
 
@@ -138,7 +147,34 @@ class Accounts(private val db: SqlDriver, private val now: () -> Long = System::
     /** Letters to [life] not through the hatch yet, oldest first. */
     @Synchronized
     fun waiting(life: String): List<Letter> =
-        db.query("SELECT id, signed, body FROM letters WHERE life = ? AND delivered_at IS NULL ORDER BY id", listOf(life)).map { r -> Letter(r["id"] as Long, r["signed"] as String, r["body"] as String) }
+        db.query("SELECT id, account, signed, body FROM letters WHERE life = ? AND delivered_at IS NULL ORDER BY id", listOf(life)).map { r ->
+            Letter(r["id"] as Long, r["signed"] as String, r["body"] as String, sender = r["account"] as Long)
+        }
+
+    /**
+     * Keeps the letters he wrote in [run] of [life], each for the account it's to (its [OutLetter.to]);
+     * one kept already ([OutLetter.seq] in that run) or to an account that's gone is skipped.
+     */
+    @Synchronized
+    fun fromHim(life: String, run: String, letters: Collection<OutLetter>) = db.transaction {
+        letters.forEach { l ->
+            if (db.query("SELECT 1 FROM accounts WHERE id = ?", listOf(l.to)).isEmpty()) return@forEach
+            db.execute(
+                "INSERT OR IGNORE INTO his_letters (account, life, run, seq, name, body, written_at, day, time, in_reply_to) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                listOf(l.to, life, run, l.seq.toLong(), l.name, l.body, now(), l.day.toLong(), l.time, l.inReplyTo),
+            )
+        }
+    }
+
+    /** The letters he wrote [who] in [life], newest first. */
+    @Synchronized
+    fun replies(who: Who, life: String, limit: Int = 50): List<HisLetter> =
+        db.query("SELECT id, name, body, written_at, day, time, in_reply_to FROM his_letters WHERE account = ? AND life = ? ORDER BY id DESC LIMIT ?", listOf(who.id, life, limit.toLong())).map { r ->
+            HisLetter(r["id"] as Long, r["name"] as String, r["body"] as String, iso(r["written_at"] as Long), (r["day"] as Long).toInt(), r["time"] as String, r["in_reply_to"] as Long?)
+        }
+
+    /** [who]'s mailbag for [life]: their letters and his. */
+    fun mailbag(who: Who, life: String) = Mailbag(letters(who, life), replies(who, life), PER_DAY, left(who), MAX_LENGTH)
 
     /** Marks [ids] as put through the hatch of [run]. */
     @Synchronized

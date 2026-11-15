@@ -64,6 +64,8 @@ data class BedroomContent(
     val collection: CollectionRules? = null,
     /** How much comfort the house holds, more with each room he builds; null and there's no limit. */
     val comfort: ComfortRules? = null,
+    /** Letters he writes to people who have written to him; null and he writes none. */
+    val letters: LetterRules? = null,
 ) {
     @Transient private val byId = items.associateBy { it.id }
 
@@ -132,7 +134,7 @@ data class BedroomContent(
         /** The content's files, each with the top-level keys it holds. */
         val FILES: Map<String, List<String>> = linkedMapOf(
             "room" to listOf("room", "start"),
-            "rules" to listOf("needs", "night", "habituation", "novelty", "frustration", "skills", "shop", "reflection", "commissions", "gallery", "quality_value", "invent", "collection", "comfort"),
+            "rules" to listOf("needs", "night", "habituation", "novelty", "frustration", "skills", "shop", "reflection", "commissions", "gallery", "quality_value", "invent", "collection", "comfort", "letters"),
             "vocabulary" to listOf("vocabulary"),
             "personality" to listOf("personality"),
             "items" to listOf("items"),
@@ -263,6 +265,7 @@ data class BedroomContent(
                 require(placed.add(v)) { "menu: verb '$v' is in more than one node" }
             }
         }
+        letters?.let { l -> require(l.perDay >= 1 && l.unanswered >= 1 && l.maxLength >= 1) { "letters: per_day, unanswered and max_length must be at least 1" } }
         reflection?.let { r -> require(verbs.any { it.id == r.verb } && r.every >= 1) { "reflection: verb '${r.verb}' must be a verb and every at least 1" } }
         val skillNames = vocabulary.skills.toSet()
         items.forEach { item -> item.affords.forEach { (a, p) -> p.skill?.let { require(it in skillNames) { "item ${item.id}: $a skill '$it' isn't in vocabulary.skills" } } } }

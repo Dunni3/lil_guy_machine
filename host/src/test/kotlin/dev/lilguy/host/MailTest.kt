@@ -9,6 +9,7 @@ import dev.lilguy.protocol.Mailbag
 import dev.lilguy.protocol.SignedIn
 import dev.lilguy.protocol.Wire
 import dev.lilguy.runlog.jdbc.JdbcSqlDriver
+import dev.lilguy.sim.OutLetter
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -33,7 +34,8 @@ import kotlin.time.Duration.Companion.seconds
 class MailTest {
     /**
      * Someone makes an account, can't sign in with the wrong password, and writes him a letter; the life puts it
-     * through the hatch of the run that's going, the scripted policy opens it, and the sender sees it opened.
+     * through the hatch of the run that's going, the scripted policy opens it, the sender sees it opened, and a
+     * letter he writes back comes to them.
      */
     @Test
     fun `a letter goes from sign-up through the hatch to opened`() = testApplication {
@@ -61,6 +63,13 @@ class MailTest {
         assertTrue(life.command(Command.Start).ok)
         withTimeout(30.seconds) { while (mine().letters.single().status != "opened") delay(20) }
         assertTrue(life.latest!!.state.logs.decisions.any { "letter" in it.rationale.orEmpty() })
+
+        // He knows who wrote it, so a letter he writes back reaches only that account's mailbag, once.
+        val sam = accounts.who(token)!!
+        val reply = OutLetter(1, to = sam.id, name = "Sam", body = "Dear Sam, thank you.", tick = 10, day = 1, time = "09:30", inReplyTo = mine().letters.single().id)
+        accounts.fromHim("main", "run-1", listOf(reply))
+        accounts.fromHim("main", "run-1", listOf(reply))
+        assertEquals(listOf("Dear Sam, thank you." to mine().letters.single().id), mine().replies.map { it.body to it.inReplyTo })
         life.stop()
         scope.cancel()
     }
