@@ -1,4 +1,4 @@
-import { Matrix4, Vector3, type BufferGeometry, type Mesh } from "three";
+import { Box3, Matrix4, Vector3, type BufferGeometry, type Mesh, type Ray } from "three";
 import type { Content, Entity, LifeState } from "../../../protocol/ts/protocol";
 import { Y_AXIS, Z_AXIS, rotate, scale, translate } from "../crayon/math";
 import type { CrayonRenderer, Placed } from "../crayon/renderer";
@@ -161,6 +161,30 @@ export class RoomView {
     speech.asleep = pose.doing === "sleep" && !pose.moving;
     speech.thinking = pose.thinking;
     speech.announced = this.art.announced;
+  }
+
+  /**
+   * The thing [ray] meets first, by the boxes its models take up where they stand, and the middle of
+   * that box's top (for a label to point at); null if it meets none. The guy and the shelf aren't things.
+   */
+  pick(ray: Ray): { id: string; top: Vector3 } | null {
+    let best: { id: string; top: Vector3 } | null = null;
+    let nearest = Infinity;
+    const box = new Box3();
+    const hit = new Vector3();
+    for (const [id, t] of this.things) {
+      const b = t.placed.model.bounds;
+      box.min.set(b[0], b[1], b[2]);
+      box.max.set(b[3], b[4], b[5]);
+      if (box.isEmpty()) continue;
+      box.applyMatrix4(t.at);
+      if (!ray.intersectBox(box, hit)) continue;
+      const d = hit.distanceTo(ray.origin);
+      if (d >= nearest) continue;
+      nearest = d;
+      best = { id, top: new Vector3((box.min.x + box.max.x) / 2, box.max.y, (box.min.z + box.max.z) / 2) };
+    }
+    return best;
   }
 
   /** Builds the room (once per map) and frames it for the camera. The shell is shaded from the camera's direction, which moving it never changes. */
