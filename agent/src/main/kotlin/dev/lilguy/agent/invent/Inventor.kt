@@ -431,7 +431,7 @@ class CannedInventor(private val designs: List<Design> = DESIGNS, private val co
             ),
         )
 
-        /** Every half hour, a bare patch in its place gets two hours' growth, and it shows it: spraying, its head spinning, a readout. */
+        /** Every half hour, a bare patch in its place gets two hours' growth, and it shows it: spraying, its head spinning, a readout, and real spray on the tiles round it (a planter there is watered). */
         val SPRINKLER_CODE = CodeDesign(
             verbs = listOf(
                 VerbDesign(
@@ -459,9 +459,11 @@ class CannedInventor(private val designs: List<Design> = DESIGNS, private val co
                             world.show(thing.id, null);
                             world.motion(thing.id, "head", null);
                             world.readout(thing.id, null);
+                            world.emit(thing.id, "water", 0, 0);
                             return;
                           }
                           dry.forEach(p => world.regrow(p.id, 2));
+                          world.emit(thing.id, "water", 3, 2);
                           world.show(thing.id, "spraying");
                           world.motion(thing.id, "head", "spin", 2);
                           world.readout(thing.id, "watering");

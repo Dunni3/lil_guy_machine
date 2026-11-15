@@ -92,6 +92,8 @@ data class BedroomState(
     val familiar: Map<String, Wear> = emptyMap(),
     /** Item id to the tick he first had it, for getting used to it (comfort `adapt`); null in older saves, where he has had all of it long enough. */
     @SerialName("owned_since") val ownedSince: Map<String, Long>? = null,
+    /** What his code has his things give off, the planters' soil, and when visitors are back ([Surroundings]). */
+    val surroundings: SurroundingsState = SurroundingsState(),
 ) {
     /** One thing as his code left it: its [slot], [name] and [color], each null when unchanged. */
     @Serializable

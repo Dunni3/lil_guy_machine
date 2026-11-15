@@ -25,7 +25,9 @@ weather:
     drift: 3
     sky: { clear: 1, cloudy: 0, rain: -3, fog: -2 }
     clear_night: -3
+    # The house holds its warmth but lets in a quarter of the gap to outside: about 15° on a cold night.
     indoors: 19
+    leak: 0.25
   # Hidden. Each sky's level in hPa; the pressure at an hour is the mean over it and the next
   # `lead_hours`, less a trough round rain (`drop` at a rainy hour, easing to nothing `lead_hours`
   # before and `after_hours` after). So it falls for about 4 hours before rain, however short the
@@ -43,7 +45,8 @@ weather:
     regrow: 3
   # What each sky lets through of the sun, for daylight and the station's light reading.
   daylight: { clear: 1, cloudy: 0.6, rain: 0.4, fog: 0.5 }
-  # Outdoors in the cold his mood falls.
-  cold: { below: 6, mood_per_hour: -4 }
+  # Where it's this cold (the warmth on his tile: the weather, less near a fire or in a blanket), his
+  # mood and energy fall.
+  cold: { below: 8, mood_per_hour: -4, energy_per_hour: -2 }
   # A recorder keeps this many of each reading: two days of hours.
   station: { keeps: 48 }

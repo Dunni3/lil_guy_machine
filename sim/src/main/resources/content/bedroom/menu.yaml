@@ -30,8 +30,8 @@ menu:
     verbs: [read]
     buys: [book]
   - id: room
-    says: make his home nicer - buy decor or furniture to look at, or build a new room onto the house or move one
-    verbs: [build_room]
+    says: make his home nicer - buy decor or furniture to look at, water or pick from a planter, or build a new room onto the house or move one
+    verbs: [build_room, water_plant, harvest]
     buys: [decor, furniture, room]
   - id: lamps
     under: room
@@ -48,8 +48,8 @@ menu:
     says: go through the shop's catalog and buy food, supplies or things to own - furniture, decor, books, records - or see what to save for
     verbs: [shop]
   - id: outdoors
-    says: the outdoors - go out to the garden, the forest or the pond, explore them, collect samples, study or sell the samples, or read a weather station's log
-    verbs: [explore, collect, check_station, study_sample, sell_sample]
+    says: the outdoors - go out to the garden, the forest or the pond, explore them, collect samples, watch the birds, moths or fireflies that come, study or sell the samples, or read a weather station's log
+    verbs: [explore, collect, watch, check_station, study_sample, sell_sample]
     go: true
   - id: mail
     says: letters - open one someone outside his world sent him through the mail hatch, or write to someone who has written to him

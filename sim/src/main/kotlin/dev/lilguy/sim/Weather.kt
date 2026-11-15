@@ -36,7 +36,7 @@ data class WeatherRules(
     val rain: Rain,
     /** How much of the sun's light each sky lets through, 0 to 1 (what a light engine multiplies daylight by). */
     val daylight: Map<String, Double>,
-    /** Outdoors below [Cold.below] degrees, his mood falls; null and the cold does nothing. */
+    /** Below [Cold.below] degrees where he is (the warmth field), his mood and energy fall; null and the cold does nothing. */
     val cold: Cold? = null,
     /** What a recorder (the `recorder` affordance) keeps: the latest [Station.keeps] readings of each thing it logs. */
     val station: Station = Station(),
@@ -60,6 +60,8 @@ data class WeatherRules(
         val sky: Map<String, Double> = emptyMap(),
         @SerialName("clear_night") val clearNight: Double = 0.0,
         val indoors: Double = 19.0,
+        /** The share of the gap to the temperature outside that the house lets in: 0 holds it at [indoors] whatever the weather. */
+        val leak: Double = 0.0,
     )
 
     /**
@@ -81,8 +83,9 @@ data class WeatherRules(
     @Serializable
     data class Rain(@SerialName("mm_per_hour") val mmPerHour: List<Double>, val regrow: Double = 1.0)
 
+    /** Where he is colder than [below] degrees (the warmth on his tile), his mood and energy fall these an hour. */
     @Serializable
-    data class Cold(val below: Double, @SerialName("mood_per_hour") val moodPerHour: Double)
+    data class Cold(val below: Double, @SerialName("mood_per_hour") val moodPerHour: Double, @SerialName("energy_per_hour") val energyPerHour: Double = 0.0)
 
     @Serializable
     data class Station(val keeps: Int = 48)
@@ -105,6 +108,7 @@ data class WeatherRules(
         if (rain.mmPerHour.size != 2 || rain.mmPerHour[0] < 0 || rain.mmPerHour[1] < rain.mmPerHour[0]) add("weather.rain.mm_per_hour is [least, most]")
         if (rain.regrow < 1) add("weather.rain.regrow is at least 1")
         if (station.keeps < 1) add("weather.station.keeps is at least 1")
+        if (temperature.leak !in 0.0..1.0) add("weather.temperature.leak is 0 to 1")
         runCatching { GameClock.parseHhmm(temperature.coldest); fog?.let { GameClock.parseHhmm(it.from); GameClock.parseHhmm(it.to) } }.exceptionOrNull()?.let { add("weather: ${it.message}") }
     }
 }

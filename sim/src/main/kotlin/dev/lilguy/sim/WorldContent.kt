@@ -19,6 +19,8 @@ data class WorldContent(
     val slots: Map<String, List<Int>> = emptyMap(),
     /** What grows on the land: a patch (an item on a slot) and what collecting there yields. */
     val finds: List<FindSpec> = emptyList(),
+    /** Animals drawn to the things whose `lure` draws them, when the conditions there allow ([VisitorSpec]). */
+    val visitors: List<VisitorSpec> = emptyList(),
     /** Rooms he can build onto the house. */
     val rooms: List<RoomModule> = emptyList(),
     /** Where a room can stand. */
@@ -33,6 +35,8 @@ data class WorldContent(
     fun site(id: String): SiteSpec? = sites.firstOrNull { it.id == id }
 
     fun find(patch: String): FindSpec? = finds.firstOrNull { it.patch == patch }
+
+    fun visitor(id: String): VisitorSpec? = visitors.firstOrNull { it.id == id }
 
     val width: Int get() = lot.firstOrNull()?.length ?: 0
     val height: Int get() = lot.size

@@ -57,6 +57,12 @@ class BedroomWorld private constructor(
     /** Daylight (dimmed by the weather's [daylight]), windows and lamps ([Lighting]). */
     val lighting = Lighting()
 
+    /** The sun alone, daylight and windows, for what grows ([Surroundings.growHour]); its own cache, so it never pushes out [lighting]'s. */
+    private val sunlight = Lighting()
+
+    /** Warmth, sound, water and lures, what reads them, and what his code has things give off ([Surroundings]). */
+    private val surroundings = Surroundings()
+
     /** Rooms built onto the house, room id to site id. */
     fun houseRooms(): Map<String, String> = LinkedHashMap(house)
 
@@ -227,6 +233,19 @@ class BedroomWorld private constructor(
 
     /** His things' code over time: triggers, looks, timers, what happened where he wasn't ([Machines]). */
     private val machines = Machines(sandbox)
+    private val effectHost: Surroundings.Host = object : Surroundings.Host {
+        override val content get() = this@BedroomWorld.content
+        override val layout get() = this@BedroomWorld.layout
+        override val weather get() = this@BedroomWorld.weather
+        override fun placed() = this@BedroomWorld.placed().map { (spec, cell) -> spec to if (spec.id == carrying) guy.cell else cell }
+        override fun unplaced() = owned.keys.map(::item).filter { it.slot == null }
+        override fun hisCell() = guy.cell
+        override fun minutes() = clock.minutes(ticks)
+        override fun light() = lightField(lantern = false)
+        override fun sun() = sunlight.field(content, layout, house, clock.minuteOfDay(ticks), emptyList(), this@BedroomWorld.daylight())
+        override fun daylight() = content.light?.let { lighting.daylight(it, clock.minuteOfDay(ticks), this@BedroomWorld.daylight()) } ?: Lighting.FULL
+        override fun playingOn() = music?.on
+    }
     private val machineHost: MachineHost = MachineWorld()
     private val reach = Reach(machineHost)
     /** What he said on his latest trip that he's saving for, until he owns it. */
@@ -349,6 +368,16 @@ class BedroomWorld private constructor(
             version++
             return listOf("+1 ${item(find.yields).name}", "the ${item(patch).name} will grow back by ${stamp(bareUntil.getValue(patch))}" + if (weather != null) ", sooner if it rains" else "")
         }
+
+        // Unbound, the argument is still its affordance ("growable"): nothing to say of a thing yet.
+        override fun waterLock(planter: String) = content.item(planter)?.let { surroundings.waterLock(effectHost, it) }
+        override fun water(planter: String): List<String> = surroundings.water(effectHost, item(planter)).also { version++ }
+        override fun harvestLock(planter: String) = content.item(planter)?.let { surroundings.harvestLock(it) }
+        override fun harvest(planter: String): List<String> = surroundings.harvest(item(planter)) { id, n -> add(id, n); item(id).name }.also { version++ }
+        override fun soilText(planter: String) = content.item(planter)?.let { p -> surroundings.soilText(p, p.grows?.let { item(it.yields).name } ?: "harvest") } ?: "a planter's soil"
+        override fun watchLock(lure: String) = content.item(lure)?.let { surroundings.watchLock(effectHost, it) }
+        override fun watch(lure: String): List<String> = surroundings.watch(effectHost, item(lure)) { id, n -> add(id, n); item(id).name }.also { version++ }
+        override fun watchText(lure: String) = content.item(lure)?.let { surroundings.watchText(effectHost, it) } ?: "visitors that come to it"
 
         override fun logLock(thing: String) = content.item(thing)?.takeIf { records.of(thing).isEmpty() }?.let { "the ${it.name} hasn't logged anything yet; it logs each hour" }
 
@@ -630,7 +659,7 @@ class BedroomWorld private constructor(
         val seen = { cell: Cell? -> if (content.comfort == null) 1.0 else cell?.let(::seenWeight) ?: 0.0 }
         val here = layout.placeOf(guy.cell)?.id
         return (
-            placed().sumOf { (spec, cell) -> comfortOf(spec) * seen(cell) * usedTo(spec.id) } +
+            placed().sumOf { (spec, cell) -> comfortOf(spec) * maxOf(seen(cell), if (spec.sound != null) surroundings.heard(effectHost, spec, guy.cell) else 0.0) * usedTo(spec.id) } +
                 hung().size * content.gallery.comfortEach * seen(layout.slotCells["rail"]) +
                 collectionComfort() * seen(layout.slotCells["shelf"]) +
                 house.keys.sumOf { id -> roomComfort(id) * if (content.comfort == null) 1.0 else if (id == here) seen(guy.cell) else 0.0 }
@@ -686,7 +715,16 @@ class BedroomWorld private constructor(
      * Without his [lantern] it's the light to work by: a verb's `needs` don't count the lantern, which is
      * for seeing by, and goes wherever he does.
      */
-    fun lightField(lantern: Boolean = true): Field = lighting.field(content, layout, house, clock.minuteOfDay(ticks), lamps(lantern), daylight())
+    fun lightField(lantern: Boolean = true): Field = lighting.field(content, layout, house, clock.minuteOfDay(ticks), lamps(lantern) + surroundings.codeLights(effectHost), daylight())
+
+    /** Degrees on every tile now: the weather, the house, heaters, fires and what he wears ([Surroundings.warmth]). */
+    fun warmthField(): Field = surroundings.warmth(effectHost)
+
+    /** How loud it is on every tile now ([Surroundings.sound]). */
+    fun soundField(): Field = surroundings.sound(effectHost)
+
+    /** The visitors at his things now ([Surroundings.visits]). */
+    fun visits(): List<Visit> = surroundings.visits(effectHost)
 
     /** The things [a] is done at with [args] that are lit enough for it, of [ids]; all of them when it needs no light. */
     private fun litEnough(a: VerbSpec, ids: List<String>): List<String> {
@@ -711,6 +749,24 @@ class BedroomWorld private constructor(
         if (best >= need) return null
         val where = if (at.first().first == null) "here" else "at " + at.joinToString(" or ") { "the ${it.first}" }
         return "$DARK${a.id} $where (light ${Lighting.level(best, down = true)}; it needs ${Lighting.level(need)})"
+    }
+
+    /** "too cold to explore at the garden bench (3°; it needs 4)": the warmth where [a] would be done is short of what it `needs`; null otherwise. */
+    private fun coldLock(a: VerbSpec, args: Map<String, String>?): String? {
+        val need = a.needs[EffectKind.Warmth.id] ?: return null
+        val f = warmthField()
+        val at: List<Pair<String?, Cell>> = if (VerbSpec.HERE in a.at) {
+            listOf(null to guy.cell)
+        } else {
+            if (args == null && a.at.any { it in a.args }) return null
+            val ids = a.at.map { args?.get(it) ?: it }
+            placed().filter { it.first.id in ids }.map { (spec, cell) -> spec.name to cell }
+        }
+        if (at.isEmpty()) return null
+        val best = at.maxOf { f[it.second] }
+        if (best >= need) return null
+        val where = if (at.first().first == null) "here" else "at " + at.joinToString(" or ") { "the ${it.first}" }
+        return "too cold to ${a.id} $where (${Surroundings.deg(best)}; it needs ${Surroundings.deg(need)})"
     }
 
     /** Whether he knows [e] is there without seeing it: his house's things, and what's in a place he has explored. */
@@ -882,26 +938,49 @@ class BedroomWorld private constructor(
         // A recorder he's carrying somewhere else logs nothing until it's set down.
         owned.keys.filter { RECORDER in item(it).affords && item(it).slot != null && it != carrying }.forEach { id ->
             val c = w.at(clock.minutes(ticks), outdoors(cellOf(id)))
-            records.record(id, StationLog.TEMPERATURE, ticks, Weather.round1(c.temperature))
+            records.record(id, StationLog.TEMPERATURE, ticks, Weather.round1(warmthField()[cellOf(id)]))
             records.record(id, StationLog.RAIN, ticks, Weather.round1(c.rain))
             records.record(id, StationLog.PRESSURE, ticks, Weather.round1(c.pressure))
             records.record(id, StationLog.LIGHT, ticks, Weather.round1(lightField()[cellOf(id)]))
+            surroundings.visitorsAt(effectHost, cellOf(id)).forEach { (visitor, n) -> runCatching { records.record(id, visitor, ticks, n) } }
         }
+    }
+
+    /** Visitors he had last hour, by lure, so their coming is said once. */
+    private var visiting: Set<String> = emptySet()
+
+    /**
+     * Each game hour: planters grow in sun on damp soil, and visitors that have just come to one of his
+     * things in his place are an event; ones elsewhere are an event filed under their own place.
+     */
+    private fun effectsHour(hour: Int) {
+        if (content.growing != null) {
+            val ripe = placed().filter { it.first.grows != null && surroundings.harvestLock(it.first) != null }.map { it.first.id }.toSet()
+            surroundings.growHour(effectHost, hour)
+            placed().filter { it.first.id in ripe && surroundings.harvestLock(it.first) == null }.forEach { (spec, cell) ->
+                event("the ${spec.name}'s ${item(spec.grows!!.yields).name} are ready to pick", layout.placeOf(cell)?.id)
+            }
+            version++
+        }
+        val visits = visits()
+        val now = visits.map { it.lure.id }.toSet()
+        visits.filter { it.lure.id !in visiting }.forEach { v -> event("${v.count} ${v.visitor.name} came to the ${v.lure.name}", layout.placeOf(v.cell)?.id) }
+        if (now != visiting) version++
+        visiting = now
     }
 
     private fun outdoors(cell: Cell): Boolean = layout.placeOf(cell)?.kind == PlaceKind.Outdoor
 
     /** The weather at [cell] now; null without weather. */
-    fun conditionsAt(cell: Cell): Conditions? = weather?.at(clock.minutes(ticks), outdoors(cell))?.let { c -> if (content.light != null) c.copy(light = lightField()[cell]) else c }
+    fun conditionsAt(cell: Cell): Conditions? = weather?.at(clock.minutes(ticks), outdoors(cell))?.let { c -> c.copy(temperature = warmthField()[cell]) }?.let { c -> if (content.light != null) c.copy(light = lightField()[cell]) else c }
 
     /** How much of the sun gets through the sky now, 0 to 1: what a light engine multiplies daylight by. 1 without weather. */
     fun daylight(): Double = weather?.daylight(clock.minutes(ticks) / 60) ?: 1.0
 
-    /** His mood's fall an hour while he's out in the cold, or null. */
-    private fun coldRate(): Double? {
+    /** The cold where he is ([WeatherRules.Cold]) when the warmth on his tile is below it, or null. */
+    private fun coldNow(): WeatherRules.Cold? {
         val cold = weather?.rules?.cold ?: return null
-        val c = conditionsAt(guy.cell)?.takeIf { it.outdoors } ?: return null
-        return if (c.temperature < cold.below) cold.moodPerHour else null
+        return cold.takeIf { warmthField()[guy.cell] < it.below }
     }
 
     /** The weather as he sees it from where he stands; null without weather or land. */
@@ -984,6 +1063,7 @@ class BedroomWorld private constructor(
         private val wasCustom = LinkedHashMap(custom)
         private val wasMoney = ledger.balance
         private val wasNeeds = Need.entries.associateWith { needs[it] }
+        private val wasEmitted = surroundings.export()
 
         /**
          * Puts back everything his code changed, when it broke partway: a verb either does all of what
@@ -1000,6 +1080,7 @@ class BedroomWorld private constructor(
             skills.clear(); skills.putAll(wasSkills)
             thingState.clear(); thingState.putAll(wasState)
             custom.clear(); custom.putAll(wasCustom)
+            surroundings.restore(wasEmitted) { true }
             if (content !== wasContent || inventions !== wasInventions) {
                 content = wasContent
                 inventions = wasInventions
@@ -1204,6 +1285,29 @@ class BedroomWorld private constructor(
         override fun motion(id: String, part: String, kind: String?, speed: Double) = machines.motion(machineHost, id, part, kind, speed)
         override fun readout(id: String, text: String?) = machines.readout(machineHost, id, text)
         override fun after(minutes: Int, key: String, id: String?) = machines.after(machineHost, minutes, key, id, self)
+
+        override fun field(spot: String, kind: String): Double {
+            val cell = when {
+                spot == SELF -> guy.cell
+                layout.slotCells[spot] != null -> layout.slotCells.getValue(spot)
+                else -> ownThing(spot).let { s -> s.slot?.let { layout.slotCells[it] } ?: throw ScriptProblem("the ${s.name} doesn't stand anywhere") }
+            }
+            val f = surroundings.field(effectHost, kind) ?: throw ScriptProblem("'$kind' isn't an effect; use ${(EffectKind.entries.filter { it != EffectKind.Lure }.map { it.id } + content.world?.visitors.orEmpty().map { it.id }).joinToString()}")
+            return Weather.round1(f[cell])
+        }
+
+        override fun emit(id: String, kind: String, strength: Double, radius: Double): Double {
+            val s = ownThing(id)
+            val k = EffectKind.of(kind)?.takeIf { it in Surroundings.EMITTABLE } ?: throw ScriptProblem("a thing can give off ${Surroundings.EMITTABLE.joinToString { it.id }}, not '$kind'")
+            if (s.slot == null) throw ScriptProblem("the ${s.name} doesn't stand anywhere, so it can't give anything off")
+            if (strength < 0 || strength > k.most) throw ScriptProblem("$kind strength is 0 (off) to ${k.most.toInt()}")
+            if (radius < 0 || radius > Surroundings.MOST_RADIUS) throw ScriptProblem("radius is 0 to ${Surroundings.MOST_RADIUS.toInt()} tiles")
+            if (surroundings.emit(s.id, k, strength, radius)) {
+                version++
+                did += if (strength == 0.0) "the ${s.name} stopped giving off $kind" else "the ${s.name} gives off $kind ${Weather.round1(strength)} over ${Weather.round1(radius)} tiles"
+            }
+            return Weather.round1(strength)
+        }
     }
 
     /** The colours his code painted his things, item id to hex. */
@@ -1476,6 +1580,7 @@ class BedroomWorld private constructor(
         val blocks = a.block + byDay(a)?.block.orEmpty() + if (a.work) content.needs.workFloor else emptyList()
         blocks.firstOrNull { it.blocks(needs[needOf(it.need)]) }?.let { return "${it.reason} (${it.need} ${needs.level(needOf(it.need))})" }
         darkLock(a, args)?.let { return it }
+        coldLock(a, args)?.let { return it }
         // Started now, it would end as soon as it began: sleep while starving wakes him in a minute.
         a.stopBelow.entries.firstOrNull { (need, level) -> needs[needOf(need)] < level }?.let { (need, level) ->
             return "it ends below $need ${level.toInt()} ($need ${needs.level(needOf(need))})"
@@ -2021,6 +2126,7 @@ class BedroomWorld private constructor(
         val minute = clock.minuteOfDay(ticks)
         if (minute % 60 == 0) needs.flush(ticks)
         if (minute % 60 == 0) weatherHour()
+        if (minute % 60 == 0) effectsHour(minute / 60)
         content.commissions?.let { if (minute == GameClock.parseHhmm(it.arrive)) newCommission(it) }
         if (minute == 0) {
             event("day ${clock.day(ticks)} begins")
@@ -2057,9 +2163,23 @@ class BedroomWorld private constructor(
         val asleep = d != null && d.activity.effects.any { !it.awake }
         rate(Need.Fullness, if (asleep) r.asleepFullnessPerHour ?: r.fullnessPerHour else r.fullnessPerHour, "hunger")
         content.frustration?.let { rate(Need.Frustration, it.perHour, "fading") }
-        coldRate()?.let { rate(Need.Mood, it, "cold") }
+        coldNow()?.let { c ->
+            rate(Need.Mood, c.moodPerHour, "cold")
+            if (c.energyPerHour != 0.0) rate(Need.Energy, c.energyPerHour, "cold")
+        }
         d?.activity?.effects?.forEach { it.minute(ops, d.bound) }
-        music?.let { m -> m.spec.rates.forEach { (need, perHour) -> rate(needOf(need), paid(needOf(need), perHour, m.fresh), m.spec.name) } }
+        // A cold or noisy bed gives back only some of sleep's energy.
+        if (asleep) content.sleep?.let { s ->
+            surroundings.restless(effectHost, guy.cell)?.let { why ->
+                val energy = d!!.activity.ops<RateOp>().sumOf { it.perHour[Need.Energy.id] ?: 0.0 }
+                if (energy > 0) rate(Need.Energy, -energy * (1 - s.rest), "slept badly: $why")
+            }
+        }
+        // Music lifts him as much as he can hear it from where he is.
+        music?.let { m ->
+            val heard = m.on?.let { on -> content.item(on)?.takeIf { it.sound != null }?.let { surroundings.heard(effectHost, it, guy.cell) } } ?: 1.0
+            if (heard > 0) m.spec.rates.forEach { (need, perHour) -> rate(needOf(need), paid(needOf(need), perHour, m.fresh) * if (perHour > 0) heard else 1.0, m.spec.name) }
+        }
         // Low energy or fullness replaces the drift: mood just falls, at the steeper rate.
         if (needs[Need.Energy] < r.low || needs[Need.Fullness] < r.low) {
             rate(Need.Mood, r.lowMoodPerHour, "low energy or fullness")
@@ -2120,6 +2240,7 @@ class BedroomWorld private constructor(
             machines = machines.export(),
             familiar = familiar?.export().orEmpty(),
             ownedSince = LinkedHashMap(ownedSince),
+            surroundings = surroundings.export(),
         )
     }
 
@@ -2202,6 +2323,7 @@ class BedroomWorld private constructor(
         behaviors = s.behaviors.filterKeys { content.item(it) != null }
         records.restore(s.records) { content.item(it) != null }
         machines.restore(s.machines) { content.item(it) != null }
+        surroundings.restore(s.surroundings) { content.item(it) != null }
         thingState.clear()
         s.thingState.forEach { (id, kept) -> if (id == SELF || content.item(id) != null) thingState[id] = LinkedHashMap(kept) }
         knownCache = null
@@ -2387,6 +2509,7 @@ class BedroomWorld private constructor(
     private fun musicText(): String? = music?.let { "${it.itemId}, ${GameClock.duration(((it.endTick - ticks) / clock.ticksPerMinute).toInt().coerceAtLeast(1))} left" }
 
     override fun publish(): Published {
+        val visited = if (content.world?.visitors.isNullOrEmpty()) emptyList() else visits()
         val entities = buildList {
             add(EntitySnapshot(guy.id, "guy", guy.x, guy.y, 1f, guy.facing.degrees, place = layout.placeOf(guy.x, guy.y)?.id, light = content.light?.lantern))
             placed().forEach { (spec, cell) ->
@@ -2394,6 +2517,8 @@ class BedroomWorld private constructor(
                     spec.id == music?.on -> "playing ${music!!.itemId}"
                     (bareUntil[spec.id] ?: 0) > ticks -> "bare"
                     LAMP in spec.affords && !lampLit(spec) -> "off"
+                    spec.lure != null && visited.any { it.lure.id == spec.id } -> VISITED
+                    spec.grows != null && surroundings.harvestLock(spec) == null -> RIPE
                     else -> null
                 }
                 val look = machines.look(spec.id)
@@ -2458,9 +2583,13 @@ class BedroomWorld private constructor(
             val things = around.map { Landmark(item(it.id.value).name, Cell(it.x.toInt(), it.y.toInt()), knownThere(it), key = item(it.id.value).group in KEY_GROUPS) }
             Lighting.describe(lightField(lantern = false), field, rules, guy.cell, layout.placeOf(guy.cell)?.kind == PlaceKind.Outdoor, things, current.activities.any { it.locked?.startsWith(DARK) == true })
         }
+        val evening = content.night?.covers(clock.minuteOfDay(ticks)) == true || clock.minuteOfDay(ticks) >= EVENING
+        val bed = placed().firstOrNull { (spec, _) -> content.verbs.any { v -> v.ops<SleepOp>().isNotEmpty() && spec.id in v.at } }?.second
+        val senses = surroundings.senses(effectHost, music?.let { m -> m.on?.let { content.item(it) }?.takeIf { it.sound != null }?.let { it to item(m.itemId).name } }, bed.takeIf { doing == null }, evening)
         return Observation(
             place = whereText(),
             light = light,
+            senses = senses,
             places = placeOptions(),
             put = putOptions(),
             tick = ticks,
@@ -2650,6 +2779,13 @@ class BedroomWorld private constructor(
 
         /** How a lock for want of light begins. */
         private const val DARK = "too dark to "
+
+        /** Entity states for the renderer: visitors round a thing that draws them, and a planter ready to pick. */
+        const val VISITED = "visited"
+        const val RIPE = "ripe"
+
+        /** From here (19:00) on, or at night, what would spoil his sleep is said. */
+        private const val EVENING = 19 * 60
 
         /** His lantern's emitter id. */
         private const val LANTERN = "lantern"
