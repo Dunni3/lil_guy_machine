@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { expect, test } from "vitest";
 import type { Content, LifeState, ServerMessage, Snapshot } from "../../../protocol/ts/protocol";
-import { Menu, type Press } from "./menu";
+import { Menu, type Press, type Spot } from "./menu";
 import { TABS, detail, entries, type PageView } from "./pages";
 
 // The host's own state at the end of a real scripted life, recorded by `make web-test`.
@@ -57,4 +57,13 @@ test("viewers get the pages and a sign-in but no run controls; the admin's keys 
   expect(keys("down", "down", "down", "down", "ok", "up", "down", "ok")).toEqual([]);
   expect(admin.confirm).toBe(true);
   expect(keys("ok")).toEqual([{ type: "command", command: { type: "restart" } }]);
+
+  // A pointer goes through the same actions: a setting's arrow is LEFT/RIGHT on it, a row picks and the picked row again is OK, so Restart still asks first.
+  const click = (spot: Spot) => admin.click(spot, v());
+  expect(click({ kind: "arrow", key: "speed", by: -1 })).toEqual({ type: "configure", settings: { ...host.run.settings, speed: 30 } });
+  expect([click({ kind: "entry", key: "restart" }), click({ kind: "entry", key: "restart" })]).toEqual([null, null]);
+  expect(admin.confirm).toBe(true);
+  expect(click({ kind: "entry", key: "restart" })).toEqual({ type: "command", command: { type: "restart" } });
+  click({ kind: "close" });
+  expect(admin.open).toBe(false);
 });
