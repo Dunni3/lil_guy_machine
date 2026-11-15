@@ -391,7 +391,7 @@ class StateReader(private val dbEvery: Duration = 1.seconds) {
         )
 
         private fun thought(seq: Long, t: Thought) = ThoughtView(
-            seq, t.tick, t.day, t.time, t.thinker, t.text, t.error, t.asked.map { AnswerView(it.question, it.opened, it.reply.text) },
+            seq, t.tick, t.day, t.time, t.thinker, t.text, t.error, t.asked.map { AnswerView(it.question, it.opened, it.reply.text) }, t.reflection,
         )
 
         private fun memory(m: StoredMemory) = MemoryView(m.id, m.level, m.span.label, m.span.fromDay, m.span.toDay, m.text, m.importance)

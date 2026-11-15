@@ -53,6 +53,8 @@ enum class TokenPurpose {
     @SerialName("search") Search,
     /** Code he writes: his own verbs, and what his things do. */
     @SerialName("code") Code,
+    /** Stepping back over a stretch of his life: what it adds up to. */
+    @SerialName("reflect") Reflect,
 }
 
 /**

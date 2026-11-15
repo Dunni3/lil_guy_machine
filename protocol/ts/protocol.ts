@@ -1,5 +1,5 @@
 /* Generated from schema/protocol.schema.json (protocol/.../*.kt) by gen_types.sh. Don't edit; run `make protocol-types`.
- * schema sha256: 7a661073dc69b2746389a02fe1abbf22a663872cb26de7d3396dfb9457252273
+ * schema sha256: b8fcf953a1e1bdf789d7ca845a904f8efcc0456bd8fb785169c9b49b5a7b4898
  */
 
 /**
@@ -523,6 +523,7 @@ export interface ThoughtView {
   text: string | null;
   error: string | null;
   asked: AnswerView[];
+  reflection: boolean;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema

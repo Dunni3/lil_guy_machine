@@ -342,7 +342,7 @@ object BedroomPrompt {
             |- recentEvents: the last few things that happened, stamped with day and time.
             |- lately: what you've done most in the last 2 days, what you could do now but haven't for 2 days or more, and what you could do and never have.
             |
-            |Below the observation you may see what you remember from earlier (memories, and thoughts you had), and what you decided the last time you stopped to think. Those thoughts are your own words: let the plans in them shape what you do with your hours.
+            |Below the observation you may see what you remember from earlier (memories, and thoughts you had), what you concluded the latest times you stepped back from your days, and what you decided the last time you stopped to think. Those are your own words: let the lessons and plans in them shape what you do with your hours.
         """.trimMargin()
     }
 
@@ -355,7 +355,7 @@ object BedroomPrompt {
         |How your life works:
         |$life
         |
-        |Think, look if it would help, and act when you know what you want. What you write is what goes through your head, in your own voice: it's your thought of the moment, and it's what you'll remember of it later, so keep it short. To act, call one of the tools that act: the one thing you do next, which ends the turn. Use only the values its arguments allow. Thinking takes no time, but after ${BedroomTools.MAX_STEPS} replies without acting you've sat and thought for a while, and some minutes pass.
+        |Think, look if it would help, and act when you know what you want. What you write is what goes through your head, in your own voice: it's your thought of the moment, and it's what you'll remember of it later, so keep it short. Think as yourself, not as someone reading your numbers: what you notice, feel, want or wonder, and what you're after, rather than which need is at what level. To act, call one of the tools that act: the one thing you do next, which ends the turn. Use only the values its arguments allow. Thinking takes no time, but after ${BedroomTools.MAX_STEPS} replies without acting you've sat and thought for a while, and some minutes pass.
 ${lookText(looks)}
         |
         |Your earlier calls are your recent actions; each result says when it started and how it ended. Then comes how things stand now, as JSON:
@@ -367,7 +367,7 @@ ${lookText(looks)}
         |- recentEvents: the last few things that happened besides what you did, stamped with day and time.
         |- lately: what you've done most in the last 2 days, what you could do now but haven't for 2 days or more, and what you could do and never have.
         |
-        |After that you may see what you remember from earlier (memories, and thoughts you had), and what you decided the last time you stopped to think. Those thoughts are your own words: let the plans in them shape what you do with your hours.
+        |After that you may see what you remember from earlier (memories, and thoughts you had), what you concluded the latest times you stepped back from your days, and what you decided the last time you stopped to think. Those are your own words: let the lessons and plans in them shape what you do with your hours.
     """.trimMargin()
 
     /** The system prompt's paragraph on [looks] ("look_around", "recall", "ask", "search"), with its blank line before; empty for none. */

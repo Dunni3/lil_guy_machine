@@ -4,7 +4,7 @@ import kotlin.math.pow
 
 /**
  * Something that could come back to him at a decision: a memory of a stretch ([Kind.Memory]), of a
- * whole day ([Kind.Day]), or a thought he had ([Kind.Thought]). [order] puts them in time order
+ * whole day ([Kind.Day]), a thought he had ([Kind.Thought]), or what he concluded stepping back ([Kind.Reflection]). [order] puts them in time order
  * (game minutes at the end, or ids in rooms without a clock).
  */
 data class Recollection(
@@ -17,7 +17,7 @@ data class Recollection(
     /** Where it happened, most of it first; empty where there are no places. */
     val places: List<String> = emptyList(),
 ) {
-    enum class Kind { Memory, Day, Thought }
+    enum class Kind { Memory, Day, Thought, Reflection }
 
     /** Unique across kinds: "memory_12", "day_3", "thought_40". */
     val key: String get() = "${kind.name.lowercase()}_$id"
@@ -27,7 +27,11 @@ data class Recollection(
         Kind.Memory -> if (label.isEmpty()) text else "$label$at: $text"
         Kind.Day -> if (label.isEmpty()) text else "$label (the whole day): $text"
         Kind.Thought -> (if (label.isEmpty()) "You thought" else "$label$at, you thought") + ": \"$text\""
+        Kind.Reflection -> (if (label.isEmpty()) "Stepping back, you concluded" else "$label, stepping back, you concluded") + ": \"$text\""
     }
+
+    /** A memory of a stretch or a day, which recall always has the latest of. */
+    val remembered: Boolean get() = kind == Kind.Memory || kind == Kind.Day
 
     /** " in the forest clearing", for a stretch or a thought that happened in one or two places. */
     private val at: String get() = places.takeIf { it.isNotEmpty() && it.size <= 2 }?.let { " in " + it.joinToString(" and ") }.orEmpty()
@@ -58,7 +62,7 @@ class Recall(
     fun select(candidates: List<Recollection>, context: String): List<Recollection> {
         if (candidates.isEmpty()) return emptyList()
         val sorted = candidates.sortedBy { it.order }
-        val recent = sorted.filter { it.kind != Recollection.Kind.Thought }.takeLast(latest)
+        val recent = sorted.filter { it.remembered }.takeLast(latest)
         val older = Keywords.rank(sorted - recent.toSet(), context, related, { it.text }, { it.order }).map { it.first }
         return withinBudget(recent.asReversed() + older)
     }
@@ -70,7 +74,7 @@ class Recall(
     fun selectRanked(candidates: List<Recollection>, relevance: Map<String, Double>, now: Long?, here: String? = null): List<Recollection> {
         if (candidates.isEmpty()) return emptyList()
         val sorted = candidates.sortedBy { it.order }
-        val newest = sorted.lastOrNull { it.kind != Recollection.Kind.Thought }
+        val newest = sorted.lastOrNull { it.remembered }
         fun recency(r: Recollection, index: Int): Double =
             if (now != null) 0.5.pow((now - r.order).coerceAtLeast(0) / 60.0 / halfLifeHours) else 0.5.pow((sorted.size - 1 - index) / 5.0)
         val ranked = sorted.mapIndexed { i, r ->

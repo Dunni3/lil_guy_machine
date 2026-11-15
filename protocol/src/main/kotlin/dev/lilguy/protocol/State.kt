@@ -615,6 +615,8 @@ data class ThoughtView(
     val text: String?,
     val error: String?,
     val asked: List<AnswerView>,
+    /** True when he stepped back over a stretch of his life, rather than thought as he chose. */
+    val reflection: Boolean = false,
 )
 
 /**

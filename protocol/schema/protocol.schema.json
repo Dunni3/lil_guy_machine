@@ -3158,6 +3158,9 @@
                     "items": {
                         "$ref": "#/$defs/AnswerView"
                     }
+                },
+                "reflection": {
+                    "type": "boolean"
                 }
             },
             "required": [
@@ -3168,7 +3171,8 @@
                 "thinker",
                 "text",
                 "error",
-                "asked"
+                "asked",
+                "reflection"
             ],
             "additionalProperties": false
         },

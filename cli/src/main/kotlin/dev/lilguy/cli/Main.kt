@@ -414,6 +414,13 @@ fun main(argv: Array<String>) {
                 },
                 onSearch = { s -> if (!quiet) printSearch(s) },
                 onDraft = { d -> life?.invention(d) },
+                reflector = writerModel?.takeIf { scenario == Scenario.Bedroom && !it.capabilities.closedChoice }?.let {
+                    dev.lilguy.agent.memory.Reflector(
+                        ledger.meter(it, TokenPurpose.Reflect, priceOf(writerEndpoint!!)), st, run, core.core.you,
+                        threshold = if (scorer != null) dev.lilguy.agent.memory.Reflector.THRESHOLD else null,
+                    )
+                },
+                onReflection = { t -> if (!quiet) printReflection(t) },
                 letterWriter = writerModel?.takeIf { scenario == Scenario.Bedroom && !it.capabilities.closedChoice }?.let { LetterWriter(ledger.meter(it, TokenPurpose.Letter, priceOf(writerEndpoint!!))) },
                 onLetter = { l -> life?.letter(l) },
                 onTrip = { t ->
@@ -693,6 +700,11 @@ private fun printTrip(t: Trip) {
     val what = t.error?.let { "FAILED: $it" }
         ?: ("picked " + t.buy.joinToString { it.item }.ifEmpty { "nothing" } + (t.saveFor?.let { "; saving for $it" } ?: "") + (t.note?.let { ": $it" } ?: ""))
     println("%s  shopping trip, %d in the catalog: %s".format(stamp, t.catalog.size, what))
+}
+
+private fun printReflection(t: dev.lilguy.agent.memory.Thought) {
+    val stamp = if (t.day != null) "d%2d %s".format(t.day, t.time) else "t=%4d".format(t.tick)
+    println("%s  stepped back: %s".format(stamp, t.text ?: "FAILED: ${t.error}"))
 }
 
 private fun printSelf(r: SelfRevision) {
