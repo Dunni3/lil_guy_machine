@@ -9,7 +9,7 @@ import { Track } from "./stream/track";
 import { Admin, SignIn } from "./ui/admin";
 import { Mail } from "./ui/mail";
 import { Hud } from "./ui/hud";
-import { pressOf } from "./ui/keys";
+import { lookOf, pressOf } from "./ui/keys";
 import { ThingLabel } from "./ui/label";
 import { Layer } from "./ui/layer";
 import { Menu, type Act, type Spot } from "./ui/menu";
@@ -104,9 +104,21 @@ function act(a: Act) {
   }
 }
 
-/** The remote's keys, as `RemoteInput.kt` lays them out; nothing here moves the guy. */
+/** How far a key moves the view, as a fraction of the screen's height. */
+const KEY_PAN = 0.1;
+
+/** The remote's keys, as `RemoteInput.kt` lays them out, and the keyboard's for looking round; nothing here moves the guy. */
 window.addEventListener("keydown", (e) => {
   if (settings.broadcast || signIn.open || mail.open) return;
+  const look = view && !menu.open ? lookOf(e) : null;
+  if (view && look) {
+    e.preventDefault();
+    const h = canvas.clientHeight || window.innerHeight;
+    if (look.type === "pan") view.camera.pan(look.x * h * KEY_PAN, look.y * h * KEY_PAN, h);
+    else if (look.type === "orbit") view.camera.orbit(look.yaw, look.pitch);
+    else view.camera.zoom(look.factor);
+    return;
+  }
   const press = pressOf(e);
   const life = stream.state.life;
   if (!press || !life) return;
@@ -124,15 +136,17 @@ window.addEventListener("keydown", (e) => {
     if (a) act(a);
     return;
   }
-  // In the room: OK (or LEFT/RIGHT, to page) opens the menu, UP and DOWN pick the camera.
+  // In the room: OK (or LEFT/RIGHT, to page) opens the menu, UP and DOWN pick the camera (and end looking round).
   if (press === "ok" || press === "left" || press === "right") menu.show(v);
   else if (view && (press === "up" || press === "down")) view.camera.mode = press === "up" ? "room" : "follow";
 });
 
 /**
- * The mouse and touch, for everything the keys do, and nothing more: on the room a click opens the
- * menu, as OK does; on the card a click goes through `Menu.click` and the wheel (or a drag) through
- * `Menu.wheel`, on the [Spot] `MenuCard` drew there; a click off the card closes it. Broadcast has none.
+ * The mouse and touch, for everything the keys do: on the room a click opens the menu, as OK does;
+ * on the card a click goes through `Menu.click` and the wheel (or a drag) through `Menu.wheel`, on
+ * the [Spot] `MenuCard` drew there; a click off the card closes it. With the menu closed they look
+ * round the room too: a drag pans (a right-drag or shift-drag turns and tilts), the wheel or a pinch
+ * zooms at the pointer. Broadcast has none.
  */
 const pointer = {
   /** A press on the card, for dragging the list or detail: where it was, and the last y. */
@@ -145,7 +159,14 @@ const pointer = {
   guard: false,
   /** Where the mouse rests over the room, in CSS pixels from the canvas's top-left, for the things' labels; null off the canvas or for a finger. */
   mouse: null as { x: number; y: number } | null,
+  /** The pointers down on the room (not the card), by id, at their last place, and whether this press turns the view rather than panning it. */
+  room: new Map<number, { x: number; y: number }>(),
+  turn: false,
+  /** Pixels a press on the room has to move before it is a drag (and not a click). */
+  slop: 0,
 };
+/** Degrees the view turns for a pixel of right-drag. */
+const DRAG_TURN = 0.3;
 const raycaster = new Raycaster();
 const ndc = new Vector2();
 
@@ -218,11 +239,55 @@ if (!settings.broadcast) {
     setHover(menu.open ? spot : null, v);
   });
 
+  canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+
   canvas.addEventListener("pointerdown", (e) => {
     const spot = menu.open ? spotAt(e) : null;
     pointer.down = spot ? { spot, y: e.clientY, from: e.clientY } : null;
-    pointer.dragged = false;
+    if (!pointer.room.size) pointer.dragged = false;
+    if (!menu.open && view) {
+      if (!pointer.room.size) {
+        pointer.turn = e.button === 2 || e.shiftKey;
+        pointer.slop = 0;
+      }
+      pointer.room.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      canvas.setPointerCapture(e.pointerId);
+    }
   });
+
+  /** A pointer down on the room moved to ([x], [y]): one pans or turns the view, two pinch and pan it. */
+  const lookRound = (id: number, x: number, y: number) => {
+    const at = pointer.room.get(id);
+    if (!at || !view) return;
+    const h = canvas.clientHeight || window.innerHeight;
+    const r = canvas.getBoundingClientRect();
+    if (pointer.room.size >= 2) {
+      const [a, b] = [...pointer.room.values()];
+      const other = a === at ? b : a;
+      const before = Math.hypot(at.x - other.x, at.y - other.y);
+      const after = Math.hypot(x - other.x, y - other.y);
+      const mx = (x + other.x) / 2;
+      const my = (y + other.y) / 2;
+      view.camera.pan((x - at.x) / 2, (y - at.y) / 2, h);
+      if (before > 1 && after > 1) view.camera.zoom(after / before, ((mx - r.left) / r.width) * 2 - 1, 1 - ((my - r.top) / r.height) * 2);
+      pointer.dragged = true;
+    } else {
+      const dx = x - at.x;
+      const dy = y - at.y;
+      pointer.slop += Math.abs(dx) + Math.abs(dy);
+      if (pointer.slop > 6) pointer.dragged = true;
+      if (pointer.dragged) {
+        if (pointer.turn) view.camera.orbit(-dx * DRAG_TURN, dy * DRAG_TURN);
+        else view.camera.pan(dx, dy, h);
+      }
+    }
+    at.x = x;
+    at.y = y;
+  };
+  const letGo = (e: PointerEvent) => {
+    pointer.room.delete(e.pointerId);
+  };
+  canvas.addEventListener("pointercancel", letGo);
 
   canvas.addEventListener("pointermove", (e) => {
     if (e.pointerType === "mouse" && !card.mouse) {
@@ -232,6 +297,12 @@ if (!settings.broadcast) {
     const r = canvas.getBoundingClientRect();
     pointer.mouse = e.pointerType === "mouse" ? { x: e.clientX - r.left, y: e.clientY - r.top } : null;
     const v = pointerView();
+    if (pointer.room.has(e.pointerId) && e.buttons) {
+      // On the room, a press that moves is looking round; a still one is a click (the menu).
+      lookRound(e.pointerId, e.clientX, e.clientY);
+      if (pointer.dragged) canvas.style.cursor = pointer.turn ? "ew-resize" : "grabbing";
+      return;
+    }
     const down = pointer.down;
     if (down && e.buttons && v && menu.open) {
       // A drag moves what's under it with the finger: dragging up scrolls on down.
@@ -244,6 +315,8 @@ if (!settings.broadcast) {
 
   canvas.addEventListener("pointerup", (e) => {
     pointer.down = null;
+    letGo(e);
+    if (!pointer.room.size && canvas.style.cursor !== "pointer") canvas.style.cursor = "";
     if (e.pointerType !== "mouse") setHover(null, null);
   });
   canvas.addEventListener("pointerleave", () => {
@@ -253,6 +326,14 @@ if (!settings.broadcast) {
 
   canvas.addEventListener("wheel", (e) => {
     const v = pointerView();
+    if (v && !menu.open && view) {
+      // The wheel zooms at the pointer; a trackpad's pinch comes as the wheel with ctrl held, in finer steps.
+      e.preventDefault();
+      const r = canvas.getBoundingClientRect();
+      const px = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? canvas.clientHeight : 1);
+      view.camera.zoom(Math.exp(-px * (e.ctrlKey ? 0.01 : 0.0015)), ((e.clientX - r.left) / r.width) * 2 - 1, 1 - ((e.clientY - r.top) / r.height) * 2);
+      return;
+    }
     const spot = v && menu.open ? spotAt(e) : null;
     if (!v || !spot) return;
     e.preventDefault();
@@ -333,7 +414,8 @@ function banner(life: LifeState, menuOpen: boolean): string | null {
 /** Top right: the room's keys, and for anyone not signed in, where signing in is (on a keyboard, OK is Enter). */
 function hint(menuOpen: boolean): string | null {
   if (settings.broadcast || menuOpen) return null;
-  const camera = view?.camera.mode === "follow" ? "UP shows the room" : "DOWN follows him";
+  const mode = view?.camera.mode;
+  const camera = mode === "free" ? "UP shows the room, DOWN follows him" : mode === "follow" ? "UP shows the room · drag to look round" : "DOWN follows him · drag to look round";
   return admin.admin ? `OK for the menu · ${camera}` : `OK (Enter) or a click for the menu · admin sign-in is on RUN · ${camera}`;
 }
 
