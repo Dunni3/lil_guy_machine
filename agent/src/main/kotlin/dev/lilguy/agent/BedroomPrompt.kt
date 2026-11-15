@@ -207,9 +207,9 @@ object BedroomPrompt {
     /**
      * [content] is what he's told about: only the verbs he's offered (a verb whose result nothing
      * writes is left out). [self] is his self-model as the prompt shows it, or null when nothing
-     * revises it ([Persona.text]).
+     * revises it ([Persona.text]). [tools]: he acts by calling one ([BedroomTools]), not by writing a reply.
      */
-    fun system(content: BedroomContent, ticksPerMinute: Int, self: String? = null): String {
+    fun system(content: BedroomContent, ticksPerMinute: Int, self: String? = null, tools: Boolean = false): String {
         val r = content.needs
         val actions = examples(content, ticksPerMinute).joinToString("\n") { (intent, what) ->
             "- ${PromptBuilder.tag(intent)}: $what\n  ${PromptBuilder.exampleJson.encodeToString(Intent.serializer(), intent)}"
@@ -232,8 +232,12 @@ object BedroomPrompt {
             "Mood drifts ${r.moodDriftPerHour.toInt()} an hour toward ${r.moodBaseline.toInt()}$bored; some activities raise it for a while."
         }
         val sinking = moodRules(content)?.let { " $it" }.orEmpty()
-        val lists = "What you can do: ${Persona.abilities(content)}. `activities` lists all of it, with how long it takes and what it gives, or why it's locked." +
-            (if (content.verbs.any { it.args.isNotEmpty() }) " One done with something you own is listed once for each thing you could use, with `what` (and `on`) naming it." else "") +
+        val lists = "What you can do: ${Persona.abilities(content)}. " +
+            (if (tools) "Your tools are what you can do right now, each with how long it takes and what it gives; `activities` lists what's locked, and why."
+            else "`activities` lists all of it, with how long it takes and what it gives, or why it's locked.") +
+            (if (content.verbs.any { it.args.isNotEmpty() }) {
+                if (tools) " One done with something you own takes `what` (and `on`) naming it." else " One done with something you own is listed once for each thing you could use, with `what` (and `on`) naming it."
+            } else "") +
             (if (trips(content)) {
                 val trip = content.verbs.first { v -> v.effects.any { it is BasketOp } }
                 " Everything you buy, food included, you buy on a shopping trip (${trip.id} in `activities`): you look through the whole catalog, see what you can and can't afford yet, and choose what to buy and what to save for."
@@ -255,8 +259,9 @@ object BedroomPrompt {
             artHint(content),
             reflectionHint(content),
             "- $lists",
-            "- Nothing ends the game. An action that can't be done fails at once, and lastResult says why. Read it and choose something else rather than repeating it.",
+            "- Nothing ends the game. An action that can't be done fails at once, and ${if (tools) "its result" else "lastResult"} says why. Read it and choose something else rather than repeating it.",
         ).joinToString("\n")
+        if (tools) return toolSystem(content, self, wants, life, music)
         return """
             |${Persona.text(content, self)}
             |
@@ -282,6 +287,27 @@ object BedroomPrompt {
             |Below the observation you may see what you remember from earlier (memories, and thoughts you had), and what you decided the last time you stopped to think. Those thoughts are your own words: let the plans in them shape what you do with your hours.
         """.trimMargin()
     }
+
+    /** [system] for a model that acts by calling tools: no action examples or reply format, and the status message's fields. */
+    private fun toolSystem(content: BedroomContent, self: String?, wants: String, life: String, music: String): String = """
+        |${Persona.text(content, self)}
+        |
+        |You live in this bedroom. You need money $wants. Each turn you choose what to do next by calling one tool; the game carries it out, then tells you how it went and how things stand.
+        |
+        |How your life works:
+        |$life
+        |
+        |Call exactly one tool each turn: the one thing you do next. Put your reasoning, in a sentence or two, in its `reason`. Use only the values its arguments allow.
+        |
+        |Your earlier calls are your recent actions; each result says when it started and how it ended. Then comes how things stand now, as JSON:
+        |- clock: day and time. money: dollars. needs: ${needNames(content).let { it.dropLast(1).joinToString(", ") + " and " + it.last() }}, 0 to 100.
+        |- holding: art you're carrying, to sell. owns: everything else you own, id to count.$music${if (content.vocabulary.skills.isNotEmpty()) "\n        |- skills: your skills, name to level." else ""}${if (content.books.isNotEmpty()) "\n        |- books: the books you own, how many chapters you've read of how many, what studying one raises, and what finishing it would teach you." else ""}
+        |- art: the pieces you have made and still have, held to sell or hung on your wall, with their titles. commission: today's request for a piece, if one is open.
+        |- activities: what you can't do right now, and why.${if (trips(content)) "" else " shop: what the shop will sell you now: its price, whether you can afford it, and what it's for."}
+        |- recentEvents: the last few things that happened besides what you did, stamped with day and time.
+        |
+        |After that you may see what you remember from earlier (memories, and thoughts you had), and what you decided the last time you stopped to think. Those thoughts are your own words: let the plans in them shape what you do with your hours.
+    """.trimMargin()
 
     /**
      * The reply schema for one observation: do() takes only activities that aren't locked, and

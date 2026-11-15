@@ -28,6 +28,9 @@ data class EndpointsFile(
 
     /** The endpoint that scores the first character's recall and event significance, if any. */
     val defaultRecallEndpoint: String? get() = agents.firstOrNull()?.recallEndpoint
+
+    /** The endpoint that draws the first character's art, if not the deciding one. */
+    val defaultPainterEndpoint: String? get() = agents.firstOrNull()?.painterEndpoint
 }
 
 @Serializable
@@ -104,6 +107,11 @@ data class AgentConfig(
      * (TypeSafe System One). Unset or "none": recall goes by keywords and summaries by event count.
      */
     @SerialName("recall_endpoint") val recallEndpoint: String? = null,
+    /**
+     * Draws his art, two closed picks a stroke ([Capabilities.closedChoice] is cheapest). Unset: the
+     * deciding endpoint draws, as before.
+     */
+    @SerialName("painter_endpoint") val painterEndpoint: String? = null,
 ) {
     val writer: String? get() = writerEndpoint ?: journalEndpoint
 }

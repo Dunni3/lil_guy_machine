@@ -238,7 +238,7 @@ class DecisionLog(val file: File, private val run: String, private val model: St
             request = r.request?.let { req ->
                 LoggedRequest(
                     req.system,
-                    req.messages.map { LoggedMessage(it.role.name.lowercase(), it.content) },
+                    req.messages.map { LoggedMessage(it.role.name.lowercase(), it.text) },
                     req.temperature,
                     r.schema,
                     req.choices?.let { c -> LoggedChoices(c.instructions, c.state, c.options.associate { it.label to it.description }) },

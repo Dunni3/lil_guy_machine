@@ -122,14 +122,15 @@ class AgentRuntime(
             world.awaitDecisionPoint(id)
             while (!phase.compareAndSet(WAITING, BUSY)) kotlinx.coroutines.yield()
             val obs = world.observe(id)
-            memory.settle(obs.lastIntent, obs.lastResult)
+            memory.settle(obs.lastIntent, obs.lastResult, obs.outcome)
             longTerm?.observed(obs)
             val recalled = longTerm?.recall(obs).orEmpty()
             // His latest kept thought, shown in every prompt until the next one replaces it.
             val plan = longTerm?.plan?.let { t -> t.text?.let { "${prompts.stampOf(t.tick)}: $it" } }
             // His latest answers from asking how his world works.
             val found = longTerm?.answers().orEmpty().map { a -> "${prompts.stampOf(a.tick)}: I asked \"${a.question}\": ${a.reply.text}" }
-            val request = prompts.build(obs, memory.recent(), closedChoice = model.capabilities.closedChoice, memories = recalled, thought = plan, found = found)
+            val caps = model.capabilities
+            val request = prompts.build(obs, memory.recent(), closedChoice = caps.closedChoice, tools = caps.toolCalls && !caps.closedChoice, memories = recalled, thought = plan, found = found)
             val schema = schemaFor(obs)
             val started = TimeSource.Monotonic.markNow()
             decidingSince = started
@@ -178,7 +179,7 @@ class AgentRuntime(
             } else null
             longTerm?.acted(obs, record.intent, brief)
             if (reflection != null && (record.intent as? Intent.Do)?.activity == reflection.first) sinceReflection = 0 else sinceReflection++
-            memory.record(obs.tick, record.intent, thought?.text)
+            memory.record(obs.tick, record.intent, thought?.text, record.rationale)
             recent = memory.recent()
             val done = record.copy(thought = thought)
             lastDecision = done

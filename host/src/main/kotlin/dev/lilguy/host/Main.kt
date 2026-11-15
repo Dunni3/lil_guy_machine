@@ -28,7 +28,7 @@ import kotlin.time.Duration.Companion.seconds
  * - `LILGUY_ADMIN_PASSWORD`: the admin password commands must carry (at least [AdminPassword.MIN_LENGTH]
  *   characters); unset, every command is refused;
  * - `LILGUY_ENDPOINT` names the deciding endpoint in `LILGUY_CONFIG` (config/endpoints.yaml), with
- *   `LILGUY_MEMORY_ENDPOINT`, `LILGUY_WRITER_ENDPOINT`, `LILGUY_RECALL_ENDPOINT` and `LILGUY_BEAM` as for
+ *   `LILGUY_MEMORY_ENDPOINT`, `LILGUY_WRITER_ENDPOINT`, `LILGUY_RECALL_ENDPOINT`, `LILGUY_PAINTER_ENDPOINT` and `LILGUY_BEAM` as for
  *   the desktop; unset, the scripted policy runs and nothing calls a model;
  * - `LILGUY_INVENTOR=1` has him invent from a few fixed designs, so he invents with no endpoint;
  * - `LILGUY_PAINTER=<seconds>` draws his art with random picks at that latency, so he paints with no endpoint;
@@ -56,6 +56,7 @@ fun main() {
         memoryEndpoint = get("LILGUY_MEMORY_ENDPOINT"),
         writerEndpoint = get("LILGUY_WRITER_ENDPOINT"),
         recallEndpoint = get("LILGUY_RECALL_ENDPOINT"),
+        painterEndpoint = get("LILGUY_PAINTER_ENDPOINT"),
         beam = get("LILGUY_BEAM")?.toIntOrNull(),
         days = days,
     )).let { s -> get("LILGUY_PAINTER")?.toDoubleOrNull()?.let { secs -> s.copy(painter = { RandomPicker(secs.seconds, seed = System.nanoTime()) }) } ?: s }
@@ -86,7 +87,7 @@ fun main() {
     runBlocking { life.start(scope, autostart = get("LILGUY_AUTOSTART") == "1") }
     println(
         "lil guy host on http://$bind:$port/ (protocol ${dev.lilguy.protocol.PROTOCOL_VERSION}): life 'main', model ${setup.notice ?: if (endpoint == null) "scripted" else endpoint}${roles(setup, ::get)}, speed ${setup.speed}" +
-            "${if (setup.painter != null) ", painting with random picks" else ""}; " +
+            "${if (get("LILGUY_PAINTER")?.toDoubleOrNull() != null) ", painting with random picks" else ""}; " +
             "run database ${if (store == null) "off" else if (sync == null) "local only" else "syncing"}; commands ${if (auth.enabled) "need the admin password" else "refused (no LILGUY_ADMIN_PASSWORD)"}",
     )
     Runtime.getRuntime().addShutdownHook(Thread {
@@ -101,6 +102,7 @@ private fun roles(setup: ModelSetup, get: (String) -> String?): String = listOfN
     get("LILGUY_MEMORY_ENDPOINT")?.takeIf { setup.memoryModel != null }?.let { "memory $it" },
     get("LILGUY_WRITER_ENDPOINT")?.takeIf { setup.writerModel != null }?.let { "writer $it" },
     get("LILGUY_RECALL_ENDPOINT")?.takeIf { setup.recallScorer != null }?.let { "recall $it" },
+    get("LILGUY_PAINTER_ENDPOINT")?.takeIf { setup.painter != null && get("LILGUY_PAINTER")?.toDoubleOrNull() == null }?.let { "painter $it" },
 ).takeIf { it.isNotEmpty() }?.joinToString(", ", " (", ")").orEmpty()
 
 private const val PLATFORM = "host"

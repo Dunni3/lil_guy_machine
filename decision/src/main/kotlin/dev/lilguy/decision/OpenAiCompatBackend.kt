@@ -24,6 +24,9 @@ import kotlin.time.TimeSource
  * - tools: one tool per variant of the reply's tagged union, a call required.
  * - text: the schema goes in the system prompt and the reply is parsed out of free text.
  *
+ * A request that carries [DecisionRequest.tools] gets those tools instead, whatever the strategy,
+ * and the reply a call stands for goes through the schema the same way.
+ *
  * Every reply is validated against the schema whatever the strategy. A rejected one is sent back
  * with the error, up to [EndpointConfig.maxRetries] times, after which [decide] throws
  * [DecisionFailed] and the caller falls back (the agent loop waits).
@@ -42,7 +45,7 @@ class OpenAiCompatBackend(
 
     private enum class Strategy { JsonSchema, Tools, Text }
 
-    private val strategy = when {
+    private val configured = when {
         capabilities.jsonSchema -> Strategy.JsonSchema
         capabilities.toolCalls -> Strategy.Tools
         else -> Strategy.Text
@@ -52,15 +55,21 @@ class OpenAiCompatBackend(
 
     override suspend fun <A> decide(request: DecisionRequest, schema: ActionSchema<A>): Decision<A> {
         val started = TimeSource.Monotonic.markNow()
-        val tools = if (strategy == Strategy.Tools) schema.tools ?: error("${schema.name} can't be expressed as tools") else null
+        val own = request.tools?.takeIf { capabilities.toolCalls }
+        val strategy = if (own != null) Strategy.Tools else configured
+        val tools = when {
+            own != null -> own.tools.map { ActionSchema.Tool(it.name, it.description, it.parameters) }
+            strategy == Strategy.Tools -> schema.tools ?: error("${schema.name} can't be expressed as tools")
+            else -> null
+        }
         val messages = mutableListOf<JsonObject>()
         messages += message("system", if (strategy == Strategy.Text) request.system + textInstructions(schema) else request.system)
-        request.messages.forEach { messages += message(it.role.name.lowercase(), it.content) }
+        request.messages.forEach { messages += message(it) }
 
         val attempts = mutableListOf<Attempt>()
         var usage = Usage()
         repeat(config.maxRetries + 1) {
-            val response = http.post(url, body(request, schema, messages, tools), attempts, usage)
+            val response = http.post(url, body(request, schema, messages, tools, strategy), attempts, usage)
             usage += usageOf(response)
             val reply = response["choices"]?.jsonArray?.firstOrNull()?.jsonObject?.get("message")?.jsonObject
                 ?: throw DecisionFailed("reply has no choices[0].message: ${response.toString().take(300)}", attempts, usage)
@@ -82,7 +91,7 @@ class OpenAiCompatBackend(
                     if (tools != null && tools.none { it.name == name }) {
                         throw ActionSchema.InvalidReply("unknown tool \"$name\"; call one of ${tools.joinToString(", ") { it.name }}")
                     }
-                    schema.decode(schema.fromToolCall(name, parsed))
+                    schema.decode(own?.reply(name, parsed) ?: schema.fromToolCall(name, parsed))
                 } else {
                     if (content.isNullOrBlank()) throw ActionSchema.InvalidReply("the reply was empty")
                     schema.decode(extractJson(content))
@@ -92,7 +101,7 @@ class OpenAiCompatBackend(
             } catch (e: ActionSchema.InvalidReply) {
                 val error = e.message ?: "invalid reply"
                 attempts += Attempt(raw, error)
-                messages += correction(reply, call, error)
+                messages += correction(reply, call, error, strategy)
             }
         }
         throw DecisionFailed(
@@ -102,7 +111,7 @@ class OpenAiCompatBackend(
         )
     }
 
-    private fun <A> body(request: DecisionRequest, schema: ActionSchema<A>, messages: List<JsonObject>, tools: List<ActionSchema.Tool>?) =
+    private fun <A> body(request: DecisionRequest, schema: ActionSchema<A>, messages: List<JsonObject>, tools: List<ActionSchema.Tool>?, strategy: Strategy) =
         buildJsonObject {
             put("model", config.model)
             put("messages", JsonArray(messages))
@@ -139,7 +148,7 @@ class OpenAiCompatBackend(
         }
 
     /** Sends the bad reply back with what was wrong, in the form the strategy expects. */
-    private fun correction(reply: JsonObject, call: JsonObject?, error: String): List<JsonObject> {
+    private fun correction(reply: JsonObject, call: JsonObject?, error: String, strategy: Strategy): List<JsonObject> {
         if (call != null) {
             val callId = call["id"]?.jsonPrimitive?.contentOrNull ?: "call_0"
             return listOf(
@@ -181,6 +190,33 @@ class OpenAiCompatBackend(
         private fun message(role: String, content: String): JsonObject = buildJsonObject {
             put("role", role)
             put("content", content)
+        }
+
+        /** [m] in the wire form: a tool call as the assistant's `tool_calls`, its result as a `tool` message. */
+        private fun message(m: Message): JsonObject {
+            val call = m.call ?: return message(m.role.name.lowercase(), m.content)
+            return when (m.role) {
+                Message.Role.Assistant -> buildJsonObject {
+                    put("role", "assistant")
+                    if (m.content.isEmpty()) put("content", JsonNull) else put("content", m.content)
+                    put("tool_calls", buildJsonArray {
+                        add(buildJsonObject {
+                            put("id", call.id)
+                            put("type", "function")
+                            put("function", buildJsonObject {
+                                put("name", call.name)
+                                put("arguments", call.arguments.toString())
+                            })
+                        })
+                    })
+                }
+                Message.Role.Tool -> buildJsonObject {
+                    put("role", "tool")
+                    put("tool_call_id", call.id)
+                    put("content", m.content)
+                }
+                else -> message(m.role.name.lowercase(), m.content)
+            }
         }
 
         /**

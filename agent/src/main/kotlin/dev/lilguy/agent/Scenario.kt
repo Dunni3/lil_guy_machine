@@ -79,6 +79,13 @@ fun bedroomScenario(
         persona = { Persona.text(shown(), self()) },
         self = self,
         view = { BedroomPrompt.deciding(it, shown()) },
+        // A model that calls tools calls his verbs.
+        toolTurn = PromptBuilder.ToolTurn(
+            system = { BedroomPrompt.system(shown(), ticksPerMinute, self(), tools = true) },
+            tools = { BedroomTools.of(it, ticksPerMinute) },
+            status = BedroomTools::view,
+            call = { BedroomTools.call(it, ticksPerMinute) },
+        ),
     )
     val runtime = AgentRuntime(
         world, world.agentId, model, prompts,
