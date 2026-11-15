@@ -130,6 +130,8 @@ data class Models(
     val self: String?,
     val scorer: String?,
     val artist: String?,
+    /** What searches the web for him; null when he can't. */
+    val search: String? = null,
 )
 
 /** What changes every tick: draw from this, interpolating between two at [tick] and the one before. */
@@ -391,6 +393,8 @@ data class Logs(
     val trips: List<TripView> = emptyList(),
     /** Pieces drawn and kept, with the picture. */
     val drawings: List<DrawingView> = emptyList(),
+    /** His searches of the real web, refused and failed ones included. */
+    val searches: List<SearchView> = emptyList(),
 ) {
     val empty: Boolean get() = this == Logs()
 
@@ -404,6 +408,7 @@ data class Logs(
         revisions = merge(revisions, delta.revisions, CAPS.getValue("revisions")) { it.seq },
         trips = merge(trips, delta.trips, CAPS.getValue("trips")) { it.seq },
         drawings = merge(drawings, delta.drawings, CAPS.getValue("drawings")) { it.seq },
+        searches = merge(searches, delta.searches, CAPS.getValue("searches")) { it.seq },
     )
 
     /** The entries of [next] that aren't in this, or differ. */
@@ -416,13 +421,14 @@ data class Logs(
         revisions = since(revisions, next.revisions) { it.seq },
         trips = since(trips, next.trips) { it.seq },
         drawings = since(drawings, next.drawings) { it.seq },
+        searches = since(searches, next.searches) { it.seq },
     )
 
     companion object {
         /** The newest entries of each log a snapshot carries and a client keeps. */
         val CAPS = mapOf(
             "transactions" to 200, "events" to 50, "decisions" to 100, "thoughts" to 300,
-            "memories" to 1000, "revisions" to 100, "trips" to 100, "drawings" to 100,
+            "memories" to 1000, "revisions" to 100, "trips" to 100, "drawings" to 100, "searches" to 300,
         )
 
         private fun <T> merge(have: List<T>, add: List<T>, cap: Int, seq: (T) -> Long): List<T> {
@@ -471,6 +477,35 @@ data class ThoughtView(
     val error: String?,
     val asked: List<AnswerView>,
 )
+
+/**
+ * One search of the real web: what he typed, what the results say ([summary]; null from a search
+ * API that only lists results) and where from, or why nothing came back ([error]; [refused] when
+ * he'd searched as often as a day allows). [thought] is what went through his head as he chose
+ * what to do after it, and [then] what he chose; both null until he has.
+ */
+@Serializable
+data class SearchView(
+    val seq: Long,
+    val tick: Long,
+    val day: Int?,
+    val time: String?,
+    val query: String,
+    val searcher: String,
+    val summary: String?,
+    val sources: List<SourceView>,
+    /** What the search engine was sent, when it isn't just [query]. */
+    val queries: List<String>,
+    val error: String?,
+    val refused: Boolean,
+    @SerialName("latency_ms") val latencyMs: Long,
+    val thought: String?,
+    val then: String?,
+)
+
+/** One page a search turned up, and what it says to the query (null when the search didn't say). */
+@Serializable
+data class SourceView(val title: String, val url: String, val snippet: String?)
 
 /** One question he asked the oracle while thinking: the doc sections it [opened], and its answer (null when it failed). */
 @Serializable

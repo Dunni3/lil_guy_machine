@@ -59,7 +59,7 @@ export class StreamState {
   }
 }
 
-const LOGS = ["transactions", "events", "decisions", "thoughts", "memories", "revisions", "trips", "drawings"] as const;
+const LOGS = ["transactions", "events", "decisions", "thoughts", "memories", "revisions", "trips", "drawings", "searches"] as const;
 
 function mergeLogs(have: Logs, add: Logs, caps: Record<string, number>): Logs {
   const out = { ...have };

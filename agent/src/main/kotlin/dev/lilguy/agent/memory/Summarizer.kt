@@ -161,6 +161,7 @@ class Summarizer(
         EventKind.Art -> "I made"
         EventKind.Reading -> "I read"
         EventKind.Answer -> "I found out"
+        EventKind.Search -> "I looked up"
         EventKind.Shopping -> "I shopped"
         EventKind.Invention -> "I invented"
     }

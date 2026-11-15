@@ -98,3 +98,19 @@ agents:
     painter_endpoint: typesafe # draws his art, two closed picks a stroke; set it when a text model decides
                               # (gemini calls his verbs as tools). Optional: the deciding endpoint draws.
     decision_interval: on_intent_complete
+
+# Web search: a model that calls tools (gemini deciding) gets a `search` look, real results from
+# the real web, read-only. Leave this out, or set kind: none, and he can't search. The viewer's
+# menu lists every search under WEB.
+search:
+  kind: gemini                 # gemini: a Gemini model grounded on Google Search says what the
+                               # results say, and names the pages. brave: the Brave Search API's
+                               # results as they are (api_key_env: BRAVE_SEARCH_API_KEY).
+  model: gemini-3.5-flash-lite
+  api_key_env: GEMINI_API_KEY
+  per_day: 20                  # searches a game day; past it he's told he's searched enough
+  results: 5                   # sources kept a search
+  thinking_level: low
+  price_in: 0.3
+  price_out: 2.5
+  price_per_search: 0.014      # grounding bills by the query, on top of the tokens

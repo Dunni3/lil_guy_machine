@@ -8,6 +8,9 @@ import dev.lilguy.decision.DecisionModel
 import dev.lilguy.decision.Endpoints
 import dev.lilguy.decision.EndpointsFile
 import dev.lilguy.decision.Scorer
+import dev.lilguy.decision.SearchConfig
+import dev.lilguy.decision.WebSearch
+import dev.lilguy.decision.WebSearches
 import dev.lilguy.decision.withBeam
 import dev.lilguy.sim.GameClock
 import java.io.File
@@ -54,8 +57,12 @@ class ModelSetup(
     val inventor: (() -> Inventing)? = null,
     /** Game minutes per real second the first run starts at; the Run page changes it. */
     val speed: Int = RunSettings.DEFAULT_SPEED,
+    /** A fresh web search for each run, for a model that calls tools; null and he can't search. */
+    val search: (() -> WebSearch)? = null,
+    /** Searches a game day ([SearchConfig.perDay]). */
+    val searchesPerDay: Int = SearchConfig().perDay,
 ) {
-    class Prices(val decision: TokenPrice? = null, val memory: TokenPrice? = null, val writer: TokenPrice? = null, val recall: TokenPrice? = null, val painter: TokenPrice? = null)
+    class Prices(val decision: TokenPrice? = null, val memory: TokenPrice? = null, val writer: TokenPrice? = null, val recall: TokenPrice? = null, val painter: TokenPrice? = null, val search: TokenPrice? = null)
 
     fun copy(
         create: () -> DecisionModel = this.create,
@@ -68,7 +75,9 @@ class ModelSetup(
         painter: (() -> DecisionModel)? = this.painter,
         inventor: (() -> Inventing)? = this.inventor,
         speed: Int = this.speed,
-    ) = ModelSetup(create, scenario, ticksPerMinute, timeout, logDir, notice, memoryModel, days, writerModel, prices, paints, recallScorer, startItems, painter, inventor, speed)
+        search: (() -> WebSearch)? = this.search,
+        searchesPerDay: Int = this.searchesPerDay,
+    ) = ModelSetup(create, scenario, ticksPerMinute, timeout, logDir, notice, memoryModel, days, writerModel, prices, paints, recallScorer, startItems, painter, inventor, speed, search, searchesPerDay)
 
     /** The Run page's starting values; the viewer changes them from there. */
     val settings: RunSettings get() = RunSettings(days, speed = speed, ticksPerMinute = ticksPerMinute)
@@ -100,6 +109,7 @@ class ModelSetup(
          * recall is scored by [recallEndpoint] (or `recall_endpoint`, else the deciding endpoint when
          * it's typesafe; "none" for keywords). [beam] overrides the deciding endpoint's `beam` (0 for
          * the flat list). His art is drawn by [painterEndpoint] (or `painter_endpoint`), else the deciding endpoint.
+         * He searches the web as the config's `search:` says, when a model that calls tools decides; [search] "none" turns it off.
          */
         fun fromConfig(
             configFile: File,
@@ -114,6 +124,7 @@ class ModelSetup(
             recallEndpoint: String? = null,
             beam: Int? = null,
             painterEndpoint: String? = null,
+            search: String? = null,
         ): ModelSetup {
             val logDir = logRoot?.let { File(it, "app-${scenario.id}-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))) }
             if (!configFile.isFile) {
@@ -173,8 +184,23 @@ class ModelSetup(
                     null
                 }
             }
-            val prices = Prices(decisionPrice, priceOf(memoryEndpoint ?: config.defaultMemoryEndpoint), priceOf(writerName), priceOf(recallName), painter?.let { priceOf(painterName) })
-            return agent.copy(memoryModel = writer, writerModel = textModel, notice = notices.joinToString("; ").ifEmpty { null }, prices = prices, recallScorer = scorer, painter = painter ?: agent.painter)
+            // The web: only a model that calls tools can search, so it's only made for an endpoint that isn't scripted.
+            val searchConfig = config.search?.takeIf { search != "none" && !it.off && agent !== base }
+            val webSearch = searchConfig?.let { sc ->
+                try {
+                    WebSearches.create(sc, env).let { (it as? AutoCloseable)?.close() } // fail now on a missing key
+                    val factory: () -> WebSearch = { WebSearches.create(sc, env) }
+                    factory
+                } catch (e: Exception) {
+                    notices += "${e.message}; he won't search the web"
+                    null
+                }
+            }
+            val prices = Prices(decisionPrice, priceOf(memoryEndpoint ?: config.defaultMemoryEndpoint), priceOf(writerName), priceOf(recallName), painter?.let { priceOf(painterName) }, searchConfig?.let(TokenPrice::of))
+            return agent.copy(
+                memoryModel = writer, writerModel = textModel, notice = notices.joinToString("; ").ifEmpty { null }, prices = prices, recallScorer = scorer, painter = painter ?: agent.painter,
+                search = webSearch, searchesPerDay = searchConfig?.perDay ?: SearchConfig().perDay,
+            )
         }
 
         /**

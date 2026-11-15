@@ -1,5 +1,5 @@
 /* Generated from schema/protocol.schema.json (protocol/.../*.kt) by gen_types.sh. Don't edit; run `make protocol-types`.
- * schema sha256: 788c62e716ace6d64d7d7ba16e746cc64c58e1296140890f6f3ec425f6cec7db
+ * schema sha256: c726ca7749ce0c4235c093238111f73de7989428a711a4840689ebe120bc8234
  */
 
 /**
@@ -131,6 +131,7 @@ export interface Models {
   self: string | null;
   scorer: string | null;
   artist: string | null;
+  search: string | null;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -497,6 +498,7 @@ export interface Logs {
   revisions: RevisionView[];
   trips: TripView[];
   drawings: DrawingView[];
+  searches: SearchView[];
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -602,6 +604,35 @@ export interface DrawingView {
   palette: number[];
   size: number;
   rows: string[];
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "SearchView".
+ */
+export interface SearchView {
+  seq: number;
+  tick: number;
+  day: number | null;
+  time: string | null;
+  query: string;
+  searcher: string;
+  summary: string | null;
+  sources: SourceView[];
+  queries: string[];
+  error: string | null;
+  refused: boolean;
+  latency_ms: number;
+  thought: string | null;
+  then: string | null;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "SourceView".
+ */
+export interface SourceView {
+  title: string;
+  url: string;
+  snippet: string | null;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema

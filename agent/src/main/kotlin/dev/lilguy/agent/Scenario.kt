@@ -88,18 +88,24 @@ fun bedroomScenario(
         view = { BedroomPrompt.deciding(it, shown()) },
         // A model that calls tools calls his verbs.
         toolTurn = PromptBuilder.ToolTurn(
-            system = { BedroomPrompt.system(shown(), ticksPerMinute, self(), tools = true, looks = setOfNotNull("recall".takeIf { longTerm != null }, "ask".takeIf { longTerm?.canAsk == true })) },
+            system = { BedroomPrompt.system(shown(), ticksPerMinute, self(), tools = true, looks = setOfNotNull("recall".takeIf { longTerm != null }, "ask".takeIf { longTerm?.canAsk == true }, "search".takeIf { longTerm?.canSearch == true })) },
             tools = { obs ->
                 val looks = longTerm?.let { m ->
                     BedroomTools.looks(
                         recall = { q -> m.search(q, obs).ifEmpty { listOf("Nothing comes to mind.") }.joinToString("\n") },
                         ask = if (!m.canAsk) null else { q -> m.ask(q, obs, Describe.state(obs))?.reply?.let { it.text ?: "No answer came (${it.error})." } ?: "No one can answer that now." },
+                        search = if (!m.canSearch) null else { q -> m.searchWeb(q, obs)?.answer() ?: "You can't search right now." },
                     )
                 }.orEmpty()
                 BedroomTools.of(obs, ticksPerMinute, looks, ponder = pondering?.let { Intent.Do(it) })
             },
             status = BedroomTools::view,
             call = { BedroomTools.call(it, ticksPerMinute) },
+            // Left to itself a model keeps to the room's business and never looks outward, so until he has searched today, he's reminded he can.
+            note = { obs ->
+                longTerm?.takeIf { m -> m.canSearch && m.searches().none { it.day == obs.clock?.day && !it.refused } }
+                    ?.let { BedroomTools.SEARCH_NOTE }
+            },
         ),
     )
     val runtime = AgentRuntime(

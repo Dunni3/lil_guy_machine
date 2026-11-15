@@ -24,8 +24,8 @@ import kotlinx.serialization.json.putJsonObject
  * things he could do it with; `buy` while there's a shop to buy from; and `wait`. Calling is optional:
  * what he writes is his thought of the moment, and a reply of only text is him thinking, put back so
  * he goes on. Every tool also takes an optional `thought`, for when he acts without writing. Locked
- * verbs aren't tools: the status message lists them with why ([view]). [looks] are `recall` and
- * `ask`, which answer and let him go on. When [MAX_STEPS] go by without an action, he's sat and
+ * verbs aren't tools: the status message lists them with why ([view]). [looks] are `recall`,
+ * `ask` and `search`, which answer and let him go on. When [MAX_STEPS] go by without an action, he's sat and
  * thought: the turn ends as the [ponder] intent.
  */
 object BedroomTools {
@@ -73,14 +73,22 @@ object BedroomTools {
         )
     }
 
+    /** Said at his turn until he has searched the web that day. */
+    const val SEARCH_NOTE = "You haven't looked anything up online today. What are you wondering about: something in what you're reading, drawing or listening to, " +
+        "or something you'd like to make or try? Search the internet for it before you act; what you find out is yours to use."
+
     /** Replies he may give in one turn without acting: each one of thinking, of looks, or both. */
     const val MAX_STEPS = 5
 
     /**
      * `recall` searches his memories and earlier thoughts with [recall]; `ask` asks how his world
-     * works with [ask]. Either is left out when null.
+     * works with [ask]; `search` searches the real web with [search]. Any is left out when null.
      */
-    fun looks(recall: (suspend (String) -> String)?, ask: (suspend (String) -> String)?): List<ToolSet.Look> = listOfNotNull(
+    fun looks(
+        recall: (suspend (String) -> String)?,
+        ask: (suspend (String) -> String)?,
+        search: (suspend (String) -> String)? = null,
+    ): List<ToolSet.Look> = listOfNotNull(
         recall?.let { r ->
             ToolSet.Look(
                 "recall",
@@ -94,6 +102,15 @@ object BedroomTools {
                 "Ask how something in your world works, and someone who knows its workings answers: how to get to something you can't do yet, what something is for, what you could do that you haven't tried. It takes no time; then choose what to do.",
                 text("question", "Your question, first person, under 30 words."),
             ) { args -> a(string(args, "question")) }
+        },
+        search?.let { s ->
+            ToolSet.Look(
+                "search",
+                "Search the internet: the real one, outside your room. You get back what the top results say and which sites said it. " +
+                    "Look up anything you're curious about in the real world: how to do something, what something is, music, art, books, ideas, what's going on. " +
+                    "It's only for reading; it doesn't change anything in your room. It takes no time; then choose what to do.",
+                text("query", "What to search for, as you'd type it into a search engine."),
+            ) { args -> s(string(args, "query")) }
         },
     )
 

@@ -13,6 +13,8 @@ import dev.lilguy.agent.memory.StoredMemory
 import dev.lilguy.agent.memory.Thought
 import dev.lilguy.protocol.AgentView
 import dev.lilguy.protocol.AnswerView
+import dev.lilguy.protocol.SearchView
+import dev.lilguy.protocol.SourceView
 import dev.lilguy.protocol.BookView
 import dev.lilguy.protocol.CatalogItem
 import dev.lilguy.protocol.CatalogState
@@ -173,7 +175,7 @@ class StateReader(private val dbEvery: Duration = 1.seconds) {
         minDays = s.minDays,
         endedBecause = s.endedBecause,
         notices = listOfNotNull(s.setup.notice, s.resumeError?.let { "resume: $it" }, s.memoryError?.let { "memory: $it" }, s.writerError),
-        models = Models(s.runtime.modelId, s.memory.writer, s.memory.thoughtWriter, s.memory.selfWriter, s.memory.scorerId, s.memory.studio?.artist),
+        models = Models(s.runtime.modelId, s.memory.writer, s.memory.thoughtWriter, s.memory.selfWriter, s.memory.scorerId, s.memory.studio?.artist, s.memory.searcherId),
     )
 
     private fun fast(s: SimSession, now: WorldSnapshot): FastState {
@@ -234,6 +236,7 @@ class StateReader(private val dbEvery: Duration = 1.seconds) {
         val revisions = s.memory.revisions()
         val trips = s.memory.trips()
         val drawings = s.memory.studio?.pieces().orEmpty()
+        val searches = s.memory.searches()
         return Logs(
             transactions = transactions.drop(firstTx).mapIndexed { i, t -> TransactionView((firstTx + i).toLong(), t.tick, t.day, t.time, t.amount, t.balance, t.reason) },
             events = events(now),
@@ -252,6 +255,9 @@ class StateReader(private val dbEvery: Duration = 1.seconds) {
             drawings = indexed(drawings, "drawings") { i, d ->
                 val art = d.artwork
                 DrawingView(i, d.piece, d.tick, d.day, d.time, d.item, d.title, d.tags, d.commission, d.shows, art?.palette.orEmpty(), art?.size ?: 0, art?.letters().orEmpty())
+            },
+            searches = indexed(searches, "searches") { i, w ->
+                SearchView(i, w.tick, w.day, w.time, w.query, w.searcher, w.summary, w.sources.map { SourceView(it.title, it.url, it.snippet) }, w.queries, w.error?.take(300), w.refused, w.latencyMs, w.thought, w.then)
             },
         )
     }
