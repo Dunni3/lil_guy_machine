@@ -10,8 +10,8 @@ import dev.lilguy.agent.art.Underway
  * it), with a dip first when it's in another crayon. With nothing new he ponders; when the piece is
  * done, a flourish, then he admires it.
  *
- * [SimSession] holds the clock while the show is [finishing] after the piece's verb has ended, so a
- * piece is never cut off; renderers play [current] over [phaseSeconds] instead of keeping their own
+ * Nothing goes on until he is at the piece (`away` in [update]). [SimSession] holds the clock while
+ * the show is [finishing] after the piece's verb has ended, so a piece is never cut off; renderers play [current] over [phaseSeconds] instead of keeping their own
  * pace. Pure bookkeeping: no pixels.
  */
 class ArtShow {
@@ -52,8 +52,12 @@ class ArtShow {
     private var flourished = false
     private var crayon: Int? = null
 
-    /** Advances [delta] real seconds with [underway] the studio's latest; [hurry] when the clock waits on the show. */
-    fun update(delta: Float, underway: Underway?, hurry: Boolean) {
+    /**
+     * Advances [delta] real seconds with [underway] the studio's latest; [hurry] when the clock waits on the show.
+     * [away] while he hasn't got to the piece yet: its call starts when he chooses the verb, before he
+     * walks to it, so strokes that come back meanwhile wait for him instead of going on by themselves.
+     */
+    fun update(delta: Float, underway: Underway?, hurry: Boolean, away: Boolean = false) {
         if (underway == null || underway.state == Underway.State.Dropped) return reset()
         if (underway.tick != tick) start(underway)
         if (underway.strokes > queued) {
@@ -70,9 +74,9 @@ class ArtShow {
                 next(hurry)
             }
             Phase.Flourish -> if (phaseTime >= phaseSeconds) enter(Phase.Admire, 0f)
-            Phase.Ponder, Phase.Admire -> next(hurry)
+            Phase.Ponder, Phase.Admire -> if (!away) next(hurry)
         }
-        if (phase == Phase.Ponder && !flourished && queue.isEmpty() && underway.state == Underway.State.Done) {
+        if (!away && phase == Phase.Ponder && !flourished && queue.isEmpty() && underway.state == Underway.State.Done) {
             flourished = true
             enter(Phase.Flourish, FLOURISH)
         }

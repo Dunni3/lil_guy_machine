@@ -25,6 +25,7 @@ import dev.lilguy.agent.TokenPurpose
 import dev.lilguy.agent.art.ArtStudio
 import dev.lilguy.agent.art.CommissionVoice
 import dev.lilguy.agent.art.Painter
+import dev.lilguy.agent.art.Underway
 import dev.lilguy.agent.memory.Oracle
 import dev.lilguy.agent.web.Searcher
 import dev.lilguy.agent.memory.AgentMemory
@@ -304,14 +305,30 @@ class SimSession(
     /** The piece he's making, as it plays out on every screen. */
     val show = ArtShow()
 
+    /**
+     * The piece (by its tick) whose verb he has been seen doing. Its call starts when he chooses the
+     * verb, so until then he's still walking to it: the show waits for him, and his not doing the
+     * verb doesn't mean it's over.
+     */
+    private var begun: Long? = null
+
     /** His piece's verb has ended and the piece is still going on screen ([ArtShow.finishing]): the clock waits for it. */
-    val presenting: Boolean get() = settings.holdForArt && show.current != null && show.finishing && current.life?.doing != show.verb
+    val presenting: Boolean get() {
+        val piece = show.current ?: return false
+        return settings.holdForArt && show.finishing && begun == piece.tick && current.life?.doing != show.verb
+    }
 
     private fun showArt(delta: Float) {
         val underway = memory.underway()
+        noteBegun(underway)
         // Paused, the screen waits too; a piece whose verb is over hurries so the clock waits less.
         if (state == RunState.Paused || state == RunState.Ready) return show.update(0f, underway, hurry = false)
-        show.update(delta, underway, hurry = current.life?.doing != underway?.verb)
+        val away = underway != null && begun != underway.tick
+        show.update(delta, underway, hurry = current.life?.doing != underway?.verb, away = away)
+    }
+
+    private fun noteBegun(underway: Underway?) {
+        if (underway != null && current.life?.doing == underway.verb) begun = underway.tick
     }
 
     /** Runs [ticks] ticks by hand; only while paused, so the clock can't run away. */
@@ -328,6 +345,7 @@ class SimSession(
 
     private fun setUp(carried: Carried? = null) {
         run++
+        begun = null
         if (carried != null) {
             settings = settings.copy(ticksPerMinute = carried.run.ticksPerMinute)
             // A run carried on from past its days gets the day it's in.
@@ -506,6 +524,8 @@ class SimSession(
         life?.afterStep()
         previous = current
         current = world.snapshot()
+        // Every tick, so a verb that starts and ends within one frame's ticks still counts as begun.
+        noteBegun(memory.underway())
         // Decisions are made only at decision points, so only those ticks are kept to file them against.
         if (world.awaitingDecision(world.agentId)) {
             recent.addLast(current)
