@@ -98,15 +98,17 @@ fun bedroomScenario(
         view = { BedroomPrompt.deciding(it, shown()) },
         // A model that calls tools calls his verbs.
         toolTurn = PromptBuilder.ToolTurn(
-            system = { BedroomPrompt.system(shown(), ticksPerMinute, self(), tools = true, map = map(), looks = setOfNotNull("recall".takeIf { longTerm != null }, "ask".takeIf { longTerm?.canAsk == true }, "search".takeIf { longTerm?.canSearch == true })) },
+            system = { BedroomPrompt.system(shown(), ticksPerMinute, self(), tools = true, map = map(), looks = setOfNotNull(BedroomTools.LOOK_AROUND, "recall".takeIf { longTerm != null }, "ask".takeIf { longTerm?.canAsk == true }, "search".takeIf { longTerm?.canSearch == true })) },
             tools = { obs ->
-                val looks = longTerm?.let { m ->
-                    BedroomTools.looks(
-                        recall = { q -> m.search(q, obs).ifEmpty { listOf("Nothing comes to mind.") }.joinToString("\n") },
-                        ask = if (!m.canAsk) null else { q -> m.ask(q, obs, Describe.state(obs))?.reply?.let { it.text ?: "No answer came (${it.error})." } ?: "No one can answer that now." },
-                        search = if (!m.canSearch) null else { q -> m.searchWeb(q, obs)?.answer() ?: "You can't search right now." },
-                    )
-                }.orEmpty()
+                // Looking round is always there: it reads the observation the sim already made, so it's free.
+                val look = { Surroundings.look(obs, shown()) }
+                val m = longTerm
+                val looks = BedroomTools.looks(
+                    recall = if (m == null) null else { q -> m.search(q, obs).ifEmpty { listOf("Nothing comes to mind.") }.joinToString("\n") },
+                    ask = if (m == null || !m.canAsk) null else { q -> m.ask(q, obs, Describe.state(obs))?.reply?.let { it.text ?: "No answer came (${it.error})." } ?: "No one can answer that now." },
+                    search = if (m == null || !m.canSearch) null else { q -> m.searchWeb(q, obs)?.answer() ?: "You can't search right now." },
+                    look = look,
+                )
                 BedroomTools.of(obs, ticksPerMinute, looks, ponder = pondering?.let { Intent.Do(it) })
             },
             status = BedroomTools::view,
