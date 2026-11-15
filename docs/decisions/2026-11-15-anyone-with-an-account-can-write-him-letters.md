@@ -37,5 +37,8 @@ after making an account, and an account should be no more than an email and a pa
 **Accepted.** Letters are text from strangers that a model reads. The sim quotes them as a letter
 from someone outside his world, which is all the guard there is: no moderation and no filtering
 beyond length and control characters. Anyone can make many accounts. A letter delivered to a run
-that's later left for an earlier save is not delivered again. `backup.sh` dumps only Postgres, so
-`accounts.db` is not backed up yet.
+that's later left for an earlier save is not delivered again.
+
+**Backed up nightly beside the Postgres dump.** `backup.sh` runs the compose service `sqlite-backup`
+(profile `backup`), which mounts the host's volume as the host's user and writes a gzipped copy made
+with SQLite's online backup API, so the API container never mounts the accounts.

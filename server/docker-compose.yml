@@ -54,6 +54,17 @@ services:
     depends_on:
       - api
 
+  # Never runs on its own (profile backup): deploy/backup.sh runs it nightly to copy the host's accounts.db out of
+  # its volume, gzipped on stdout. Built like the API for its Python (and the same user as the host); the API
+  # itself never mounts the host's volume.
+  sqlite-backup:
+    build: .
+    profiles: [backup]
+    entrypoint: ["python", "/backup_sqlite.py"]
+    volumes:
+      - host-data:/data
+      - ./deploy/backup_sqlite.py:/backup_sqlite.py:ro
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
