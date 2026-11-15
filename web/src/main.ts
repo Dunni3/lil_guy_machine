@@ -1,5 +1,7 @@
+import { Raycaster, Vector2 } from "three";
 import type { LifeState, Settings } from "../../protocol/ts/protocol";
-import { CrayonRenderer } from "./crayon/renderer";
+import { ClayRenderer } from "./clay/renderer";
+import { ClayTextures } from "./clay/textures";
 import { RoomView } from "./room/view";
 import { readSettings } from "./settings";
 import { StreamClient } from "./stream/client";
@@ -7,6 +9,7 @@ import { Track } from "./stream/track";
 import { Admin, SignIn } from "./ui/admin";
 import { Hud } from "./ui/hud";
 import { pressOf } from "./ui/keys";
+import { ThingLabel } from "./ui/label";
 import { Layer } from "./ui/layer";
 import { Menu, type Act, type Spot } from "./ui/menu";
 import { MenuCard } from "./ui/menuCard";
@@ -33,20 +36,23 @@ stream.onChange = (snapshot) => {
   track.push(seconds(), guy.x, guy.y, snapshot);
 };
 
-let renderer: CrayonRenderer;
+const textures = new ClayTextures();
+let view: RoomView | null = null;
+let renderer: ClayRenderer;
 try {
-  renderer = new CrayonRenderer(canvas);
+  renderer = new ClayRenderer(canvas, (name) => textures.texture(name));
 } catch (e) {
   status.textContent = "this browser can't draw the room: WebGL isn't available";
   throw e;
 }
-// A fraction of the window's pixels, scaled up by CSS: the TV's GPU can't fill all of them.
+// A fraction of the window's pixels, scaled up by CSS, for a slow GPU (`?scale=`).
 renderer.webgl.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2) * settings.scale);
 const layer = new Layer();
 const resize = () => {
   const w = canvas.clientWidth || window.innerWidth;
   const h = canvas.clientHeight || window.innerHeight;
   renderer.resize(w, h);
+  view?.resize(w / Math.max(1, h));
   layer.resize(w, h, renderer.webgl.getPixelRatio());
 };
 window.addEventListener("resize", resize);
@@ -57,6 +63,7 @@ const signIn = new SignIn(admin);
 const menu = new Menu();
 const hud = new Hud(layer, settings.broadcast);
 const card = new MenuCard(layer);
+const label = new ThingLabel(layer);
 
 /** The settings the admin last asked for, shown until the host's match (or the ask fails). */
 let requested: Settings | null = null;
@@ -134,7 +141,20 @@ const pointer = {
   over: "",
   /** The rest of a multi-click that opened or closed the menu, sent a command or asked to confirm is ignored: confirming takes a click of its own. */
   guard: false,
+  /** Where the mouse rests over the room, in CSS pixels from the canvas's top-left, for the things' labels; null off the canvas or for a finger. */
+  mouse: null as { x: number; y: number } | null,
 };
+const raycaster = new Raycaster();
+const ndc = new Vector2();
+
+/** What the mouse is over in the room this frame (the camera may have moved under it), for [ThingLabel]. */
+function hovered() {
+  const m = pointer.mouse;
+  if (!m || !view || menu.open || signIn.open) return null;
+  ndc.set((m.x / layer.width) * 2 - 1, 1 - (m.y / layer.height) * 2);
+  raycaster.setFromCamera(ndc, renderer.camera);
+  return view.pick(raycaster.ray);
+}
 
 function pointerView(): PageView | null {
   const life = stream.state.life;
@@ -207,6 +227,8 @@ if (!settings.broadcast) {
       card.mouse = true;
       pressed = true;
     }
+    const r = canvas.getBoundingClientRect();
+    pointer.mouse = e.pointerType === "mouse" ? { x: e.clientX - r.left, y: e.clientY - r.top } : null;
     const v = pointerView();
     const down = pointer.down;
     if (down && e.buttons && v && menu.open) {
@@ -222,7 +244,10 @@ if (!settings.broadcast) {
     pointer.down = null;
     if (e.pointerType !== "mouse") setHover(null, null);
   });
-  canvas.addEventListener("pointerleave", () => setHover(null, null));
+  canvas.addEventListener("pointerleave", () => {
+    pointer.mouse = null;
+    setHover(null, null);
+  });
 
   canvas.addEventListener("wheel", (e) => {
     const v = pointerView();
@@ -233,7 +258,6 @@ if (!settings.broadcast) {
   }, { passive: false });
 }
 
-let view: RoomView | null = null;
 let last = seconds();
 let next = 0;
 /** Null until the first frame sets it, so a page whose first frame is already live still hides the "connecting" it loaded with. */
@@ -242,6 +266,11 @@ const stats = { frames: 0, worst: 0, since: last, fps: 0 };
 
 function frame() {
   requestAnimationFrame(frame);
+  draw();
+}
+
+/** One frame, now. A hidden tab gets no animation frames, so a headless check calls this itself (`lilguy.draw`). */
+function draw() {
   const now = seconds();
   // The frame cap: skip this one if the last drew too recently, with half a 60 Hz frame's slack for the display's own timing.
   if (settings.fps && now < next - 0.008) return;
@@ -259,10 +288,14 @@ function frame() {
       runId = life.run.run_id;
       menu.reset();
     }
-    // Painting the textures takes a moment, so it waits until there's a room to draw.
-    view ??= new RoomView(renderer, settings.camera);
+    // The room waits until there's one to draw.
+    if (!view) {
+      view = new RoomView(renderer, settings.camera, textures);
+      view.lightHour = settings.hour;
+      view.resize(canvas.clientWidth / Math.max(1, canvas.clientHeight));
+    }
     view.render(life, content, track.sample(now), delta);
-    renderer.render(view.background);
+    renderer.render();
     const f = frameFor(layer.width, layer.height, settings.broadcast);
     const v = settings.broadcast ? null : pageView(life);
     const open = menu.open && v !== null;
@@ -270,6 +303,7 @@ function frame() {
       life, content, speech: view.speech, making: view.making, banner: banner(life, open), hint: hint(open), menuOpen: open,
     }, renderer.camera, f, delta);
     if (!open && card.hover) setHover(null, null);
+    label.update(open ? null : hovered(), life, content, renderer.camera, f.u, delta);
     card.update(menu, v, f, pressed, delta);
     pressed = false;
     renderer.overlay(layer.scene, layer.camera);
@@ -313,7 +347,7 @@ function describe(): string {
 }
 
 // What a person or a headless browser checking the page can read from the console.
-(window as unknown as { lilguy: unknown }).lilguy = { stream, track, renderer, stats, menu, card, admin, hud, settings, get view() { return view; } };
+(window as unknown as { lilguy: unknown }).lilguy = { stream, track, renderer, stats, menu, card, admin, hud, label, settings, draw, get view() { return view; } };
 
 stream.start();
 requestAnimationFrame(frame);

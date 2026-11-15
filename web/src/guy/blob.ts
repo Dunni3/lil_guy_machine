@@ -1,11 +1,8 @@
-import { Matrix4, Quaternion, Vector3, Vector4, type Mesh } from "three";
-import { hex, linear, shade, type Rgba } from "../crayon/color";
-import { lumpySphere, taterBody, type BodyMeasure, type PartGeometry } from "../crayon/geometry";
-import { X_AXIS, Y_AXIS, Z_AXIS, clamp, lerp, rotate, scale, translate } from "../crayon/math";
-import { CrayonModel } from "../crayon/model";
-import { rng } from "../crayon/noise";
-import { Overlay, type CrayonRenderer, type Placed } from "../crayon/renderer";
-import { BODY, DESIGN_H, DESIGN_W, FACE_H, FACE_W, FACE_X, FACE_Y, Faces, paintGrain, type Face } from "./face";
+import { Matrix4, Quaternion, Vector3, type Mesh } from "three";
+import type { ClayRenderer, Placed } from "../clay/renderer";
+import type { ClayTextures, Face } from "../clay/textures";
+import { X_AXIS, Y_AXIS, Z_AXIS, clamp, lerp, rotate, scale, translate } from "../math";
+import { clay, type Models } from "../room/parts";
 
 /** What he's doing at a piece played out stroke by stroke: the host's `easel.phase`. */
 export type ArtPhase = "ponder" | "dip" | "stroke" | "flourish" | "admire";
@@ -46,16 +43,28 @@ export const newPose = (): Pose => ({
   workAt: null, workFlat: true, workSlide: 0, art: null, artTime: 0, tip: new Vector3(), tipLifted: false, brush: true,
 });
 
-/** His size: the body is [RADIUS] across before this. */
-const SCALE = 1.25;
-const RADIUS = 0.3;
+/** His size, from his part lists' (`ClayParts`): the body is [RADIUS] across before this. */
+const SCALE = 0.95;
+const RADIUS = clay.GUY_RX;
 /** How far the body sits above his feet' soles. */
-const FEET = 0.03;
+const FEET = clay.GUY_FEET;
+/** Where his feet sit, from his middle, and how high their middles are. */
+const FOOT_X = 0.15;
+const FOOT_Y = 0.07;
+/** His lantern: where it drifts to, beside him and to his left on screen, how high it bobs, and how fast it follows. */
+const LANTERN_X = -0.5;
+const LANTERN_Z = 0.45;
+const LANTERN_Y = 1.32;
+const LANTERN_FOLLOW = 3;
+/** Degrees a second its rotor turns. */
+const ROTOR = 1260;
 const SHADOW_LIFT = 0.045;
 /** His shadow's size, before it's widened to his arms and shrunk as he hops. */
 const SHADOW_W = 0.62;
 const SHADOW_D = 0.48;
 const TURN_SPEED = 600;
+/** Which way (degrees round Y from +Z) faces the camera: the isometric view looks from the south-east. */
+const CAMERA_YAW = 45;
 const PLAY_TO_CAMERA = 0.4;
 const PLAY_HELD = 0.8;
 /** At work: how far he leans (degrees), and his arm's reach (his own units). */
@@ -86,7 +95,7 @@ const HOP_HEIGHT = 0.09;
 const WRITING = new Set(["journal"]);
 /** A held book: from his shoulders, how high and how far out its bottom is, and where his hands hold it. */
 const BOOK_Y = -0.12;
-const BOOK_Z = 0.31;
+const BOOK_Z = 0.43;
 const BOOK_HAND_X = 0.15;
 const BOOK_HAND_Y = 0.14;
 /** Seconds between page turns, and how long one takes. */
@@ -95,7 +104,7 @@ const PAGE_TURN = 0.7;
 /** The held guitar's body, from his shoulders, and how far its neck tips up (degrees). */
 const GUITAR_X = 0.08;
 const GUITAR_Y = -0.04;
-const GUITAR_Z = 0.3;
+const GUITAR_Z = 0.41;
 const GUITAR_TILT = -28;
 /** Strums (radians a second), and seconds a chord is held. */
 const STRUM = 13;
@@ -109,15 +118,34 @@ const BLINK = 0.13;
 const SIDES = [-1, 1];
 const TWO_PI = Math.PI * 2;
 
-const LIMB = shade(BODY, -0.02);
-const FOOT = shade(BODY, -0.055, 0.02);
+/** His body's size, from its middle: what the arms and feet, the held things and the bubble go by. */
+interface BodyMeasure {
+  bottom: number;
+  top: number;
+  armY: number;
+  armX: number;
+  footZ: number;
+}
+
+/** A seeded random stream, for where his scribbles go. */
+function rng(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 const angleDiff = (target: number, from: number) => ((((target - from + 540) % 360) + 360) % 360) - 180;
 
 /**
- * The little guy in 3D: a butter-yellow tater with stubby arms and feet, drawn in the hand-drawn look:
- * crayon shading and hatching, a boiling ink outline, and a face painted in pen on the body's
- * texture. Animated entirely in code, ported from `Blob.kt`, so he moves the same.
+ * The little guy in 3D, in clay as the Field Lab has him: a butter-yellow tater with stubby arms and
+ * feet, his sprout, goggles pushed up on his forehead and a field pack, his face painted on his body
+ * per expression, and a lantern that drifts after him and lights the room at night. His pieces are
+ * part lists (`ClayParts`); he is animated entirely in code, as `Blob.kt` animated him.
  *
  * What drives him is state only ([Pose]): needs pick the expression and how he breathes; walking hops
  * him with squash and stretch; the activity under way picks a pose.
@@ -125,12 +153,18 @@ const angleDiff = (target: number, from: number) => ((((target - from + 540) % 3
 export class Blob {
   private readonly measure: BodyMeasure;
   private readonly body: Placed;
+  private readonly sprout: Placed;
   private readonly arms: Placed[];
   private readonly feet: Placed[];
-  private readonly faces: Faces;
-  private readonly face: Overlay;
+  private readonly lantern: Placed;
+  private readonly rotor: Placed;
   private readonly shadow: Mesh;
   private readonly shadowWidth: number;
+  private readonly lanternAt = new Vector3(NaN, 0, 0);
+  private rotorTurn = 0;
+  /** Where his lantern may go: x0, z0, x1, z1, kept off the walls ([RoomView] sets it from the map). */
+  lanternBounds = [-Infinity, -Infinity, Infinity, Infinity];
+  private readonly sproutAt = new Matrix4();
 
   private readonly bodyAt = new Matrix4();
   private readonly limbAt = new Matrix4();
@@ -178,27 +212,17 @@ export class Blob {
   readonly paletteAt = new Matrix4();
   private readonly toolTip: number;
 
-  constructor(private readonly r: CrayonRenderer, toolTip: number) {
+  constructor(private readonly r: ClayRenderer, models: Models, private readonly textures: ClayTextures, toolTip: number) {
     this.toolTip = toolTip;
-    const grain = paintGrain();
-    this.faces = new Faces(grain);
-    this.face = new Overlay(new Vector4(FACE_X / DESIGN_W, FACE_Y / DESIGN_H, FACE_W / DESIGN_W, FACE_H / DESIGN_H));
-
-    // Hull seeds count up per part: body, then each side's arm and foot.
-    let seed = 1;
-    const part = (geo: PartGeometry, color: Rgba, base: number, vary: number, texture: ReturnType<typeof grain.texture> | null = null) =>
-      new CrayonModel([{ geo, color: linear(color), texture, outline: { base, vary, seed: seed++, wander: 0 }, place: new Matrix4() }]);
-    const bodyGeo = taterBody(RADIUS);
-    this.measure = bodyGeo.measure();
-    // The body's colour is all in its texture.
-    this.body = r.add(part(bodyGeo, hex("#ffffff"), 0.009, 0.006, grain.texture()), this.face);
-    this.arms = [];
-    this.feet = [];
-    SIDES.forEach((_, i) => {
-      this.arms.push(r.add(part(lumpySphere(0.065, 0.075, 0.065, 16, 12, 20 + i, 0.07), LIMB, 0.008, 0.004)));
-      this.feet.push(r.add(part(lumpySphere(0.075, 0.045, 0.095, 16, 12, 30 + i, 0.07), FOOT, 0.008, 0.004)));
-    });
-    this.shadow = r.shadow();
+    this.measure = { bottom: clay.GUY_RY, top: clay.GUY_RY, armY: clay.GUY_ARM_Y, armX: clay.GUY_ARM_X, footZ: clay.GUY_FOOT_Z };
+    // He moves every frame, so he casts no shadow of his own into the map: a soft blob under him instead.
+    this.body = r.add(models.prop("guy_body"), false);
+    this.sprout = r.add(models.prop("guy_sprout"), false);
+    this.arms = SIDES.map(() => r.add(models.prop("guy_arm"), false));
+    this.feet = SIDES.map(() => r.add(models.prop("guy_foot"), false));
+    this.lantern = r.add(models.prop("lantern"), false);
+    this.rotor = r.add(models.prop("lantern_rotor"), false);
+    this.shadow = r.blob();
     this.shadowWidth = Math.max(this.measure.armX, 0.25) / RADIUS;
   }
 
@@ -215,7 +239,8 @@ export class Blob {
     this.held = !still ? "none" : pose.doing === "read" ? "book" : pose.doing === "play_guitar" ? "guitar" : "none";
     const held = this.held;
 
-    // Turn toward where he faces, the short way round. Model +Z is compass 270 (south, the camera).
+    // Turn toward where he faces, the short way round. Model +Z is compass 270 (south); the camera is
+    // [CAMERA_YAW] round from it, between south and east.
     // Standing still he turns partway toward the camera, so his face reads; less with his hands on
     // his work, more with something in his hands to show.
     let target = pose.facing + 90;
@@ -226,7 +251,7 @@ export class Blob {
         : pose.workAt !== null ? PLAY_AT_WORK
         : held !== "none" ? PLAY_HELD
         : PLAY_TO_CAMERA;
-      target += angleDiff(0, target) * play;
+      target += angleDiff(CAMERA_YAW, target) * play;
     }
     this.yaw += clamp(angleDiff(target, this.yaw), -TURN_SPEED * dt, TURN_SPEED * dt);
 
@@ -306,6 +331,9 @@ export class Blob {
     const m = this.measure;
     scale(translate(this.bodyAt.copy(root), 0, FEET + m.bottom * squash, 0), stretchXZ, squash, stretchXZ);
     this.body.set(this.bodyAt);
+    // The sprout sways on top of his head, more as he walks.
+    const sproutSway = 8 * Math.sin(time * 2.6) + (pose.moving ? 7 * Math.sin(walkPhase) : 0);
+    this.sprout.set(rotate(translate(this.sproutAt.copy(this.bodyAt), 0, m.top - 0.02, 0), Z_AXIS, sproutSway));
     const shoulder = FEET + (m.bottom + m.armY) * squash;
     const flip = pageTurn(time);
     // Held up in front of his tummy, its top tipped toward him, tipping more as he turns a page.
@@ -315,12 +343,12 @@ export class Blob {
 
     // At work, the hand nearer the camera does it, so it shows.
     const hold = this.hold;
-    const handZ = (side: number) => hold.set(side, 0, 0).transformDirection(root).z;
+    const handZ = (side: number) => { hold.set(side, 0, 0).transformDirection(root); return hold.x + hold.z; };
     const hand = work === null ? -1 : handZ(SIDES[0]) >= handZ(SIDES[1]) ? 0 : 1;
     SIDES.forEach((side, i) => {
       const step = pose.moving ? Math.sin(walkPhase + i * Math.PI) * 0.09 : 0;
       const tap = listening && side > 0 ? 0.035 * Math.max(0, Math.sin(time * BEAT)) : 0;
-      this.feet[i].set(translate(this.limbAt.copy(root), side * 0.13, 0.045 + (step > 0 ? step * 0.3 : 0) + tap, m.footZ + step));
+      this.feet[i].set(translate(this.limbAt.copy(root), side * FOOT_X, FOOT_Y + (step > 0 ? step * 0.3 : 0) + tap, m.footZ + step));
 
       // Arms: swing while walking; activity poses otherwise.
       let ax = side * (m.armX * stretchXZ + 0.015);
@@ -378,10 +406,34 @@ export class Blob {
     this.shadow.matrixWorldNeedsUpdate = true;
     // Not while he sleeps.
     this.shadow.visible = !asleep;
-    this.headTop.set(0, FEET + m.bottom + m.top + 0.2, 0).applyMatrix4(root);
+    this.headTop.set(0, FEET + m.bottom + m.top + 0.25, 0).applyMatrix4(root);
     if (asleep) this.headTop.set(pose.x, pose.standY + 0.6, pose.z);
 
-    this.face.texture.value = this.faces.get(this.expression, this.shut, this.r.frame);
+    const face = this.body.face!;
+    const map = this.textures.face(this.expression, this.shut);
+    if (face.map !== map) face.map = map;
+    this.followLantern(pose, asleep, dt, time);
+  }
+
+  /**
+   * The lantern drifts after him, bobbing, to his left on screen; at work it hangs behind him, off
+   * the piece, and over the bed it hangs lower while he sleeps. Its light goes with it.
+   */
+  private followLantern(pose: Pose, asleep: boolean, dt: number, time: number) {
+    const at = this.lanternAt;
+    const b = this.lanternBounds;
+    const work = pose.workAt !== null && !pose.moving;
+    const tx = clamp(pose.x + (work ? -this.workDir.x * 0.7 : LANTERN_X), b[0], b[2]);
+    const tz = clamp(pose.z + (work ? -this.workDir.z * 0.7 + 0.2 : LANTERN_Z), b[1], b[3]);
+    const ty = (asleep ? pose.standY + 0.95 : LANTERN_Y) + Math.sin(time * 1.7) * 0.06;
+    if (Number.isNaN(at.x)) at.set(tx, ty, tz);
+    at.x += (tx - at.x) * Math.min(1, dt * LANTERN_FOLLOW);
+    at.z += (tz - at.z) * Math.min(1, dt * LANTERN_FOLLOW);
+    at.y += (ty - at.y) * Math.min(1, dt * (LANTERN_FOLLOW + 1));
+    this.lantern.set(this.limbAt.makeTranslation(at.x, at.y, at.z));
+    this.rotorTurn = (this.rotorTurn + ROTOR * dt) % 360;
+    this.rotor.set(rotate(this.limbAt.makeTranslation(at.x, at.y + 0.075, at.z), Y_AXIS, this.rotorTurn));
+    this.r.lantern.position.copy(at);
   }
 
   /** One stroke of the pen or brush: where in it he is (0..1), which stroke it is, and whether his hand is lifted. */

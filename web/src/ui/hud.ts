@@ -1,4 +1,4 @@
-import { Vector3, type PerspectiveCamera } from "three";
+import { Vector3, type Camera } from "three";
 import type { Content, LifeState } from "../../../protocol/ts/protocol";
 import type { Layer, Panel, Triangle } from "./layer";
 import { owned, shopItems } from "./pages";
@@ -94,7 +94,7 @@ export class Hud {
     this.hint = layer.panel(13);
   }
 
-  update(input: HudInput, camera: PerspectiveCamera, f: Frame, delta: number) {
+  update(input: HudInput, camera: Camera, f: Frame, delta: number) {
     const mx = this.broadcast ? SAFE_X : MARGIN;
     const my = this.broadcast ? SAFE_Y : MARGIN;
     // The safe area's edges, in CSS pixels.
@@ -179,7 +179,7 @@ export class Hud {
   }
 
   /** What he's saying: his own words, "z z z" asleep, a finished piece's title, his newest thought, or "..." while he thinks. */
-  private drawBubble(input: HudInput, camera: PerspectiveCamera, u: number, box: Box) {
+  private drawBubble(input: HudInput, camera: Camera, u: number, box: Box) {
     const s = input.speech;
     const agent = input.life.fast.agents[0];
     const text = agent?.saying ?? (s.asleep ? "z z z" : s.announced ?? this.thought ?? (s.thinking ? "..." : null));

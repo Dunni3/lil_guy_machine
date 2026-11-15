@@ -1,22 +1,25 @@
-import type { Texture } from "three";
-import { CrayonModel, setMaxRound, type Part } from "../crayon/model";
 import exported from "../../../parts/export/parts.json";
 import type { Invented } from "../../../protocol/ts/protocol";
+import type { Part } from "../clay/geometry";
+import { ClayModel } from "../clay/renderer";
 
 /** The export's placeholder for a colour chosen as he lives (`PartExport.COLOR`). */
 const COLOR = "$color";
 
 const parts = exported as unknown as {
   constants: Record<string, number> & { PLAIN_BOOK: string; SPINES: string[]; WALL_ITEMS: string[]; WALL_KINDS: string[]; FLAT_ITEMS: string[]; FLAT_KINDS: string[]; FRAME_XS: number[] };
+  clay_constants: Record<string, number>;
   items: Record<string, Part[]>;
   kinds: Record<string, Part[]>;
   props: Record<string, Part[]>;
+  clay_items: Record<string, Part[]>;
+  clay_props: Record<string, Part[]>;
   shelf_books: { width: number; parts: Part[] }[];
   shelf_records: Part[][][];
 };
 
 export const constants = parts.constants;
-setMaxRound(constants.MAX_ROUND);
+export const clay = parts.clay_constants;
 
 /** Java's `String.hashCode`, which picks a book's or record's colour in the part lists. */
 function javaHash(s: string): number {
@@ -26,12 +29,6 @@ function javaHash(s: string): number {
 }
 
 const pick = (id: string, n: number) => ((javaHash(id) % n) + n) % n;
-
-/** [lists] as one model's parts: the seeds count up across them, as `PartList` counts them. */
-function joined(...lists: Part[][]): Part[] {
-  return lists.flat().map((p, i) => ({ ...p, seed: i + 1 }));
-}
-
 const shifted = (list: Part[], x: number) => list.map((p) => ({ ...p, x: p.x + x }));
 
 /** How far up a wall the things he invents for it hang, and the most they stand out from it. */
@@ -43,7 +40,7 @@ const INVENTED_WALL_DEPTH = 0.25;
  * is lifted up it and flattened against it, its back at z = 0 as the wall items' part lists are.
  */
 function lookParts(made: Invented): Part[] {
-  return made.look.map((p, i) => ({
+  return made.look.map((p) => ({
     shape: p.shape,
     w: p.w,
     h: p.h,
@@ -57,16 +54,17 @@ function lookParts(made: Invented): Part[] {
     color: p.color,
     texture: null,
     round: -1,
-    lump: 0.003,
-    seed: i + 1,
-    outline: 0.011,
     taper: 1,
   }));
 }
 
-/** The room's models from the exported part lists, each built into meshes once. */
+/**
+ * The room's models, each built into meshes once: an item's or prop's clay list (`ClayParts`) where
+ * it has one, else its crayon list (`RoomParts`), which draws in clay just as well, only in the
+ * crayon palette; and an invention's look, from the stream.
+ */
 export class Models {
-  private readonly cache = new Map<string, CrayonModel>();
+  private readonly cache = new Map<string, ClayModel>();
   private invented = new Map<string, Invented>();
   private inventedFrom: Invented[] | null = null;
 
@@ -82,31 +80,24 @@ export class Models {
     return this.invented.get(id)?.wall ?? false;
   }
 
-  constructor(private readonly texture: (name: string) => Texture | null) {}
-
   /** The model for item [id] (of [kind], for the fallback). */
-  item(id: string, kind: string): CrayonModel {
+  item(id: string, kind: string): ClayModel {
     const made = this.invented.get(id);
     if (made && made.look.length > 0) return this.cached(`invented/${id}`, () => lookParts(made));
-    return this.cached(`${kind}/${id}`, () => parts.items[id] ?? parts.kinds[kind] ?? parts.kinds["*"]);
+    return this.cached(`${kind}/${id}`, () => parts.clay_items[id] ?? parts.items[id] ?? parts.kinds[kind] ?? parts.kinds["*"]);
   }
 
   /** A prop by its name in the export; [color] for the ones that take one. */
-  prop(name: string, color?: string): CrayonModel {
-    return this.cached(`prop/${name}/${color ?? ""}`, () => parts.props[name].map((p) => (p.color === COLOR ? { ...p, color: color! } : p)));
-  }
-
-  /** The window's frame and curtains centred at [windowX], and the clock at [clockX], along the back wall. */
-  fixtures(windowX: number, clockX: number): CrayonModel {
-    return this.cached(`fixtures/${windowX}/${clockX}`, () =>
-      joined(shifted(parts.props.window_fixtures, windowX), shifted(parts.props.wall_clock, clockX)),
+  prop(name: string, color?: string): ClayModel {
+    return this.cached(`prop/${name}/${color ?? ""}`, () =>
+      (parts.clay_props[name] ?? parts.props[name]).map((p) => (p.color === COLOR ? { ...p, color: color! } : p)),
     );
   }
 
   /** What he owns to read and play, on the wall shelf (`RoomParts.shelf`). */
-  shelf(books: string[], records: string[]): CrayonModel {
+  shelf(books: string[], records: string[]): ClayModel {
     return this.cached(`shelf/${books.join(",")}/${records.join(",")}`, () => {
-      const lists = [parts.props.shelf_boards];
+      const lists = [parts.clay_props.shelf_boards];
       let x = constants.SHELF_START;
       for (const id of books.slice(0, constants.SHELF_BOOKS)) {
         const book = parts.shelf_books[pick(id, parts.shelf_books.length)];
@@ -114,18 +105,18 @@ export class Models {
         x += book.width + constants.SHELF_GAP;
       }
       records.slice(0, constants.SHELF_RECORDS).forEach((id, i) => lists.push(parts.shelf_records[pick(id, parts.shelf_records.length)][i]));
-      return joined(...lists);
+      return lists.flat();
     });
   }
 
   /** A painter's palette with a dab of each of [colors] round its far edge (`RoomParts.palette`). */
-  palette(colors: string[]): CrayonModel {
+  palette(colors: string[]): ClayModel {
     return this.cached(`palette/${colors.join(",")}`, () => {
       const dabs = colors.map((c, i) => {
         const a = Math.PI * (1.1 + (0.8 * i) / Math.max(1, colors.length - 1));
         return parts.props.palette_dab.map((p) => ({ ...p, color: c, x: p.x + 0.085 * Math.cos(a), z: p.z + 0.058 * Math.sin(a) }));
       });
-      return joined(parts.props.palette_board, ...dabs);
+      return [parts.props.palette_board, ...dabs].flat();
     });
   }
 
@@ -134,10 +125,10 @@ export class Models {
     return id === null ? constants.PLAIN_BOOK : constants.SPINES[pick(id, constants.SPINES.length)];
   }
 
-  private cached(key: string, list: () => Part[]): CrayonModel {
+  private cached(key: string, list: () => Part[]): ClayModel {
     let m = this.cache.get(key);
     if (!m) {
-      m = CrayonModel.of(list(), this.texture);
+      m = new ClayModel(list());
       this.cache.set(key, m);
     }
     return m;
