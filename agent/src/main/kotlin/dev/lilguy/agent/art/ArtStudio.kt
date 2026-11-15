@@ -37,7 +37,8 @@ class ArtStudio(
     /** Every finished drawing, kept or not; called from whichever coroutine finished it. */
     private val onDrawing: (Drawing) -> Unit = {},
 ) : AuthorHandler<Drawing> {
-    private var content: BedroomContent? = null
+    /** Its content is read when it's needed: it grows when he invents something. */
+    private var world: BedroomWorld? = null
     private var sink: (ArtNote) -> Unit = {}
     private val worded = mutableSetOf<Int>()
     private val drawn = CopyOnWriteArrayList<Drawing>()
@@ -64,14 +65,14 @@ class ArtStudio(
 
     /** Draws for [world]: its content says what each verb makes, and commission wordings go back to it. */
     fun connect(world: BedroomWorld) {
-        content = world.content
+        this.world = world
         sink = world::annotate
     }
 
     override suspend fun author(call: AuthorCall): Drawing {
         val op = call.op as DrawOp
         val id = call.verb.args[op.what]?.let { slot -> if (op.what == "what") call.intent.what ?: slot else call.intent.on ?: slot } ?: op.what
-        val c = content ?: error("draw: the studio isn't connected to a world")
+        val c = world?.content ?: error("draw: the studio isn't connected to a world")
         val made = c.withName(id).firstOrNull { it.canvas != null } ?: error("draw: no drawable '$id'")
         val obs = call.obs
         val subjects = Painter.Subjects.of(c.commissions)

@@ -5,13 +5,13 @@ room:
   # One string per row. '#' wall, '.' floor, '@' where he starts; other letters are slots
   # (below). A slot is empty until he owns the item that goes there.
   rows:
-    - "#l###F#g#w#o##"
-    - "ubvf......stn#"
+    - "#l##5F#g#w6o##"
+    - "ubvf.1..2.stn#"
     - "m...........p#"
     - "H.....r......#"
     - "i..........q.#"
     - "ke...........#"
-    - "ay@.....cd.x.#"
+    - "ay@3.W..cd.x4#"
     - "##############"
   # H is the mail hatch in the wall, where the shop delivers and art is sold.
   # The rest are decor: on the floor along the walls, and in the walls. Wall slots are in the back
@@ -19,9 +19,13 @@ room:
   slots:
     { b: bed, d: desk, c: chair, e: easel, s: shelf, p: plant, o: poster, r: rug, H: hatch, F: rail,
       v: lava_lamp, f: sunflowers, t: mushroom_lamp, n: beanbag, q: fishbowl, y: teddy_bear, x: cactus,
-      l: string_lights, w: window_succulents, m: moon_mobile, i: round_mirror, k: cork_board, a: rainbow, u: cloud_light, g: bunting }
+      l: string_lights, w: window_succulents, m: moon_mobile, i: round_mirror, k: cork_board, a: rainbow, u: cloud_light, g: bunting,
+      W: workbench, "1": spot_1, "2": spot_2, "3": spot_3, "4": spot_4, "5": wall_1, "6": wall_2 }
   # Slots in the wall rather than on the floor.
-  wall_slots: [poster, hatch, rail, string_lights, window_succulents, moon_mobile, round_mirror, cork_board, rainbow, cloud_light, bunting]
+  wall_slots: [poster, hatch, rail, string_lights, window_succulents, moon_mobile, round_mirror, cork_board, rainbow, cloud_light, bunting, wall_1, wall_2]
+  # Spare spots nothing in items.yaml stands in: a thing he invents to look at takes the first
+  # free one, on the floor or in a wall, and when they're full he can't build another.
+  spots: { floor: [spot_1, spot_2, spot_3, spot_4], wall: [wall_1, wall_2] }
   # The side he works a slot from when it's free: at the desk he sits on the chair, and he paints
   # from beside the easel so he isn't standing between the camera and the canvas.
   approach: { desk: W, easel: E }

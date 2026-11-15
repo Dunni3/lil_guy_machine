@@ -40,13 +40,25 @@ import kotlin.random.Random
 class BedroomWorld private constructor(
     map: TileMap,
     guy: Character,
-    val content: BedroomContent,
+    content: BedroomContent,
     val clock: GameClock,
     /** Slot name to its tile. */
     private val slotCells: Map<String, Cell>,
     /** Picks the commissions. */
     private val seed: Long,
 ) : GridWorld(map, guy) {
+    /** Everything he can own and do. It grows when he invents something ([inventions]); swapped only on the sim thread. */
+    @Volatile var content: BedroomContent = content
+        private set
+
+    /** What he has invented, oldest first; replaced rather than changed, so any thread can read it. */
+    @Volatile var inventions: List<Invention> = emptyList()
+        private set(value) {
+            field = value
+            invented = value.map { InventedView(it, it.item.slot in content.room.wallSlots) }
+        }
+    private var invented: List<InventedView> = emptyList()
+
     val ledger = Ledger(content.start.money, clock)
     val needs = Needs(content.start.needs, clock)
 
@@ -122,8 +134,10 @@ class BedroomWorld private constructor(
     private var authoredCount = 0
     private val deliveries = ConcurrentLinkedQueue<Pair<Int, AuthoredResult>>()
     /** Shopping trips' picks as they arrive ([stage]), and as staged for each trip verb until its checkout. */
-    private val staging = ConcurrentLinkedQueue<Pair<String, AuthoredResult.Basket>>()
+    private val staging = ConcurrentLinkedQueue<Pair<String, AuthoredResult>>()
     private val baskets = mutableMapOf<String, AuthoredResult.Basket>()
+    /** What he designed, staged for each building verb until it finishes. */
+    private val designs = mutableMapOf<String, AuthoredResult.Designed>()
     /** What he said on his latest trip that he's saving for, until he owns it. */
     private var savingFor: String? = null
     /** [on]: what it plays on, for the renderer's "playing" state. */
@@ -160,7 +174,7 @@ class BedroomWorld private constructor(
             val counts = owned.filter { (id, _) -> tag in item(id).names }
             val sale = saleOf(held(tag))
             val bonus = if (winner(sale.map { it.first }) != null) ", $${content.commissions!!.reward} of it for the request" else ""
-            return "$${sale.sumOf { it.second }} for the ${counts.entries.joinToString(" and ") { (id, n) -> quantity(id, n) }} you hold$bonus"
+            return "$${sale.sumOf { it.second } + counts.entries.sumOf { (id, n) -> plainPrice(id) * n }} for the ${counts.entries.joinToString(" and ") { (id, n) -> quantity(id, n) }} you hold$bonus"
         }
 
         override fun checkout(verb: String, most: Int): List<String> {
@@ -192,6 +206,56 @@ class BedroomWorld private constructor(
         override fun tripFailed(verb: String) = baskets[verb]?.failed?.let {
             baskets.remove(verb)
             "you couldn't make up your mind at the catalog, so you bought nothing"
+        }
+
+        override fun buildLock(): String? {
+            val r = content.invent ?: return "there's nothing to build with"
+            val today = clock.day(ticks)
+            if (inventions.count { clock.day(it.tick) == today } >= r.perDay) return "you've built what you can today; a new idea needs a night's sleep"
+            if (!ledger.canAfford(r.cheapest)) return "materials cost at least $${r.cheapest} and you have $${ledger.balance}"
+            return null
+        }
+
+        override fun buildFailed(verb: VerbSpec): String? {
+            val why = unbuildable(verb) ?: return null
+            designs.remove(verb.id)
+            return why
+        }
+
+        private fun unbuildable(verb: VerbSpec): String? {
+            val staged = designs[verb.id] ?: return "you couldn't settle on a design, so nothing got built"
+            val design = staged.design ?: return "you couldn't settle on a design, so nothing got built"
+            return when (val checked = content.invent!!.check(design, content, verb.minutes!!)) {
+                is InventRules.Checked.Refused -> "the ${design.name.ifBlank { "design" }} didn't work: " + checked.problems.joinToString("; ")
+                is InventRules.Checked.Ok -> checked.invention.cost.takeIf { !ledger.canAfford(it) }?.let { "the materials for the ${checked.invention.item.name} cost $$it and you have $${ledger.balance}" }
+            }
+        }
+
+        override fun build(verb: VerbSpec): List<String> {
+            val design = designs.remove(verb.id)!!.design!!
+            val made = (content.invent!!.check(design, content, verb.minutes!!) as InventRules.Checked.Ok).invention.copy(tick = ticks)
+            val spec = made.item
+            this@BedroomWorld.content = content.plus(made)
+            inventions = inventions + made
+            knownCache = null
+            ledger.debit(ticks, made.cost, "materials for the ${spec.name}")
+            add(spec.id, 1)
+            val like = spec.qualities.entries.joinToString { (q, s) -> "$q ${s.toInt()}" }
+            val comfortNote = if (comfortOf(spec) != 0) "comfort ${comfort()}, so mood settles toward ${moodTarget().toInt()}" else null
+            val newNote = newThingRate(spec).takeIf { it > 0 }?.let { newThings[spec.id] = ticks; "new: ${newThingText(it)}" }
+            return listOfNotNull(
+                "built the ${spec.name}, ${article(spec.group)} of your own design" + if (like.isEmpty()) "" else " ($like)",
+                "materials $${made.cost} (money $${ledger.balance})",
+                spec.price?.let { "the shop will send more for $$it" },
+                spec.sellPrice?.let { "it sells for $$it" },
+                comfortNote,
+                newNote,
+            )
+        }
+
+        override fun buildText(): String {
+            val r = content.invent ?: return "design and build a new thing"
+            return "design a new thing of your own and build it: ${r.uses.keys.joinToString(" or ") { useNoun(it) }}; materials from $${r.cheapest}"
         }
 
         override fun hangLock(tag: String): String? {
@@ -503,7 +567,7 @@ class BedroomWorld private constructor(
 
     /** What his food is: what the verbs that feed him use up ("edible"). */
     private val foodTags: List<String>
-        get() = content.verbs.filter { (it.needEffects[Need.Fullness.id] ?: 0.0) > 0 }.flatMap { v -> v.ops<ConsumeOp>().flatMap { it.items.keys } }.distinct()
+        get() = content.verbs.filter { (it.needEffects[Need.Fullness.id] ?: 0.0) > 0 }.flatMap { v -> v.ops<ConsumeOp>().flatMap { op -> op.items.keys.map { v.args[it] ?: it } } }.distinct()
 
     /** [a]'s daytime changes, when it has some and it isn't night now. */
     private fun byDay(a: VerbSpec): VerbSpec.ByDay? = a.byDay?.takeIf { content.night?.covers(clock.minuteOfDay(ticks)) == false }
@@ -659,7 +723,7 @@ class BedroomWorld private constructor(
         val sale = saleOf(held(tag))
         val sold = take(tag, countTag(tag))
         sale.forEach { (p, _) -> p.state = PieceState.Sold }
-        val total = sale.sumOf { it.second }
+        val total = sale.sumOf { it.second } + sold.entries.sumOf { (id, n) -> plainPrice(id) * n }
         val what = sold.entries.joinToString(" and ") { (id, n) -> quantity(id, n) }
         val winner = winner(sale.map { it.first })
         val bonus = winner?.let {
@@ -669,6 +733,19 @@ class BedroomWorld private constructor(
         }.orEmpty()
         if (total > 0) ledger.credit(ticks, total, "sold $what" + if (winner != null) " (one for a commission)" else "")
         return "sold $what for $$total$bonus (money $${ledger.balance})"
+    }
+
+    /** What one [id] sells for when it's a plain thing he owns and not a piece of art, which is priced as a piece; 0 otherwise. */
+    private fun plainPrice(id: String): Int = item(id).takeIf { !it.carried }?.sellPrice ?: 0
+
+    /** "a thing to look at", for an affordance he can build for. */
+    private fun useNoun(use: String): String = when (use) {
+        "viewable" -> "something to look at in your room"
+        "playable" -> "a record to play"
+        "readable" -> "a book to read"
+        "edible" -> "something to eat"
+        "sellable" -> "something to sell"
+        else -> "something $use"
     }
 
     /** Hangs his newest held piece with [tag] on the wall. */
@@ -704,13 +781,17 @@ class BedroomWorld private constructor(
      * is replaced by the next trip's.
      */
     fun stage(verb: String, result: AuthoredResult) {
-        if (result is AuthoredResult.Basket) staging.add(verb to result)
+        if (result is AuthoredResult.Basket || result is AuthoredResult.Designed) staging.add(verb to result)
     }
 
     private fun applyNotes() {
         while (true) {
-            val (verb, basket) = staging.poll() ?: break
-            baskets[verb] = basket
+            val (verb, staged) = staging.poll() ?: break
+            when (staged) {
+                is AuthoredResult.Basket -> baskets[verb] = staged
+                is AuthoredResult.Designed -> designs[verb] = staged
+                else -> {}
+            }
         }
         while (true) {
             when (val note = notes.poll() ?: break) {
@@ -886,7 +967,7 @@ class BedroomWorld private constructor(
      * agent side's to say (with no handler for an op, none ever is).
      */
     val canExport: Boolean
-        get() = atRest && doing == null && notes.isEmpty() && deliveries.isEmpty() && staging.isEmpty() && baskets.isEmpty()
+        get() = atRest && doing == null && notes.isEmpty() && deliveries.isEmpty() && staging.isEmpty() && baskets.isEmpty() && designs.isEmpty()
 
     /** Everything a [restore] needs to carry on from here. Only when [canExport]; call on the sim thread. */
     fun exportState(): BedroomState {
@@ -911,12 +992,18 @@ class BedroomWorld private constructor(
             commissions = commissions,
             authored = authored.toList(),
             authoredCount = authoredCount,
+            inventions = inventions,
         )
     }
 
     /** Overwrites this fresh world with [s]; returns what it had to drop because the content no longer has it. */
     private fun load(s: BedroomState): List<String> {
         val dropped = mutableListOf<String>()
+        s.inventions.forEach { made ->
+            runCatching { content = content.plus(made) }
+                .onSuccess { inventions = inventions + made }
+                .onFailure { dropped += "invention '${made.item.id}' no longer fits the content: ${it.message}" }
+        }
         fun has(id: String, what: String) = (content.item(id) != null).also { if (!it) dropped += "$what '$id' is no longer in the content" }
         owned.clear()
         pieces.clear()
@@ -1115,6 +1202,7 @@ class BedroomWorld private constructor(
             commission = commissionView(),
             art = artViews(),
             catalog = current.catalog,
+            inventions = invented,
             verbs = current.verbs,
             done = done,
         )
@@ -1242,10 +1330,11 @@ class BedroomWorld private constructor(
 
     /** "@ you, # wall, . floor, b bed, ..." */
     val mapLegend: String
-        get() = "@ you, # wall, . floor, " + content.room.slots.entries.joinToString { (letter, slot) ->
+        get() = "@ you, # wall, . floor, " + content.room.slots.entries.mapNotNull { (letter, slot) ->
             val spec = content.items.firstOrNull { it.slot == slot }
-            "$letter ${spec?.name ?: slot}"
-        } + " (furniture shows only once you own it)"
+            // A spare spot is nothing until something he invented stands in it.
+            if (spec == null && slot in content.room.spots.let { it.floor + it.wall }) null else "$letter ${spec?.name ?: slot}"
+        }.joinToString() + " (furniture shows only once you own it)"
 
     companion object {
         private const val SNAPSHOT_TRANSACTIONS = 8

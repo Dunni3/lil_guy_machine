@@ -166,17 +166,18 @@ class OpenAiCompatBackend(
     private fun <A> textInstructions(schema: ActionSchema<A>) =
         "\n\nReply with one JSON object and nothing else (no code fences), matching this JSON schema:\n${schema.jsonSchema}"
 
-    private fun usageOf(response: JsonObject): Usage {
-        val usage = response["usage"] as? JsonObject ?: return Usage()
-        return Usage(
-            promptTokens = (usage["prompt_tokens"] as? JsonPrimitive)?.intOrNull ?: 0,
-            completionTokens = (usage["completion_tokens"] as? JsonPrimitive)?.intOrNull ?: 0,
-        )
-    }
-
     override fun close() = http.close()
 
     companion object {
+        /** The call's usage; Gemini leaves its thinking out of completion_tokens but bills it as output, and total_tokens has it. */
+        internal fun usageOf(response: JsonObject): Usage {
+            val usage = response["usage"] as? JsonObject ?: return Usage()
+            val prompt = (usage["prompt_tokens"] as? JsonPrimitive)?.intOrNull ?: 0
+            val completion = (usage["completion_tokens"] as? JsonPrimitive)?.intOrNull ?: 0
+            val total = (usage["total_tokens"] as? JsonPrimitive)?.intOrNull ?: 0
+            return Usage(promptTokens = prompt, completionTokens = maxOf(completion, total - prompt))
+        }
+
         private fun message(role: String, content: String): JsonObject = buildJsonObject {
             put("role", role)
             put("content", content)

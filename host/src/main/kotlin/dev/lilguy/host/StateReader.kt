@@ -16,6 +16,8 @@ import dev.lilguy.protocol.AnswerView
 import dev.lilguy.protocol.BookView
 import dev.lilguy.protocol.CatalogItem
 import dev.lilguy.protocol.CatalogState
+import dev.lilguy.protocol.Invented
+import dev.lilguy.protocol.LookShape
 import dev.lilguy.protocol.CellView
 import dev.lilguy.protocol.Clock
 import dev.lilguy.protocol.CommissionView
@@ -125,6 +127,14 @@ class StateReader(private val dbEvery: Duration = 1.seconds) {
                 ShopState(
                     l.catalog.map { CatalogState(it.id, it.owned, it.affordable, it.gives, it.taughtBy) },
                     l.verbs.map { VerbState(it.id, it.locked, it.gives, it.taughtBy) },
+                    l.inventions.map { v ->
+                        val made = v.invention
+                        Invented(
+                            made.item.id, made.item.name, made.item.group, made.item.affords.keys.first(), made.item.qualities.mapValues { it.value.toInt() },
+                            made.item.price, v.wall, made.cost, made.why,
+                            made.look.map { p -> LookShape(p.shape, p.w.toFloat(), p.h.toFloat(), p.d.toFloat(), p.x.toFloat(), p.y.toFloat(), p.z.toFloat(), p.rotX.toFloat(), p.rotY.toFloat(), p.rotZ.toFloat(), p.color) },
+                        )
+                    },
                 )
             } ?: ShopState(emptyList(), emptyList()),
             mind = Mind(s.memory.plan?.let { thought(it.tick, it) }, selfText, selfModel, s.memory.summarizing),

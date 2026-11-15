@@ -56,6 +56,8 @@ data class BedroomContent(
     val night: NightRules? = null,
     /** How his options are grouped for a picking model to walk down; empty for one flat list. */
     val menu: List<MenuNode> = emptyList(),
+    /** What he may invent at the workbench and what it costs; null and he can't. */
+    val invent: InventRules? = null,
 ) {
     @Transient private val byId = items.associateBy { it.id }
 
@@ -90,6 +92,10 @@ data class BedroomContent(
     /** The same content with [p] as his personality, checked again. */
     fun withPersonality(p: Personality): BedroomContent = copy(personality = p).also { it.validate() }
 
+    /** The content with [invention] in it: its item, and its book when it is one. Checked like any content. */
+    fun plus(invention: Invention): BedroomContent =
+        copy(items = items + invention.item, books = books + listOfNotNull(invention.book)).also { it.validate() }
+
     /** Ids of everything above tier 0: what can be granted. */
     val gated: Set<String> get() = (items.filter { it.tier > 0 }.map { it.id } + verbs.filter { it.tier > 0 }.map { it.id }).toSet()
 
@@ -115,7 +121,7 @@ data class BedroomContent(
         /** The content's files, each with the top-level keys it holds. */
         val FILES: Map<String, List<String>> = linkedMapOf(
             "room" to listOf("room", "start"),
-            "rules" to listOf("needs", "night", "habituation", "novelty", "frustration", "skills", "shop", "reflection", "commissions", "gallery", "quality_value"),
+            "rules" to listOf("needs", "night", "habituation", "novelty", "frustration", "skills", "shop", "reflection", "commissions", "gallery", "quality_value", "invent"),
             "vocabulary" to listOf("vocabulary"),
             "personality" to listOf("personality"),
             "items" to listOf("items"),
@@ -259,6 +265,13 @@ data class BedroomContent(
         }
         GameClock.parseHhmm(start.time)
         require(room.approach.keys.all { it in room.slots.values }) { "room.approach names a slot that isn't in room.slots" }
+        (room.spots.floor + room.spots.wall).let { spots ->
+            require(spots.all { it in slots } && spots.size == spots.toSet().size) { "room.spots names a slot twice or one that isn't in room.slots" }
+            require(room.spots.wall.all { it in room.wallSlots } && room.spots.floor.none { it in room.wallSlots }) { "room.spots: wall spots must be in wall_slots and floor spots not" }
+        }
+        val slotted = items.mapNotNull { it.slot }
+        require(slotted.size == slotted.toSet().size) { "two items can't share a slot: ${slotted.groupBy { it }.filterValues { it.size > 1 }.keys}" }
+        invent?.problems(this)?.takeIf { it.isNotEmpty() }?.let { throw IllegalArgumentException(it.joinToString("; ")) }
     }
 }
 
@@ -270,7 +283,12 @@ data class RoomContent(
     @SerialName("wall_slots") val wallSlots: List<String> = emptyList(),
     /** Slot name to the side he works it from (N, E, SE, ...), when that tile is free; else the nearest side. */
     val approach: Map<String, Direction> = emptyMap(),
-)
+    /** Spare slots no shipped item stands in: where the things he invents go ([InventRules.freeSpots]). */
+    val spots: Spots = Spots(),
+) {
+    @Serializable
+    data class Spots(val floor: List<String> = emptyList(), val wall: List<String> = emptyList())
+}
 
 @Serializable
 data class StartState(

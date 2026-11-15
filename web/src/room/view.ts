@@ -1,4 +1,4 @@
-import { Matrix4, MeshStandardMaterial, Vector3, type Mesh } from "three";
+import { Box3, Matrix4, MeshStandardMaterial, Vector3, type Mesh, type Ray } from "three";
 import type { Content, Entity, LifeState } from "../../../protocol/ts/protocol";
 import { ClayModel, type ClayRenderer, type Glow, type Placed } from "../clay/renderer";
 import type { ClayTextures } from "../clay/textures";
@@ -165,6 +165,30 @@ export class RoomView {
     speech.announced = this.art.announced;
   }
 
+  /**
+   * The thing [ray] meets first, by the boxes its models take up where they stand, and the middle of
+   * that box's top (for a label to point at); null if it meets none. The guy and the shelf aren't things.
+   */
+  pick(ray: Ray): { id: string; top: Vector3 } | null {
+    let best: { id: string; top: Vector3 } | null = null;
+    let nearest = Infinity;
+    const box = new Box3();
+    const hit = new Vector3();
+    for (const [id, t] of this.things) {
+      const b = t.placed.model.bounds;
+      box.min.set(b[0], b[1], b[2]);
+      box.max.set(b[3], b[4], b[5]);
+      if (box.isEmpty()) continue;
+      box.applyMatrix4(t.at);
+      if (!ray.intersectBox(box, hit)) continue;
+      const d = hit.distanceTo(ray.origin);
+      if (d >= nearest) continue;
+      nearest = d;
+      best = { id, top: new Vector3((box.min.x + box.max.x) / 2, box.max.y, (box.min.z + box.max.z) / 2) };
+    }
+    return best;
+  }
+
   /** Builds the room (once per map) and frames it for the camera. */
   private frame(content: Content) {
     const rows = content.map.rows.join("\n");
@@ -217,6 +241,7 @@ export class RoomView {
 
   /** Things go at their tile; wall items against the wall face that looks into the room. Runs when [state]'s things change. */
   private syncThings(state: LifeState) {
+    this.models.inventions(state.shop.inventions ?? []);
     if (state.things === this.thingsFrom) return;
     this.thingsFrom = state.things;
     const seen = new Set<string>();
@@ -245,7 +270,7 @@ export class RoomView {
     const at = new Matrix4();
     const tx = Math.trunc(e.x);
     const ty = Math.trunc(e.y);
-    if (map.at(tx, ty) === "#" && wallItem(e.id, e.kind)) {
+    if (map.at(tx, ty) === "#" && (wallItem(e.id, e.kind) || this.models.onWall(e.id))) {
       const [dx, dy] = INWARD.find(([ix, iy]) => map.at(tx + ix, ty + iy) === ".") ?? [0, 1];
       const yaw = dx === 1 ? 90 : dx === -1 ? -90 : dy === -1 ? 180 : 0;
       const out = 0.5 + WALL_FACE;
@@ -259,7 +284,10 @@ export class RoomView {
     if (state.shop === this.shelfFrom) return;
     this.shelfFrom = state.shop;
     const group = new Map(content.catalog.map((c) => [c.id, c.group]));
-    const owned = state.shop.catalog.filter((c) => c.owned > 0);
+    // What he invented isn't in the catalogue unless the shop restocks it; what he has of it is in his wallet.
+    const made = (state.shop.inventions ?? []).filter((i) => (state.wallet.owns[i.id] ?? 0) > 0 && !state.shop.catalog.some((c) => c.id === i.id));
+    for (const i of made) group.set(i.id, i.group);
+    const owned = [...state.shop.catalog.filter((c) => c.owned > 0), ...made];
     const books = owned.filter((c) => group.get(c.id) === "book").map((c) => c.id);
     const records = owned.filter((c) => group.get(c.id) === "record").map((c) => c.id);
     const key = `${books.join(",")}/${records.join(",")}`;

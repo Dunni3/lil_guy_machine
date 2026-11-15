@@ -125,6 +125,9 @@ data class ActivityOption(
 @Serializable
 data class ShopOption(val id: String, val price: Int, val affordable: Boolean, val gives: String)
 
+/** An [invention] for screens. [wall]: it hangs in a wall rather than standing on the floor. */
+data class InventedView(val invention: Invention, val wall: Boolean)
+
 /**
  * One item the shop sells, for screens rather than models: everything priced, owned or not, with
  * [gives] in the shop's words. [taughtBy] names the book that teaches it while he doesn't know it
@@ -240,6 +243,8 @@ data class LifeSnapshot(
     val art: List<PieceView> = emptyList(),
     /** Everything the shop sells, in file order, including what a book has yet to teach. */
     val catalog: List<CatalogEntry> = emptyList(),
+    /** What he has invented, oldest first: the things a renderer has no model or name for but these. */
+    val inventions: List<InventedView> = emptyList(),
     /** Every verb in the content, in file order. */
     val verbs: List<VerbView> = emptyList(),
     /** Verb id to how often he has finished it this run. */

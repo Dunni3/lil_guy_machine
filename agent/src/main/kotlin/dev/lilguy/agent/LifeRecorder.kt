@@ -13,7 +13,9 @@ import dev.lilguy.runlog.ArtPieceRow
 import dev.lilguy.runlog.AuthoredRow
 import dev.lilguy.runlog.Blobs
 import dev.lilguy.runlog.CheckpointRow
+import dev.lilguy.agent.invent.Drafted
 import dev.lilguy.runlog.ContentVersionRow
+import dev.lilguy.sim.Design
 import dev.lilguy.runlog.DecisionRow
 import dev.lilguy.runlog.HourlyRow
 import dev.lilguy.runlog.Ids
@@ -243,6 +245,15 @@ class LifeRecorder(val recorder: RunRecorder, private val autosaveMinutes: Int =
             put("fell_back", t.fellBack)
         },
         error = t.error,
+    )
+
+    fun invention(d: Drafted) = authored(
+        d.tick, "invention", null, kept = d.design != null, writer = d.inventor,
+        result = buildJsonObject {
+            d.design?.let { put("design", RowJson.encodeToJsonElement(Design.serializer(), it)) }
+            putJsonArray("redid") { d.redid.forEach { add(JsonPrimitive(it)) } }
+        },
+        error = d.error,
     )
 
     /** A finished drawing: an authored row, and the piece itself when it was kept. */

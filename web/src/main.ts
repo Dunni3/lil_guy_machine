@@ -1,3 +1,4 @@
+import { Raycaster, Vector2 } from "three";
 import type { LifeState, Settings } from "../../protocol/ts/protocol";
 import { ClayRenderer } from "./clay/renderer";
 import { ClayTextures } from "./clay/textures";
@@ -8,6 +9,7 @@ import { Track } from "./stream/track";
 import { Admin, SignIn } from "./ui/admin";
 import { Hud } from "./ui/hud";
 import { pressOf } from "./ui/keys";
+import { ThingLabel } from "./ui/label";
 import { Layer } from "./ui/layer";
 import { Menu, type Act, type Spot } from "./ui/menu";
 import { MenuCard } from "./ui/menuCard";
@@ -61,6 +63,7 @@ const signIn = new SignIn(admin);
 const menu = new Menu();
 const hud = new Hud(layer, settings.broadcast);
 const card = new MenuCard(layer);
+const label = new ThingLabel(layer);
 
 /** The settings the admin last asked for, shown until the host's match (or the ask fails). */
 let requested: Settings | null = null;
@@ -138,7 +141,20 @@ const pointer = {
   over: "",
   /** The rest of a multi-click that opened or closed the menu, sent a command or asked to confirm is ignored: confirming takes a click of its own. */
   guard: false,
+  /** Where the mouse rests over the room, in CSS pixels from the canvas's top-left, for the things' labels; null off the canvas or for a finger. */
+  mouse: null as { x: number; y: number } | null,
 };
+const raycaster = new Raycaster();
+const ndc = new Vector2();
+
+/** What the mouse is over in the room this frame (the camera may have moved under it), for [ThingLabel]. */
+function hovered() {
+  const m = pointer.mouse;
+  if (!m || !view || menu.open || signIn.open) return null;
+  ndc.set((m.x / layer.width) * 2 - 1, 1 - (m.y / layer.height) * 2);
+  raycaster.setFromCamera(ndc, renderer.camera);
+  return view.pick(raycaster.ray);
+}
 
 function pointerView(): PageView | null {
   const life = stream.state.life;
@@ -211,6 +227,8 @@ if (!settings.broadcast) {
       card.mouse = true;
       pressed = true;
     }
+    const r = canvas.getBoundingClientRect();
+    pointer.mouse = e.pointerType === "mouse" ? { x: e.clientX - r.left, y: e.clientY - r.top } : null;
     const v = pointerView();
     const down = pointer.down;
     if (down && e.buttons && v && menu.open) {
@@ -226,7 +244,10 @@ if (!settings.broadcast) {
     pointer.down = null;
     if (e.pointerType !== "mouse") setHover(null, null);
   });
-  canvas.addEventListener("pointerleave", () => setHover(null, null));
+  canvas.addEventListener("pointerleave", () => {
+    pointer.mouse = null;
+    setHover(null, null);
+  });
 
   canvas.addEventListener("wheel", (e) => {
     const v = pointerView();
@@ -282,6 +303,7 @@ function draw() {
       life, content, speech: view.speech, making: view.making, banner: banner(life, open), hint: hint(open), menuOpen: open,
     }, renderer.camera, f, delta);
     if (!open && card.hover) setHover(null, null);
+    label.update(open ? null : hovered(), life, content, renderer.camera, f.u, delta);
     card.update(menu, v, f, pressed, delta);
     pressed = false;
     renderer.overlay(layer.scene, layer.camera);
@@ -325,7 +347,7 @@ function describe(): string {
 }
 
 // What a person or a headless browser checking the page can read from the console.
-(window as unknown as { lilguy: unknown }).lilguy = { stream, track, renderer, stats, menu, card, admin, hud, settings, draw, get view() { return view; } };
+(window as unknown as { lilguy: unknown }).lilguy = { stream, track, renderer, stats, menu, card, admin, hud, label, settings, draw, get view() { return view; } };
 
 stream.start();
 requestAnimationFrame(frame);

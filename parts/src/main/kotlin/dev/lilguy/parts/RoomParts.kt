@@ -218,6 +218,16 @@ object RoomParts {
                 capsule(HEADBOARD, -0.5f, 0.68f, -0.47f, 0.11f, 1.0f, 0.1f, rotZ = -90f, lump = 0.006f)
                 for (k in listOf(-0.25f, 0f, 0.25f)) box(HEADBOARD_SEAM, k, 0.36f, -0.42f, 0.012f, 0.36f, 0.004f, round = 0.002f, outline = 0f, lump = 0f)
             }
+            // Where he invents: a stout bench with a shelf underneath, a vice at one end and a mallet left on top.
+            "workbench" -> {
+                for (sx in listOf(-0.4f, 0.4f)) for (sz in listOf(-0.2f, 0.2f)) box(WOOD_DARK, sx, 0f, sz, 0.07f, 0.56f, 0.07f, round = 0.015f)
+                box(WOOD_LIGHT, 0f, 0.14f, 0f, 0.8f, 0.03f, 0.4f, round = 0.012f)
+                box(WOOD, 0f, 0.56f, 0f, 0.96f, 0.07f, 0.54f, round = 0.02f)
+                box(FRAME_DARK, -0.4f, 0.63f, 0.2f, 0.12f, 0.09f, 0.1f, round = 0.015f)
+                capsule(FRAME_DARK, -0.46f, 0.675f, 0.27f, 0.02f, 0.12f, 0.02f, rotZ = -90f, outline = 0.005f)
+                box(WOOD_DARK, 0.2f, 0.63f, -0.04f, 0.1f, 0.07f, 0.07f, rotY = 25f, round = 0.015f)
+                capsule(WOOD_LIGHT, 0.24f, 0.66f, -0.02f, 0.025f, 0.2f, 0.025f, rotX = 90f, outline = 0.005f)
+            }
             "desk" -> {
                 for (sx in listOf(-0.42f, 0.42f)) for (sz in listOf(-0.24f, 0.24f)) box(FRAME_DARK, sx, 0f, sz, 0.04f, 0.5f, 0.04f, round = 0.015f)
                 box(WOOD, 0f, 0.5f, 0f, 0.98f, 0.05f, 0.62f, round = 0.025f)
@@ -401,7 +411,7 @@ object RoomParts {
     val SHELF_START = -SHELF_WIDTH / 2 + 0.06f
     const val SHELF_GAP = 0.006f
     /** Item ids nothing but an id-keyed model matches, for the export. */
-    val ITEM_IDS = listOf("bed", "desk", "chair", "easel", "record_player", "plant", "rug", "mail_hatch", "picture_rail", "poster")
+    val ITEM_IDS = listOf("bed", "desk", "workbench", "chair", "easel", "record_player", "plant", "rug", "mail_hatch", "picture_rail", "poster")
     /** Kinds with a model of their own when the id has none. */
     val KINDS = listOf("door", "fixture", "key", "apple", "book", "exit")
     val WALL_KINDS = setOf("door")
