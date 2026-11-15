@@ -113,7 +113,7 @@ class Inventor(private val model: DecisionModel, private val timeout: Duration =
             DesignReply.serializer(),
             SchemaHints(
                 descriptions = mapOf(
-                    "design_reply.name" to "What it's called, a few plain words, lower case: \"moss lamp\".",
+                    "design_reply.name" to "What it's called, a few plain words, lower case: \"pebble lamp\".",
                     "design_reply.use" to "The one thing it's for.",
                     "design_reply.qualities" to "What it's like to you: up to ${rules.qualities.most} qualities, each once.",
                     "design_reply.place" to "Only for a viewable thing: floor or wall. Null otherwise.",
@@ -387,7 +387,7 @@ class CannedInventor(private val designs: List<Design> = DESIGNS) : Inventing {
     companion object {
         val DESIGNS = listOf(
             Design(
-                name = "moss lamp", use = "viewable", qualities = mapOf("calm" to 2.0, "natural" to 2.0), place = InventRules.FLOOR,
+                name = "pebble lamp", use = "viewable", qualities = mapOf("calm" to 2.0, "natural" to 2.0), place = InventRules.FLOOR,
                 look = listOf(
                     LookPart("cylinder", 0.34, 0.1, 0.34, color = "#8a6a4a"),
                     LookPart("cylinder", 0.06, 0.5, 0.06, y = 0.1, color = "#6b5238"),

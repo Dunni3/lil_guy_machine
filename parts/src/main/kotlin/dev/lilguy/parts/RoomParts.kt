@@ -21,7 +21,7 @@ object RoomParts {
     fun item(id: String, kind: String): List<Part> = parts { buildItem(id, kind) }
 
     /** Items that hang in a wall rather than stand on the floor: their back is at z = 0. */
-    fun wallItem(id: String, kind: String): Boolean = id in WALL_ITEMS || id in DecorParts.ON_WALL || kind in WALL_KINDS
+    fun wallItem(id: String, kind: String): Boolean = id in WALL_ITEMS || id in DecorParts.ON_WALL || id in InventedParts.ON_WALL || kind in WALL_KINDS
 
     /** Items that lie flat and cast no shadow of their own. */
     fun flat(id: String, kind: String): Boolean = id in FLAT_ITEMS || kind in FLAT_KINDS
@@ -290,7 +290,7 @@ object RoomParts {
                 box("#ffffff", 0f, 0.95f, 0.01f, 0.62f, 0.82f, 0.02f, round = 0.006f, texture = "poster", lump = 0f)
                 sphere(CURTAIN, 0f, 1.71f, 0.03f, 0.05f, 0.05f, 0.03f)
             }
-            else -> if (!with(DecorParts) { decor(id) }) when (kind) {
+            else -> if (!with(DecorParts) { decor(id) } && !with(InventedParts) { invented(id) }) when (kind) {
                 "door", "fixture" -> {
                     box(TRIM, 0f, 0f, 0.02f, 0.94f, 1.68f, 0.05f, round = 0.02f)
                     box(DOOR, 0f, 0f, 0.05f, 0.8f, 1.6f, 0.05f, round = 0.02f)

@@ -65,13 +65,13 @@ object PartExport {
             "FRAME_XS" to JsonArray(r.FRAME_XS.map(::n)),
             "SHELF_START" to n(r.SHELF_START), "SHELF_GAP" to n(r.SHELF_GAP), "SHELF_BOOKS" to JsonPrimitive(r.SHELF_BOOKS), "SHELF_RECORDS" to JsonPrimitive(r.SHELF_RECORDS),
             "MAX_ROUND" to n(Part.MAX_ROUND), "PLAIN_BOOK" to JsonPrimitive(r.BOOK),
-            "SPINES" to strings(r.SPINES), "WALL_ITEMS" to strings(r.WALL_ITEMS + DecorParts.ON_WALL), "WALL_KINDS" to strings(r.WALL_KINDS),
+            "SPINES" to strings(r.SPINES), "WALL_ITEMS" to strings(r.WALL_ITEMS + DecorParts.ON_WALL + InventedParts.ON_WALL), "WALL_KINDS" to strings(r.WALL_KINDS),
             "FLAT_ITEMS" to strings(r.FLAT_ITEMS), "FLAT_KINDS" to strings(r.FLAT_KINDS),
         )
         return buildString {
             append("{\n")
             append("\"constants\": ").append(JsonObject(constants)).append(",\n")
-            models("items", (r.ITEM_IDS + DecorParts.IDS).associateWith { r.item(it, "") })
+            models("items", (r.ITEM_IDS + DecorParts.IDS + InventedParts.IDS).associateWith { r.item(it, "") })
             append(",\n")
             // "*" is what an unknown id of an unknown kind gets.
             models("kinds", (r.KINDS + "*").associateWith { r.item("", it) })

@@ -9,7 +9,7 @@ class InventionTest {
     private val content = BedroomContent.default().let { it.copy(start = it.start.copy(money = 100, items = it.start.items + ("workbench" to 1))) }
     private val rules = content.invent!!
     private val lamp = Design(
-        name = "moss lamp",
+        name = "pebble lamp",
         use = "viewable",
         qualities = mapOf("calm" to 2.0, "natural" to 1.0),
         place = "floor",
@@ -34,21 +34,21 @@ class InventionTest {
         assertIs<IntentStatus.Succeeded>(w.finish(Intent.Do("invent")))
 
         val made = w.inventions.single()
-        assertEquals("moss_lamp", made.item.id)
+        assertEquals("pebble_lamp", made.item.id)
         assertEquals("spot_1", made.item.slot)
         assertEquals(4 + 5 * 3, made.cost)
         assertEquals(100 - 19, w.ledger.balance)
-        assertEquals(1, w.count("moss_lamp"))
-        assertTrue(w.snapshot().entities.any { it.id.value == "moss_lamp" }, "it stands in the room")
+        assertEquals(1, w.count("pebble_lamp"))
+        assertTrue(w.snapshot().entities.any { it.id.value == "pebble_lamp" }, "it stands in the room")
         val outcome = w.observe(w.agentId).recentEvents.joinToString("\n")
-        assertTrue("built the moss lamp" in outcome && "comfort 3" in outcome, outcome)
+        assertTrue("built the pebble lamp" in outcome && "comfort 3" in outcome, outcome)
         assertEquals("you've built what you can today; a new idea needs a night's sleep", w.observe(w.agentId).activities!!.first { it.id == "invent" }.locked)
 
         w.finish(Intent.Wait(1))
         val restored = BedroomWorld.restore(w.exportState(), content, strict = true).world
         assertEquals(made, restored.inventions.single())
-        assertEquals(1, restored.count("moss_lamp"))
-        assertEquals("spot_1", restored.content.item("moss_lamp")!!.slot)
+        assertEquals(1, restored.count("pebble_lamp"))
+        assertEquals("spot_1", restored.content.item("pebble_lamp")!!.slot)
     }
 
     @Test
@@ -59,9 +59,9 @@ class InventionTest {
         assertIs<IntentStatus.Succeeded>(w.finish(Intent.Do("invent")))
         w.stage("invent", AuthoredResult.Designed(lamp.copy(name = "clay bird", qualities = mapOf("calm" to 1.0))))
         assertIs<IntentStatus.Succeeded>(w.finish(Intent.Do("invent")))
-        assertEquals(listOf("moss_lamp", "clay_bird"), w.inventions.map { it.item.id })
+        assertEquals(listOf("pebble_lamp", "clay_bird"), w.inventions.map { it.item.id })
         assertEquals(listOf("spot_1", "spot_2"), w.inventions.map { it.item.slot })
-        assertEquals(1, w.count("moss_lamp"))
+        assertEquals(1, w.count("pebble_lamp"))
     }
 
     @Test

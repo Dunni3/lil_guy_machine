@@ -192,7 +192,7 @@ class Workbench(
         /** What `build`'s fields mean and may be. */
         private fun buildHints(rules: InventRules, content: BedroomContent) = SchemaHints(
             descriptions = mapOf(
-                "build_args.name" to "What it's called, a few plain words, lower case: \"moss lamp\".",
+                "build_args.name" to "What it's called, a few plain words, lower case: \"pebble lamp\".",
                 "build_args.use" to "The one thing it's for.",
                 "build_args.qualities" to "What it's like to you: up to ${rules.qualities.most} qualities, each once.",
                 "build_args.place" to "Only for a viewable thing: floor or wall. Null otherwise.",

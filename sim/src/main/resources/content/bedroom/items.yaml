@@ -83,6 +83,42 @@ items:
   - { id: beanbag, name: beanbag, group: decor, slot: beanbag, blocks: true, price: 40, affords: { viewable: {} }, qualities: { soft: 3, cozy: 2 } }
   - { id: fishbowl, name: fishbowl, group: decor, slot: fishbowl, blocks: true, price: 32, affords: { viewable: {} }, qualities: { calm: 2, natural: 1, lively: 1 } }
   - { id: cactus, name: cactus, group: decor, slot: cactus, blocks: true, price: 12, affords: { viewable: {} }, qualities: { natural: 2, strange: 1 } }
+  # What he invented at the workbench in live runs, now in the shop: each priced at what its materials
+  # cost him, with his look (parts/.../InventedParts.kt) and, above each, why he made it. Food is used up.
+  # He invented this (run 01a1e006): "I wanted a glowing piece of the forest to bring calm nature into my bedroom workshop."
+  - { id: moss_terrarium, name: moss terrarium, group: decor, slot: moss_terrarium, blocks: true, price: 34, affords: { viewable: {} }, qualities: { natural: 3, cozy: 2, calm: 1 } }
+  # He invented this (run 01a1de0f): "I want to invent a cozy ceramic mug for warm drinks to enjoy during quiet mornings in my room while I save up for a record player."
+  - { id: ceramic_mug, name: ceramic mug, group: food, affords: { edible: {} }, qualities: { cozy: 2, warm: 2 }, price: 16, stackable: true }
+  # He invented this (run 01a1de0f): "I wanted to craft a cozy, warm ceramic teacup to enjoy warm drinks while working on my art and reading."
+  - { id: ceramic_teacup, name: ceramic teacup, group: food, affords: { edible: {} }, qualities: { cozy: 3, warm: 2, pretty: 1 }, price: 20, stackable: true }
+  # He invented this (run 01a1de0f): "I want to add a cozy, natural wooden stool to make my living space feel warmer and more complete."
+  - { id: tiny_wooden_stool, name: tiny wooden stool, group: decor, slot: tiny_wooden_stool, blocks: true, price: 19, affords: { viewable: {} }, qualities: { natural: 2, warm: 1 } }
+  # He invented this (run 01a1de0f): "I want to add a natural, cozy wooden ornament to my room to match my plants and make my space feel warmer."
+  - { id: pinecone_ornament, name: pinecone ornament, group: decor, slot: pinecone_ornament, blocks: true, price: 24, affords: { viewable: {} }, qualities: { natural: 2, cozy: 2 } }
+  # He invented this (run 01a1de0f): "I wanted a warm, cozy cup of herbal tea to keep my fullness and comfort up during long painting sessions."
+  - { id: cozy_teapot, name: cozy teapot, group: food, affords: { edible: {} }, qualities: { cozy: 3, warm: 2, calm: 1 }, price: 20, stackable: true }
+  # He invented this (run 01a1de0f): "I'll craft a honeyed ceramic teacup to enjoy warm, sweet drinks in my cozy room and keep my fullness up."
+  - { id: honeyed_ceramic_teacup, name: honeyed ceramic teacup, group: food, affords: { edible: {} }, qualities: { cozy: 2, warm: 2, pretty: 2 }, price: 20, stackable: true }
+  # He invented this (run 01a1dfc4): "I wanted a touch of green and nature in my room to keep me calm and connected to the outdoors."
+  - { id: moss_bowl, name: moss bowl, group: decor, slot: moss_bowl, blocks: true, price: 9, affords: { viewable: {} }, qualities: { natural: 1 } }
+  # He invented this (run 01a1dfc4): "I wanted a soft, cozy place to sit on the floor while reading or relaxing in my room."
+  - { id: floor_pillow, name: floor pillow, group: decor, slot: floor_pillow, blocks: true, price: 14, affords: { viewable: {} }, qualities: { cozy: 2 } }
+  # He invented this (run 01a1dfc4): "I wanted a soothing, glowing natural piece to bring more calm and coziness to my room at night."
+  - { id: moss_lamp, name: moss lamp, group: decor, slot: moss_lamp, blocks: true, price: 24, affords: { viewable: {} }, qualities: { cozy: 2, natural: 2 } }
+  # He invented this (run 01a1dfc4): "I wanted a lush green fern to bring more natural life and calm coziness to my room."
+  - { id: fern_pot, name: fern pot, group: decor, slot: fern_pot, blocks: true, price: 34, affords: { viewable: {} }, qualities: { cozy: 2, natural: 2, calm: 2 } }
+  # He invented this (run 01a1dfc4): "I wanted a cozy wooden wall shelf with a little green plant to brighten up my room's walls and make the space feel more alive and natural."
+  - { id: wooden_shelf, name: wooden shelf, group: decor, slot: wooden_shelf, blocks: true, price: 34, affords: { viewable: {} }, qualities: { cozy: 2, calm: 2, natural: 2 } }
+  # He invented this (run 01a1e006): "I wanted a warm, bright floor lamp to light up the new sunroom and make the reading nook feel extra cozy at night."
+  - { id: sunroom_lamp, name: sunroom lamp, group: decor, slot: sunroom_lamp, blocks: true, price: 34, affords: { viewable: {} }, qualities: { cozy: 2, warm: 2, bright: 2 } }
+  # He invented this (run 01a1e006): "I wanted a warm, glowing woodland light to bring the forest indoors."
+  - { id: acorn_lamp, name: acorn lamp, group: decor, slot: acorn_lamp, blocks: true, price: 34, affords: { viewable: {} }, qualities: { cozy: 2, warm: 2, natural: 2 } }
+  # He invented this (run 01a1e006): "I wanted a warm, glowing floor lamp to cast a cozy amber light across the room during quiet evenings."
+  - { id: amber_floor_lamp, name: amber floor lamp, group: decor, slot: amber_floor_lamp, blocks: true, price: 34, affords: { viewable: {} }, qualities: { cozy: 2, warm: 2, pretty: 2 } }
+  # He invented this (run 01a1e006): "I wanted a warm, cozy wall lamp to softly light my room during quiet evenings."
+  - { id: amber_wall_lamp, name: amber wall lamp, group: decor, slot: amber_wall_lamp, blocks: true, price: 34, affords: { viewable: {} }, qualities: { cozy: 3, warm: 2, bright: 1 } }
+  # He invented this (run 01a1e006): "I wanted a textured, cozy wall hanging to add warmth and softness to the room."
+  - { id: woven_wall_tapestry, name: woven wall tapestry, group: decor, slot: woven_wall_tapestry, blocks: true, price: 34, affords: { viewable: {} }, qualities: { cozy: 3, soft: 3 } }
   # Art is carried until sold or hung. `drawable` is what a piece is drawn on: a square grid `size`
   # wide, up to `colors` crayons and `strokes` strokes, each two picks (which stroke, then which
   # crayon) by the model that decides for him, so strokes is what a piece costs in calls. Painting's

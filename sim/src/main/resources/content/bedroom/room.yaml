@@ -5,13 +5,13 @@ room:
   # One string per row. '#' wall, '.' floor, '@' where he starts; other letters are slots
   # (below). A slot is empty until he owns the item that goes there.
   rows:
-    - "#l##5F#g#w6o##"
-    - "ubvf.1..2.stn#"
-    - "m........M..p#"
-    - "H.....r......#"
-    - "i..........q.#"
+    - "#l7#5F8g9w6o##"
+    - "ubvfK1OI2Nstn#"
+    - "m........M.Cp#"
+    - "H.....r.....J#"
+    - "iG.........q.#"
     - "ke...........#"
-    - "ay@3.W..cd.x4#"
+    - "ay@3BWA.cdDx4#"
     - "##############"
   # H is the mail hatch in the wall, where the shop delivers and art is sold.
   # The rest are decor: on the floor along the walls, and in the walls. Wall slots are in the back
@@ -20,9 +20,15 @@ room:
     { b: bed, d: desk, c: chair, e: easel, s: shelf, p: plant, o: poster, r: rug, H: hatch, F: rail,
       v: lava_lamp, f: sunflowers, t: mushroom_lamp, n: beanbag, q: fishbowl, y: teddy_bear, x: cactus,
       l: string_lights, w: window_succulents, m: moon_mobile, i: round_mirror, k: cork_board, a: rainbow, u: cloud_light, g: bunting,
-      W: workbench, M: microscope, "1": spot_1, "2": spot_2, "3": spot_3, "4": spot_4, "5": wall_1, "6": wall_2 }
+      W: workbench, M: microscope,
+      # Things he invented in live runs, sold in the shop now (items.yaml).
+      K: sunroom_lamp, O: amber_floor_lamp, I: moss_lamp, N: acorn_lamp, C: pinecone_ornament, J: fern_pot,
+      G: floor_pillow, B: tiny_wooden_stool, A: moss_terrarium, D: moss_bowl,
+      "7": wooden_shelf, "8": amber_wall_lamp, "9": woven_wall_tapestry,
+      "1": spot_1, "2": spot_2, "3": spot_3, "4": spot_4, "5": wall_1, "6": wall_2 }
   # Slots in the wall rather than on the floor.
-  wall_slots: [poster, hatch, rail, string_lights, window_succulents, moon_mobile, round_mirror, cork_board, rainbow, cloud_light, bunting, wall_1, wall_2]
+  wall_slots: [poster, hatch, rail, string_lights, window_succulents, moon_mobile, round_mirror, cork_board, rainbow, cloud_light, bunting,
+               wooden_shelf, amber_wall_lamp, woven_wall_tapestry, wall_1, wall_2]
   # Spare spots nothing in items.yaml stands in: a thing he invents to look at takes the first
   # free one, on the floor or in a wall, and when they're full he can't build another.
   spots: { floor: [spot_1, spot_2, spot_3, spot_4], wall: [wall_1, wall_2] }

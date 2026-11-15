@@ -785,12 +785,12 @@ class BedroomWorld private constructor(
     /** [a]'s daytime changes, when it has some and it isn't night now. */
     private fun byDay(a: VerbSpec): VerbSpec.ByDay? = a.byDay?.takeIf { content.night?.covers(clock.minuteOfDay(ticks)) == false }
 
-    /** "an easel ($120)", "a meal (3 for $18)", "a sketchbook". The cheapest item with [tag] for sale, if any. */
-    private fun wanted(tag: String): String {
+    /** "an easel ($120)", "a meal (3 for $18)", "a sketchbook". The cheapest item with [tag] for sale, if any; named as itself when [cheapest], not by its group. */
+    private fun wanted(tag: String, cheapest: Boolean = false): String {
         val options = content.withName(tag)
         val spec = options.filter { it.price != null }.minByOrNull { it.price!! } ?: options.first()
         val price = spec.price ?: return article(if (options.size > 1) noun(tag) else spec.name)
-        val name = if (options.size > 1 && tag != spec.id) noun(tag) else spec.name
+        val name = if (options.size > 1 && tag != spec.id && !cheapest) noun(tag) else spec.name
         return article(name) + if (spec.pack > 1) " (${spec.pack} for $$price)" else " ($$price)"
     }
 
@@ -1539,7 +1539,7 @@ class BedroomWorld private constructor(
         foodTags.filter { tag -> tag !in spec.names && countTag(tag) == 0 }.firstOrNull { tag ->
             val cheapest = content.withName(tag).mapNotNull { it.price }.minOrNull()
             cheapest != null && left in 0 until cheapest
-        }?.let { parts += "leaves you $$left with no food, short of ${wanted(it)}" }
+        }?.let { parts += "leaves you $$left with no food, short of ${wanted(it, cheapest = true)}" }
         return ShopOption(spec.id, spec.price!!, ledger.canAfford(spec.price), parts.joinToString("; "))
     }
 
