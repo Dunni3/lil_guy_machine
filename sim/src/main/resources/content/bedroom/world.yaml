@@ -1,0 +1,70 @@
+# yaml-language-server: $schema=schema/world.schema.json
+# The land around the house, and the named places on it. One tile is one metre and one game
+# minute of walking. The house's rooms stand on the lot (room.yaml is the bedroom), and walking
+# between any two places is one A* over the whole map.
+
+world:
+  # One string per row, north at the top. ' ' is off the land (the sea), ',' grass, '=' path,
+  # ':' bare ground, '*' flowers, '~' water, 'T' a tree. Water and trees block. Under the house,
+  # whatever is here is replaced by its rooms.
+  lot:
+    - "               ,,,,,,,,,                "
+    - "            ,,,,,,,,,,,,,,,             "
+    - "          ,,,,,,,,,,,,,,,,,,,           "
+    - "        ,,,,,,,,,,,,,,,,T,,,,,,         "
+    - "      ,,,,,,,,,,,,,,,,,,,,,,,,,,        "
+    - "     ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,      "
+    - "   ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,     "
+    - "   ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,     "
+    - "  ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,    "
+    - "  T,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,T   "
+    - " ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,   "
+    - " ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,  "
+    - " ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,  "
+    - " ,,T,,,,,,,,,,=,,,,,,,,,,,,,,,,,,,,,,,  "
+    - " ,,,,,,,,,,,,,=,,,,,,,,T,T,T,,,,T,,T,T  "
+    - " ,,,,,,,,============,,,,,,,,,T,,,,,,,  "
+    - " ,,******=***,,,,,,,==,,,T,,T,,,T,,,,,  "
+    - " ,,*,,,,,=,,*,,,,,,,,==,,,,,,,,,,,T,,T  "
+    - " ,,*,,,,,=,,*,,,,,,,,,==,,,:::::,,,,,,  "
+    - "  ,*,,,,,,,,*,,,,,,,T,,==,:::::::,T,T   "
+    - "  ,*,,,,,,,,*,,,,,,,,,,,==:::::::,,,,   "
+    - "   *,,,,,,,,*,,,,,,,,,T,,,:::::::,T,    "
+    - "   **********,,,,,,,T,,,T,,:::::,,,     "
+    - "    ,,,,,,,,,,,,,,,,,,T~~,,,,,,,,,,     "
+    - "     ,,,,,,,,,,,,,,,T,~~~~T,,,,,,T      "
+    - "      ,,,,,,,,,,,,,,,,~~~~,,T,,T,       "
+    - "       ,,,,,,,,,,,,,,T,~~,T,,,,,        "
+    - "         ,,,,,,,,,,,,,,T,,,,,T          "
+    - "            ,,,,,,,,,T,,,T,T            "
+    - "                                        "
+  # The bedroom (room.yaml's rows, walls included) stands with its top-left corner at `at`, and the
+  # front door is the wall tile `door` of it (from its top-left), opening onto the lot.
+  house:
+    room: bedroom
+    name: your bedroom
+    at: [7, 5]
+    door: [7, 7]
+  # Named places outdoors, the first whose rects hold a tile wins; rooms come before all of them.
+  # A rect is [x0, y0, x1, y1], tiles inclusive. `says` is the line his map gives the place.
+  places:
+    - id: clearing
+      name: the forest clearing
+      says: a sunny clearing in the middle of the forest
+      rects: [[26, 18, 32, 22]]
+    - id: pond
+      name: the pond
+      says: a small pond at the forest's south edge, with reeds
+      rects: [[20, 23, 26, 27]]
+    - id: forest
+      name: the forest
+      says: trees east and south of the house, round a clearing
+      rects: [[19, 13, 39, 29]]
+    - id: garden
+      name: the garden
+      says: a flower-edged garden south-west of the house
+      rects: [[2, 15, 13, 23]]
+    - id: outside
+      name: outside the house
+      says: the grass around the house
+      rects: [[0, 0, 39, 29]]

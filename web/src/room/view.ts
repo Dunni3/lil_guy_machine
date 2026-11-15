@@ -1,5 +1,5 @@
 import { Box3, Matrix4, MeshStandardMaterial, Vector3, type Mesh, type Ray } from "three";
-import type { Content, Entity, LifeState } from "../../../protocol/ts/protocol";
+import type { Content, Entity, LifeState, PlaceView, RectView, WorldView } from "../../../protocol/ts/protocol";
 import { ClayModel, type ClayRenderer, type Glow, type Placed } from "../clay/renderer";
 import type { ClayTextures } from "../clay/textures";
 import { Blob, newPose } from "../guy/blob";
@@ -9,6 +9,7 @@ import { ArtLayer } from "./art";
 import { CameraRig, type CameraMode } from "./camera";
 import { Models, constants, wallItem } from "./parts";
 import { BEDROOM } from "./room";
+import { groundTexture, landParts, treeParts } from "./land";
 import { Terrain, paneParts, shellParts } from "./shell";
 
 /** The record's turn (degrees a second), and the notes: seconds apart, how long each lasts, and how fast it rises (metres a second). */
@@ -62,8 +63,14 @@ export class RoomView {
   private readonly art: ArtLayer;
   private readonly pane = new MeshStandardMaterial({ roughness: 0.4, metalness: 0 });
 
-  private framedRows = "";
+  private framedWorld: WorldView | null = null;
   private map: Terrain | null = null;
+  /** The bedroom on the map, its walls included: the room's layout ([RoomDef]) is from its top-left. */
+  private roomAt: RectView = { x0: 0, y0: 0, x1: 1, y1: 1 };
+  /** The place the camera frames: where he is. */
+  private framedPlace = "";
+  private land: Placed | null = null;
+  private trees: Placed | null = null;
   private shell: Placed | null = null;
   private glass: Mesh | null = null;
   private clock: Placed | null = null;
@@ -121,7 +128,8 @@ export class RoomView {
     const fast = state.fast;
     const guy = fast.entities.find((e) => e.kind === "guy");
     if (!guy) return;
-    this.frame(content);
+    this.frame(state.world);
+    this.framePlace(state.world, guy.place);
     this.lightFor(fast.clock?.time ?? null);
     this.syncThings(state);
     this.syncShelf(state, content);
@@ -189,36 +197,74 @@ export class RoomView {
     return best;
   }
 
-  /** Builds the room (once per map) and frames it for the camera. */
-  private frame(content: Content) {
-    const rows = content.map.rows.join("\n");
-    if (rows === this.framedRows) return;
-    this.framedRows = rows;
-    const map = (this.map = new Terrain(content.map.rows));
+  /** Builds the land and the room (once per world). The camera frames the place he's in ([framePlace]). */
+  private frame(world: WorldView) {
+    if (world === this.framedWorld) return;
+    this.framedWorld = world;
+    this.framedPlace = "";
+    const map = (this.map = new Terrain(world.rows));
     const room = this.room;
-    this.camera.frame(room.backWall - 0.4, room.backWall - 0.4, map.width - 1 + 0.4, map.height - 1 + 0.4, room.wallHeight);
-    this.r.aim(map.width / 2, map.height / 2);
-    this.middle.set(map.width / 2, 0, map.height / 2);
-    this.blob.lanternBounds = [room.backWall + 0.35, room.backWall + 0.35, map.width - 1.35, map.height - 1.35];
+    const rooms = world.places.filter((p) => p.kind === "room");
+    const at = (this.roomAt = rooms[0]?.bounds ?? { x0: 0, y0: 0, x1: map.width - 1, y1: map.height - 1 });
     const floor = this.textures.texture("floor")!;
-    floor.repeat.set((map.width - 2) / 3, (map.height - 2) / 3);
+    floor.repeat.set((at.x1 - at.x0 - 1) / 3, (at.y1 - at.y0 - 1) / 3);
+    this.middle.set((at.x0 + at.x1 + 1) / 2, 0, (at.y0 + at.y1 + 1) / 2);
+
+    // The land, when there is any round the room: its ground painted from the world's letters, and its trees.
+    if (this.land) this.r.remove(this.land);
+    if (this.trees) this.r.remove(this.trees);
+    this.land = this.trees = null;
+    if (world.places.some((p) => p.kind === "outdoor")) {
+      this.textures.set("ground", groundTexture(world));
+      this.land = this.r.add(new ClayModel(landParts(world))).set(this.at.identity());
+      const trees = treeParts(world);
+      if (trees.length) this.trees = this.r.add(new ClayModel(trees)).set(this.at.identity());
+    }
 
     if (this.shell) this.r.remove(this.shell);
-    this.shell = this.r.add(new ClayModel(shellParts(map, room)));
+    const doors = world.doors.filter((d) => d.y === at.y1 && d.x > at.x0 && d.x < at.x1).map((d) => d.x);
+    this.shell = this.r.add(new ClayModel(shellParts(at, room, doors)));
     this.shell.set(this.at.identity());
     if (this.glass) this.r.removeMesh(this.glass);
-    const pane = new ClayModel(paneParts(room)).batches[0].geometry;
+    const pane = new ClayModel(paneParts(at, room)).batches[0].geometry;
     this.glass = this.r.mesh(pane, this.pane);
     this.glass.matrix.identity();
-    const wall = room.backWall + WALL_FACE;
+    const wall = at.y0 + room.backWall + WALL_FACE;
     this.clock ??= this.r.add(this.models.prop("wall_clock"));
-    this.clock.set(this.at.makeTranslation(room.clock.x, 0, wall));
+    this.clock.set(this.at.makeTranslation(at.x0 + room.clock.x, 0, wall));
     this.hourHand ??= this.r.add(this.models.prop("hand_hour"), false);
     this.minuteHand ??= this.r.add(this.models.prop("hand_minute"), false);
-    this.guitarAt.makeTranslation(room.guitar.x, room.guitar.y, wall);
+    this.guitarAt.makeTranslation(at.x0 + room.guitar.x, room.guitar.y, wall);
     this.thingsFrom = null;
     this.shelfKey = "";
     this.shelfFrom = null;
+  }
+
+  /**
+   * The camera frames the place he's in, as the Field Lab reframes per place: a room by its walls,
+   * a part of the land by its tiles. The sun's shadows and his lantern's bounds go with it. Moving
+   * between places eases; the first framing is at once.
+   */
+  private framePlace(world: WorldView, id: string | null) {
+    const key = id ?? "";
+    if (key === this.framedPlace) return;
+    const first = this.framedPlace === "";
+    this.framedPlace = key;
+    const place: PlaceView | undefined = world.places.find((p) => p.id === id) ?? world.places.find((p) => p.kind === "room");
+    const room = this.room;
+    let box: [number, number, number, number, number];
+    if (!place || place.kind === "room") {
+      const at = place?.bounds ?? this.roomAt;
+      box = [at.x0 + room.backWall - 0.4, at.y0 + room.backWall - 0.4, at.x1 + 0.4, at.y1 + 0.4, room.wallHeight];
+      this.blob.lanternBounds = [at.x0 + room.backWall + 0.35, at.y0 + room.backWall + 0.35, at.x1 - 0.35, at.y1 - 0.35];
+    } else {
+      const b = place.bounds;
+      box = [b.x0, b.y0, b.x1 + 1, b.y1 + 1, 2];
+      this.blob.lanternBounds = [b.x0 + 0.5, b.y0 + 0.5, b.x1 + 0.5, b.y1 + 0.5];
+    }
+    this.camera.frame(box[0], box[1], box[2], box[3], box[4], !first);
+    const reach = Math.min(24, Math.max(11, Math.max(box[2] - box[0], box[3] - box[1]) / 2 + 3));
+    this.r.aim((box[0] + box[2]) / 2, (box[1] + box[3]) / 2, reach);
   }
 
   /** The light, the window's glass and the wall clock for the time of day; [time] "HH:MM", or noon without one. */
@@ -234,9 +280,10 @@ export class RoomView {
     this.pane.emissive.copy(day.pane);
     this.pane.emissiveIntensity = 0.5;
     const { clock, backWall } = this.room;
-    const z = backWall + WALL_FACE + 0.06;
-    this.hourHand!.set(rotate(this.at.makeTranslation(clock.x, clock.y, z), Z_AXIS, -30 * hour));
-    this.minuteHand!.set(rotate(this.at.makeTranslation(clock.x, clock.y, z + 0.01), Z_AXIS, -360 * hour));
+    const z = this.roomAt.y0 + backWall + WALL_FACE + 0.06;
+    const x = this.roomAt.x0 + clock.x;
+    this.hourHand!.set(rotate(this.at.makeTranslation(x, clock.y, z), Z_AXIS, -30 * hour));
+    this.minuteHand!.set(rotate(this.at.makeTranslation(x, clock.y, z + 0.01), Z_AXIS, -360 * hour));
   }
 
   /** Things go at their tile; wall items against the wall face that looks into the room. Runs when [state]'s things change. */
@@ -296,7 +343,7 @@ export class RoomView {
       if (this.shelf) this.r.remove(this.shelf);
       this.shelf = books.length || records.length ? this.r.add(this.models.shelf(books, records)) : null;
       const { shelf, backWall } = this.room;
-      this.shelf?.set(this.at.makeTranslation(shelf.x, shelf.y, backWall + WALL_FACE));
+      this.shelf?.set(this.at.makeTranslation(this.roomAt.x0 + shelf.x, shelf.y, this.roomAt.y0 + backWall + WALL_FACE));
     }
     if (owned.some((c) => c.id === "guitar") && !this.guitar) this.guitar = this.r.add(this.models.prop("guitar")).set(this.guitarAt);
     else if (!owned.some((c) => c.id === "guitar") && this.guitar) {

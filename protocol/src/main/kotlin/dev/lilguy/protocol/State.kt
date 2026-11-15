@@ -9,6 +9,7 @@ import kotlinx.serialization.Serializable
  * - [run]: the run and its controls, on a command or when it ends;
  * - [fast]: the clock, needs, where he is and the activity under way, every publish while he moves;
  * - [things]: everything else on the map (furniture, decor), when any of it changes;
+ * - [world]: the map, the places on it and the doors between them, when the house changes;
  * - [easel]: the piece under way, as far as the screen has got, on every stroke;
  * - the slow sections ([wallet], [growth], [gallery], [shop], [mind], [tokens]), when they change;
  * - [logs]: what only grows (money, news, decisions, thoughts, memories, trips, art), as new entries.
@@ -23,6 +24,7 @@ data class LifeState(
     val run: RunInfo,
     val fast: FastState,
     val things: Things,
+    val world: WorldView,
     val easel: Easel,
     val wallet: Wallet,
     val growth: Growth,
@@ -41,6 +43,7 @@ data class LifeState(
             run = d.run ?: run,
             fast = d.fast ?: fast,
             things = d.things ?: things,
+            world = d.world ?: world,
             easel = d.easel ?: easel,
             wallet = d.wallet ?: wallet,
             growth = d.growth ?: growth,
@@ -61,6 +64,7 @@ data class LifeState(
             run = next.run.takeIf { it != run },
             fast = next.fast.takeIf { it != fast },
             things = next.things.takeIf { it != things },
+            world = next.world.takeIf { it != world },
             easel = next.easel.takeIf { it != easel },
             wallet = next.wallet.takeIf { it != wallet },
             growth = next.growth.takeIf { it != growth },
@@ -161,6 +165,34 @@ data class FastState(
     @SerialName("easel_time") val easelTime: Float,
 )
 
+/**
+ * Where everything is: one map of the land with the house's rooms on it, in grid space (tile (x, y)
+ * spans [x, x+1) by [y, y+1), x east, y south). [rows] are letters, one string per row: `#` wall,
+ * `.` floor, `+` a doorway, and outdoors ` ` off the land, `,` grass, `=` path, `:` bare ground,
+ * `*` flowers, `~` water, `T` a tree. A room without land round it is the whole map.
+ */
+@Serializable
+data class WorldView(
+    val width: Int,
+    val height: Int,
+    val rows: List<String>,
+    /** Rooms first, then the outdoor places; a tile is in the first that holds it. */
+    val places: List<PlaceView>,
+    val doors: List<DoorView>,
+)
+
+/** A named region: a room (its walls included, [kind] "room") or a part of the land ("outdoor"). [bounds] holds all its [rects]. */
+@Serializable
+data class PlaceView(val id: String, val name: String, val kind: String, val rects: List<RectView>, val bounds: RectView)
+
+/** Tiles (x0, y0) to (x1, y1), inclusive. */
+@Serializable
+data class RectView(val x0: Int, val y0: Int, val x1: Int, val y1: Int)
+
+/** A doorway on tile (x, y), from the room [inside] to the place [outside] (null: unnamed land). */
+@Serializable
+data class DoorView(val id: String, val x: Int, val y: Int, val inside: String, val outside: String?)
+
 /** What's on the map besides the characters: it hardly ever changes, so it doesn't travel with [FastState]. */
 @Serializable
 data class Things(val entities: List<Entity>)
@@ -190,6 +222,8 @@ data class Entity(
     @SerialName("facing_degrees") val facingDegrees: Float,
     val state: String?,
     @SerialName("carried_by") val carriedBy: String?,
+    /** The [PlaceView] it's in, or null where the map has no places. */
+    val place: String?,
 )
 
 /** What a character is doing: its intent and how far along, the walk left, and what it's saying. */

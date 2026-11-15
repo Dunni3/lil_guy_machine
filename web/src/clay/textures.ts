@@ -46,6 +46,13 @@ export class ClayTextures {
     return t;
   }
 
+  /** Names [t] [name] for part lists, in place of any texture of that name before (the land's ground, painted from the world). */
+  set(name: string, t: Texture) {
+    const old = this.cache.get(name);
+    if (old && old !== t) old.dispose();
+    this.cache.set(name, t);
+  }
+
   /** His face on his body's texture: [face], with his eyes [shut] for a blink. */
   face(face: Face, shut: boolean): Texture {
     const key = `${face}/${shut}`;

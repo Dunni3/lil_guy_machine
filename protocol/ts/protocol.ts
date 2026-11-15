@@ -1,5 +1,5 @@
 /* Generated from schema/protocol.schema.json (protocol/.../*.kt) by gen_types.sh. Don't edit; run `make protocol-types`.
- * schema sha256: c726ca7749ce0c4235c093238111f73de7989428a711a4840689ebe120bc8234
+ * schema sha256: 954b4046f56ec96869931a7696a2a8558c0510e789b7abbcdb0689ea0003c71f
  */
 
 /**
@@ -36,18 +36,8 @@ export interface Content {
   type: "content";
   hash: string;
   scenario: string;
-  map: MapView;
   catalog: CatalogItem[];
   verbs: VerbInfo[];
-}
-/**
- * This interface was referenced by `Protocol`'s JSON-Schema
- * via the `definition` "MapView".
- */
-export interface MapView {
-  width: number;
-  height: number;
-  rows: string[];
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -80,6 +70,7 @@ export interface Delta {
   run: RunInfo | null;
   fast: FastState | null;
   things: Things | null;
+  world: WorldView | null;
   easel: Easel | null;
   wallet: Wallet | null;
   growth: Growth | null;
@@ -186,6 +177,7 @@ export interface Entity {
   facing_degrees: number;
   state: string | null;
   carried_by: string | null;
+  place: string | null;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -231,6 +223,49 @@ export interface CellView {
  */
 export interface Things {
   entities: Entity[];
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "WorldView".
+ */
+export interface WorldView {
+  width: number;
+  height: number;
+  rows: string[];
+  places: PlaceView[];
+  doors: DoorView[];
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "PlaceView".
+ */
+export interface PlaceView {
+  id: string;
+  name: string;
+  kind: string;
+  rects: RectView[];
+  bounds: RectView;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "RectView".
+ */
+export interface RectView {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "DoorView".
+ */
+export interface DoorView {
+  id: string;
+  x: number;
+  y: number;
+  inside: string;
+  outside: string | null;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -662,6 +697,7 @@ export interface LifeState {
   run: RunInfo;
   fast: FastState;
   things: Things;
+  world: WorldView;
   easel: Easel;
   wallet: Wallet;
   growth: Growth;
@@ -791,4 +827,4 @@ export interface SavedRun {
 }
 
 /** The protocol version these types are for; send it as ?v= when joining a stream. */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;

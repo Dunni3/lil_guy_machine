@@ -159,10 +159,16 @@ export class ClayRenderer {
     }
   }
 
-  /** The sun swings round ([x], [z]), the middle of what it lights. */
-  aim(x: number, z: number) {
+  /** The sun swings round ([x], [z]), the middle of what it lights, and its shadows reach [reach] metres from there. */
+  aim(x: number, z: number, reach = 11) {
     this.sun.target.position.set(x, 0, z);
     this.sun.target.updateMatrixWorld();
+    const cam = this.sun.shadow.camera;
+    if (cam.right !== reach) {
+      Object.assign(cam, { left: -reach, right: reach, top: reach, bottom: -reach });
+      cam.updateProjectionMatrix();
+    }
+    this.dirty = true;
   }
 
   /** The light at [hour], from the sketch's keys: sun, sky, background, how far into night, and the glows. */
@@ -288,7 +294,8 @@ export class ClayRenderer {
       const t = this.texture(b.texture);
       if (!t) return this.solid;
       let m = this.textured.get(t);
-      if (!m) this.textured.set(t, (m = new MeshStandardMaterial({ map: t, vertexColors: true, roughness: 0.92, metalness: 0 })));
+      // A cut-out texture (the land's ground) is clear where it's off the land.
+      if (!m) this.textured.set(t, (m = new MeshStandardMaterial({ map: t, vertexColors: true, roughness: 0.92, metalness: 0, alphaTest: t.userData.cutout ? 0.5 : 0 })));
       return m;
     }
     if (b.opacity < 1) {
