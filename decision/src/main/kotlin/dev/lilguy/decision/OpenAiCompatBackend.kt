@@ -83,8 +83,7 @@ class OpenAiCompatBackend(
             val content = (reply["content"] as? JsonPrimitive)?.contentOrNull
             val calls = (reply["tool_calls"] as? JsonArray)?.map { it.jsonObject }.orEmpty()
             if (own != null && calls.isNotEmpty() && calls.all { nameOf(it) in lookNames }) {
-                // Only looks: answer each, put the answers back, and ask again. They don't count as tries.
-                attempts += Attempt(calls.toString())
+                // Only looks: answer each, put the answers back, and ask again. They don't count as tries, and are kept in [Decision.looks], not attempts.
                 val ided = calls.mapIndexed { i, c -> if (c["id"] is JsonPrimitive) c else JsonObject(c + ("id" to JsonPrimitive("look_${looked.size}_$i"))) }
                 messages += buildJsonObject {
                     put("role", "assistant")
