@@ -467,6 +467,29 @@
           "type": "null"
         }
       ]
+    },
+    "comfort": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "holds": {
+              "type": "integer"
+            },
+            "per_room": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "holds",
+            "per_room"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "required": [

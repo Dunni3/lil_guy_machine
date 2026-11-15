@@ -222,7 +222,6 @@ verbs:
       - gather: on
       - need: { energy: -1, stimulation: 2 }
   - id: study_sample
-    tier: 1
     kind: study
     phrase: study a sample under the microscope
     args: { what: specimen }

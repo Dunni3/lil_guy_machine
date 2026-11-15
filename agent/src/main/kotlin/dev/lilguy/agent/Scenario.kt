@@ -156,6 +156,8 @@ enum class Scenario(val id: String) {
         personality: Personality? = null,
         /** Bedroom: items he starts with on top of the content's, id to count (a dev aid for screenshots); he knows them and what's taught with them, so no book teaches those. */
         startItems: Map<String, Int> = emptyMap(),
+        /** Bedroom: the money he starts with, in place of the content's (a dev aid for trying a late-game state). */
+        startMoney: Int? = null,
         /** Bedroom: a checkpoint to carry on from ([bedroomScenario]). */
         from: BedroomState? = null,
         dropped: (List<String>) -> Unit = {},
@@ -168,7 +170,7 @@ enum class Scenario(val id: String) {
                     // Starting with a taught item, he knows what the book teaches with it: the guitar and playing it.
                     if (startItems.isEmpty()) c
                     else c.copy(start = c.start.copy(items = c.start.items + startItems), books = c.books.map { b -> if (b.teaches.any { it in startItems }) b.copy(teaches = emptyList()) else b })
-                }
+                }.let { c -> if (startMoney == null) c else c.copy(start = c.start.copy(money = startMoney)) }
             bedroomScenario(model, timeout, ticksPerMinute, content, longTerm = longTerm, granted = granted, from = from, dropped = dropped, onDecision = onDecision)
         }
     }

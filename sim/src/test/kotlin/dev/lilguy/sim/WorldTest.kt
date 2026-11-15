@@ -97,6 +97,30 @@ class WorldTest {
         assertEquals(lab.bounds, back.layout.place("lab")?.bounds)
     }
 
+    @Test
+    fun `the house holds only so much comfort, and a room he builds holds more`() {
+        val shipped = BedroomContent.default()
+        val decor = shipped.items.filter { it.group == "decor" && it.id != "poster" }.associate { it.id to 1 }
+        val content = shipped.copy(start = shipped.start.copy(money = 100, items = shipped.start.items + decor + ("lab_plan" to 1)))
+        val w = BedroomWorld.create(content)
+        val rules = content.comfort!!
+        assertEquals(50.0 + rules.holds, w.snapshot().life!!.moodTarget, "a bedroom full of decor settles him no higher than the house holds")
+        val poster = w.observe(w.agentId).shop!!.first { it.id == "poster" }.gives
+        assertTrue("comfort +0: your house is full" in poster && "new to you" !in poster, poster)
+        assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("build_room", what = "lab_plan", on = "site_east")).status)
+        assertEquals(50.0 + rules.holds + rules.perRoom, w.snapshot().life!!.moodTarget)
+    }
+
+    @Test
+    fun `after the first day he sees what he has done lately and what he never has`() {
+        val w = BedroomWorld.create()
+        assertEquals(null, w.observe(w.agentId).lately, "on day 1 everything is new")
+        assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("sketch")).status)
+        while (w.clock.day(w.tick) < 2) w.step()
+        val lately = w.observe(w.agentId).lately!!
+        assertTrue(lately.first() == "in the last 2 days: sketch 1" && lately.any { it.startsWith("never yet: ") && "explore" in it }, lately.toString())
+    }
+
     private fun failure(h: IntentHandle) = assertIs<IntentStatus.Failed>(h.status).reason
 
     @Test

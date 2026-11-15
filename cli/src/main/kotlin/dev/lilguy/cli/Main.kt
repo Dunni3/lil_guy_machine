@@ -519,6 +519,10 @@ private fun runOnce(
     lateinit var stampOf: (Long) -> String
     val (world, runtime) = scenario.create(
         model, timeout, minuteTicks, longTerm = memory, granted = granted, personality = personality,
+        // Dev aids, as the host's: LILGUY_START_ITEMS=rug,meal=6 and LILGUY_START_MONEY=500 start him further along.
+        startItems = System.getenv("LILGUY_START_ITEMS").orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
+            .associate { it.substringBefore('=') to (it.substringAfter('=', "1").toIntOrNull() ?: 1) },
+        startMoney = System.getenv("LILGUY_START_MONEY")?.toIntOrNull(),
         from = carried?.resume?.world, dropped = { d -> d.forEach { println("resume: dropped $it") } },
     ) { d ->
         records += d

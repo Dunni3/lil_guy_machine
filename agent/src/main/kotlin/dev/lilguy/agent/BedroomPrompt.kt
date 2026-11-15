@@ -243,8 +243,12 @@ object BedroomPrompt {
         val forSale = content.items.filter { it.price != null }
         val wants = if (forSale.any { it.group != "food" }) "for food and for anything you want to own" else "for food"
         val bored = if (r.stimulationPerHour < 0 && r.boredMood > 0) ", less boredom" else ""
+        val holds = content.comfort?.let { c ->
+            " Your house holds only so much comfort: ${c.holds}" + (if (c.perRoom > 0 && content.world?.rooms?.isNotEmpty() == true) ", and ${c.perRoom} more for each room you build onto it" else "") +
+                ". Past that, more things add nothing and don't feel new."
+        }.orEmpty()
         val mood = if (decor) {
-            "Mood drifts ${r.moodDriftPerHour.toInt()} an hour toward ${r.moodBaseline.toInt()} plus your room's comfort$bored; nice things raise it for a while, and decor raises comfort by as much as you like it."
+            "Mood drifts ${r.moodDriftPerHour.toInt()} an hour toward ${r.moodBaseline.toInt()} plus your room's comfort$bored; nice things raise it for a while, and decor raises comfort by as much as you like it.$holds"
         } else {
             "Mood drifts ${r.moodDriftPerHour.toInt()} an hour toward ${r.moodBaseline.toInt()}$bored; some activities raise it for a while."
         }
@@ -303,6 +307,7 @@ object BedroomPrompt {
             |- ${if (map != null) "place: where you are, and places: where else you could go, with the walk there. " else ""}self and nearby: where you are and the furniture around you, with tile x and y. localMap: ${if (map != null) "the room you're in, or the land round you, one string per row, north at the top; localMapAt is its top-left tile" else "the room, one string per row, north at the top"}.
             |- lastIntent and lastResult: your previous action and how it ended (succeeded, failed with a reason, or interrupted).
             |- recentEvents: the last few things that happened, stamped with day and time.
+            |- lately: what you've done most in the last 2 days, what you could do now but haven't for 2 days or more, and what you could do and never have.
             |
             |Below the observation you may see what you remember from earlier (memories, and thoughts you had), and what you decided the last time you stopped to think. Those thoughts are your own words: let the plans in them shape what you do with your hours.
         """.trimMargin()
@@ -326,6 +331,7 @@ ${lookText(looks)}
         |- art: the pieces you have made and still have, held to sell or hung on your wall, with their titles. commission: today's request for a piece, if one is open.
         |- activities: what you can't do right now, and why.${if (trips(content)) "" else " shop: what the shop will sell you now: its price, whether you can afford it, and what it's for."}
         |- recentEvents: the last few things that happened besides what you did, stamped with day and time.
+        |- lately: what you've done most in the last 2 days, what you could do now but haven't for 2 days or more, and what you could do and never have.
         |
         |After that you may see what you remember from earlier (memories, and thoughts you had), and what you decided the last time you stopped to think. Those thoughts are your own words: let the plans in them shape what you do with your hours.
     """.trimMargin()

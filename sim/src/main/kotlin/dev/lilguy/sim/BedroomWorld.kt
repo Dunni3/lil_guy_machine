@@ -119,6 +119,9 @@ class BedroomWorld private constructor(
     private class Memo(val uses: HashMap<String, List<VerbSpec>> = HashMap(), val held: HashMap<String, String?> = HashMap())
     private var memo: Memo? = null
 
+    /** What he finished lately that isn't routine, oldest first, for [lately]; kept for [LATELY_DAYS]. */
+    private val recent = ArrayDeque<Pair<String, Long>>()
+
     /** Verb id to how often he has finished it; replaced rather than changed, so snapshots can share it. */
     private var done: Map<String, VerbTally> = emptyMap()
 
@@ -318,7 +321,10 @@ class BedroomWorld private constructor(
         override fun hang(tag: String) = this@BedroomWorld.hang(tag)
 
         override fun hangText(tag: String) = listOfNotNull(held(tag).lastOrNull()?.let { "hangs ${pieceName(it)}" }) +
-            "comfort +${content.gallery.comfortEach}: mood settles ${content.gallery.comfortEach} higher (${hung().size} of ${content.gallery.max} on the wall)"
+            fits(content.gallery.comfortEach).let { c ->
+                if (c > 0) "comfort +$c: mood settles $c higher (${hung().size} of ${content.gallery.max} on the wall)"
+                else "comfort +0: ${fullText()} (${hung().size} of ${content.gallery.max} on the wall)"
+            }
 
         override fun await(op: AuthoredOp, b: Bound, piece: Int?) {
             authored.addLast(AuthoredView(++authoredCount, b.verb.id, op.handler, ticks, piece))
@@ -414,7 +420,31 @@ class BedroomWorld private constructor(
         }
     }
 
-    private fun comfort(): Int = placed().sumOf { (spec, _) -> comfortOf(spec) } + hung().size * content.gallery.comfortEach + collectionComfort() + roomsComfort()
+    /** Everything in view, as if the house held all of it. */
+    private fun rawComfort(): Int = placed().sumOf { (spec, _) -> comfortOf(spec) } + hung().size * content.gallery.comfortEach + collectionComfort() + roomsComfort()
+
+    /** [rawComfort], up to what the house holds ([ComfortRules]). */
+    private fun comfort(): Int = rawComfort().let { raw -> holds()?.let { minOf(raw, it) } ?: raw }
+
+    /** How much comfort the house holds now, more for each room he has built; null with no limit. */
+    private fun holds(): Int? = content.comfort?.let { it.holds + it.perRoom * house.size }
+
+    /** How much of [c] more comfort the house has room for now. */
+    private fun fits(c: Int): Int {
+        val h = holds() ?: return c
+        return if (c <= 0) c else minOf(c, (h - rawComfort()).coerceAtLeast(0))
+    }
+
+    /** "comfort 30, so mood settles toward 80", saying when the house is full and [fit] is false (what was added didn't fit). */
+    private fun comfortText(fit: Boolean = true): String =
+        "comfort ${comfort()}" + (if (!fit) ", all ${fullText().removePrefix("your ")}" else "") + ", so mood settles toward ${moodTarget().toInt()}"
+
+    /** "your house is full (it holds 35 comfort; each room you build holds 10 more)". */
+    private fun fullText(): String {
+        val r = content.comfort!!
+        val rooms = if (r.perRoom > 0 && content.world?.rooms?.isNotEmpty() == true) "; each room you build holds ${r.perRoom} more" else ""
+        return "your house is full (it holds ${holds()} comfort$rooms)"
+    }
 
     /** What the rooms he has built are like to him: their qualities, by his affinities, as decor's are. */
     private fun roomsComfort(): Int = house.keys.sumOf { id ->
@@ -608,7 +638,7 @@ class BedroomWorld private constructor(
 
     /** Whether the shop has something new to him that he can afford: a thing for the room he likes, or something for a verb he hasn't done. */
     private fun canAffordNew(): Boolean = shopItems().any { spec ->
-        heldBack(spec) == null && ledger.canAfford(spec.price!!) && (newThingRate(spec) > 0 || usesOf(spec).any { isNew(it) })
+        heldBack(spec) == null && ledger.canAfford(spec.price!!) && ((feelsNew(spec) && newThingRate(spec) > 0) || usesOf(spec).any { isNew(it) })
     }
 
     /** What [spec], bought at [since], feeds stimulation an hour now ([NewThings]): 0 out of sight, once it's old, or if he doesn't like it. */
@@ -618,6 +648,9 @@ class BedroomWorld private constructor(
         val left = 1 - (ticks - since).toDouble() / clock.ticks(60) / 24 / t.days
         return if (left <= 0) 0.0 else value(spec).coerceAtLeast(0.0) * t.stimulationPerValue * content.personality.curiosity * left
     }
+
+    /** Whether [spec], bought now, would feel new: only while the house has room for its comfort ([ComfortRules]). */
+    private fun feelsNew(spec: ItemSpec): Boolean = comfortOf(spec) <= 0 || fits(comfortOf(spec)) > 0
 
     /** "stimulation +2/h while you're awake, fading over 3 days". */
     private fun newThingText(rate: Double): String =
@@ -864,7 +897,8 @@ class BedroomWorld private constructor(
             if (eased != 0.0) parts += "frustration ${signed(eased.roundToInt().toDouble())}"
         }
         outcome("finished ${a.id}" + if (parts.isEmpty()) "" else ": " + parts.joinToString(", "))
-        done = done + (a.id to (done[a.id]?.let { it.copy(count = it.count + 1) } ?: VerbTally(1, ticks)))
+        done = done + (a.id to (done[a.id]?.let { it.copy(count = it.count + 1, lastTick = ticks) } ?: VerbTally(1, ticks)))
+        if (!a.isRoutine) recent.addLast(a.id to ticks)
         return null
     }
 
@@ -1066,10 +1100,11 @@ class BedroomWorld private constructor(
     /** Pays for [spec] and adds it; "bought 1 easel for $17 (money $5)". */
     private fun bought(spec: ItemSpec, price: Int): String {
         val what = quantity(spec.id, spec.pack)
+        val new = feelsNew(spec)
         ledger.debit(ticks, price, "bought $what")
         add(spec.id, spec.pack)
-        val comfortNote = if (comfortOf(spec) != 0) "; comfort ${comfort()}, so mood settles toward ${moodTarget().toInt()}" else ""
-        val newNote = newThingRate(spec).takeIf { it > 0 }?.let { newThings[spec.id] = ticks; "; new: ${newThingText(it)}" } ?: ""
+        val comfortNote = if (comfortOf(spec) != 0) "; ${comfortText(new)}" else ""
+        val newNote = newThingRate(spec).takeIf { new && it > 0 }?.let { newThings[spec.id] = ticks; "; new: ${newThingText(it)}" } ?: ""
         return "bought $what for $$price (money $${ledger.balance})$comfortNote$newNote"
     }
 
@@ -1214,7 +1249,8 @@ class BedroomWorld private constructor(
         tried.clear(); tried.addAll(s.tried)
         subjectsDrawn = tried.filter { it.startsWith(SUBJECT) }.map { it.removePrefix(SUBJECT) }.toSet()
         newThings.clear(); s.newThings.forEach { (id, t) -> if (has(id, "new thing")) newThings[id] = t }
-        done = s.done
+        // A checkpoint from before tallies kept their last tick has the first in its place: count those as lately, not as long ago.
+        done = s.done.mapValues { (_, t) -> if (t.count > 1 && t.lastTick == t.firstTick) t.copy(lastTick = s.grid.tick) else t }
         music = s.music?.let { m ->
             val op = content.verbs.flatMap { it.effects }.filterIsInstance<BackgroundOp>().firstOrNull { it.name == m.op }
             if (op == null || content.item(m.item) == null) null.also { dropped += "music '${m.op}' of '${m.item}' is no longer in the content" }
@@ -1358,9 +1394,14 @@ class BedroomWorld private constructor(
             }
         }
         val comfort = comfortOf(spec)
-        if (comfort > 0) parts += "comfort +$comfort: mood settles $comfort higher"
-        if (comfort < 0) parts += "comfort $comfort: you don't like it, so mood settles ${-comfort} lower"
-        newThingRate(spec).takeIf { it > 0 }?.let { parts += "new to you: ${newThingText(it)}" }
+        val fit = fits(comfort)
+        when {
+            comfort > 0 && fit == 0 -> parts += "comfort +0: ${fullText()}, so it adds nothing and doesn't feel new"
+            comfort > 0 && fit < comfort -> parts += "comfort +$fit: mood settles $fit higher (it's worth $comfort, but that's all the room your house has left)"
+            comfort > 0 -> parts += "comfort +$comfort: mood settles $comfort higher"
+            comfort < 0 -> parts += "comfort $comfort: you don't like it, so mood settles ${-comfort} lower"
+        }
+        if (feelsNew(spec)) newThingRate(spec).takeIf { it > 0 }?.let { parts += "new to you: ${newThingText(it)}" }
         if (spec.qualities.isNotEmpty()) parts += spec.qualities.keys.joinToString(", ")
         // What owning it opens up: items the shop holds back until he has this.
         shopItems().filter { other -> other.id != spec.id && heldBack(other) != null && usesOf(other).any { a -> placesOf(a).any { it in spec.names } } }
@@ -1451,10 +1492,30 @@ class BedroomWorld private constructor(
             art = if (pieces.isEmpty()) null else artViews(),
             skills = content.vocabulary.skills.takeIf { it.isNotEmpty() }?.let { skillView() },
             books = bookViews().ifEmpty { null },
+            lately = lately(),
             authored = authored.toList(),
             outcome = last?.outcome,
             news = news(),
         )
+    }
+
+    /**
+     * "in the last 2 days: paint 5, play_guitar 4", "not for 2 days or more: explore (last d2)", "never yet: invent":
+     * the verbs he could do now that aren't routine. Null on the first day, when everything is new.
+     */
+    private fun lately(): List<String>? {
+        val window = clock.ticks(LATELY_DAYS * GameClock.MINUTES_PER_DAY)
+        if (clock.day(ticks) < 2) return null
+        while (recent.isNotEmpty() && recent.first().second < ticks - window) recent.removeFirst()
+        val open = current.activities.filter { it.locked == null }.map { it.id }.distinct()
+            .mapNotNull { content.verb(it) }.filter { !it.isRoutine }
+        val lines = mutableListOf<String>()
+        recent.groupingBy { it.first }.eachCount().entries.sortedByDescending { it.value }
+            .takeIf { it.isNotEmpty() }?.let { lines += "in the last $LATELY_DAYS days: " + it.joinToString { (id, n) -> "$id $n" } }
+        open.filter { v -> done[v.id]?.let { it.lastTick < ticks - window } == true }
+            .takeIf { it.isNotEmpty() }?.let { lines += "not for $LATELY_DAYS days or more: " + it.joinToString { v -> "${v.id} (last d${clock.day(done[v.id]!!.lastTick)})" } }
+        open.filter { it.id !in done }.takeIf { it.isNotEmpty() }?.let { lines += "never yet: " + it.joinToString { v -> v.id } }
+        return lines.ifEmpty { null }
     }
 
     /**
@@ -1573,6 +1634,8 @@ class BedroomWorld private constructor(
         private const val AUTHORED_KEPT = 16
         /** Duration estimates are rounded to this many minutes, so the option lists change less often. */
         private const val ESTIMATE_MINUTES = 10
+        /** How far back [lately] looks, in game days. */
+        private const val LATELY_DAYS = 2
 
         /** "60%", to the nearest 10. */
         private fun percent(fresh: Double): String = "${(fresh * 10).roundToInt() * 10}%"

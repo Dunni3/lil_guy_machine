@@ -51,6 +51,11 @@ data class Observation(
     @EncodeDefault(EncodeDefault.Mode.NEVER) val skills: Map<String, Double>? = null,
     /** The books he owns and how far he has read. */
     @EncodeDefault(EncodeDefault.Mode.NEVER) val books: List<BookView>? = null,
+    /**
+     * What he's been doing: what he did most in the last two days, and what he could do now but hasn't
+     * for two days or more, or ever. So a run of the same few things is something he can see.
+     */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val lately: List<String>? = null,
     /** Authored ops waiting for (or given) their results, for the agent layer; never shown to models. */
     @Transient val authored: List<AuthoredView> = emptyList(),
     /**
@@ -166,9 +171,9 @@ data class CatalogEntry(
  */
 data class VerbView(val id: String, val phrase: String?, val locked: String?, val gives: String?, val taughtBy: String? = null)
 
-/** How often he has finished a verb this run, and when he first did. */
+/** How often he has finished a verb this run, and when he first and last did. */
 @Serializable
-data class VerbTally(val count: Int, val firstTick: Long)
+data class VerbTally(val count: Int, val firstTick: Long, val lastTick: Long = firstTick)
 
 @Serializable
 data class SelfState(
