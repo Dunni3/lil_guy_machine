@@ -1,9 +1,9 @@
 import { Box3, Matrix4, MeshStandardMaterial, Vector3, type Mesh, type Ray } from "three";
-import type { Content, Entity, LifeState, PlaceView, RectView, WorldView } from "../../../protocol/ts/protocol";
+import type { Content, Entity, LifeState, MotionView, PlaceView, RectView, WorldView } from "../../../protocol/ts/protocol";
 import { ClayModel, type ClayRenderer, type Glow, type Placed } from "../clay/renderer";
 import type { ClayTextures } from "../clay/textures";
 import { Blob, newPose } from "../guy/blob";
-import { Y_AXIS, Z_AXIS, rotate, scale, translate } from "../math";
+import { X_AXIS, Y_AXIS, Z_AXIS, rotate, scale, translate } from "../math";
 import type { Place } from "../stream/track";
 import { ArtLayer } from "./art";
 import { CameraRig, type CameraMode } from "./camera";
@@ -40,12 +40,20 @@ interface Note {
   age: number;
 }
 
-/** One thing on the map: its model, and where it stands. */
+/** One thing on the map: its model, and where it stands; [moving], its parts his code set moving, each drawn on its own. */
 interface Thing {
   placed: Placed;
   at: Matrix4;
   key: string;
+  moving: { placed: Placed; pivot: [number, number, number]; motion: MotionView }[];
 }
+
+/** How far each motion goes: spin turns (degrees a second at speed 1), bob rises (metres), sway leans (degrees), pulse swells, shake jitters (metres). */
+const SPIN = 180;
+const BOB = 0.04;
+const SWAY = 12;
+const PULSE = 0.12;
+const SHAKE = 0.012;
 
 /**
  * The room in 3D, in clay: the Field Lab's isometric cutaway (the back and left walls standing, the
@@ -143,6 +151,7 @@ export class RoomView {
     const weather = this.sky ? { sky: this.sky, daylight: SKIES[this.sky] } : (fast.weather ?? null);
     this.lightFor(fast.clock?.time ?? null, weather);
     this.syncThings(state);
+    this.animate(delta);
     this.syncShelf(state, content);
 
     const agent = fast.agents[0] ?? null;
@@ -339,21 +348,75 @@ export class RoomView {
     }
     for (const [id, t] of this.things) {
       if (seen.has(id)) continue;
-      this.r.remove(t.placed);
+      this.unplace(t);
       this.things.delete(id);
     }
     // What glows lights the room at night: each lamp's glow, where it stands.
     this.glows = [];
-    for (const t of this.things.values()) for (const g of t.placed.model.glows) this.glows.push({ at: g.at.clone().applyMatrix4(t.at), strength: g.strength });
+    for (const t of this.things.values()) {
+      for (const g of t.placed.model.glows) this.glows.push({ at: g.at.clone().applyMatrix4(t.at), strength: g.strength });
+      for (const m of t.moving) for (const g of m.placed.model.glows) this.glows.push({ at: g.at.clone().add(this.scratch.set(...m.pivot)).applyMatrix4(t.at), strength: g.strength });
+    }
+  }
+
+  private readonly scratch = new Vector3();
+  private readonly turn = new Matrix4();
+  private time = 0;
+
+  /** His things' moving parts, each about its pivot in the thing, as their motions say. */
+  private animate(delta: number) {
+    this.time += delta;
+    const t = this.time;
+    for (const thing of this.things.values()) {
+      for (const m of thing.moving) {
+        const s = m.motion.speed;
+        const k = this.turn.copy(thing.at);
+        translate(k, m.pivot[0], m.pivot[1], m.pivot[2]);
+        switch (m.motion.kind) {
+          case "spin": rotate(k, Y_AXIS, (t * s * SPIN) % 360); break;
+          case "bob": translate(k, 0, BOB * (1 + Math.sin(t * s * Math.PI)), 0); break;
+          case "sway": rotate(k, Z_AXIS, SWAY * Math.sin(t * s * Math.PI)); break;
+          case "pulse": { const g = 1 + PULSE * Math.sin(t * s * Math.PI); scale(k, g, g, g); break; }
+          case "shake": translate(k, SHAKE * Math.sin(t * s * 41), 0, SHAKE * Math.cos(t * s * 37)); rotate(k, X_AXIS, 2 * Math.sin(t * s * 29)); break;
+        }
+        m.placed.set(k);
+      }
+    }
+  }
+
+  private unplace(t: Thing) {
+    this.r.remove(t.placed);
+    for (const m of t.moving) this.r.remove(m.placed);
+  }
+
+  /** The middle of the top of thing [id]'s model where it stands, or null: for a readout over it. */
+  topOf(id: string, out: Vector3): Vector3 | null {
+    const t = this.things.get(id);
+    if (!t) return null;
+    const b = t.placed.model.bounds;
+    const box = new Box3(new Vector3(b[0], b[1], b[2]), new Vector3(b[3], b[4], b[5]));
+    for (const m of t.moving) {
+      const mb = m.placed.model.bounds;
+      box.union(new Box3(new Vector3(mb[0], mb[1], mb[2]), new Vector3(mb[3], mb[4], mb[5])).translate(this.scratch.set(...m.pivot)));
+    }
+    if (box.isEmpty()) return null;
+    box.applyMatrix4(t.at);
+    return out.set((box.min.x + box.max.x) / 2, box.max.y, (box.min.z + box.max.z) / 2);
   }
 
   private place(e: Entity) {
-    const key = `${e.kind}/${e.x}/${e.y}/${e.state ?? ""}/${e.color ?? ""}`;
-    if (this.things.get(e.id)?.key === key) return;
-    const old = this.things.get(e.id);
-    if (old) this.r.remove(old.placed);
+    const motions = e.motions ?? [];
+    // Which parts move is part of the model; how fast they go and how isn't, so a change of speed builds nothing.
+    const key = `${e.kind}/${e.x}/${e.y}/${e.state ?? ""}/${e.color ?? ""}/${e.variant ?? ""}/${motions.map((m) => m.part).sort().join(",")}`;
+    const was = this.things.get(e.id);
+    if (was?.key === key) {
+      for (const m of was.moving) m.motion = motions.find((n) => n.part === m.motion.part) ?? m.motion;
+      return;
+    }
+    if (was) this.unplace(was);
     const map = this.map!;
-    const model = this.models.item(e.id, e.kind, e.state, e.color ?? null);
+    const split = motions.length ? this.models.moving(e.id, e.variant ?? null, motions.map((m) => m.part), e.color ?? null) : null;
+    const model = split?.still ?? this.models.item(e.id, e.kind, e.state, e.color ?? null, e.variant ?? null);
     const at = new Matrix4();
     const tx = Math.trunc(e.x);
     const ty = Math.trunc(e.y);
@@ -363,7 +426,9 @@ export class RoomView {
       const out = 0.5 + WALL_FACE;
       rotate(at.makeTranslation(tx + 0.5 + dx * out, 0, ty + 0.5 + dy * out), Y_AXIS, yaw);
     } else at.makeTranslation(e.x, 0, e.y);
-    this.things.set(e.id, { placed: this.r.add(model).set(at), at, key });
+    // Moving parts cast no shadow: the shadow map is drawn again only when something that casts one moves.
+    const moving = (split?.parts ?? []).map((p) => ({ placed: this.r.add(p.model, false), pivot: p.pivot, motion: motions.find((m) => m.part === p.part)! }));
+    this.things.set(e.id, { placed: this.r.add(model).set(at), at, key, moving });
   }
 
   /** His books and records on the wall shelf, and his guitar on the wall, once he owns any. Runs when what the shop knows changes. */

@@ -11,6 +11,7 @@ import { Mail } from "./ui/mail";
 import { Hud } from "./ui/hud";
 import { lookOf, pressOf } from "./ui/keys";
 import { ThingLabel } from "./ui/label";
+import { Readouts } from "./ui/readout";
 import { LookControls } from "./ui/look";
 import { Layer } from "./ui/layer";
 import { Menu, type Act, type Spot } from "./ui/menu";
@@ -74,6 +75,7 @@ const look = new LookControls(settings.broadcast, {
   },
 });
 const label = new ThingLabel(layer);
+const readouts = new Readouts(layer);
 
 /** The settings the admin last asked for, shown until the host's match (or the ask fails). */
 let requested: Settings | null = null;
@@ -405,7 +407,9 @@ function draw() {
       if (!open && c === "") canvas.style.cursor = "grab";
       else if (open && c === "grab") canvas.style.cursor = "";
     }
-    label.update(open ? null : hovered(), life, content, renderer.camera, f.u, delta);
+    const over = open ? null : hovered();
+    label.update(over, life, content, renderer.camera, f.u, delta);
+    readouts.update(life, (id, out) => view!.topOf(id, out), renderer.camera, f.u, open || signIn.open || mail.open, over?.id ?? null);
     card.update(menu, v, f, pressed, delta);
     pressed = false;
     renderer.overlay(layer.scene, layer.camera);

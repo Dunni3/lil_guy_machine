@@ -324,8 +324,8 @@ class Machines(private val sandbox: ScriptSandbox) {
         if (code == null || Triggers.TIMER !in has(code.source)) throw ScriptProblem("the ${spec.name}'s code has no function onTimer(world, thing, key)")
         if (minutes !in 1..MOST_TIMER) throw ScriptProblem("a timer is 1 to $MOST_TIMER minutes")
         if (key.isBlank() || key.length > 40) throw ScriptProblem("a timer's key is 1 to 40 characters")
+        if (timers.count { it.thing == thing && it.key != key } >= MAX_TIMERS) throw ScriptProblem("a thing has at most $MAX_TIMERS timers going")
         timers.removeAll { it.thing == thing && it.key == key }
-        if (timers.count { it.thing == thing } >= MAX_TIMERS) throw ScriptProblem("a thing has at most $MAX_TIMERS timers going")
         timers += MachineTimer(thing, key, h.ticks + h.ticksIn(minutes.toDouble()))
     }
 

@@ -1,5 +1,5 @@
 import exported from "../../../parts/export/parts.json";
-import type { Invented } from "../../../protocol/ts/protocol";
+import type { Invented, LookShape } from "../../../protocol/ts/protocol";
 import type { Part } from "../clay/geometry";
 import { ClayModel } from "../clay/renderer";
 
@@ -39,8 +39,8 @@ const INVENTED_WALL_DEPTH = 0.25;
  * An invention's look as a part list. A design is drawn standing on a floor tile; one for a wall
  * is lifted up it and flattened against it, its back at z = 0 as the wall items' part lists are.
  */
-function lookParts(made: Invented): Part[] {
-  return made.look.map((p) => ({
+function lookParts(made: Invented, look: LookShape[] = made.look): Part[] {
+  return look.map((p) => ({
     shape: p.shape,
     w: p.w,
     h: p.h,
@@ -62,6 +62,50 @@ function lookParts(made: Invented): Part[] {
     glow: p.glow ?? 0,
     opacity: p.opacity ?? 1,
   }));
+}
+
+/** The middle of [shapes] across and front to back, and their bottom: where a part of several shapes turns, swells and bobs about. */
+function pivotOf(shapes: { x: number; y: number; z: number; w: number; d: number }[]): [number, number, number] {
+  const x0 = Math.min(...shapes.map((s) => s.x - s.w / 2));
+  const x1 = Math.max(...shapes.map((s) => s.x + s.w / 2));
+  const z0 = Math.min(...shapes.map((s) => s.z - s.d / 2));
+  const z1 = Math.max(...shapes.map((s) => s.z + s.d / 2));
+  return [(x0 + x1) / 2, Math.min(...shapes.map((s) => s.y)), (z0 + z1) / 2];
+}
+
+/**
+ * [made]'s look as its [variant] has it (`Invented.variants`): each change applies to every shape of
+ * its part, which takes a colour, a glow or a turn, swells about the part's bottom centre, or goes.
+ */
+export function variantLook(made: Invented, variant: string | null): LookShape[] {
+  const changes = variant ? made.variants?.[variant] : undefined;
+  if (!changes?.length) return made.look;
+  const out: LookShape[] = [];
+  for (const s of made.look) {
+    let p = s;
+    for (const c of changes) {
+      if (c.part !== s.part) continue;
+      if (c.hidden) {
+        p = null as unknown as LookShape;
+        break;
+      }
+      p = { ...p, color: c.color ?? p.color, glow: c.glow ?? p.glow, rot_x: c.rot_x ?? p.rot_x, rot_y: c.rot_y ?? p.rot_y, rot_z: c.rot_z ?? p.rot_z };
+      if (c.scale !== null && c.scale !== undefined && c.scale !== 1) {
+        const k = c.scale;
+        const [px, py, pz] = pivotOf(made.look.filter((o) => o.part === s.part));
+        p = { ...p, w: p.w * k, h: p.h * k, d: p.d * k, x: px + (p.x - px) * k, y: py + (p.y - py) * k, z: pz + (p.z - pz) * k };
+      }
+    }
+    if (p) out.push(p);
+  }
+  return out;
+}
+
+/** A part of an invention that moves by itself: its model, built about its own pivot, and where that pivot is in the thing. */
+export interface MovingPart {
+  part: string;
+  model: ClayModel;
+  pivot: [number, number, number];
 }
 
 /** [base] painted [paint]: the paint's hue, with the base's lightness kept a little so the parts still tell apart. */
@@ -103,13 +147,40 @@ export class Models {
    * The model for item [id] (of [kind], for the fallback); a patch that's [state] "bare" has its own.
    * [color]: the colour his code painted it, which every part takes on while keeping its light and dark.
    */
-  item(id: string, kind: string, state: string | null = null, color: string | null = null): ClayModel {
-    if (color) return this.cached(`painted/${kind}/${id}/${state ?? ""}/${color}`, () => this.lists.get(this.item(id, kind, state))!.map((p) => ({ ...p, color: tinted(p.color, color) })));
+  item(id: string, kind: string, state: string | null = null, color: string | null = null, variant: string | null = null): ClayModel {
+    if (color) return this.cached(`painted/${kind}/${id}/${state ?? ""}/${color}/${variant ?? ""}`, () => this.lists.get(this.item(id, kind, state, null, variant))!.map((p) => ({ ...p, color: tinted(p.color, color) })));
     const made = this.invented.get(id);
-    if (made && made.look.length > 0) return this.cached(`invented/${id}`, () => lookParts(made));
+    // Each variant is its own model, built once, as a bare patch's is.
+    if (made && made.look.length > 0) return this.cached(`invented/${id}/${variant ?? ""}`, () => lookParts(made, variantLook(made, variant)));
     const bare = state === "bare" ? parts.clay_items[`${id}_bare`] : undefined;
     if (bare) return this.cached(`${kind}/${id}_bare`, () => bare);
     return this.cached(`${kind}/${id}`, () => parts.clay_items[id] ?? parts.items[id] ?? parts.kinds[kind] ?? parts.kinds["*"]);
+  }
+
+  /**
+   * Invention [id] in [variant] with the parts named [moving] split out of it: the rest as one model,
+   * and each moving part as a model of its own about its pivot, which the view turns or bobs each
+   * frame. Which parts move is part of the model; how fast they go isn't, so changing speed builds nothing.
+   */
+  moving(id: string, variant: string | null, moving: string[], color: string | null): { still: ClayModel; parts: MovingPart[] } | null {
+    const made = this.invented.get(id);
+    if (!made || made.look.length === 0 || moving.length === 0) return null;
+    const key = `${id}/${variant ?? ""}/${color ?? ""}`;
+    const look = variantLook(made, variant);
+    const paint = (ps: Part[]) => (color ? ps.map((p) => ({ ...p, color: tinted(p.color, color) })) : ps);
+    const stillShapes = look.filter((s) => !moving.includes(s.part));
+    // A thing that's all moving parts has nothing to stand on: it's drawn whole and still.
+    if (stillShapes.length === 0) return null;
+    const still = this.cached(`moving/${key}/still/${moving.join(",")}`, () => paint(lookParts(made, stillShapes)));
+    const parts = moving.flatMap((name) => {
+      const shapes = look.filter((s) => s.part === name);
+      if (!shapes.length) return [];
+      const placed = lookParts(made, shapes);
+      const pivot = pivotOf(placed);
+      const model = this.cached(`moving/${key}/part/${name}`, () => paint(placed.map((p) => ({ ...p, x: p.x - pivot[0], y: p.y - pivot[1], z: p.z - pivot[2] }))));
+      return [{ part: name, model, pivot }];
+    });
+    return { still, parts };
   }
 
   /** A prop by its name in the export; [color] for the ones that take one. */
