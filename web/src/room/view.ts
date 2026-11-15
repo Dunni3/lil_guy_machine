@@ -69,6 +69,9 @@ export class RoomView {
   private roomAt: RectView = { x0: 0, y0: 0, x1: 1, y1: 1 };
   /** The place the camera frames: where he is. */
   private framedPlace = "";
+  /** Where the sun's shadows are aimed for the place framed, and where they are aimed now (the view's middle, looking around). */
+  private readonly placeAim = { x: 0, z: 0, reach: 11 };
+  private readonly aimed = { x: NaN, z: NaN, reach: 0 };
   private land: Placed | null = null;
   private trees: Placed | null = null;
   private shell: Placed | null = null;
@@ -161,6 +164,7 @@ export class RoomView {
     this.art.pose(pose, making, making ? stand : undefined);
     this.blob.update(delta, pose);
     this.camera.update(this.r.camera, place.x, place.y, this.aspect, delta);
+    this.aimShadows();
     this.making = making;
 
     this.r.setLamps(this.glows, this.middle);
@@ -204,6 +208,7 @@ export class RoomView {
     this.framedWorld = world;
     this.framedPlace = "";
     const map = (this.map = new Terrain(world.rows));
+    this.camera.land(0, 0, world.width, world.height);
     const room = this.room;
     const rooms = world.places.filter((p) => p.kind === "room");
     const at = (this.roomAt = rooms[0]?.bounds ?? { x0: 0, y0: 0, x1: map.width - 1, y1: map.height - 1 });
@@ -272,7 +277,25 @@ export class RoomView {
     }
     this.camera.frame(box[0], box[1], box[2], box[3], box[4], !first);
     const reach = Math.min(24, Math.max(11, Math.max(box[2] - box[0], box[3] - box[1]) / 2 + 3));
-    this.r.aim((box[0] + box[2]) / 2, (box[1] + box[3]) / 2, reach);
+    Object.assign(this.placeAim, { x: (box[0] + box[2]) / 2, z: (box[1] + box[3]) / 2, reach });
+  }
+
+  /**
+   * The sun's shadows cover the place framed, or, looking around, what's in view: aimed again only
+   * when that has moved a couple of metres or grown, since each aim redraws the shadow map.
+   */
+  private aimShadows() {
+    let { x, z, reach } = this.placeAim;
+    if (this.camera.mode === "free") {
+      const f = this.camera.focus;
+      x = f.x;
+      z = f.z;
+      reach = Math.min(32, Math.max(11, Math.ceil(f.reach + 3)));
+    }
+    const a = this.aimed;
+    if (Math.hypot(x - a.x, z - a.z) < 2 && reach === a.reach) return;
+    Object.assign(a, { x, z, reach });
+    this.r.aim(x, z, reach);
   }
 
   /** The light, the window's glass and the wall clock for the time of day; [time] "HH:MM", or noon without one. */

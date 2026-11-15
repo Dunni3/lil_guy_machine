@@ -18,8 +18,13 @@ const DISTANCE = 120;
 /** Room to spare round the room's box, as a fraction of the frame; following him, how much of the room's height (in the frame) shows. */
 const MARGIN = 1.08;
 const FOLLOW = 0.55;
-/** Looking around: how near in it goes and how far out, as fractions of the whole room's framing, and how far past the room's box the middle of the view may wander (metres). */
-const ZOOM = [0.12, 1.6];
+/**
+ * Looking around: how near in it goes, as a fraction of the place's framing, and how far out, as a
+ * fraction of the whole land's (or the place's, if that's more); and how far past the land's edge the
+ * middle of the view may wander (metres).
+ */
+const ZOOM_IN = 0.12;
+const ZOOM_OUT = 1.15;
 const WANDER = 1.5;
 /** How fast it catches up (per second; higher is snappier): between framings, and under the viewer's hand. */
 const CATCH_UP = 2.2;
@@ -45,8 +50,10 @@ function axes(yaw: number, pitch: number, dir: Vector3, right: Vector3, up: Vect
  * the viewer has dragged, zoomed and turned it to look round his world. Switching eases between them.
  */
 export class CameraRig {
-  /** The room's box: x0, z0, x1, z1 and its walls' height. */
+  /** The framed place's box: x0, z0, x1, z1 and its walls' height. */
   private box = [0, 0, 1, 1, 2.4];
+  /** The whole land, x0, z0, x1, z1, which looking around may roam; null for just the place. */
+  private bounds: number[] | null = null;
   private aspect = 16 / 9;
   private placed = false;
   /** Where it is now: the point looked at, half the frame's height, the turn and the tilt. */
@@ -56,8 +63,9 @@ export class CameraRig {
   private pitch = ISO_PITCH;
   /** Looking around, where the viewer has put it: the same four. */
   private readonly look = { centre: new Vector3(), half: 4, yaw: ISO_YAW, pitch: ISO_PITCH };
-  /** The whole room's framing's half height, from the last frame, for the zoom's limits. */
+  /** The place's framing's half height and the whole land's, from the last frame, for the zoom's limits. */
   private roomHalf = 4;
+  private landHalf = 4;
   private readonly want = new Vector3();
   private readonly dir = new Vector3();
   private readonly right = new Vector3();
@@ -86,6 +94,16 @@ export class CameraRig {
     if (!ease) this.placed = false;
   }
 
+  /** Looking around may roam the whole land, [x0, x1] by [z0, z1], not just the place framed. */
+  land(x0: number, z0: number, x1: number, z1: number) {
+    this.bounds = [x0, z0, x1, z1];
+  }
+
+  /** Where the middle of the view is on the ground now, and how far the view reaches across from it (metres), for aiming the sun's shadows. */
+  get focus(): { x: number; z: number; reach: number } {
+    return { x: this.centre.x, z: this.centre.z, reach: this.half * Math.max(1, this.aspect) };
+  }
+
   /**
    * Moves the view by [dx], [dy] CSS pixels on a screen [height] pixels tall, as if dragging the
    * world under the pointer: what was under it stays under it.
@@ -106,7 +124,7 @@ export class CameraRig {
   zoom(factor: number, nx = 0, ny = 0) {
     this.takeHold();
     const l = this.look;
-    const half = clamp(l.half / factor, this.roomHalf * ZOOM[0], this.roomHalf * ZOOM[1]);
+    const half = clamp(l.half / factor, this.roomHalf * ZOOM_IN, Math.max(this.roomHalf, this.landHalf) * ZOOM_OUT);
     const moved = 1 - half / l.half;
     axes(l.yaw, l.pitch, this.dir, this.right, this.up);
     l.centre.addScaledVector(this.right, nx * l.half * this.aspect * moved).addScaledVector(this.up, ny * l.half * moved);
@@ -130,9 +148,13 @@ export class CameraRig {
       this.aspect = aspect;
       this.placed = false;
     }
-    const [minR, maxR, minU, maxU] = this.extent(this.isoRight, this.isoUp);
+    const [minR, maxR, minU, maxU] = this.extent(this.box, this.isoRight, this.isoUp);
     const roomHalf = Math.max((maxU - minU) / 2, (maxR - minR) / 2 / aspect) * MARGIN;
     this.roomHalf = roomHalf;
+    if (this.bounds) {
+      const [lr0, lr1, lu0, lu1] = this.extent([...this.bounds, 2], this.isoRight, this.isoUp);
+      this.landHalf = Math.max((lu1 - lu0) / 2, (lr1 - lr0) / 2 / aspect) * MARGIN;
+    } else this.landHalf = roomHalf;
     const want = this.want;
     let half = roomHalf;
     let yaw = ISO_YAW;
@@ -178,9 +200,9 @@ export class CameraRig {
     camera.updateMatrixWorld();
   }
 
-  /** The room's box seen along axes [right] and [up]: its extent across the screen and up it. */
-  private extent(right: Vector3, up: Vector3): [number, number, number, number] {
-    const [x0, z0, x1, z1, h] = this.box;
+  /** A box (x0, z0, x1, z1, height) seen along axes [right] and [up]: its extent across the screen and up it. */
+  private extent(box: number[], right: Vector3, up: Vector3): [number, number, number, number] {
+    const [x0, z0, x1, z1, h] = box;
     let minR = Infinity, maxR = -Infinity, minU = Infinity, maxU = -Infinity;
     const p = this.tmp;
     for (const cx of [x0, x1]) for (const cz of [z0, z1]) for (const cy of [-0.85, h]) {
@@ -207,13 +229,13 @@ export class CameraRig {
   /**
    * Slides the point looked at along the view's own axis (which changes nothing on the screen) to his
    * eye height, so turning goes round a point in the room rather than one up in the air, and keeps it
-   * within reach of the room.
+   * over the land (or near the place, without one).
    */
   private settle() {
     const l = this.look;
     axes(l.yaw, l.pitch, this.dir, this.right, this.up);
     l.centre.addScaledVector(this.dir, (LOOK_HEIGHT - l.centre.y) / this.dir.y);
-    const [x0, z0, x1, z1] = this.box;
+    const [x0, z0, x1, z1] = this.bounds ?? this.box;
     l.centre.x = clamp(l.centre.x, x0 - WANDER, x1 + WANDER);
     l.centre.z = clamp(l.centre.z, z0 - WANDER, z1 + WANDER);
   }
