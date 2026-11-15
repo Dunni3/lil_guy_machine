@@ -6,6 +6,7 @@ import dev.lilguy.sim.ActivityOption
 import dev.lilguy.sim.GridWorld
 import dev.lilguy.sim.Intent
 import dev.lilguy.sim.Observation
+import dev.lilguy.sim.Target
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -47,6 +48,14 @@ object BedroomTools {
             open.groupBy { it.id }.forEach { (id, ways) ->
                 require(id != "buy" && id != "wait") { "a verb named \"$id\" would hide the $id tool" }
                 add(verb(id, ways))
+            }
+            obs.places?.takeIf { it.isNotEmpty() }?.let { places ->
+                add(ToolSet.Tool(
+                    name = "go",
+                    description = "Walk to a place just to be there (the activities walk you where they're done on their own):\n" +
+                        places.joinToString("\n") { "- ${it.id}: ${it.name}, ${it.says}; ${it.walk} min walk." },
+                    parameters = parameters(mapOf("place" to places.map { it.id })),
+                ) { args -> reply(args, Intent.MoveTo(Target.Place(string(args, "place")))) })
             }
             obs.shop.orEmpty().filter { it.affordable }.takeIf { it.isNotEmpty() }?.let { forSale ->
                 add(ToolSet.Tool(
@@ -135,6 +144,8 @@ object BedroomTools {
         obs.copy(
             nearby = emptyList(),
             localMap = emptyList(),
+            localMapAt = null,
+            places = null,
             activities = obs.activities?.filter { it.locked != null },
             lastIntent = null,
             lastResult = null,
@@ -150,7 +161,7 @@ object BedroomTools {
         }
         val what = choices { it.what }
         val on = choices { it.on }
-        fun payoff(w: ActivityOption) = listOfNotNull(w.takes?.let { "takes $it" }, w.gives?.let { "gives $it" }).joinToString("; ")
+        fun payoff(w: ActivityOption) = listOfNotNull(w.where?.let { "in $it, ${w.walk} min walk from here" }, w.takes?.let { "takes $it" }, w.gives?.let { "gives $it" }).joinToString("; ")
         val description = if (ways.size == 1 && what == null && on == null) {
             payoff(ways[0]).replaceFirstChar { it.uppercase() } + "."
         } else {
@@ -223,6 +234,8 @@ object BedroomTools {
         }
         is Intent.Buy -> "buy" to buildJsonObject { put("item", intent.item) }
         is Intent.Wait -> "wait" to buildJsonObject { put("minutes", maxOf(1, intent.ticks / ticksPerMinute)) }
+        is Intent.MoveTo -> (intent.target as? Target.Place)?.let { "go" to buildJsonObject { put("place", it.id) } }
+            ?: (PromptBuilder.tag(intent) to json.encodeToJsonElement(Intent.serializer(), intent).jsonObject.let { JsonObject(it - "type") })
         else -> PromptBuilder.tag(intent) to json.encodeToJsonElement(Intent.serializer(), intent).jsonObject.let { JsonObject(it - "type") }
     }
 }

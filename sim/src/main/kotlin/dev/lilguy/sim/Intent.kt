@@ -52,6 +52,10 @@ sealed interface Target {
 
     @Serializable @SerialName("entity")
     data class Entity(val id: String) : Target
+
+    /** A place on the map (a room, or a part of the land): he walks to the middle of it. */
+    @Serializable @SerialName("place")
+    data class Place(val id: String) : Target
 }
 
 /** Lifecycle of a submitted intent. Results go into the next observation. */

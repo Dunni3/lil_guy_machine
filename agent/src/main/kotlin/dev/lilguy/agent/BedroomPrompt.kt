@@ -50,7 +50,7 @@ object BedroomPrompt {
     fun deciding(obs: Observation, content: BedroomContent): Observation =
         obs.copy(activities = obs.activities?.filter { content.verb(it.id) != null }, shop = if (trips(content)) null else obs.shop)
 
-    fun examples(content: BedroomContent, ticksPerMinute: Int): List<Pair<Intent, String>> = buildList {
+    fun examples(content: BedroomContent, ticksPerMinute: Int, places: Boolean = false): List<Pair<Intent, String>> = buildList {
         val activity = content.verbs.firstOrNull { it.work } ?: content.verbs.first()
         add(Intent.Do(activity.id) to "do an activity from `activities` that isn't locked; the game walks you there")
         content.items.firstOrNull { it.price != null }?.takeIf { !trips(content) }?.let { add(Intent.Buy(it.id) to "buy something from `shop` that you can afford; it arrives at the ${content.item(content.shop.at)?.name ?: content.shop.at}") }
@@ -59,6 +59,7 @@ object BedroomPrompt {
             add(Intent.Do(v.id, args["what"], args["on"]) to "do an activity with things you own: `what` and `on` name them, as its entry in `activities` does")
         }
         add(Intent.MoveTo(Target.Entity("bed")) to "walk to something in the room")
+        if (places) add(Intent.MoveTo(Target.Place("garden")) to "go to a place from `places`, to be there")
         add(Intent.Say("one day this room will have a window") to "say something out loud")
         add(Intent.Wait(WAIT_TICKS) to "do nothing for N ticks, at most ${GridWorld.MAX_WAIT} ($ticksPerMinute ticks = 1 game minute)")
     }
@@ -209,9 +210,9 @@ object BedroomPrompt {
      * writes is left out). [self] is his self-model as the prompt shows it, or null when nothing
      * revises it ([Persona.text]). [tools]: he acts by calling one ([BedroomTools]), not by writing a reply.
      */
-    fun system(content: BedroomContent, ticksPerMinute: Int, self: String? = null, tools: Boolean = false, looks: Set<String> = emptySet()): String {
+    fun system(content: BedroomContent, ticksPerMinute: Int, self: String? = null, tools: Boolean = false, looks: Set<String> = emptySet(), map: String? = null): String {
         val r = content.needs
-        val actions = examples(content, ticksPerMinute).joinToString("\n") { (intent, what) ->
+        val actions = examples(content, ticksPerMinute, map != null).joinToString("\n") { (intent, what) ->
             "- ${PromptBuilder.tag(intent)}: $what\n  ${PromptBuilder.exampleJson.encodeToString(Intent.serializer(), intent)}"
         }
         val makers = content.verbs.filter { it.ops<ProduceOp>().isNotEmpty() }.map { it.id }
@@ -261,14 +262,16 @@ object BedroomPrompt {
             "- $lists",
             "- Nothing ends the game. An action that can't be done fails at once, and ${if (tools) "its result" else "lastResult"} says why. Read it and choose something else rather than repeating it.",
         ).joinToString("\n")
-        if (tools) return toolSystem(content, self, wants, life, music, looks)
+        val home = if (map != null) "You live in a small house with land round it" else "You live in this bedroom"
+        val world = map?.let { "\n\nWhere things are:\n$it" }.orEmpty()
+        if (tools) return toolSystem(content, self, wants, life + world, music, looks, home)
         return """
             |${Persona.text(content, self)}
             |
-            |You live in this bedroom. You need money $wants. Each turn you choose what to do next; the game carries it out, then shows you how things stand.
+            |$home. You need money $wants. Each turn you choose what to do next; the game carries it out, then shows you how things stand.
             |
             |How your life works:
-            |$life
+            |$life$world
             |
             |Actions (the "intent" field), each with an example:
             |$actions
@@ -280,7 +283,7 @@ object BedroomPrompt {
             |- holding: art you're carrying, to sell. owns: everything else you own, id to count.$music${if (content.vocabulary.skills.isNotEmpty()) "\n            |- skills: your skills, name to level." else ""}${if (content.books.isNotEmpty()) "\n            |- books: the books you own, how many chapters you've read of how many, what studying one raises, and what finishing it would teach you." else ""}
             |- art: the pieces you have made and still have, held to sell or hung on your wall, with their titles. commission: today's request for a piece, if one is open.
             |- $options: your options, as above.
-            |- self and nearby: where you are and the furniture around you, with tile x and y. localMap: the room, one string per row, north at the top.
+            |- ${if (map != null) "place: where you are, and places: where else you could go, with the walk there. " else ""}self and nearby: where you are and the furniture around you, with tile x and y. localMap: ${if (map != null) "the room you're in, or the land round you, one string per row, north at the top; localMapAt is its top-left tile" else "the room, one string per row, north at the top"}.
             |- lastIntent and lastResult: your previous action and how it ended (succeeded, failed with a reason, or interrupted).
             |- recentEvents: the last few things that happened, stamped with day and time.
             |
@@ -289,10 +292,10 @@ object BedroomPrompt {
     }
 
     /** [system] for a model that acts by calling tools: no action examples or reply format, and the status message's fields. */
-    private fun toolSystem(content: BedroomContent, self: String?, wants: String, life: String, music: String, looks: Set<String>): String = """
+    private fun toolSystem(content: BedroomContent, self: String?, wants: String, life: String, music: String, looks: Set<String>, home: String): String = """
         |${Persona.text(content, self)}
         |
-        |You live in this bedroom. You need money $wants. Each turn you choose what to do next; the game carries it out, then tells you how it went and how things stand.
+        |$home. You need money $wants. Each turn you choose what to do next; the game carries it out, then tells you how it went and how things stand.
         |
         |How your life works:
         |$life
@@ -338,6 +341,7 @@ ${lookText(looks)}
                 "do.on" to "What to do it on, as listed with the activity; null when it lists none.",
                 "buy.item" to "An item from `shop` that you can afford.",
                 "entity.id" to "An id from nearby.",
+                "place.id" to "A place from `places`.",
                 "wait" to "Do nothing for some ticks ($ticksPerMinute ticks = 1 game minute).",
                 "tile.x" to "Tile column; x grows east.",
                 "tile.y" to "Tile row; y grows south.",
@@ -348,6 +352,7 @@ ${lookText(looks)}
                 "do.on" to open.mapNotNull { it.on }.distinct(),
                 "buy.item" to obs.shop.orEmpty().filter { it.affordable }.map { it.id },
                 "entity.id" to obs.nearby.map { it.id },
+                "place.id" to obs.places.orEmpty().map { it.id },
                 "pick_up.itemId" to emptyList(),
             ),
             ranges = mapOf("wait.ticks" to 1..GridWorld.MAX_WAIT),
@@ -373,15 +378,18 @@ ${lookText(looks)}
         val options = buildList {
             offered.filter { it.locked == null }.forEach { a ->
                 val with = listOfNotNull(a.what?.let { " with the $it" }, a.on?.let { " on the $it" }).joinToString("")
-                add(option(Intent.Do(a.id, a.what, a.on), "Do ${a.id}$with: takes ${a.takes}; gives ${a.gives}.", content))
+                val where = a.where?.let { " (in $it, ${a.walk} min walk)" }.orEmpty()
+                add(option(Intent.Do(a.id, a.what, a.on), "Do ${a.id}$with$where: takes ${a.takes}; gives ${a.gives}.", content))
             }
             obs.shop.orEmpty().filter { it.affordable }.forEach { s ->
                 add(option(Intent.Buy(s.id), "Buy ${s.id} for $${s.price}, leaving $${(obs.money ?: 0) - s.price}: ${s.gives}.", content))
             }
+            obs.places.orEmpty().forEach { p -> add(option(Intent.MoveTo(Target.Place(p.id)), "Go to ${p.name}: ${p.says}; ${p.walk} min walk.", content)) }
             add(option(Intent.Wait(WAIT_TICKS), "Wait about ${WAIT_TICKS / ticksPerMinute} minutes and do nothing."))
         }
         val state = buildJsonObject {
-            put("situation", Persona.short(content) + " He lives in this bedroom and needs money for food. His needs fall over time; nothing ends the game.")
+            put("situation", Persona.short(content) + " He lives in ${if (obs.places != null) "a small house with land round it" else "this bedroom"} and needs money for food. His needs fall over time; nothing ends the game.")
+            obs.place?.let { put("where", it) }
             obs.clock?.let { put("time", "day ${it.day}, ${it.time}") }
             put("money", obs.money ?: 0)
             obs.needs?.let { n ->
@@ -458,6 +466,7 @@ ${lookText(looks)}
      */
     private fun menuNode(intent: Intent, content: BedroomContent): String? = when (intent) {
         is Intent.Do -> content.menu.firstOrNull { intent.activity in it.verbs }?.id
+        is Intent.MoveTo -> content.menu.firstOrNull { it.go }?.id
         is Intent.Buy -> content.item(intent.item)?.let { item ->
             content.verbs.filter { v -> item.id in v.at || (v.requires + v.args.values + v.effects.flatMap { it.asksFor }).any { it in item.names } }
                 .firstNotNullOfOrNull { v -> content.menu.firstOrNull { v.id in it.verbs }?.id }
@@ -490,6 +499,7 @@ ${lookText(looks)}
         is Intent.Wait -> "wait:${intent.ticks}"
         is Intent.MoveTo -> "move_to:" + when (val t = intent.target) {
             is Target.Entity -> t.id
+            is Target.Place -> t.id
             is Target.Tile -> "${t.x},${t.y}"
         }
         is Intent.PickUp -> "pick_up:${intent.itemId}"

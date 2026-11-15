@@ -130,6 +130,7 @@ abstract class GridWorld protected constructor(
     protected fun describe(target: Target): String = when (target) {
         is Target.Tile -> "(${target.x}, ${target.y})"
         is Target.Entity -> target.id
+        is Target.Place -> target.id
     }
 
     // --- intent lifecycle --------------------------------------------------------------------

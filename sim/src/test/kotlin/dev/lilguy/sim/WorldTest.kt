@@ -37,6 +37,25 @@ class WorldTest {
     }
 
     @Test
+    fun `he sees where he is, where else he could go, and where an activity would take him`() {
+        val w = BedroomWorld.create()
+        val home = w.observe(w.agentId)
+        assertTrue(home.place!!.startsWith("your bedroom"), home.place)
+        val garden = home.places!!.first { it.id == "garden" }
+        assertTrue(garden.walk in 3..30, "garden is ${garden.walk} min away")
+        assertTrue(home.activities!!.none { it.where != null }, "everything he can do is in his room")
+        val went = w.run(Intent.MoveTo(Target.Place("garden")))
+        assertIs<IntentStatus.Succeeded>(went.status)
+        assertEquals("garden", w.guyPlace())
+        val out = w.observe(w.agentId)
+        assertTrue(out.recentEvents.last().contains("went to the garden"), out.recentEvents.last())
+        val sketch = out.activities!!.first { it.id == "sketch" }
+        assertEquals("your bedroom", sketch.where)
+        assertTrue(sketch.walk!! > 0)
+        assertTrue(out.places!!.first().id == "bedroom" || out.places!!.any { it.id == "bedroom" })
+    }
+
+    @Test
     fun `a checkpoint from before the lot puts him where he was in the room`() {
         val w = BedroomWorld.create()
         val state = w.exportState()
