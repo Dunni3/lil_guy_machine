@@ -135,16 +135,15 @@ class Inventor(private val model: DecisionModel, private val timeout: Duration =
                     usage += d.usage
                     raw = d.raw
                     val design = d.value.design()
-                    when (val checked = rules.check(design, content, call.verb.minutes ?: 0)) {
-                        is InventRules.Checked.Ok -> return@withTimeout drafted(design)
-                        is InventRules.Checked.Refused -> {
-                            // The last try goes to the sim as it is: its refusal is what he learns from.
-                            if (attempt == TRIES - 1) return@withTimeout drafted(design)
-                            redid = checked.problems
-                            messages += Message(Message.Role.Assistant, d.raw)
-                            messages += Message(Message.Role.User, "That can't be built: ${checked.problems.joinToString("; ")}. Design it again so it can, as the same JSON object.")
-                        }
+                    val problems = when (val checked = rules.check(design, content, call.verb.minutes ?: 0)) {
+                        is InventRules.Checked.Ok -> listOfNotNull(unaffordable(checked.invention.cost, obs.money ?: 0))
+                        is InventRules.Checked.Refused -> checked.problems
                     }
+                    // The last try goes to the sim as it is: its refusal is what he learns from.
+                    if (problems.isEmpty() || attempt == TRIES - 1) return@withTimeout drafted(design)
+                    redid = problems
+                    messages += Message(Message.Role.Assistant, d.raw)
+                    messages += Message(Message.Role.User, "That can't be built: ${problems.joinToString("; ")}. Design it again so it can, as the same JSON object.")
                 }
                 drafted(null, "no design")
             }
@@ -163,6 +162,11 @@ class Inventor(private val model: DecisionModel, private val timeout: Duration =
 
     companion object {
         const val WHY_CAP = 30
+
+        /** Why materials at [cost] can't be paid from [money], or null when they can: the sim refuses the build then, so the design is redone first. */
+        fun unaffordable(cost: Int, money: Int): String? =
+            if (cost <= money) null else "its materials cost $$cost and you have $$money; make it simpler, with fewer or weaker qualities, or a use whose materials cost less"
+
         const val TEMPERATURE = 0.9
         private const val TRIES = 2
 

@@ -212,6 +212,7 @@ data class BedroomContent(
         night?.let { GameClock.parseHhmm(it.from); GameClock.parseHhmm(it.to) }
         needs.workFloor.forEach { needOf(it.need) }
         require(needs.stimulationPerHour <= 0 && needs.boredMood >= 0) { "stimulation_per_hour can't be positive or bored_mood negative" }
+        require(needs.stimulationDrainAt == null || needs.stimulationDrainAt > 0) { "stimulation_drain_at must be positive" }
         habituation?.let { h ->
             require(h.perRepeat in 0.0..1.0 && h.recoverPerHour > 0 && h.staleStimulation <= 0) { "habituation: per_repeat 0 to 1, recover_per_hour positive, stale_stimulation not positive" }
             h.boredLock?.let { require(it.worn in 0.0..1.0 && it.below > 0) { "habituation.bored_lock: worn 0 to 1, below positive" } }
@@ -310,6 +311,11 @@ data class NeedRules(
     @SerialName("work_floor") val workFloor: List<NeedBlock>,
     /** Stimulation lost per waking hour. */
     @SerialName("stimulation_per_hour") val stimulationPerHour: Double = 0.0,
+    /**
+     * When set, the drain scales with how much stimulation he has: [stimulationPerHour] at this level, half that at half
+     * of it, so it eases off as he gets bored and fun settles where what he does balances it, rather than at 0 or 100.
+     */
+    @SerialName("stimulation_drain_at") val stimulationDrainAt: Double? = null,
     /** Below [bored] stimulation, each point under it lowers the mood he settles to by [boredMood]. */
     val bored: Double = 0.0,
     @SerialName("bored_mood") val boredMood: Double = 0.0,

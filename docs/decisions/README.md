@@ -82,4 +82,5 @@ these hold the outcome. Skim this index before related changes.
 - 2026-11-08 [The web renderer is Vite and Three.js; part lists are exported from Kotlin, and textures are painted in the page](2026-11-08-the-web-renderer-is-vite-and-three-the-part-lists-are-exported-and-textures-are-painted-in-the-page.md)
 - 2026-11-15 [Runs are kept: a rolling save per session, and the host carries on the run it was last on](2026-11-15-runs-are-kept-a-rolling-save-and-the-host-carries-on-its-last-run.md)
 - 2026-11-13 [He invents items at a workbench; the content grows during a run, and the sim sets what an invention costs](2026-11-13-he-invents-items-at-a-workbench-and-the-content-grows-during-a-run.md)
+- 2026-11-15 [Fun drains in proportion to its level, and a subject he has never drawn is new](2026-11-15-fun-drains-in-proportion-and-new-subjects-are-new.md)
 - 2026-11-15 [Clay replaces crayon; models stay part lists, with clay fields; the web app is built first and the TV viewer rebuilt later](2026-11-15-clay-replaces-crayon-and-models-stay-part-lists.md)

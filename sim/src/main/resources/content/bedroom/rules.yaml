@@ -18,9 +18,13 @@ needs:
     - { need: energy, below: 5, reason: "too tired to work" }
     - { need: fullness, below: 5, reason: "too hungry to work" }
   # Stimulation (low = bored) drains while he's awake. Hobbies, making things and anything new feed
-  # it; repeating the same thing pays less and drains it (habituation, below). Mood is the summary:
+  # it; repeating the same thing pays less and drains it (habituation, below). The drain is
+  # `stimulation_per_hour` at `stimulation_drain_at` and in proportion to the level otherwise (-4 at
+  # 25, -16 at 100), so stimulation settles where what he does balances it instead of sticking at 0
+  # or 100 (docs/decisions/2026-11-15-fun-drains-in-proportion-*). Mood is the summary:
   # below `bored`, each missing point lowers the mood he settles to by `bored_mood` (16 at 0).
   stimulation_per_hour: -8
+  stimulation_drain_at: 50
   bored: 40
   bored_mood: 0.4
 

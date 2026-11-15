@@ -169,7 +169,8 @@ class BedroomWorldTest {
         val w = world()
         w.run(Intent.Wait(GridWorld.MAX_WAIT)) // 40 game minutes
         while (w.clock.reading(w.tick) != ClockReading(1, "09:00")) w.step()
-        assertEquals(NeedLevels(76, 65, 57, 52), w.obs().needs)
+        // Stimulation drains in proportion to its level: -8 an hour at 50, so a little more from 60.
+        assertEquals(NeedLevels(76, 65, 57, 51), w.obs().needs)
         val reasons = w.needs.changes.map { it.need to it.reason }.toSet()
         assertEquals(setOf(Need.Energy to "awake", Need.Stimulation to "awake", Need.Fullness to "hunger", Need.Mood to "drift toward 50"), reasons)
         val sums = w.needs.changes.groupBy { it.need }.mapValues { (_, c) -> c.sumOf { it.delta } }
@@ -299,6 +300,24 @@ class BedroomWorldTest {
         val notes = w.obs().art!!.associate { it.id to it.commission }
         assertEquals("doesn't match the request: there's no $noun drawn in it", notes[first.piece])
         assertEquals("matches the request: +$20 when sold", notes[second.piece])
+    }
+
+    @Test
+    fun `drawing a subject for the first time is new to him, once`() {
+        val w = world(needs = NeedLevels(80, 70, 80))
+        repeat(2) { assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("sketch")).status) }
+        val (first, second) = w.obs().authored.filter { it.handler == "draw" }
+        w.deliver(first.id, AuthoredResult.Drawn("Sleepy Whale", listOf("sleepy", "whale")))
+        w.step()
+        val before = w.needs[Need.Stimulation]
+        assertEquals(setOf("whale"), w.subjectsDrawn)
+        assertTrue(w.needs.changes.any { it.reason == "new: subject:whale" && it.delta > 0 })
+        w.deliver(second.id, AuthoredResult.Drawn("Wild Whale", listOf("wild", "whale"), shows = "whale"))
+        w.step()
+        assertEquals(1, w.needs.changes.count { it.reason == "new: subject:whale" && it.need == Need.Stimulation })
+        assertTrue(w.needs[Need.Stimulation] <= before)
+        // It's kept with the run.
+        assertEquals(setOf("whale"), BedroomWorld.restore(w.exportState(), w.content, strict = true).world.subjectsDrawn)
     }
 
     @Test

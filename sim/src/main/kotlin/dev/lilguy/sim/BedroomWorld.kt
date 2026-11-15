@@ -40,7 +40,7 @@ import kotlin.random.Random
 class BedroomWorld private constructor(
     map: TileMap,
     guy: Character,
-    content: BedroomContent,
+    startContent: BedroomContent,
     val clock: GameClock,
     /** Slot name to its tile. */
     private val slotCells: Map<String, Cell>,
@@ -48,7 +48,7 @@ class BedroomWorld private constructor(
     private val seed: Long,
 ) : GridWorld(map, guy) {
     /** Everything he can own and do. It grows when he invents something ([inventions]); swapped only on the sim thread. */
-    @Volatile var content: BedroomContent = content
+    @Volatile var content: BedroomContent = startContent
         private set
 
     /** What he has invented, oldest first; replaced rather than changed, so any thread can read it. */
@@ -69,8 +69,12 @@ class BedroomWorld private constructor(
     /** Wear per habit ([habit]): its level and the tick it was set; it fades from there. */
     private val wear = mutableMapOf<String, Pair<Double, Long>>()
 
-    /** Habits he has finished at least once, for the novelty bonus. */
+    /** Habits he has finished at least once, for the novelty bonus; a subject he has drawn is "subject:whale" ([subjectNovelty]). */
     private val tried = mutableSetOf<String>()
+
+    /** The commission nouns he has drawn a piece of, so a drawing model can tell him which are new. Readable from any thread. */
+    @Volatile var subjectsDrawn: Set<String> = emptySet()
+        private set
 
     /** Things he bought for the room, to the tick he bought them, while they still feel new ([NewThings]). */
     private val newThings = LinkedHashMap<String, Long>()
@@ -820,6 +824,21 @@ class BedroomWorld private constructor(
             else -> ": it doesn't match the request for ${c.wants}: ${unmet(p, c)}"
         }
         event("${item(p.item).name} ${p.id} is drawn, \"${d.title}\"$verdict")
+        subjectNovelty(d)
+    }
+
+    /**
+     * Pays the novelty bonus the first time he draws a subject: the commission noun the drawing showed,
+     * or the one its tags name. Subjects are the novelty a broke guy can always reach.
+     */
+    private fun subjectNovelty(d: AuthoredResult.Drawn) {
+        if (content.novelty == null) return
+        val nouns = content.commissions?.nouns ?: return
+        val noun = (listOfNotNull(d.shows) + d.tags).firstNotNullOfOrNull { w -> nouns.firstOrNull { it.equals(w, ignoreCase = true) } } ?: return
+        if (!tried.add("$SUBJECT$noun")) return
+        subjectsDrawn = subjectsDrawn + noun
+        version++
+        event("drawing ${article(noun)} was new to you: " + novelty().entries.joinToString { (need, v) -> "$need ${signed((needs.change(ticks, needOf(need), v, "new: $SUBJECT$noun") * 10).roundToInt() / 10.0)}" })
     }
 
     private fun held(tag: String): List<Piece> = pieces.filter { it.state == PieceState.Held && tag in item(it.item).names }
@@ -933,6 +952,13 @@ class BedroomWorld private constructor(
         if (minute == 0) event("day ${clock.day(ticks)} begins")
     }
 
+    /** What stimulation loses an awake hour now: flat, or scaled by his level when the rules say where it's full ([NeedRules.stimulationDrainAt]). */
+    private fun stimulationDrain(): Double {
+        val r = content.needs
+        val scale = r.stimulationDrainAt?.let { needs[Need.Stimulation] / it } ?: 1.0
+        return r.stimulationPerHour * scale * content.personality.curiosity
+    }
+
     /** One game minute of the need rules; every rate is per hour. */
     private fun applyMinute() {
         val r = content.needs
@@ -940,7 +966,7 @@ class BedroomWorld private constructor(
         val rate = ops::rate
         if (d == null || d.activity.effects.all { it.awake }) {
             rate(Need.Energy, r.awakeEnergyPerHour, "awake")
-            rate(Need.Stimulation, r.stimulationPerHour * content.personality.curiosity, "awake")
+            rate(Need.Stimulation, stimulationDrain(), "awake")
             newThings.forEach { (id, since) -> rate(Need.Stimulation, newThingRate(item(id), since), "new: ${item(id).name}") }
         }
         newThings.entries.removeIf { (id, since) -> count(id) == 0 || newThingRate(item(id), since) <= 0 }
@@ -1028,6 +1054,7 @@ class BedroomWorld private constructor(
         knownCache = null
         wear.clear(); s.wear.forEach { (k, w) -> wear[k] = w.level to w.tick }
         tried.clear(); tried.addAll(s.tried)
+        subjectsDrawn = tried.filter { it.startsWith(SUBJECT) }.map { it.removePrefix(SUBJECT) }.toSet()
         newThings.clear(); s.newThings.forEach { (id, t) -> if (has(id, "new thing")) newThings[id] = t }
         done = s.done
         music = s.music?.let { m ->
@@ -1337,6 +1364,8 @@ class BedroomWorld private constructor(
         }.joinToString() + " (furniture shows only once you own it)"
 
     companion object {
+        /** The prefix of a drawn subject in [tried]. */
+        private const val SUBJECT = "subject:"
         private const val SNAPSHOT_TRANSACTIONS = 8
         /** Authored ops kept in the observation: enough for any the agent hasn't settled yet. */
         private const val AUTHORED_KEPT = 16

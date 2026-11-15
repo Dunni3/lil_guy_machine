@@ -52,6 +52,19 @@ class InventionTest {
     }
 
     @Test
+    fun `a second invention keeps the first`() {
+        // Building checks against the content as it is now, not as the run started.
+        val w = BedroomWorld.create(content.copy(start = content.start.copy(money = 200), invent = rules.copy(perDay = 2)))
+        w.stage("invent", AuthoredResult.Designed(lamp))
+        assertIs<IntentStatus.Succeeded>(w.finish(Intent.Do("invent")))
+        w.stage("invent", AuthoredResult.Designed(lamp.copy(name = "clay bird", qualities = mapOf("calm" to 1.0))))
+        assertIs<IntentStatus.Succeeded>(w.finish(Intent.Do("invent")))
+        assertEquals(listOf("moss_lamp", "clay_bird"), w.inventions.map { it.item.id })
+        assertEquals(listOf("spot_1", "spot_2"), w.inventions.map { it.item.slot })
+        assertEquals(1, w.count("moss_lamp"))
+    }
+
+    @Test
     fun `a design outside the rules is refused with the reason, and one inside them is priced by the sim`() {
         fun refused(d: Design) = assertIs<InventRules.Checked.Refused>(rules.check(d, content, 120)).problems.joinToString("; ")
         assertTrue("nothing you could build at a workbench is 'staple' yet" in refused(lamp.copy(use = "staple")))
