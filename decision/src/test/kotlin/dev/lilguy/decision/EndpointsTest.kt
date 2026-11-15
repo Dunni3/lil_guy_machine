@@ -12,7 +12,7 @@ class EndpointsTest {
     @Test
     fun `the example config parses`() {
         val config = Endpoints.load(example)
-        assertEquals(setOf("typesafe", "hosted", "local"), config.endpoints.keys)
+        assertEquals(setOf("typesafe", "gemini", "gemini-lite", "hosted", "local"), config.endpoints.keys)
         assertEquals("typesafe", config.endpoints.getValue("typesafe").kind)
         val hosted = config.endpoints.getValue("hosted")
         assertEquals("openai_compat", hosted.kind)

@@ -31,6 +31,8 @@ import kotlin.time.Duration.Companion.seconds
  * - `LILGUY_PAINTER=<seconds>` draws his art with random picks at that latency, so he paints with no endpoint;
  * - `LILGUY_START_ITEMS` and `LILGUY_SCRIPT`, as for the desktop's screenshots: what he starts with, and verbs the scripted policy does first;
  * - `LILGUY_DAYS` (0 for no end), `LILGUY_AUTOSTART=1` to start the first run at once;
+ * - `LILGUY_SPEED`: game minutes per real second the life starts at (4, a day in about 6 minutes); a model's cost per
+ *   real day goes with it;
  * - `LILGUY_DB` (runs/lilguy.db; "none" for off), `LILGUY_RESUME` (a run id or "latest"), and
  *   `LILGUY_SYNC_URL` / `LILGUY_SYNC_TOKEN` to sync the store to the server, one worker for the process.
  */
@@ -58,7 +60,7 @@ fun main() {
     }.let { s ->
         val script = get("LILGUY_SCRIPT").orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
         if (script.isEmpty()) s else s.copy(create = { BedroomPolicy(ModelSetup.THINK_TIME, script = script) })
-    }
+    }.let { s -> get("LILGUY_SPEED")?.toIntOrNull()?.takeIf { it >= 1 }?.let { s.copy(speed = it) } ?: s }
     val hostName = runCatching { InetAddress.getLocalHost().hostName }.getOrNull()
     val store = (get("LILGUY_DB") ?: "runs/lilguy.db").takeIf { it != "none" }?.let { JdbcSqlDriver.store(File(it)) }
     // One sync worker for the whole process; the sessions record but don't sync.
@@ -77,7 +79,7 @@ fun main() {
     val life = Life("main", setup, db)
     runBlocking { life.start(scope, autostart = get("LILGUY_AUTOSTART") == "1") }
     println(
-        "lil guy host on http://$bind:$port/ (protocol ${dev.lilguy.protocol.PROTOCOL_VERSION}): life 'main', model ${setup.notice ?: if (endpoint == null) "scripted" else endpoint}" +
+        "lil guy host on http://$bind:$port/ (protocol ${dev.lilguy.protocol.PROTOCOL_VERSION}): life 'main', model ${setup.notice ?: if (endpoint == null) "scripted" else endpoint}${roles(setup, ::get)}, speed ${setup.speed}" +
             "${if (setup.painter != null) ", painting with random picks" else ""}; " +
             "run database ${if (store == null) "off" else if (sync == null) "local only" else "syncing"}; commands ${if (auth.enabled) "need the admin password" else "refused (no LILGUY_ADMIN_PASSWORD)"}",
     )
@@ -87,6 +89,13 @@ fun main() {
     })
     embeddedServer(CIO, port = port, host = bind) { host(mapOf(life.id to life), auth) }.start(wait = true)
 }
+
+/** Which endpoints write and score, for the startup line: those named that are in use. */
+private fun roles(setup: ModelSetup, get: (String) -> String?): String = listOfNotNull(
+    get("LILGUY_MEMORY_ENDPOINT")?.takeIf { setup.memoryModel != null }?.let { "memory $it" },
+    get("LILGUY_WRITER_ENDPOINT")?.takeIf { setup.writerModel != null }?.let { "writer $it" },
+    get("LILGUY_RECALL_ENDPOINT")?.takeIf { setup.recallScorer != null }?.let { "recall $it" },
+).takeIf { it.isNotEmpty() }?.joinToString(", ", " (", ")").orEmpty()
 
 /**
  * The commit this host was built from and whether that checkout had changes: from git when it runs in a checkout,
