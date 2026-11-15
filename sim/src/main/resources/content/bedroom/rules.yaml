@@ -122,6 +122,11 @@ gallery:
   max: 3
   comfort_each: 3
 
+# Samples he keeps are his collection, on a shelf in his room: each kind he has adds comfort, up to `max` kinds.
+collection:
+  comfort_each: 2
+  max: 6
+
 # An item's value to him is each quality's strength times his affinity for it, summed. Mostly it's
 # paid when he does something with it: an `enjoy` op (a record on the player) adds `in_use` mood
 # per point when it finishes. A little is passive: an item in its slot adds `in_view` comfort per

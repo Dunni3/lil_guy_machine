@@ -6,7 +6,9 @@ vocabulary:
   # an affordance works with every verb that asks for it. sellable and drawable take parameters on
   # the item (sim/.../BedroomContent.kt, Affordance). `staple` is food that's always there (the
   # cupboard's oats), kept apart from `edible` so eat doesn't use it.
-  affords: [readable, playable, edible, sellable, hangable, viewable, combinable, wearable, drawable, staple]
+  # Outdoors: `explorable` (a lookout he explores a place from), `forageable` (a patch things grow
+  # on) and `specimen` (a sample, with a price at the hatch like sellable's).
+  affords: [readable, playable, edible, sellable, hangable, viewable, combinable, wearable, drawable, staple, explorable, forageable, specimen]
   # What an item is like to him, each with a strength from 0 to 3, scored by his affinities.
   qualities: [cozy, calm, warm, soft, bright, pretty, natural, lively, strange, loud]
   # What he can get better at, each a number from 0 with no cap: `practice` ops and reading a

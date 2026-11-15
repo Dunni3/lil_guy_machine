@@ -120,18 +120,22 @@ data class ProduceOp(val items: Map<String, Int>) : Op() {
 data class SellOp(val what: String) : Op() {
     override val key get() = "sell"
 
-    override fun problems(c: BedroomContent, verb: VerbSpec) = listOfNotNull(c.unknownName(what)) +
-        c.withName(what).filter { it.sellPrice == null }.map { "sells ${it.id}, which isn't sellable" }
+    /** What it sells: an id or affordance, or an argument slot naming the item bound to it (`sell: what`). */
+    override fun problems(c: BedroomContent, verb: VerbSpec): List<String> {
+        val name = verb.args[what] ?: what
+        return listOfNotNull(c.unknownName(name)) + c.withName(name).filter { it.sellPrice == null }.map { "sells ${it.id}, which isn't sellable" }
+    }
 
     override fun lockReason(w: OpWorld, b: Bound): String? {
+        val what = b.resolve(what)
         if (w.count(what) > 0) return null
         val makers = w.content.verbs.filter { m -> w.knows(m.id) && m.effects.any { op -> op is ProduceOp && op.items.keys.any { what in w.item(it).names } } }.map { it.id }
         return "you have no ${w.noun(what)} to sell" + if (makers.isEmpty()) "" else "; ${makers.joinToString(" or ")} makes some"
     }
 
-    override fun finish(w: OpWorld, b: Bound) = listOf(w.sell(what))
+    override fun finish(w: OpWorld, b: Bound) = listOf(w.sell(b.resolve(what)))
 
-    override fun describe(w: OpWorld, b: Bound, forSale: Boolean) = if (forSale) emptyList() else listOf(w.saleText(what))
+    override fun describe(w: OpWorld, b: Bound, forSale: Boolean) = if (forSale) emptyList() else listOf(w.saleText(b.resolve(what)))
 
     override fun takes() = ", however much you sell"
 }
@@ -430,6 +434,18 @@ internal interface OpWorld {
 
     /** The item the background called [name] is playing and its whole minutes left; null when it isn't playing. */
     fun playing(name: String): Pair<String, Int>?
+
+    /** Looks round where [lookout] stands: the patches there he hadn't found become known; what he found, for the event. */
+    fun survey(lookout: String): String
+
+    /** What exploring at [lookout] would show, for the option: whether he has looked round there before. */
+    fun surveyText(lookout: String): String
+
+    /** Why [patch] has nothing to collect now (it hasn't grown back), or null. */
+    fun bare(patch: String): String?
+
+    /** Takes what [patch] yields; the event's parts. */
+    fun gather(patch: String): List<String>
 }
 
 /**
@@ -465,6 +481,42 @@ internal fun signed(v: Double): String {
 private fun needProblems(names: Collection<String>): List<String> = names.mapNotNull { runCatching { needOf(it) }.exceptionOrNull()?.message }
 
 /**
+ * Looks round the place the item bound to [on] stands in (a lookout): every patch there that he
+ * hadn't found becomes known to him, so collecting from it is offered and his map says what grows
+ * there. Exploring again finds nothing new, but it's still a walk outdoors.
+ */
+data class SurveyOp(val on: String) : Op() {
+    override val key get() = "survey"
+
+    override fun problems(c: BedroomContent, verb: VerbSpec) = listOfNotNull(
+        if (verb.args[on] == null && c.item(on) == null) "surveys '$on', which isn't an argument or an item" else null,
+        if (c.world == null) "surveys, but there's no land (world.yaml)" else null,
+    )
+
+    override fun finish(w: OpWorld, b: Bound) = listOf(w.survey(b.resolve(on)))
+
+    override fun describe(w: OpWorld, b: Bound, forSale: Boolean) = if (forSale) emptyList() else listOf(w.surveyText(b.resolve(on)))
+}
+
+/** Takes what the patch bound to [on] yields (world.yaml `finds`); it's bare until it regrows. */
+data class GatherOp(val on: String) : Op() {
+    override val key get() = "gather"
+
+    override fun problems(c: BedroomContent, verb: VerbSpec) = listOfNotNull(
+        if (verb.args[on] == null && c.item(on) == null) "gathers from '$on', which isn't an argument or an item" else null,
+        if (c.world == null) "gathers, but there's no land (world.yaml)" else null,
+    )
+
+    override fun lockReason(w: OpWorld, b: Bound) = w.bare(b.resolve(on))
+
+    override fun gone(w: OpWorld, b: Bound) = w.bare(b.resolve(on))
+
+    override fun finish(w: OpWorld, b: Bound) = w.gather(b.resolve(on))
+
+    override fun describe(w: OpWorld, b: Bound, forSale: Boolean) = listOfNotNull(w.content.world?.find(b.resolve(on))?.let { f -> "+1 ${w.item(f.yields).name}" })
+}
+
+/**
  * How an op is written in content: a one-key map, `- need: { mood: 2 }`. Exactly one field is set;
  * [OpSerializer] turns it into the [Op]. Its descriptor is what the content schema shows.
  */
@@ -487,6 +539,8 @@ internal data class OpEntry(
     val write: Write? = null,
     val draw: String? = null,
     val build: NoParams? = null,
+    val survey: String? = null,
+    val gather: String? = null,
 ) {
     @Serializable
     @SerialName("write")
@@ -519,6 +573,7 @@ internal data class OpEntry(
             setState?.let { SetStateOp(it.target, it.state) }, background?.let { BackgroundOp(it.name, it.minutes, it.rates) },
             sleep?.let { SleepOp }, enjoy?.let(::EnjoyOp), hear?.let(::HearOp), progress?.let { ProgressOp(it.book) }, practice?.let(::PracticeOp),
             write?.let { WriteOp(it.with, it.into, it.timing, it.showsAs, it.optional) }, draw?.let(::DrawOp), build?.let { BuildOp },
+            survey?.let(::SurveyOp), gather?.let(::GatherOp),
         )
         require(set.size == 1) { "an effect is one op, such as `- need: { mood: 2 }`; this one has ${if (set.isEmpty()) "none" else set.joinToString { it.key }}" }
         return set.single()
@@ -542,6 +597,8 @@ internal data class OpEntry(
             is WriteOp -> OpEntry(write = Write(op.with, op.into, op.timing, op.showsAs, op.optional))
             is DrawOp -> OpEntry(draw = op.what)
             BuildOp -> OpEntry(build = NoParams())
+            is SurveyOp -> OpEntry(survey = op.on)
+            is GatherOp -> OpEntry(gather = op.on)
         }
     }
 }

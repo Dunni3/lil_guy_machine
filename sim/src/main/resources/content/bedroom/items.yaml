@@ -30,6 +30,28 @@ items:
   - { id: field_guide, name: field guide, group: book, affords: { readable: {} }, qualities: { natural: 2, bright: 1 }, price: 12 }
   - { id: drawing_book, name: drawing book, group: book, affords: { readable: {} }, qualities: { pretty: 1, bright: 1 }, price: 14 }
   - { id: music_book, name: music book, group: book, affords: { readable: {} }, qualities: { lively: 1, warm: 1 }, price: 12 }
+  # Outdoors: a lookout in each place he explores it from, and the patches things grow on, hidden
+  # from him until he has explored their place (world.yaml `finds`). All stand on the land from the start.
+  - { id: garden_bench, name: garden bench, group: fixture, slot: garden_bench, affords: { explorable: {} } }
+  - { id: forest_trail, name: forest trail, group: fixture, slot: forest_trail, affords: { explorable: {} } }
+  - { id: clearing_log, name: log in the clearing, group: fixture, slot: clearing_log, affords: { explorable: {} } }
+  - { id: pond_edge, name: edge of the pond, group: fixture, slot: pond_edge, affords: { explorable: {} } }
+  - { id: glowcap_patch, name: glowcaps under the log, group: fixture, slot: glowcap_patch, affords: { forageable: {} } }
+  - { id: moss_patch, name: mossy stones, group: fixture, slot: moss_patch, affords: { forageable: {} } }
+  - { id: fern_patch, name: blue ferns, group: fixture, slot: fern_patch, affords: { forageable: {} } }
+  - { id: beetle_log, name: rotting log with beetles, group: fixture, slot: beetle_log, affords: { forageable: {} } }
+  - { id: pond_patch, name: reeds at the pond, group: fixture, slot: pond_patch, affords: { forageable: {} } }
+  - { id: seedpod_bush, name: seed-pod bush, group: fixture, slot: seedpod_bush, affords: { forageable: {} } }
+  # Samples he collects: kept, they're his collection (rules.yaml `collection`); studied at the
+  # microscope they raise nature; sold at the hatch for their `specimen` price (sell_art leaves them).
+  - { id: glowcap, name: glowcap, group: sample, affords: { specimen: { price: 6 } }, qualities: { strange: 2, bright: 1 }, stackable: true }
+  - { id: moss_ball, name: moss ball, group: sample, affords: { specimen: { price: 3 } }, qualities: { soft: 2, natural: 1 }, stackable: true }
+  - { id: blue_fern, name: blue fern, group: sample, affords: { specimen: { price: 4 } }, qualities: { natural: 2, pretty: 1 }, stackable: true }
+  - { id: violet_beetle, name: violet beetle, group: sample, affords: { specimen: { price: 9 } }, qualities: { strange: 2, pretty: 1 }, stackable: true }
+  - { id: pond_water, name: jar of pond water, group: sample, affords: { specimen: { price: 2 } }, qualities: { natural: 1, calm: 1 }, stackable: true }
+  - { id: amber_seed_pod, name: amber seed pod, group: sample, affords: { specimen: { price: 5 } }, qualities: { warm: 2, natural: 1 }, stackable: true }
+  # Where samples are studied (verbs.yaml `study_sample`).
+  - { id: microscope, name: microscope, group: furniture, slot: microscope, blocks: true, price: 35, tier: 1 }
   # Taught by music_book.
   - { id: guitar, name: guitar, group: instrument, price: 45 }
   # Decor: in view, its qualities raise comfort.

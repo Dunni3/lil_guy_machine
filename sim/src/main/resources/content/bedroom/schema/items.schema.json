@@ -55,7 +55,10 @@
                 "combinable",
                 "wearable",
                 "drawable",
-                "staple"
+                "staple",
+                "explorable",
+                "forageable",
+                "specimen"
               ]
             },
             "additionalProperties": {

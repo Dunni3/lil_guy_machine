@@ -4,6 +4,7 @@ import dev.lilguy.sim.BedroomContent
 import dev.lilguy.sim.BedroomWorld
 import dev.lilguy.sim.GameClock
 import dev.lilguy.sim.PlaceKind
+import dev.lilguy.sim.SurveyOp
 import dev.lilguy.sim.VerbSpec
 
 /**
@@ -17,6 +18,8 @@ object WorldMap {
         val layout = world.layout
         if (!layout.outdoors) return null
         val door = layout.doors.firstOrNull()
+        val explored = world.exploredPlaces()
+        val surveys = content.verbs.filter { v -> v.effects.any { it is SurveyOp } }.map { it.id }.toSet()
         // Where each verb is done: the places of the slots its things stand in.
         val verbsAt = linkedMapOf<String, MutableList<String>>()
         val anywhere = mutableListOf<String>()
@@ -43,7 +46,8 @@ object WorldMap {
                     }
                     PlaceKind.Outdoor -> {
                         val walk = walks[p.id]
-                        add("- ${p.name}: ${p.says}" + (walk?.let { "; ${GameClock.duration(it.coerceAtLeast(1))} walk" }.orEmpty()) + "; $what.")
+                        val looked = if (p.id in explored) " You've explored it." else if (does?.any { it in surveys } == true) " You haven't explored it yet." else ""
+                        add("- ${p.name}: ${p.says}" + (walk?.let { "; ${GameClock.duration(it.coerceAtLeast(1))} walk" }.orEmpty()) + "; $what.$looked")
                     }
                 }
             }

@@ -390,6 +390,20 @@
                       "type": "null"
                     }
                   ]
+                },
+                "survey": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Looks round the place the item bound to `on` (a lookout) stands in: every patch there (world.yaml `finds`) he hadn't found becomes known to him, so collecting from it is offered and his map says what grows there. Exploring again finds nothing new. (at the finish)"
+                },
+                "gather": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Takes what the patch bound to `on` yields (world.yaml `finds`), one at a time; the patch is bare, and the verb locked with when it grows back, for its `regrow_hours`. (at the finish)"
                 }
               },
               "minProperties": 1,

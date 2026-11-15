@@ -60,6 +60,10 @@ data class BedroomState(
     @SerialName("authored_count") val authoredCount: Int,
     /** What he has invented, oldest first: put back into the content before the rest is loaded. */
     val inventions: List<Invention> = emptyList(),
+    /** Outdoor places he has explored, by id. */
+    val explored: List<String> = emptyList(),
+    /** Patch to the tick it grows back by, while bare. */
+    val bare: Map<String, Long> = emptyMap(),
 ) {
     @Serializable
     data class PendingNeed(val need: String, val reason: String, val delta: Double)

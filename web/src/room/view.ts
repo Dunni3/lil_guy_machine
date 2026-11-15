@@ -7,7 +7,7 @@ import { Y_AXIS, Z_AXIS, rotate, scale, translate } from "../math";
 import type { Place } from "../stream/track";
 import { ArtLayer } from "./art";
 import { CameraRig, type CameraMode } from "./camera";
-import { Models, constants, wallItem } from "./parts";
+import { Models, SAMPLE_COLORS, constants, wallItem } from "./parts";
 import { BEDROOM } from "./room";
 import { groundTexture, landParts, treeParts } from "./land";
 import { Terrain, paneParts, shellParts } from "./shell";
@@ -83,6 +83,7 @@ export class RoomView {
 
   private shelf: Placed | null = null;
   private shelfFrom: LifeState["shop"] | null = null;
+  private shelfWallet: LifeState["wallet"] | null = null;
   private shelfKey = "";
   private guitar: Placed | null = null;
   private readonly guitarAt = new Matrix4();
@@ -308,12 +309,12 @@ export class RoomView {
   }
 
   private place(e: Entity) {
-    const key = `${e.kind}/${e.x}/${e.y}`;
+    const key = `${e.kind}/${e.x}/${e.y}/${e.state ?? ""}`;
     if (this.things.get(e.id)?.key === key) return;
     const old = this.things.get(e.id);
     if (old) this.r.remove(old.placed);
     const map = this.map!;
-    const model = this.models.item(e.id, e.kind);
+    const model = this.models.item(e.id, e.kind, e.state);
     const at = new Matrix4();
     const tx = Math.trunc(e.x);
     const ty = Math.trunc(e.y);
@@ -328,8 +329,9 @@ export class RoomView {
 
   /** His books and records on the wall shelf, and his guitar on the wall, once he owns any. Runs when what the shop knows changes. */
   private syncShelf(state: LifeState, content: Content) {
-    if (state.shop === this.shelfFrom) return;
+    if (state.shop === this.shelfFrom && state.wallet === this.shelfWallet) return;
     this.shelfFrom = state.shop;
+    this.shelfWallet = state.wallet;
     const group = new Map(content.catalog.map((c) => [c.id, c.group]));
     // What he invented isn't in the catalogue unless the shop restocks it; what he has of it is in his wallet.
     const made = (state.shop.inventions ?? []).filter((i) => (state.wallet.owns[i.id] ?? 0) > 0 && !state.shop.catalog.some((c) => c.id === i.id));
@@ -337,11 +339,12 @@ export class RoomView {
     const owned = [...state.shop.catalog.filter((c) => c.owned > 0), ...made];
     const books = owned.filter((c) => group.get(c.id) === "book").map((c) => c.id);
     const records = owned.filter((c) => group.get(c.id) === "record").map((c) => c.id);
-    const key = `${books.join(",")}/${records.join(",")}`;
+    const jars = Object.keys(state.wallet.owns).filter((id) => id in SAMPLE_COLORS && state.wallet.owns[id] > 0);
+    const key = `${books.join(",")}/${records.join(",")}/${jars.join(",")}`;
     if (key !== this.shelfKey) {
       this.shelfKey = key;
       if (this.shelf) this.r.remove(this.shelf);
-      this.shelf = books.length || records.length ? this.r.add(this.models.shelf(books, records)) : null;
+      this.shelf = books.length || records.length || jars.length ? this.r.add(this.models.shelf(books, records, jars)) : null;
       const { shelf, backWall } = this.room;
       this.shelf?.set(this.at.makeTranslation(this.roomAt.x0 + shelf.x, shelf.y, this.roomAt.y0 + backWall + WALL_FACE));
     }

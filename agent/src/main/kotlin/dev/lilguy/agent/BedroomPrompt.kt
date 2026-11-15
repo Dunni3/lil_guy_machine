@@ -7,6 +7,8 @@ import dev.lilguy.sim.BackgroundOp
 import dev.lilguy.sim.BasketOp
 import dev.lilguy.sim.BedroomContent
 import dev.lilguy.sim.GameClock
+import dev.lilguy.sim.GatherOp
+import dev.lilguy.sim.SurveyOp
 import dev.lilguy.sim.GridWorld
 import dev.lilguy.sim.HearOp
 import dev.lilguy.sim.Intent
@@ -154,6 +156,20 @@ object BedroomPrompt {
         return "- Learning: " + parts.joinToString(" ")
     }
 
+    /** The outdoors line: exploring, collecting, regrowth and what samples are for; null without land. */
+    private fun outdoorsHint(content: BedroomContent): String? {
+        val finds = content.world?.finds?.takeIf { it.isNotEmpty() } ?: return null
+        val explore = content.verbs.firstOrNull { v -> v.effects.any { it is SurveyOp } }?.id ?: return null
+        val collect = content.verbs.firstOrNull { v -> v.effects.any { it is GatherOp } }?.id
+        val sell = content.verbs.firstOrNull { v -> v.effects.any { it is SellOp } && "specimen" in v.args.values }?.id
+        val study = content.verbs.firstOrNull { v -> "specimen" in v.args.values && v.effects.any { it is PracticeOp } }?.id
+        val regrow = finds.map { it.regrowHours }.let { "${it.min()} to ${it.max()} hours" }
+        val keep = content.collection?.let { c -> "Samples you keep are your collection: each kind adds ${c.comfortEach} comfort, up to ${c.max} kinds." }
+        return "- Outdoors: $explore a place to find what grows there; " +
+            (collect?.let { "then $it takes a sample from what you've found, and that spot grows back in $regrow. " } ?: "") +
+            listOfNotNull(keep, study?.let { "$it studies one under a microscope, for nature skill." }, sell?.let { "$it sells them at the hatch." }).joinToString(" ")
+    }
+
     /** The variety line of the prompt: novelty and habituation, or null when the content has neither. */
     private fun varietyHint(content: BedroomContent): String? {
         val parts = buildList {
@@ -257,6 +273,7 @@ object BedroomPrompt {
             nightHint(content),
             varietyHint(content),
             learningHint(content),
+            outdoorsHint(content),
             artHint(content),
             reflectionHint(content),
             "- $lists",

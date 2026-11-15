@@ -38,7 +38,8 @@ menu:
     says: go through the shop's catalog and buy food, supplies or things to own - furniture, decor, books, records - or see what to save for
     verbs: [shop]
   - id: outdoors
-    says: go somewhere - out of the house to the garden, the forest or the pond, or back home - to be there and look around
+    says: the outdoors - go out to the garden, the forest or the pond, explore them, collect samples, and study or sell the samples
+    verbs: [explore, collect, study_sample, sell_sample]
     go: true
   - id: mind
     says: stop to think things over and plan, asking how things in his world work

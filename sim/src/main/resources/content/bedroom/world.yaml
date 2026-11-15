@@ -45,6 +45,28 @@ world:
     name: your bedroom
     at: [7, 5]
     door: [7, 7]
+  # Spots on the land things stand in, as the room's slots: [x, y] on the lot, a walkable tile.
+  # Each place has a lookout he explores it from, and patches where things grow.
+  slots:
+    clearing_log: [29, 19]
+    glowcap_patch: [31, 21]
+    moss_patch: [27, 21]
+    forest_trail: [24, 16]
+    fern_patch: [34, 18]
+    beetle_log: [32, 25]
+    pond_edge: [21, 25]
+    pond_patch: [26, 25]
+    garden_bench: [6, 17]
+    seedpod_bush: [10, 20]
+  # What grows on the land. A patch is hidden until he explores its place (the `survey` op); then
+  # `collect` takes what it yields (the `gather` op), and it's bare for `regrow_hours`.
+  finds:
+    - { patch: glowcap_patch, yields: glowcap, regrow_hours: 30 }
+    - { patch: moss_patch, yields: moss_ball, regrow_hours: 24 }
+    - { patch: fern_patch, yields: blue_fern, regrow_hours: 30 }
+    - { patch: beetle_log, yields: violet_beetle, regrow_hours: 48 }
+    - { patch: pond_patch, yields: pond_water, regrow_hours: 12 }
+    - { patch: seedpod_bush, yields: amber_seed_pod, regrow_hours: 36 }
   # Named places outdoors, the first whose rects hold a tile wins; rooms come before all of them.
   # A rect is [x0, y0, x1, y1], tiles inclusive. `says` is the line his map gives the place.
   places:
