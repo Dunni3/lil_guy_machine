@@ -70,6 +70,10 @@ data class BedroomState(
     val mail: List<Letter> = emptyList(),
     /** The ids of the letters he has opened. */
     val opened: List<Long> = emptyList(),
+    /** The letters he has opened, oldest first, for writing back. */
+    val read: List<Letter> = emptyList(),
+    /** The letters he has written, oldest first. */
+    val sent: List<OutLetter> = emptyList(),
 ) {
     @Serializable
     data class PendingNeed(val need: String, val reason: String, val delta: Double)

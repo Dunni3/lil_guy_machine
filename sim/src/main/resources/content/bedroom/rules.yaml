@@ -143,3 +143,11 @@ collection:
 quality_value:
   in_view: 1
   in_use: 1
+
+# Letters he writes (the `post_letter` op): only to someone who has written to him, at most `per_day`
+# a game day to each of them, and at most `unanswered` in a row to someone before they write back, so
+# nobody gets a pile. A letter is at most `max_length` characters, the same as the ones he gets.
+letters:
+  per_day: 1
+  unanswered: 2
+  max_length: 1000

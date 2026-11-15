@@ -461,6 +461,18 @@ internal interface OpWorld {
 
     /** "a letter from Sam is waiting (2 in all)", for the option; null when none is. */
     fun mailText(): String?
+
+    /** Why he can't write a letter now: nobody has written to him, or he has written to each as often as he may; null when he can. */
+    fun letterLock(): String?
+
+    /** Why [verb]'s letter can't go: none was written, or it's to someone he can't write to; null when it can. */
+    fun letterFailed(verb: String): String?
+
+    /** Puts [verb]'s letter through the hatch; the event's parts. */
+    fun postLetter(verb: String): List<String>
+
+    /** "Sam's letter is waiting for an answer", for the option; null for nothing to say. */
+    fun letterText(): String?
 }
 
 /**
@@ -578,6 +590,7 @@ internal data class OpEntry(
     val gather: String? = null,
     @SerialName("place_room") val placeRoom: PlaceRoom? = null,
     @SerialName("open_mail") val openMail: NoParams? = null,
+    @SerialName("post_letter") val postLetter: NoParams? = null,
 ) {
     @Serializable
     @SerialName("place_room")
@@ -614,7 +627,7 @@ internal data class OpEntry(
             setState?.let { SetStateOp(it.target, it.state) }, background?.let { BackgroundOp(it.name, it.minutes, it.rates) },
             sleep?.let { SleepOp }, enjoy?.let(::EnjoyOp), hear?.let(::HearOp), progress?.let { ProgressOp(it.book) }, practice?.let(::PracticeOp),
             write?.let { WriteOp(it.with, it.into, it.timing, it.showsAs, it.optional) }, draw?.let(::DrawOp), build?.let { BuildOp },
-            survey?.let(::SurveyOp), gather?.let(::GatherOp), placeRoom?.let { PlaceRoomOp(it.room, it.site) }, openMail?.let { OpenMailOp },
+            survey?.let(::SurveyOp), gather?.let(::GatherOp), placeRoom?.let { PlaceRoomOp(it.room, it.site) }, openMail?.let { OpenMailOp }, postLetter?.let { PostLetterOp },
         )
         require(set.size == 1) { "an effect is one op, such as `- need: { mood: 2 }`; this one has ${if (set.isEmpty()) "none" else set.joinToString { it.key }}" }
         return set.single()
@@ -642,6 +655,7 @@ internal data class OpEntry(
             is GatherOp -> OpEntry(gather = op.on)
             is PlaceRoomOp -> OpEntry(placeRoom = PlaceRoom(op.room, op.site))
             OpenMailOp -> OpEntry(openMail = NoParams())
+            PostLetterOp -> OpEntry(postLetter = NoParams())
         }
     }
 }

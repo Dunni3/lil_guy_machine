@@ -365,7 +365,7 @@
                         "into"
                       ],
                       "additionalProperties": false,
-                      "description": "Authored: a model writes it (handler `thought`, `reading` for what stuck from a chapter, `shopping` for a trip's picks, or `invention` for the design a `build` builds) into the named destinations, kept only if the verb succeeds. `shows_as: plan` makes a short-term result his plan in later prompts. Without a handler the verb isn't offered, unless the write is `optional: true`. (before or during; kept at the finish)"
+                      "description": "Authored: a model writes it (handler `thought`, `reading` for what stuck from a chapter, `shopping` for a trip's picks, `invention` for the design a `build` builds, or `letter` for the letter a `post_letter` sends) into the named destinations, kept only if the verb succeeds. `shows_as: plan` makes a short-term result his plan in later prompts. Without a handler the verb isn't offered, unless the write is `optional: true`. (before or during; kept at the finish)"
                     },
                     {
                       "type": "null"
@@ -437,6 +437,19 @@
                       "properties": {},
                       "additionalProperties": false,
                       "description": "Opens the oldest letter waiting at the mail hatch (one someone sent through the sim host's web page): what it says goes into the finish event, so it reaches his memory. Locked while none is waiting. (at the finish)"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "post_letter": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": false,
+                      "description": "Puts the letter he wrote in the verb's `write: { with: letter, timing: before }` through the mail hatch, to someone whose letter he has opened; the sim host shows it to them. Locked while there's nobody he may write to (rules.yaml `letters`: so many a day to each, so many in a row before they write back). With no letter written, the verb fails. (at the finish)"
                     },
                     {
                       "type": "null"

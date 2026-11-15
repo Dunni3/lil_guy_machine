@@ -172,6 +172,7 @@ class Summarizer(
         EventKind.Search -> "I looked up"
         EventKind.Shopping -> "I shopped"
         EventKind.Invention -> "I invented"
+        EventKind.Letter -> "I wrote"
     }
 
     companion object {

@@ -75,6 +75,8 @@ class Life(
     private val wake = Channel<Unit>(Channel.CONFLATED)
     /** Opened letters already told to [mail]. */
     private val reported = mutableSetOf<Long>()
+    /** His letters already handed to [mail]: how many of the run's, by run id. */
+    private val handedOn = mutableMapOf<String, Int>()
     private lateinit var session: SimSession
 
     private class Pending(val command: Command, val done: CompletableDeferred<CommandResult>)
@@ -223,9 +225,22 @@ class Life(
         agents.launch(Dispatchers.IO) { runCatching { m.opened(new) } }
     }
 
+    /** Hands [mail] the letters he has written since the last time, for the people they're to. */
+    private fun handOnSent() {
+        val m = mail ?: return
+        val sent = (session.world as? BedroomWorld)?.lettersSent ?: return
+        val run = session.runId
+        val from = handedOn[run] ?: 0
+        if (sent.size <= from) return
+        val new = sent.drop(from)
+        handedOn[run] = sent.size
+        agents.launch(Dispatchers.IO) { runCatching { m.fromHim(id, run, new) } }
+    }
+
     /** Reads the session, and sends what changed: a delta, or for a new run its content and a snapshot. */
     private fun publish() {
         reportOpened()
+        handOnSent()
         val before = latest
         val newRun = before == null || before.state.run.runId != session.runId || before.state.run.run != session.run
         val content = if (newRun) reader.content(session) else before!!.content
