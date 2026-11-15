@@ -1,7 +1,7 @@
 ---
 title: "Models are crayon part lists; big surfaces get painted textures, not the hatching shader"
 date: 2026-10-31
-status: active
+status: superseded
 ---
 
 # Models are crayon part lists; big surfaces get painted textures, not the hatching shader

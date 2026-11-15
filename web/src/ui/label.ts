@@ -1,4 +1,4 @@
-import { Vector3, type PerspectiveCamera } from "three";
+import { Vector3, type Camera } from "three";
 import type { Content, LifeState } from "../../../protocol/ts/protocol";
 import type { Layer, Panel, Triangle } from "./layer";
 import { COLORS, GROUP_COLORS, font, lineHeight, measure, roundRect, wrap } from "./paper";
@@ -44,7 +44,7 @@ export class ThingLabel {
   }
 
   /** [target] is what the pointer is over this frame (and its top in the world), or null. */
-  update(target: { id: string; top: Vector3 } | null, life: LifeState, content: Content, camera: PerspectiveCamera, u: number, delta: number) {
+  update(target: { id: string; top: Vector3 } | null, life: LifeState, content: Content, camera: Camera, u: number, delta: number) {
     const id = target?.id ?? null;
     if (id !== this.over) {
       this.over = id;

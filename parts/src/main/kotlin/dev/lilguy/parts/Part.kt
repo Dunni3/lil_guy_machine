@@ -35,6 +35,18 @@ data class Part(
     val outline: Float = OUTLINE,
     /** Cylinders only: the top's width as a fraction of the bottom's. */
     val taper: Float = 1f,
+    // The fields below came with clay (`docs/decisions/2026-11-15-clay-replaces-crayon-and-models-stay-part-lists.md`).
+    // The crayon renderers ignore them, so `:app` draws what it always did.
+    /** Spheres only: the part of the height that is there, from the top; 0.5 is a dome, flat at the bottom, [h] being its own height. */
+    val cut: Float = 1f,
+    /** Cylinders only: the hole's width as a fraction of the outside's, for a ring or a tube; rounded by half its wall, a torus. */
+    val hole: Float = 0f,
+    /** Cylinders only: the degrees of the turn that are there, centred on the front (+Z) before rotation; under 360 for an arc. */
+    val arc: Float = 360f,
+    /** How brightly it glows at night (a shade, a bulb, a lit pane): 1 is a lamp's; 0 for not at all. */
+    val glow: Float = 0f,
+    /** 1 for solid; less for glass. */
+    val opacity: Float = 1f,
 ) {
     enum class Shape { Sphere, Box, Cylinder, Capsule, Panel }
 
@@ -56,18 +68,31 @@ class PartList {
     var outline = Part.OUTLINE
     private var seed = 1
 
-    fun box(color: String, x: Float, y: Float, z: Float, w: Float, h: Float, d: Float, rotX: Float = 0f, rotZ: Float = 0f, rotY: Float = 0f, round: Float = -1f, texture: String? = null, outline: Float = this.outline, lump: Float = this.lump) =
-        add(Part(Part.Shape.Box, w, h, d, x, y, z, rotX, rotY, rotZ, color, texture, round, lump, seed, outline))
+    fun box(color: String, x: Float, y: Float, z: Float, w: Float, h: Float, d: Float, rotX: Float = 0f, rotZ: Float = 0f, rotY: Float = 0f, round: Float = -1f, texture: String? = null, outline: Float = this.outline, lump: Float = this.lump, glow: Float = 0f, opacity: Float = 1f) =
+        add(Part(Part.Shape.Box, w, h, d, x, y, z, rotX, rotY, rotZ, color, texture, round, lump, seed, outline, glow = glow, opacity = opacity))
 
-    fun cylinder(color: String, x: Float, y: Float, z: Float, w: Float, h: Float, d: Float, rotX: Float = 0f, rotZ: Float = 0f, taper: Float = 1f, round: Float = -1f, texture: String? = null, outline: Float = this.outline, lump: Float = this.lump) =
-        add(Part(Part.Shape.Cylinder, w, h, d, x, y, z, rotX, 0f, rotZ, color, texture, round, lump, seed, outline, taper))
+    fun cylinder(color: String, x: Float, y: Float, z: Float, w: Float, h: Float, d: Float, rotX: Float = 0f, rotZ: Float = 0f, taper: Float = 1f, round: Float = -1f, texture: String? = null, outline: Float = this.outline, lump: Float = this.lump, rotY: Float = 0f, hole: Float = 0f, arc: Float = 360f, glow: Float = 0f, opacity: Float = 1f) =
+        add(Part(Part.Shape.Cylinder, w, h, d, x, y, z, rotX, rotY, rotZ, color, texture, round, lump, seed, outline, taper, hole = hole, arc = arc, glow = glow, opacity = opacity))
+
+    /**
+     * A ring standing up and facing +Z, [w] x [h] across the outside and [d] thick, its bottom centre
+     * at ([x], [y], [z]): a cylinder turned on its back. [hole] is the inside's width as a fraction of
+     * the outside's, [round] (half the wall for a torus) its edges, and [arc] the degrees of it that are
+     * there, centred on the bottom (180 is a smile). Rotations turn it about the middle of its back.
+     */
+    fun ring(color: String, x: Float, y: Float, z: Float, w: Float, h: Float, d: Float, hole: Float, arc: Float = 360f, rotX: Float = 0f, rotY: Float = 0f, rotZ: Float = 0f, round: Float = -1f, glow: Float = 0f) =
+        add(Part(Part.Shape.Cylinder, w, d, h, x, y + h / 2, z - d / 2, rotX + 90f, rotY, rotZ, color, null, round, 0f, seed, 0f, hole = hole, arc = arc, glow = glow))
+
+    /** The top [cut] of a sphere [w] x [h] x [d] (by default its upper half, a dome [h] / 2 tall), the cut flat at ([x], [y], [z]). */
+    fun dome(color: String, x: Float, y: Float, z: Float, w: Float, h: Float, d: Float, cut: Float = 0.5f, rotX: Float = 0f, rotY: Float = 0f, rotZ: Float = 0f, glow: Float = 0f, opacity: Float = 1f) =
+        add(Part(Part.Shape.Sphere, w, h * cut, d, x, y, z, rotX, rotY, rotZ, color, null, -1f, 0f, seed, 0f, cut = cut, glow = glow, opacity = opacity))
 
     /** Upright; turned on its side ([rotZ] -90) it runs from ([x], [y]) along +X, with [y] its axis. */
     fun capsule(color: String, x: Float, y: Float, z: Float, w: Float, h: Float, d: Float, rotX: Float = 0f, rotZ: Float = 0f, outline: Float = this.outline, lump: Float = this.lump) =
         add(Part(Part.Shape.Capsule, w, h, d, x, y, z, rotX, 0f, rotZ, color, null, -1f, lump, seed, outline))
 
-    fun sphere(color: String, x: Float, y: Float, z: Float, w: Float, h: Float, d: Float, outline: Float = this.outline, lump: Float = this.lump) =
-        add(Part(Part.Shape.Sphere, w, h, d, x, y, z, color = color, lump = lump, seed = seed, outline = outline))
+    fun sphere(color: String, x: Float, y: Float, z: Float, w: Float, h: Float, d: Float, outline: Float = this.outline, lump: Float = this.lump, rotX: Float = 0f, rotY: Float = 0f, rotZ: Float = 0f, texture: String? = null, glow: Float = 0f, opacity: Float = 1f) =
+        add(Part(Part.Shape.Sphere, w, h, d, x, y, z, rotX, rotY, rotZ, color, texture, -1f, lump, seed, outline, glow = glow, opacity = opacity))
 
     /** A flat picture facing +Z, [w] x [h], its bottom centre at ([x], [y], [z]); no outline unless asked. */
     fun panel(texture: String?, x: Float, y: Float, z: Float, w: Float, h: Float, rotX: Float = 0f, color: String = "#ffffff", outline: Float = 0f) =

@@ -78,6 +78,20 @@ object PartExport {
             append(",\n")
             models("props", props)
             append(",\n")
+            // Clay: the models that have one of their own, the props that differ, and the guy's measures.
+            val clay = ClayParts
+            append("\"clay_constants\": ").append(
+                JsonObject(
+                    linkedMapOf(
+                        "GUY_RX" to n(clay.GUY_RX), "GUY_RY" to n(clay.GUY_RY), "GUY_FEET" to n(clay.GUY_FEET),
+                        "GUY_ARM_Y" to n(clay.GUY_ARM_Y), "GUY_ARM_X" to n(clay.GUY_ARM_X), "GUY_FOOT_Z" to n(clay.GUY_FOOT_Z),
+                    ),
+                ),
+            ).append(",\n")
+            models("clay_items", clay.ITEM_IDS.associateWith { clay.item(it) })
+            append(",\n")
+            models("clay_props", clay.props())
+            append(",\n")
             append("\"shelf_books\": [\n")
             books.forEachIndexed { i, (width, parts) ->
                 append("{\"width\": ").append(n(width)).append(", \"parts\": ").also { list(parts) }
@@ -111,8 +125,9 @@ object PartExport {
         append("]")
     }
 
+    /** The clay fields ([Part.cut] on) only where they aren't their defaults, so the crayon parts read as they did. */
     private fun json(p: Part) = JsonObject(
-        linkedMapOf(
+        linkedMapOf<String, JsonElement>(
             "shape" to JsonPrimitive(p.shape.name.lowercase()),
             "w" to n(p.w), "h" to n(p.h), "d" to n(p.d),
             "x" to n(p.x), "y" to n(p.y), "z" to n(p.z),
@@ -121,7 +136,13 @@ object PartExport {
             "texture" to (p.texture?.let(::JsonPrimitive) ?: JsonNull),
             "round" to n(p.round), "lump" to n(p.lump), "seed" to JsonPrimitive(p.seed),
             "outline" to n(p.outline), "taper" to n(p.taper),
-        ),
+        ).apply {
+            if (p.cut != 1f) put("cut", n(p.cut))
+            if (p.hole != 0f) put("hole", n(p.hole))
+            if (p.arc != 360f) put("arc", n(p.arc))
+            if (p.glow != 0f) put("glow", n(p.glow))
+            if (p.opacity != 1f) put("opacity", n(p.opacity))
+        },
     )
 
     private fun n(v: Float) = JsonPrimitive(v)

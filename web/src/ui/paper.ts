@@ -4,10 +4,11 @@
  * [unit] turns them into CSS pixels for the window.
  */
 export const COLORS = {
-  card: "#fff8ee",
-  paperEdge: "#e8cfb2",
-  ink: "#3a2a20",
-  muted: "#8a7464",
+  // Paper and ink as the Field Lab's (`world_sketches/fable_field_lab.html`): warm paper, plum ink.
+  card: "#fbf6ec",
+  paperEdge: "#e2d5c3",
+  ink: "#4a3a4f",
+  muted: "#8b7b86",
   code: "#4f6a3a",
   accent: "#c0504a",
   failed: "#c03a2a",
@@ -26,7 +27,7 @@ export const COLORS = {
   mood: "#6fa8e6",
   stimulation: "#c58ae0",
   bubble: "#fffdf6",
-  banner: "#2a1e18",
+  banner: "#4a3a4f",
   hint: "rgba(255,255,255,0.53)",
 };
 

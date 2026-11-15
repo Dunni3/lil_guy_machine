@@ -1,5 +1,5 @@
 import {
-  BufferAttribute, BufferGeometry, CanvasTexture, Color, DoubleSide, LinearFilter, Mesh, MeshBasicMaterial, OrthographicCamera, PlaneGeometry, Scene,
+  BufferAttribute, BufferGeometry, CanvasTexture, Color, DoubleSide, LinearFilter, Mesh, MeshBasicMaterial, OrthographicCamera, PlaneGeometry, Scene, SRGBColorSpace,
 } from "three";
 
 /**
@@ -85,6 +85,8 @@ export class Panel {
       t.minFilter = t.magFilter = LinearFilter;
       t.generateMipmaps = false;
       t.premultiplyAlpha = true;
+      // The canvas is sRGB, as the frame is: drawn over it unchanged.
+      t.colorSpace = SRGBColorSpace;
       this.texture = t;
       this.material.map = t;
       this.material.needsUpdate = true;

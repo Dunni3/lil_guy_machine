@@ -1,0 +1,310 @@
+package dev.lilguy.parts
+
+import kotlin.math.PI
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.hypot
+import kotlin.math.sin
+import kotlin.math.sqrt
+
+/**
+ * The room's models in clay (`docs/decisions/2026-11-15-clay-replaces-crayon-and-models-stay-part-lists.md`):
+ * smooth rounded solids in flat pastels, lit by the room's lights and casting soft shadows, with no
+ * outlines and no lumps. The look is `world_sketches/fable_field_lab.html`'s.
+ *
+ * Same conventions as [RoomParts] (1 unit = 1 metre = 1 tile, pivot at the bottom centre of the
+ * tile, front +Z, wall items' backs at z = 0), and the same positions where the view relies on them
+ * (the desk's page, the easel's canvas, the record's spindle), so the web renderer draws one of these
+ * where there is one and [RoomParts]' list otherwise. `:app` never reads this file.
+ *
+ * The guy is here too, as the pieces the view animates: body (centred on the origin, so it squashes
+ * about its middle), arm, foot, sprout (pivot at its root, on top of his head), and the lantern that
+ * follows him with its rotor. His face is the body's texture, `face`, painted per expression.
+ */
+object ClayParts {
+    fun parts(body: PartList.() -> Unit): List<Part> = PartList().apply { outline = 0f; lump = 0f; body() }.parts
+
+    /** Item ids with a clay model of their own. */
+    val ITEM_IDS = listOf(
+        "bed", "desk", "chair", "easel", "record_player", "plant", "rug", "mail_hatch", "picture_rail", "poster",
+        "lava_lamp", "mushroom_lamp", "string_lights", "cloud_light",
+    )
+
+    /** The clay model of item [id]. */
+    fun item(id: String): List<Part> = parts {
+        when (id) {
+            "bed" -> bed()
+            "desk" -> desk()
+            "chair" -> chair()
+            "easel" -> easel()
+            "record_player" -> recordPlayer()
+            "plant" -> plant()
+            "rug" -> cylinder("#ffffff", 0f, 0f, 0f, 2.4f, 0.025f, 1.6f, round = 0.012f, texture = "rug")
+            "mail_hatch" -> mailHatch()
+            "picture_rail" -> capsule(WOOD_D, RoomParts.RAIL_X - RoomParts.RAIL_LENGTH / 2, RoomParts.RAIL_Y + 0.02f, 0.03f, 0.05f, RoomParts.RAIL_LENGTH, 0.05f, rotZ = -90f)
+            "poster" -> {
+                box("#ffffff", 0f, 0.95f, 0.012f, 0.62f, 0.82f, 0.025f, round = 0.01f, texture = "poster")
+                sphere(CORAL, 0f, 1.72f, 0.025f, 0.05f, 0.05f, 0.03f)
+            }
+            "lava_lamp" -> lavaLamp()
+            "mushroom_lamp" -> mushroomLamp()
+            "string_lights" -> stringLights()
+            "cloud_light" -> cloudLight()
+            else -> error("no clay model for '$id'")
+        }
+    }
+
+    /** Props that differ from [RoomParts]' in clay, by name; the view falls back to the crayon export's for the rest. */
+    fun props(): Map<String, List<Part>> = linkedMapOf(
+        "guy_body" to parts { guyBody() },
+        "guy_arm" to parts { sphere(BUTTER, 0f, -0.123f, 0f, 0.17f, 0.246f, 0.17f) },
+        "guy_foot" to parts { sphere(BUTTER, 0f, -0.072f, 0f, 0.24f, 0.144f, 0.324f) },
+        "guy_sprout" to parts { sprout() },
+        "lantern" to parts { lantern() },
+        "lantern_rotor" to parts {
+            capsule(BRASS, 0f, 0f, 0f, 0.016f, 0.08f, 0.016f)
+            box(TRIM, 0f, 0.075f, 0f, 0.3f, 0.008f, 0.035f, round = 0.003f)
+        },
+        "wall_clock" to parts {
+            ring(WOOD_D, 0f, RoomParts.CLOCK_Y - 0.22f, 0.035f, 0.44f, 0.44f, 0.07f, hole = 0.84f, round = 0.03f)
+            cylinder("#ffffff", 0f, RoomParts.CLOCK_Y, 0.005f, 0.38f, 0.05f, 0.38f, rotX = 90f, round = 0.01f, texture = "clock")
+        },
+        "shelf_boards" to parts {
+            for (y in listOf(RoomParts.SHELF_LOW, RoomParts.SHELF_HIGH)) {
+                box(WOOD, 0f, y, RoomParts.SHELF_DEPTH / 2, RoomParts.SHELF_WIDTH, 0.04f, RoomParts.SHELF_DEPTH, round = 0.015f)
+                for (side in listOf(-1f, 1f)) box(WOOD_D, side * (RoomParts.SHELF_WIDTH / 2 - 0.1f), y - 0.1f, 0.05f, 0.04f, 0.1f, 0.1f, round = 0.015f)
+            }
+        },
+    )
+
+    // --- the guy -------------------------------------------------------------------------------
+
+    /** His body's half width and half height; his feet' tops are [FEET] under the body's bottom. */
+    const val GUY_RX = 0.33f
+    const val GUY_RY = 0.4f
+    /** How far his body's bottom is off the ground, his shoulders (from his middle), and how far out. */
+    const val GUY_FEET = 0.1f
+    const val GUY_ARM_Y = -0.04f
+    const val GUY_ARM_X = 0.35f
+    const val GUY_FOOT_Z = 0.05f
+
+    /** A point on his body at height [dy] from its middle and [a] radians round from the front, [out] times the surface. */
+    private fun on(a: Float, dy: Float, out: Float = 1f): Triple<Float, Float, Float> {
+        val r = GUY_RX * sqrt(1f - (dy / GUY_RY) * (dy / GUY_RY)) * out
+        return Triple(sin(a) * r, dy, cos(a) * r)
+    }
+
+    private fun PartList.guyBody() {
+        // White, as his colour is all in the face texture's paint.
+        sphere("#ffffff", 0f, -GUY_RY, 0f, GUY_RX * 2, GUY_RY * 2, GUY_RX * 2, texture = "face")
+        // Goggles pushed up on his forehead, on a strap round his head.
+        val gy = 0.245f
+        val gr = GUY_RX * sqrt(1f - (gy / GUY_RY) * (gy / GUY_RY))
+        cylinder(STRAP, 0f, gy - 0.02f, 0f, (gr + 0.012f) * 2, 0.04f, (gr + 0.012f) * 2, hole = 0.88f, round = 0.018f)
+        for (k in listOf(-1f, 1f)) {
+            val (x, y, z) = on(k * 0.36f, gy, 1.07f)
+            val yaw = deg(k * 0.36f)
+            ring(BRASS, x, y - 0.095f, z, 0.19f, 0.19f, 0.045f, hole = 0.6f, round = 0.022f, rotY = yaw, rotX = -32f)
+            ring(LENS, x, y - 0.07f, z + 0.005f, 0.14f, 0.14f, 0.03f, hole = 0f, round = 0.01f, rotY = yaw, rotX = -32f)
+        }
+        // His field pack, on his back.
+        box(PACK, 0f, -0.18f, -0.34f, 0.34f, 0.32f, 0.17f, round = 0.07f)
+        box(PACK_DARK, 0f, 0.04f, -0.34f, 0.34f, 0.12f, 0.19f, round = 0.05f)
+        cylinder(PEACH, -0.18f, 0.2f, -0.36f, 0.12f, 0.36f, 0.12f, rotZ = -90f, round = 0.05f)
+        sphere(AMBER, 0.1f, -0.025f, -0.44f, 0.05f, 0.05f, 0.05f, glow = 1f)
+    }
+
+    private fun PartList.sprout() {
+        cylinder(SPROUT_STEM, 0f, -0.02f, 0f, 0.028f, 0.19f, 0.032f, rotZ = -7f, round = 0.012f)
+        sphere(SPROUT_LEAF, -0.075f, 0.17f, 0f, 0.24f, 0.058f, 0.135f, rotZ = 27f)
+        sphere(SPROUT_LEAF, 0.1f, 0.19f, 0f, 0.24f, 0.058f, 0.135f, rotZ = -26f)
+    }
+
+    /** His lantern, a glowing globe in two brass hoops under a cap, centred on the origin; its rotor spins on top. */
+    private fun PartList.lantern() {
+        sphere(LANTERN, 0f, -0.085f, 0f, 0.17f, 0.17f, 0.17f, glow = 1.4f)
+        ring(BRASS, 0f, -0.11f, 0f, 0.22f, 0.22f, 0.024f, hole = 0.89f, round = 0.012f)
+        cylinder(BRASS, 0f, -0.012f, 0f, 0.244f, 0.024f, 0.244f, hole = 0.9f, round = 0.012f)
+        dome(BRASS, 0f, 0.07f, 0f, 0.18f, 0.11f, 0.18f)
+    }
+
+    // --- furniture -----------------------------------------------------------------------------
+
+    /** Its head against the back wall; a little longer than its tile, into the wall's side. */
+    private fun PartList.bed() {
+        box(WOOD, 0f, 0f, 0.1f, 0.96f, 0.26f, 1.2f, round = 0.07f)
+        box(WOOD_D, 0f, 0f, -0.44f, 0.96f, 0.8f, 0.13f, round = 0.06f)
+        box(LINEN, 0f, 0.24f, 0.12f, 0.86f, 0.15f, 1.08f, round = 0.07f)
+        box(BLANKET, 0f, 0.33f, 0.33f, 0.9f, 0.12f, 0.68f, round = 0.06f)
+        box(BLANKET_FOLD, 0f, 0.38f, -0.03f, 0.9f, 0.08f, 0.22f, round = 0.04f)
+        box(LINEN, 0f, 0.38f, -0.29f, 0.54f, 0.14f, 0.28f, round = 0.07f)
+    }
+
+    /** The desk keeps [RoomParts]' height and the page where the view draws his sketch. */
+    private fun PartList.desk() {
+        for (sx in listOf(-0.42f, 0.42f)) for (sz in listOf(-0.25f, 0.25f)) cylinder(WOOD_D, sx, 0f, sz, 0.06f, 0.5f, 0.06f, taper = 0.85f, round = 0.02f)
+        box(WOOD, 0f, 0.5f, 0f, 0.98f, 0.05f, 0.62f, round = 0.025f)
+        box(PEACH, 0.24f, 0.34f, 0f, 0.42f, 0.15f, 0.56f, round = 0.03f)
+        sphere(BRASS, 0.24f, 0.395f, 0.28f, 0.04f, 0.04f, 0.03f)
+        box(PAPER, RoomParts.SKETCH_X, 0.55f, RoomParts.SKETCH_Z, 0.28f, 0.006f, 0.2f, round = 0.002f)
+        cylinder(CORAL, 0.18f, 0.55f, 0.12f, 0.1f, 0.11f, 0.1f, taper = 0.9f, round = 0.02f)
+        ring(CORAL, 0.245f, 0.57f, 0.12f, 0.07f, 0.07f, 0.02f, hole = 0.5f, rotY = 90f, round = 0.01f)
+        // A little lamp: a glowing shade on a brass stem.
+        cylinder(BRASS, -0.34f, 0.55f, -0.18f, 0.14f, 0.03f, 0.14f, round = 0.012f)
+        cylinder(BRASS, -0.34f, 0.57f, -0.18f, 0.025f, 0.17f, 0.025f)
+        dome(SHADE, -0.34f, 0.71f, -0.18f, 0.28f, 0.27f, 0.28f, glow = 1f)
+    }
+
+    /** He sits facing +X, toward the desk; the back is on -X. */
+    private fun PartList.chair() {
+        for (sx in listOf(-0.15f, 0.15f)) for (sz in listOf(-0.15f, 0.15f)) cylinder(WOOD_D, sx, 0f, sz, 0.045f, 0.3f, 0.045f, round = 0.015f)
+        cylinder(WOOD, 0f, 0.28f, 0f, 0.44f, 0.06f, 0.44f, round = 0.03f)
+        cylinder(CORAL, 0f, 0.33f, 0f, 0.38f, 0.06f, 0.38f, round = 0.03f)
+        box(WOOD, -0.2f, 0.3f, 0f, 0.05f, 0.42f, 0.38f, round = 0.025f)
+        capsule(WOOD_D, -0.2f, 0.72f, -0.21f, 0.06f, 0.42f, 0.06f, rotX = 90f)
+    }
+
+    /** As [RoomParts]' easel, so a canvas stands on its ledge where the view puts the painting. */
+    private fun PartList.easel() {
+        box(WOOD, -0.22f, 0f, 0.08f, 0.055f, 1.15f, 0.055f, rotZ = -8f, round = 0.025f)
+        box(WOOD, 0.22f, 0f, 0.08f, 0.055f, 1.15f, 0.055f, rotZ = 8f, round = 0.025f)
+        box(WOOD_D, 0f, 0f, -0.2f, 0.055f, 1.1f, 0.055f, rotX = -14f, round = 0.025f)
+        box(WOOD_D, 0f, 0.42f, 0.12f, 0.6f, 0.05f, 0.1f, round = 0.025f)
+        sphere(BRASS, 0f, 1.1f, 0.09f, 0.06f, 0.06f, 0.06f)
+    }
+
+    /** A cabinet with the turntable on top; the record is the view's ([RoomParts.disc]), at [RoomParts.DISC_X], [RoomParts.DISC_Y]. */
+    private fun PartList.recordPlayer() {
+        box(WOOD_D, 0f, 0f, 0f, 0.8f, 0.5f, 0.46f, round = 0.05f)
+        box(PEACH, 0f, 0.07f, 0.215f, 0.68f, 0.32f, 0.04f, round = 0.03f)
+        for (sx in listOf(-0.17f, 0.17f)) ring(SAGE, sx, 0.12f, 0.24f, 0.22f, 0.22f, 0.02f, hole = 0f, round = 0.008f)
+        box(WOOD, 0f, 0.5f, 0f, 0.62f, 0.05f, 0.4f, round = 0.025f)
+        cylinder(PLATTER, RoomParts.DISC_X, 0.545f, 0f, 0.32f, 0.012f, 0.32f, round = 0.004f)
+        capsule(BRASS, 0.2f, 0.575f, -0.15f, 0.025f, 0.22f, 0.025f, rotX = 90f)
+        sphere(BRASS, 0.2f, 0.56f, -0.16f, 0.06f, 0.04f, 0.06f)
+    }
+
+    /** A leafy pot plant, as the sketch's. */
+    private fun PartList.plant() {
+        cylinder(CORAL, 0f, 0f, 0f, 0.26f, 0.3f, 0.26f, taper = 1.35f, round = 0.03f)
+        cylinder(SOIL, 0f, 0.27f, 0f, 0.3f, 0.03f, 0.3f, round = 0.012f)
+        val n = 9
+        for (i in 0 until n) {
+            val a = i * 2 * PI.toFloat() / n + i
+            val t = 0.5f + (i % 3) * 0.22f
+            sphere(
+                if (i % 2 == 0) LEAF else LEAF_LIGHT, 0.05f * cos(a), 0.27f, 0.05f * sin(a), 0.2f, 0.32f + 0.3f * t, 0.06f,
+                rotY = deg(PI.toFloat() / 2 - a), rotX = deg(0.4f + 0.35f * t),
+            )
+        }
+    }
+
+    /** A brass-flapped hatch in the wall at hand height, with a little shelf under it for parcels. */
+    private fun PartList.mailHatch() {
+        box(TRIM, 0f, 0.5f, 0.02f, 0.68f, 0.54f, 0.05f, round = 0.03f)
+        box(CORAL, 0f, 0.58f, 0.045f, 0.52f, 0.34f, 0.03f, round = 0.02f)
+        box(INK, 0f, 0.84f, 0.05f, 0.32f, 0.035f, 0.02f, round = 0.012f)
+        sphere(BRASS, 0f, 0.62f, 0.06f, 0.07f, 0.07f, 0.05f)
+        box(WOOD, 0f, 0.42f, 0.12f, 0.74f, 0.05f, 0.24f, round = 0.02f)
+        for (sx in listOf(-0.29f, 0.29f)) box(WOOD_D, sx, 0.28f, 0.05f, 0.045f, 0.14f, 0.09f, round = 0.02f)
+    }
+
+    // --- lamps: they glow at night, and the view lights the room from them -------------------------
+
+    /** On a little bedside cube: a brass foot, a glowing glass and its blobs, a brass cap. */
+    private fun PartList.lavaLamp() {
+        box(WOOD, 0f, 0f, 0f, 0.5f, 0.46f, 0.46f, round = 0.05f)
+        box(PEACH, 0f, 0.08f, 0.225f, 0.38f, 0.16f, 0.03f, round = 0.02f)
+        sphere(BRASS, 0f, 0.14f, 0.245f, 0.04f, 0.04f, 0.03f)
+        cylinder(BRASS, 0f, 0.46f, 0f, 0.18f, 0.1f, 0.18f, taper = 0.7f, round = 0.03f)
+        cylinder(LAVA_GLASS, 0f, 0.56f, 0f, 0.15f, 0.3f, 0.15f, taper = 0.6f, round = 0.04f, glow = 0.8f)
+        sphere(LAVA_BLOB, 0f, 0.6f, 0f, 0.09f, 0.1f, 0.09f, glow = 1f)
+        sphere(LAVA_BLOB, 0.01f, 0.73f, 0f, 0.06f, 0.07f, 0.06f, glow = 1f)
+        cylinder(BRASS, 0f, 0.86f, 0f, 0.1f, 0.07f, 0.1f, taper = 0.6f, round = 0.02f)
+    }
+
+    private fun PartList.mushroomLamp() {
+        cylinder(WOOD_D, 0f, 0f, 0f, 0.3f, 0.05f, 0.3f, round = 0.02f)
+        cylinder(TRIM, 0f, 0.05f, 0f, 0.13f, 0.34f, 0.13f, taper = 0.75f, round = 0.04f)
+        dome(MUSHROOM, 0f, 0.36f, 0f, 0.46f, 0.36f, 0.46f, glow = 0.9f)
+        for (k in 0 until 5) {
+            val a = k * 2 * PI.toFloat() / 5 + 0.4f
+            val r = if (k % 2 == 0) 0.13f else 0.09f
+            sphere(TRIM, r * cos(a), 0.36f + 0.16f * sqrt(1f - (r / 0.23f) * (r / 0.23f)) - 0.01f, r * sin(a), 0.06f, 0.025f, 0.06f, glow = 0.4f)
+        }
+    }
+
+    /** Lights strung along the top of the wall in two swags, glowing bulbs on a dark wire. */
+    private fun PartList.stringLights() {
+        val y = 2.0f
+        val z = 0.04f
+        var k = 0
+        for ((x0, x1) in listOf(-0.95f to 0.05f, 0.05f to 1.05f)) {
+            val n = 8
+            val pts = (0..n).map { i -> val u = i.toFloat() / n; Pair(x0 + (x1 - x0) * u, y - 0.16f * sin(PI.toFloat() * u)) }
+            for (i in 0 until n) segment(WIRE, pts[i].first, pts[i].second, pts[i + 1].first, pts[i + 1].second, z, 0.012f)
+            for (p in pts.drop(1).dropLast(1)) sphere(BULBS[k++ % BULBS.size], p.first, p.second - 0.1f, z, 0.05f, 0.075f, 0.05f, glow = 1.2f)
+        }
+        for (x in listOf(-0.95f, 0.05f, 1.05f)) sphere(BRASS, x, y - 0.02f, 0.02f, 0.04f, 0.04f, 0.03f)
+    }
+
+    /** A puffy cloud night-light with a sleeping face, its cord looping down the wall. */
+    private fun PartList.cloudLight() {
+        val y = 1.2f
+        sphere(CLOUD, -0.15f, y, 0.07f, 0.22f, 0.19f, 0.14f, glow = 0.6f)
+        sphere(CLOUD, 0.15f, y, 0.07f, 0.22f, 0.18f, 0.14f, glow = 0.6f)
+        sphere(CLOUD, -0.05f, y + 0.04f, 0.085f, 0.24f, 0.24f, 0.17f, glow = 0.6f)
+        sphere(CLOUD, 0.07f, y + 0.03f, 0.085f, 0.22f, 0.22f, 0.16f, glow = 0.6f)
+        for (side in listOf(-1f, 1f)) {
+            ring(INK, side * 0.065f, y + 0.115f, 0.178f, 0.05f, 0.03f, 0.01f, hole = 0.6f, arc = 180f, round = 0.004f)
+            sphere(BLUSH, side * 0.11f, y + 0.08f, 0.165f, 0.045f, 0.028f, 0.012f)
+        }
+        capsule(WIRE, 0.15f, y - 0.4f, 0.012f, 0.012f, 0.42f, 0.012f)
+        box(TRIM, 0.15f, y - 0.47f, 0.014f, 0.06f, 0.08f, 0.028f, round = 0.01f)
+    }
+
+    /** A capsule from ([ax], [ay]) to ([bx], [by]) in the plane z = [z], [thick] across. */
+    private fun PartList.segment(color: String, ax: Float, ay: Float, bx: Float, by: Float, z: Float, thick: Float) {
+        val dx = bx - ax
+        val dy = by - ay
+        capsule(color, ax, ay, z, thick, hypot(dx, dy) + thick, thick, rotZ = deg(atan2(-dx, dy)))
+    }
+
+    private fun deg(rad: Float) = rad * 180f / PI.toFloat()
+
+    // The Field Lab's colours: butter, cream, honey wood, coral, sage, brass, ink.
+    const val BUTTER = "#ffe3a1"
+    const val TRIM = "#fffaf0"
+    const val CREAM = "#f6ead6"
+    const val WOOD = "#d2a67c"
+    const val WOOD_D = "#b98862"
+    const val CORAL = "#e58573"
+    const val SAGE = "#8fb8a0"
+    const val BRASS = "#d9a95a"
+    const val INK = "#4a3a4f"
+    const val PEACH = "#f1c9b4"
+    const val LINEN = "#fffaf0"
+    const val BLANKET = "#9db8d8"
+    const val BLANKET_FOLD = "#c5d6ea"
+    const val PAPER = "#fdf9ef"
+    const val SHADE = "#ffd9a0"
+    const val PLATTER = "#d9dfe0"
+    const val SOIL = "#8d6b55"
+    const val LEAF = "#7fb58a"
+    const val LEAF_LIGHT = "#9ccf9a"
+    const val STRAP = "#8d6b55"
+    const val LENS = "#bfe3ea"
+    const val PACK = "#8fa98f"
+    const val PACK_DARK = "#7c977d"
+    const val AMBER = "#ffc47a"
+    const val SPROUT_STEM = "#8ec79c"
+    const val SPROUT_LEAF = "#a8dcb0"
+    const val LANTERN = "#ffdf9a"
+    const val LAVA_GLASS = "#f6c48e"
+    const val LAVA_BLOB = "#e2725f"
+    const val MUSHROOM = "#f2a48a"
+    const val WIRE = "#55505f"
+    const val CLOUD = "#fbf5ff"
+    const val BLUSH = "#ff9fb4"
+    val BULBS = listOf("#ffe2b0", "#ffd58a", "#ffc9a0", "#fff1c8")
+}
