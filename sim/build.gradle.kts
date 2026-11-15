@@ -11,6 +11,8 @@ dependencies {
     api(libs.kotlinx.coroutines.core)
     // The bedroom's content files (content/bedroom/*.yaml).
     implementation(libs.kaml)
+    // The verbs he writes are JavaScript, run in a sandbox (Scripts.kt).
+    implementation(libs.rhino)
     testImplementation(kotlin("test"))
 }
 

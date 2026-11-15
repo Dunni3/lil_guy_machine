@@ -339,12 +339,12 @@ export class RoomView {
   }
 
   private place(e: Entity) {
-    const key = `${e.kind}/${e.x}/${e.y}/${e.state ?? ""}`;
+    const key = `${e.kind}/${e.x}/${e.y}/${e.state ?? ""}/${e.color ?? ""}`;
     if (this.things.get(e.id)?.key === key) return;
     const old = this.things.get(e.id);
     if (old) this.r.remove(old.placed);
     const map = this.map!;
-    const model = this.models.item(e.id, e.kind, e.state);
+    const model = this.models.item(e.id, e.kind, e.state, e.color ?? null);
     const at = new Matrix4();
     const tx = Math.trunc(e.x);
     const ty = Math.trunc(e.y);

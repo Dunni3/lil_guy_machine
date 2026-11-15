@@ -90,6 +90,10 @@ class AgentMemory(
     private val inventor: Inventing? = null,
     /** Every design, built or not; called from the agent coroutine. */
     private val onDraft: (Drafted) -> Unit = {},
+    /** Writes his code: verbs at his desk, and what each thing he invents does; without one he isn't offered `devise` and inventions only sit there. */
+    private val coder: dev.lilguy.agent.code.Coder? = null,
+    /** Every piece of code he wrote at his desk, kept or not; called from the agent coroutine. */
+    private val onCoded: (dev.lilguy.agent.code.Coded) -> Unit = {},
     /** Searches the real web for him (the `search` look); without one he can't. */
     private val searcher: Searcher? = null,
     /** Every web search, found or not; called from the agent coroutine. */
@@ -153,6 +157,8 @@ class AgentMemory(
         if (shopper != null) handlers += ShoppingHandler(shopper, store, run) { t -> tripLog += t; onTrip(t) }
         if (inventor != null) handlers += InventionHandler(inventor, store, run, onDraft)
         if (letterWriter != null) handlers += LetterHandler(letterWriter, store, run, onLetter)
+        if (inventor != null) handlers += InventionHandler(inventor, store, run, onDraft, coder)
+        if (coder != null) handlers += dev.lilguy.agent.code.CodeHandler(coder, store, run, onCoded)
         return Authors(handlers, scope)
     }
 
@@ -288,6 +294,7 @@ class AgentMemory(
         shopper?.connect(world)
         inventor?.connect(world)
         letterWriter?.connect(world)
+        coder?.connect(world)
         restVerbs = world.content.verbs.filter { v -> v.effects.any { it is SleepOp } }.map { it.id }.toSet()
         about = world.content.personality.core.he
     }

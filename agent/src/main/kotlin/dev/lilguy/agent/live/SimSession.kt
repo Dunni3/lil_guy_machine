@@ -5,6 +5,7 @@ import dev.lilguy.agent.Carried
 import dev.lilguy.agent.LifeRecorder
 import dev.lilguy.agent.carried
 import dev.lilguy.agent.mail.LetterWriter
+import dev.lilguy.agent.code.Coder
 import dev.lilguy.agent.memory.MemoryStore
 import dev.lilguy.agent.memory.RunMemoryStore
 import dev.lilguy.runlog.Ids
@@ -414,6 +415,11 @@ class SimSession(
             // His letters to people who have written to him: the writer writes them.
             letterWriter = if (setup.scenario != Scenario.Bedroom) null else jw?.takeIf { !it.capabilities.closedChoice }?.let { LetterWriter(ledger.meter(it, TokenPurpose.Letter, setup.prices.writer)) },
             onLetter = { l -> lr?.letter(l) },
+            onCoded = { c -> lr?.code(c) },
+            // His code (verbs at his desk, and what each invention does): the deciding model when it's a text model, which writes code best, else the writer.
+            coder = if (setup.scenario != Scenario.Bedroom) null else
+                rawModel.takeIf { setup.paints }?.let { Coder(ledger.meter(it, TokenPurpose.Code, setup.prices.decision)) }
+                    ?: jw?.let { Coder(ledger.meter(it, TokenPurpose.Code, setup.prices.writer)) },
             // The real web, for a model that calls tools; the session closes it with the run.
             searcher = setup.search?.takeIf { setup.scenario == Scenario.Bedroom }?.invoke()?.let { web ->
                 searchClient = web

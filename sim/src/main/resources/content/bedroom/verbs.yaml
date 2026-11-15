@@ -100,6 +100,19 @@ verbs:
       - write: { with: invention, into: [events], timing: before }
       - build: {}
       - need: { energy: -4, stimulation: 12 }
+  # He writes code at his desk: new verbs of his own, and what his things do by themselves, in
+  # JavaScript against the world's API (sim/.../Scripts.kt). A coder model writes it before he starts
+  # (agent/.../code/Coder.kt) and `define` checks and puts it in; naming one of his verbs rewrites it.
+  # A thing he invents gets its code at the workbench too (the invention's `code`).
+  - id: devise
+    kind: expressive
+    phrase: write code for a new thing to do, or for what one of your things does
+    at: [desk]
+    minutes: 60
+    effects:
+      - write: { with: verb_code, into: [events], timing: before }
+      - define: {}
+      - need: { energy: -3, stimulation: 10 }
   - id: sell_art
     kind: economic
     phrase: sell your art

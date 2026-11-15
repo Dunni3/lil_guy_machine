@@ -284,6 +284,8 @@ data class EntitySnapshot(
     val carriedBy: EntityId? = null,
     /** The place it's in ([Layout.places]), or null in rooms without places. */
     val place: String? = null,
+    /** The colour his code painted it, hex, or null for its own colours. */
+    val color: String? = null,
 )
 
 /** What a character's controller is doing, for HUDs and debug views. */

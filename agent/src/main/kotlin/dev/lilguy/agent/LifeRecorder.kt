@@ -268,8 +268,22 @@ class LifeRecorder(val recorder: RunRecorder, private val autosaveMinutes: Int =
             if (d.steps.isNotEmpty()) putJsonArray("steps") {
                 d.steps.forEach { s -> add(buildJsonObject { put("tool", s.name); put("args", s.arguments); put("answer", s.result) }) }
             }
+            d.code?.let { c ->
+                c.design?.let { put("code", RowJson.encodeToJsonElement(dev.lilguy.sim.CodeDesign.serializer(), it)) }
+                c.error?.let { put("code_error", it) }
+            }
         },
         error = d.error,
+    )
+
+    /** Code he wrote at his desk ([dev.lilguy.agent.code.Coded]): the design, and what he had to redo. */
+    fun code(c: dev.lilguy.agent.code.Coded) = authored(
+        c.tick, "verb_code", null, kept = c.design != null, writer = c.coder,
+        result = buildJsonObject {
+            c.design?.let { put("design", RowJson.encodeToJsonElement(dev.lilguy.sim.CodeDesign.serializer(), it)) }
+            putJsonArray("redid") { c.redid.forEach { add(JsonPrimitive(it)) } }
+        },
+        error = c.error,
     )
 
     /** A finished drawing: an authored row, and the piece itself when it was kept. */

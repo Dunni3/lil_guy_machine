@@ -1,5 +1,5 @@
 /* Generated from schema/protocol.schema.json (protocol/.../*.kt) by gen_types.sh. Don't edit; run `make protocol-types`.
- * schema sha256: be9d24bd4116882a4209b44765a223e929d1599c3fcc15d8de89f4f0e090efcd
+ * schema sha256: 81635626fe866579d6ed675ec1f9de98fb7286e87ab2945ebc6f5fd11e8a8a75
  */
 
 /**
@@ -184,6 +184,7 @@ export interface Entity {
   state: string | null;
   carried_by: string | null;
   place: string | null;
+  color: string | null;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
