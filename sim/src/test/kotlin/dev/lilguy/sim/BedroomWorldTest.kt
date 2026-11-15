@@ -8,13 +8,13 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class BedroomWorldTest {
-    /** The shipped file gates nothing; the tier mechanism is tested on what used to be tier 1, and all decor. */
+    /** The shipped file gates nothing; the tier mechanism is tested on what used to be tier 1, all decor, and the food he invented. */
     private val tier1 = setOf(
         "workbench", "invent",
         "canvas", "easel", "record_player", "jazz_record", "ambient_record", "folk_record", "novel", "poetry_book",
         "field_guide", "painting", "paint", "read", "listen", "play_record",
         "drawing_book", "music_book", "guitar", "play_guitar", "build_room", "microscope", "study_sample",
-    ) + BedroomContent.default().items.filter { it.group == "decor" || it.group == "room" }.map { it.id }
+    ) + BedroomContent.default().items.filter { it.group == "decor" || it.group == "room" || (it.group == "food" && it.id !in setOf("meal", "oats")) }.map { it.id }
     /** Books here teach nothing, so painting and the guitar are there from the start; [shipped] is the file as it is. */
     private val content = BedroomContent.default().let { c ->
         c.copy(
@@ -246,7 +246,8 @@ class BedroomWorldTest {
 
         // Before it came to that: spending the last of the food money says so.
         val poor = world(money = 21, items = content.start.items - "meal")
-        assertTrue(poor.obs().shop!!.first { it.id == "novel" }.gives.endsWith("leaves you \$9 with no food, short of a meal (3 for \$24)"))
+        val gives = poor.obs().shop!!.first { it.id == "novel" }.gives
+        assertTrue(gives.endsWith("leaves you \$9 with no food, short of a ceramic mug (\$16)"), gives)
     }
 
     @Test

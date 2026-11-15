@@ -81,7 +81,7 @@ class InventorTest {
 
     /** A lamp that is calm 2, natural 2 and cozy [cozy]: with cozy 3 it adds up to 7, over the quality budget of 6. */
     private fun design(cozy: Int) =
-        """{"name":"moss lamp","use":"viewable","qualities":[{"quality":"calm","strength":2},{"quality":"natural","strength":2},{"quality":"cozy","strength":$cozy}],"place":"floor","look":[{"shape":"sphere","w":0.3,"h":0.3,"d":0.3,"x":0,"y":0,"z":0,"rot_x":0,"rot_y":0,"rot_z":0,"color":"#557755","part":"moss","taper":1,"cut":1,"hole":0,"arc":360,"glow":0,"opacity":1}],"book":null,"why":"the room needs something green"}"""
+        """{"name":"pebble lamp","use":"viewable","qualities":[{"quality":"calm","strength":2},{"quality":"natural","strength":2},{"quality":"cozy","strength":$cozy}],"place":"floor","look":[{"shape":"sphere","w":0.3,"h":0.3,"d":0.3,"x":0,"y":0,"z":0,"rot_x":0,"rot_y":0,"rot_z":0,"color":"#557755","part":"moss","taper":1,"cut":1,"hole":0,"arc":360,"glow":0,"opacity":1}],"book":null,"why":"the room needs something green"}"""
 
     @Test
     fun `the writer's design is redone once when it's refused, built by the sim and remembered, and a design that stays refused fails the verb`() {
@@ -99,11 +99,11 @@ class InventorTest {
         assertTrue("add up to at most 6" in designer.requests[1].messages.last().content, designer.requests[1].messages.last().content)
         assertTrue("look it over" in designer.requests[2].messages.last().content, designer.requests[2].messages.last().content)
         assertTrue("You're at your workbench with $100" in designer.requests[0].messages.first().content)
-        assertEquals("moss_lamp", world.inventions.single().item.id)
+        assertEquals("pebble_lamp", world.inventions.single().item.id)
         assertEquals(100 - (4 + 5 * 5), world.ledger.balance)
         assertEquals(1, drafts.single().redid.size)
         val event = store.eventsAfter("r", 0, 100).single { it.kind == EventKind.Invention }
-        assertEquals("I invented the moss lamp and built it at my workbench (calm, natural, cozy): the room needs something green.", event.text)
+        assertEquals("I invented the pebble lamp and built it at my workbench (calm, natural, cozy): the room needs something green.", event.text)
 
         // A design that's still refused goes to the sim as it is, and the verb fails with the reason.
         val stubborn = InventingDecider()
@@ -112,7 +112,7 @@ class InventorTest {
         runBlocking { runLockstep(w2, r2, maxTicks = 3000, shouldStop = { stubborn.decisions >= 2 }) }
         assertTrue(w2.inventions.isEmpty())
         assertEquals(100, w2.ledger.balance)
-        assertTrue(w2.observe(w2.agentId).recentEvents.any { "the moss lamp didn't work" in it }, w2.observe(w2.agentId).recentEvents.toString())
+        assertTrue(w2.observe(w2.agentId).recentEvents.any { "the pebble lamp didn't work" in it }, w2.observe(w2.agentId).recentEvents.toString())
     }
 
     @Test

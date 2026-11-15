@@ -98,5 +98,8 @@ class PartList {
     fun panel(texture: String?, x: Float, y: Float, z: Float, w: Float, h: Float, rotX: Float = 0f, color: String = "#ffffff", outline: Float = 0f) =
         add(Part(Part.Shape.Panel, w, h, 0f, x, y, z, rotX, 0f, 0f, color, texture, 0f, 0f, seed, outline))
 
+    /** [p] as it is but for this list's lump, outline and next seed: for a model kept as data, as an invention's look is ([InventedParts]). */
+    fun part(p: Part) = add(p.copy(lump = lump, seed = seed, outline = outline))
+
     private fun add(p: Part) { parts += p; seed++ }
 }
