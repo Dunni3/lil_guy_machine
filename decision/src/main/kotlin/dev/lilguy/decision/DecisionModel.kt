@@ -31,6 +31,8 @@ data class DecisionRequest(
     val timeout: Duration = 20.seconds,
     /** The same decision as a closed set, for backends with [Capabilities.closedChoice]. */
     val choices: ChoiceSet? = null,
+    /** The same decision as tools to call, for backends with [Capabilities.toolCalls]; they're sent in place of the schema's. */
+    val tools: ToolSet? = null,
 )
 
 /**
@@ -61,8 +63,15 @@ data class ChoiceSet(
     data class Group(val id: String, val description: String, val parent: String? = null)
 }
 
-data class Message(val role: Role, val content: String) {
-    enum class Role { System, User, Assistant }
+/**
+ * One message of a conversation. An [Role.Assistant] message with [call] is a tool call the model
+ * made (or is shown as having made); a [Role.Tool] message is its result, [call] naming which.
+ */
+data class Message(val role: Role, val content: String, val call: ToolCall? = null) {
+    enum class Role { System, User, Assistant, Tool }
+
+    /** The message as one line of text for logs: a call as `name {arguments}`. */
+    val text: String get() = if (role == Role.Assistant && call != null) "${call.name} ${call.arguments}" else content
 }
 
 data class Decision<A>(

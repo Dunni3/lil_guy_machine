@@ -3,6 +3,8 @@ package dev.lilguy.agent
 import dev.lilguy.decision.ChoiceSet
 import dev.lilguy.decision.DecisionRequest
 import dev.lilguy.decision.Message
+import dev.lilguy.decision.ToolCall
+import dev.lilguy.decision.ToolSet
 import dev.lilguy.sim.Intent
 import dev.lilguy.sim.IntentStatus
 import dev.lilguy.sim.Observation
@@ -27,7 +29,8 @@ import kotlin.time.Duration.Companion.seconds
  * recent intents with how each ended (and, for a think, what he thought), each stamped by [stamp].
  *
  * [choices] builds the same decision as a closed set, for models that pick, with his self-model
- * ([self]) in its state. [persona] is who he is, for authored ops (thoughts, art); null in rooms
+ * ([self]) in its state. [toolTurn] builds it as tools to call, for models that call them; null in
+ * rooms that don't. [persona] is who he is, for authored ops (thoughts, art); null in rooms
  * without one.
  */
 class PromptBuilder(
@@ -39,7 +42,21 @@ class PromptBuilder(
     private val self: () -> String? = { null },
     /** The observation as the deciding model sees it (what it can choose among); unchanged by default. */
     private val view: (Observation) -> Observation = { it },
+    private val toolTurn: ToolTurn? = null,
 ) {
+    /**
+     * The decision as a conversation with tools: [system] says how his life works and that he
+     * acts by calling one, [tools] are what he can do in an observation (as [view] shows it),
+     * [status] is that observation as the turn's message shows it, and [call] is the call an
+     * earlier intent stands for, so his recent actions come back as his own tool calls.
+     */
+    class ToolTurn(
+        val system: () -> String,
+        val tools: (Observation) -> ToolSet,
+        val status: (Observation) -> Observation,
+        val call: (Intent) -> Pair<String, JsonObject>,
+    )
+
     /** A fixed system prompt and persona. */
     constructor(
         system: String,
@@ -68,11 +85,14 @@ class PromptBuilder(
         observed: Observation,
         recent: List<Memory.Entry>,
         closedChoice: Boolean = false,
+        /** Put it as tools to call, when this room can ([toolTurn]). */
+        tools: Boolean = false,
         memories: List<String> = emptyList(),
         thought: String? = null,
         found: List<String> = emptyList(),
     ): DecisionRequest {
         val obs = view(observed)
+        if (tools && toolTurn != null) return toolRequest(toolTurn, obs, recent, memories, thought, found)
         val history = recent.joinToString("\n") { e ->
             "${stamp(e.tick)}: ${json.encodeToString(Intent.serializer(), e.intent)} -> ${e.result?.let(::describe) ?: "running"}" +
                 (e.thought?.let { "; you thought: \"$it\"" } ?: "")
@@ -80,18 +100,7 @@ class PromptBuilder(
         val user = buildString {
             appendLine(OBSERVATION_HEADER)
             appendLine(json.encodeToString(Observation.serializer(), obs))
-            if (memories.isNotEmpty()) {
-                appendLine(MEMORY_HEADER)
-                memories.forEach { appendLine("- $it") }
-            }
-            if (thought != null) {
-                appendLine(THOUGHT_HEADER)
-                appendLine("- $thought")
-            }
-            if (found.isNotEmpty()) {
-                appendLine(FOUND_HEADER)
-                found.forEach { appendLine("- $it") }
-            }
+            recall(memories, thought, found)
             if (history.isNotEmpty()) {
                 appendLine("Your recent actions, oldest first:")
                 appendLine(history)
@@ -104,6 +113,48 @@ class PromptBuilder(
             timeout = timeout,
             choices = if (closedChoice) choices(obs, recent)?.let { withRecall(it, memories, thought, self(), found) } else null,
         )
+    }
+
+    /**
+     * His recent actions as calls he made, each answered by how it ended, then one message with how
+     * things stand (the observation as [ToolTurn.status] shows it, and what he recalls).
+     */
+    private fun toolRequest(turn: ToolTurn, obs: Observation, recent: List<Memory.Entry>, memories: List<String>, thought: String?, found: List<String>): DecisionRequest {
+        val messages = mutableListOf<Message>()
+        if (recent.isNotEmpty()) {
+            messages += Message(Message.Role.User, HISTORY_HEADER)
+            recent.forEachIndexed { i, e ->
+                val (name, args) = turn.call(e.intent)
+                val call = ToolCall("call_${e.tick}_$i", name, JsonObject(mapOf(BedroomTools.REASON to JsonPrimitive(e.reason.orEmpty())) + args))
+                val ended = e.result?.let(::describe) ?: "still going"
+                val result = "Started ${stamp(e.tick)}. " + (e.outcome?.let { "$ended: $it" } ?: ended) + (e.thought?.let { " You thought: \"$it\"" } ?: "")
+                messages += Message(Message.Role.Assistant, "", call)
+                messages += Message(Message.Role.Tool, result, call)
+            }
+        }
+        val user = buildString {
+            appendLine(STATUS_HEADER)
+            appendLine(statusJson.encodeToString(Observation.serializer(), turn.status(obs)))
+            recall(memories, thought, found)
+            append(CALL)
+        }
+        messages += Message(Message.Role.User, user)
+        return DecisionRequest(system = turn.system(), messages = messages, timeout = timeout, tools = turn.tools(obs))
+    }
+
+    private fun StringBuilder.recall(memories: List<String>, thought: String?, found: List<String>) {
+        if (memories.isNotEmpty()) {
+            appendLine(MEMORY_HEADER)
+            memories.forEach { appendLine("- $it") }
+        }
+        if (thought != null) {
+            appendLine(THOUGHT_HEADER)
+            appendLine("- $thought")
+        }
+        if (found.isNotEmpty()) {
+            appendLine(FOUND_HEADER)
+            found.forEach { appendLine("- $it") }
+        }
     }
 
     /** Adds how he sees himself, what he remembers and his latest thought to the state a picking model judges the options against. */
@@ -135,11 +186,25 @@ class PromptBuilder(
         const val THOUGHT_HEADER = "What you decided the last time you stopped to think (your plan for now):"
         const val FOUND_HEADER = "What you found out lately by asking how your world works, oldest first:"
         private const val ASK = "Choose your next action."
+        private const val STATUS_HEADER = "How things stand now:"
+        private const val HISTORY_HEADER = "Your recent actions, oldest first, are the calls below; each result says when it started and how it ended."
+        private const val CALL = "Call one tool: what you do next."
 
-        /** The user message of [request] without the closing ask: his situation, for authored ops. */
-        fun situationOf(request: DecisionRequest): String =
-            request.messages.lastOrNull { it.role == Message.Role.User }?.content?.removeSuffix(ASK)?.trimEnd().orEmpty()
+        /**
+         * His situation, for authored ops: the request's last user message without the closing ask,
+         * and, when the request put his recent actions as tool calls, those as lines first.
+         */
+        fun situationOf(request: DecisionRequest): String {
+            val now = request.messages.lastOrNull { it.role == Message.Role.User }?.content?.removeSuffix(ASK)?.removeSuffix(CALL)?.trimEnd().orEmpty()
+            val calls = request.messages.filter { it.role == Message.Role.Tool && it.call != null }.map { m ->
+                val c = m.call!!
+                "- ${c.name} ${JsonObject(c.arguments - BedroomTools.REASON)}: ${m.content}"
+            }
+            return if (calls.isEmpty()) now else "Your recent actions, oldest first:\n${calls.joinToString("\n")}\n$now"
+        }
         private val json = Json { encodeDefaults = true; ignoreUnknownKeys = true }
+        /** The tool turn's status leaves out what's null. */
+        private val statusJson = Json { encodeDefaults = true; explicitNulls = false }
         /** Examples show every field, nulls included, the way a strict schema wants them. */
         internal val exampleJson = Json { encodeDefaults = true; explicitNulls = true }
 

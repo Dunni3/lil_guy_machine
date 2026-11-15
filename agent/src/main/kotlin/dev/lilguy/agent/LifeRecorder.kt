@@ -424,7 +424,7 @@ class LifeRecorder(val recorder: RunRecorder, private val autosaveMinutes: Int =
 
         /** The request a metered model was sent, without the system prompt (stored on its own, since it repeats). */
         fun requestJson(request: DecisionRequest, schema: JsonObject?): JsonObject = buildJsonObject {
-            putJsonArray("messages") { request.messages.forEach { m -> add(buildJsonObject { put("role", m.role.name.lowercase()); put("content", m.content) }) } }
+            putJsonArray("messages") { request.messages.forEach { m -> add(buildJsonObject { put("role", m.role.name.lowercase()); put("content", m.text) }) } }
             put("temperature", request.temperature)
             schema?.let { put("schema", it) }
             request.choices?.let { c ->

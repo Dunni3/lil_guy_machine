@@ -67,4 +67,6 @@ agents:
                               # he isn't offered think. (journal_endpoint is the old name, still read.)
     recall_endpoint: typesafe # scores which memories and thoughts reach each prompt, and each event's
                               # significance; typesafe only. Optional: without it recall uses keywords.
+    painter_endpoint: typesafe # draws his art, two closed picks a stroke; set it when a text model decides
+                              # (gemini calls his verbs as tools). Optional: the deciding endpoint draws.
     decision_interval: on_intent_complete

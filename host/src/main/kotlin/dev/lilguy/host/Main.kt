@@ -28,7 +28,7 @@ import kotlin.time.Duration.Companion.seconds
  * - `LILGUY_ADMIN_PASSWORD`: the admin password commands must carry (at least [AdminPassword.MIN_LENGTH]
  *   characters); unset, every command is refused;
  * - `LILGUY_ENDPOINT` names the deciding endpoint in `LILGUY_CONFIG` (config/endpoints.yaml), with
- *   `LILGUY_MEMORY_ENDPOINT`, `LILGUY_WRITER_ENDPOINT`, `LILGUY_RECALL_ENDPOINT` and `LILGUY_BEAM` as for
+ *   `LILGUY_MEMORY_ENDPOINT`, `LILGUY_WRITER_ENDPOINT`, `LILGUY_RECALL_ENDPOINT`, `LILGUY_PAINTER_ENDPOINT` and `LILGUY_BEAM` as for
  *   the desktop; unset, the scripted policy runs and nothing calls a model;
  * - `LILGUY_INVENTOR=1` has him invent from a few fixed designs, so he invents with no endpoint;
  * - `LILGUY_PAINTER=<seconds>` draws his art with random picks at that latency, so he paints with no endpoint;
@@ -56,6 +56,7 @@ fun main() {
         memoryEndpoint = get("LILGUY_MEMORY_ENDPOINT"),
         writerEndpoint = get("LILGUY_WRITER_ENDPOINT"),
         recallEndpoint = get("LILGUY_RECALL_ENDPOINT"),
+        painterEndpoint = get("LILGUY_PAINTER_ENDPOINT"),
         beam = get("LILGUY_BEAM")?.toIntOrNull(),
         days = days,
     )).let { s -> get("LILGUY_PAINTER")?.toDoubleOrNull()?.let { secs -> s.copy(painter = { RandomPicker(secs.seconds, seed = System.nanoTime()) }) } ?: s }

@@ -119,6 +119,8 @@ private const val USAGE = """lil guy machine cli: lockstep runs of the key-and-d
                       His art is drawn by the deciding model itself, one closed pick a stroke, so
                       typesafe draws too (a PNG per piece in art-NN/ beside the log); the scripted
                       policy and a replay don't draw
+  --painter-endpoint N bedroom: endpoint that draws his art instead of the deciding one (typesafe is
+                      cheapest: two picks a stroke). Defaults to the config's painter_endpoint
   --grant IDS         bedroom: unlock gated content, comma-separated ids (e.g. paint,easel,canvas,painting)
   --affinities Q=W    bedroom: his personality for these runs, quality=weight pairs over the content's
                       default (e.g. calm=2,loud=-1); weights -1 to 2
@@ -160,7 +162,7 @@ private class Args(argv: Array<String>) {
     companion object {
         val FLAGS = setOf("--quiet", "--no-log", "--help", "--content-docs", "--no-db", "--no-bodies", "--sync")
         val KNOWN = FLAGS + setOf(
-            "--scenario", "--endpoint", "--runs", "--days", "--minute-ticks", "--ticks", "--max-decisions", "--config", "--strategy", "--beam", "--log-dir", "--replay", "--memory", "--memory-endpoint", "--writer-endpoint", "--journal-endpoint", "--recall-endpoint", "--grant",
+            "--scenario", "--endpoint", "--runs", "--days", "--minute-ticks", "--ticks", "--max-decisions", "--config", "--strategy", "--beam", "--log-dir", "--replay", "--memory", "--memory-endpoint", "--writer-endpoint", "--journal-endpoint", "--recall-endpoint", "--painter-endpoint", "--grant",
             "--affinities", "--curiosity", "--db", "--resume", "--import-runs", "--server-schema",
         )
     }
@@ -336,6 +338,8 @@ fun main(argv: Array<String>) {
         val scorerName = recallEndpoint?.takeIf { it != "none" } ?: endpoint
         // The deciding model draws his art, pick by pick, so a picking model can; the scripted policy and a replay can't.
         val painting = scenario == Scenario.Bedroom && replay == null && endpoint != "scripted"
+        val painterEndpoint = if (!painting) null else (args.string("--painter-endpoint") ?: config.defaultPainterEndpoint)?.takeIf { it != endpoint }
+        val painterModel = painterEndpoint?.let { Endpoints.create(config, it) } ?: decisionModel
         // Memory lives in the run database, so every run has it; without one, only when something needs it.
         val memoryStore = recorder?.let { RunMemoryStore(runDb!!, it, RunMemoryStore.lineage(runDb, carried?.resume?.checkpoint?.id)) }
         val store: MemoryStore? = memoryStore ?: if (writerModel != null || painting || rawScorer != null) InMemoryStore() else null
@@ -344,7 +348,7 @@ fun main(argv: Array<String>) {
         val memory = store?.let { st ->
             val run = if (recorder != null) runId else "$stamp-$n"
             val studio = if (!painting) null else ArtStudio(
-                Painter(ledger.meter(decisionModel, TokenPurpose.Art, priceOf(endpoint))), st, run, dir = logDir?.let { d -> File(d, "art-%02d".format(n)) },
+                Painter(ledger.meter(painterModel, TokenPurpose.Art, priceOf(painterEndpoint ?: endpoint))), st, run, dir = logDir?.let { d -> File(d, "art-%02d".format(n)) },
                 voice = writerModel?.let { CommissionVoice(ledger.meter(it, TokenPurpose.Art, priceOf(writerEndpoint!!))) },
             ) { d ->
                 log?.write(d)
@@ -410,6 +414,7 @@ fun main(argv: Array<String>) {
                 role("memory", summaryEndpoint)
                 role("writer", writerEndpoint)
                 role("recall", recallEndpoint?.takeIf { it != "none" })
+                role("painter", painterEndpoint)
             }
             val runRow = carried?.run ?: RunRow(
                 id = runId, scenario = scenario.id, platform = "cli", host = Build.host, gitSha = Build.gitSha, gitDirty = Build.gitDirty,
@@ -433,6 +438,7 @@ fun main(argv: Array<String>) {
             (writerModel as? AutoCloseable)?.close()
             (ownScorer as? AutoCloseable)?.close()
             (decisionModel as? AutoCloseable)?.close()
+            if (painterModel !== decisionModel) (painterModel as? AutoCloseable)?.close()
         }
     }
 

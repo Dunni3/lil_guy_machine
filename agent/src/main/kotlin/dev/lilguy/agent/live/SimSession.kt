@@ -361,10 +361,10 @@ class SimSession(
         val selfModeler = if (w == null || personality == null) null else jw?.let {
             SelfModeler(ledger.meter(it, TokenPurpose.SelfModel, setup.prices.writer), store, runId, personality.core.you, personality.selfSeed)
         }
-        // The deciding model draws his art, pick by pick; the writer writes his thoughts and words each day's request.
+        // The painter (else the deciding model) draws his art, pick by pick; the writer writes his thoughts and words each day's request.
         val drawer = setup.painter?.invoke() ?: rawModel.takeIf { setup.paints }
         val studio = if (drawer == null || setup.scenario != Scenario.Bedroom) null else ArtStudio(
-            Painter(ledger.meter(drawer, TokenPurpose.Art, setup.prices.decision)), store, runId, rs, setup.logDir?.let { d -> File(d, "art-%03d".format(thisRun)) },
+            Painter(ledger.meter(drawer, TokenPurpose.Art, if (setup.painter != null) setup.prices.painter else setup.prices.decision)), store, runId, rs, setup.logDir?.let { d -> File(d, "art-%03d".format(thisRun)) },
             voice = jw?.let { CommissionVoice(ledger.meter(it, TokenPurpose.Art, setup.prices.writer)) },
         ) { drawing -> runCatching { runLog?.write(drawing) }; lr?.drawing(drawing) }
         memory = AgentMemory(

@@ -18,7 +18,7 @@ make cli         # headless runner (ARGS="--scenario bedroom --days 3 --endpoint
                  # every run records into runs/lilguy.db (--db FILE, --no-db; --resume RUN|latest
                  # carries a run on from its latest checkpoint); add --memory-endpoint NAME for memories,
                  # --writer-endpoint NAME for thoughts and the self-model, --recall-endpoint NAME (typesafe)
-                 # for scored recall, --grant paint,easel,... to unlock tiers,
+                 # for scored recall, --painter-endpoint NAME (typesafe) to draw his art when a text model decides, --grant paint,easel,... to unlock tiers,
                  # --affinities calm=2,loud=-1 / --curiosity 1.5 for another personality
 make server-up   # local Postgres + the ingest API (token "dev"); make server-test, server-psql
 make host        # the sim host: a life in real time, its state over WebSocket, debug page at
@@ -60,7 +60,9 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   `kind` that lists the ops it may use (`VerbKind.kt`). Books are `library.yaml`: read a chapter a
   session (the `progress` op, which raises the book's skills); finishing one teaches ids that aren't in his world until then
   (`BedroomContent.taught`, `BedroomWorld.knownContent()`, which the prompt is built from).
-  `menu.yaml` groups his options into a tree for Jev, who walks down it by beam search
+  A model that calls tools (an `openai_compat` endpoint) decides by calling one of his verbs as a tool
+  (`agent/.../BedroomTools.kt`, `PromptBuilder.ToolTurn`; `docs/decisions/2026-11-15-a-text-model-decides-*`): his recent actions
+  go back as his own calls with their outcomes as results. `menu.yaml` groups his options into a tree for Jev, who walks down it by beam search
   (`decision/.../BeamSearch.kt`, `beam` on the endpoint) instead of picking from one flat list. Skills
   (`vocabulary.skills`, rules.yaml `skills`) rise with `practice` and reading. Needs are energy,
   fullness, mood, stimulation and frustration. `make content-docs` regenerates the content's
@@ -69,7 +71,7 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
 - Scenario wiring, scripted policies, lockstep runner: `agent/.../Scenario.kt` (`Scenario` enum),
   `KeyDoorPolicy.kt`, `BedroomPolicy.kt`. Bedroom prompt, schema, choice set: `BedroomPrompt.kt`;
   who he is (core and taste from content, plus his self-model): `Persona.kt`; run summaries and the self-model report: `BedroomReport.kt`.
-- Decision layer: `decision/.../DecisionModel.kt`, `ActionSchema.kt` (schema + reply parser),
+- Decision layer: `decision/.../DecisionModel.kt`, `ActionSchema.kt` (schema + reply parser), `ToolSet.kt` (a decision as tools, each call mapped to a reply),
   `JsonSchemaGenerator.kt`, `SchemaValidator.kt`, `OpenAiCompatBackend.kt`, `TypesafeBackend.kt`
   (System One, picks from `DecisionRequest.choices`), `Endpoints.kt` (config loader and factory).
 - Agent loop: `agent/.../AgentRuntime.kt`, `PromptBuilder.kt` (system prompt with the action

@@ -55,7 +55,7 @@ class ModelSetup(
     /** Game minutes per real second the first run starts at; the Run page changes it. */
     val speed: Int = RunSettings.DEFAULT_SPEED,
 ) {
-    class Prices(val decision: TokenPrice? = null, val memory: TokenPrice? = null, val writer: TokenPrice? = null, val recall: TokenPrice? = null)
+    class Prices(val decision: TokenPrice? = null, val memory: TokenPrice? = null, val writer: TokenPrice? = null, val recall: TokenPrice? = null, val painter: TokenPrice? = null)
 
     fun copy(
         create: () -> DecisionModel = this.create,
@@ -99,7 +99,7 @@ class ModelSetup(
          * self-model and commissions by [writerEndpoint] (or `writer_endpoint`) the same way; and
          * recall is scored by [recallEndpoint] (or `recall_endpoint`, else the deciding endpoint when
          * it's typesafe; "none" for keywords). [beam] overrides the deciding endpoint's `beam` (0 for
-         * the flat list).
+         * the flat list). His art is drawn by [painterEndpoint] (or `painter_endpoint`), else the deciding endpoint.
          */
         fun fromConfig(
             configFile: File,
@@ -113,6 +113,7 @@ class ModelSetup(
             writerEndpoint: String? = null,
             recallEndpoint: String? = null,
             beam: Int? = null,
+            painterEndpoint: String? = null,
         ): ModelSetup {
             val logDir = logRoot?.let { File(it, "app-${scenario.id}-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))) }
             if (!configFile.isFile) {
@@ -159,8 +160,21 @@ class ModelSetup(
                     null
                 }
             }
-            val prices = Prices(decisionPrice, priceOf(memoryEndpoint ?: config.defaultMemoryEndpoint), priceOf(writerName), priceOf(recallName))
-            return agent.copy(memoryModel = writer, writerModel = textModel, notice = notices.joinToString("; ").ifEmpty { null }, prices = prices, recallScorer = scorer)
+            // His art: the painter named, when it isn't the deciding endpoint (that one draws already).
+            val painterName = (painterEndpoint ?: config.defaultPainterEndpoint)?.takeIf { it != deciding && agent !== base }
+            val painter = painterName?.let { name ->
+                try {
+                    require(name in config.endpoints) { "no painter endpoint '$name'" }
+                    Endpoints.create(config, name, env).let { (it as? AutoCloseable)?.close() }
+                    val factory: () -> DecisionModel = { Endpoints.create(config, name, env) }
+                    factory
+                } catch (e: Exception) {
+                    notices += "${e.message}; the deciding model draws"
+                    null
+                }
+            }
+            val prices = Prices(decisionPrice, priceOf(memoryEndpoint ?: config.defaultMemoryEndpoint), priceOf(writerName), priceOf(recallName), painter?.let { priceOf(painterName) })
+            return agent.copy(memoryModel = writer, writerModel = textModel, notice = notices.joinToString("; ").ifEmpty { null }, prices = prices, recallScorer = scorer, painter = painter ?: agent.painter)
         }
 
         /**
