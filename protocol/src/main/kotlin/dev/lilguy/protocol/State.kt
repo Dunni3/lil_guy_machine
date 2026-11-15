@@ -167,7 +167,13 @@ data class FastState(
     @SerialName("thinking_ms") val thinkingMs: Long?,
     /** Real seconds into [Easel.phase], so a renderer that joins part way through a stroke starts where the host is. */
     @SerialName("easel_time") val easelTime: Float,
+    /** The weather now, for drawing it; null without weather. */
+    val weather: Weather? = null,
 )
+
+/** The sky (clear, cloudy, rain, fog), degrees outdoors, rain this hour in mm, and how much of the sun gets through, 0 to 1. */
+@Serializable
+data class Weather(val sky: String, val temperature: Double, val rain: Double, val daylight: Double)
 
 /**
  * Where everything is: one map of the land with the house's rooms on it, in grid space (tile (x, y)

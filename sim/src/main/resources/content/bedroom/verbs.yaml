@@ -260,6 +260,18 @@ verbs:
     effects:
       - gather: on
       - need: { energy: -1, stimulation: 2 }
+  # A recorder's log is read standing at it (the `read_log` op): the last day of it, summed up, which
+  # he remembers as something he learned there. It's the one way to know what the weather did while
+  # he wasn't looking, and the pressure it logs is the one sign of rain coming.
+  - id: check_station
+    kind: perceptual
+    phrase: read the weather station's log
+    args: { what: recorder }
+    at: [what]
+    minutes: 10
+    effects:
+      - read_log: what
+      - need: { stimulation: 3 }
   - id: study_sample
     kind: study
     phrase: study a sample under the microscope

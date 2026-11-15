@@ -12,7 +12,7 @@ import kotlinx.serialization.Serializable
  * [allowed]: op keys ([Op.key]) it may use. [required]: each set is "at least one of these".
  * [affordance]: it must ask for an item by affordance (in `requires`, `args` or a `consume`),
  * not only by id, or hear what another verb plays (a `hear` op). [routine]: the kind is upkeep, so its rows neither wear thin nor count as new
- * whatever their `routine` flag says. The perceptual kind comes when its ops do.
+ * whatever their `routine` flag says.
  */
 @Serializable
 enum class VerbKind(
@@ -79,6 +79,14 @@ enum class VerbKind(
         allowed = setOf("sell", "basket", "write", "need"),
         required = listOf(setOf("sell", "basket")),
         routine = true,
+    ),
+
+    /** Looking at something and taking in what it shows: reading a recorder's log. */
+    @SerialName("perceptual")
+    Perceptual(
+        "perceptual", "he looks at something and takes in what it shows",
+        allowed = setOf("need", "rate", "read_log", "write"),
+        required = listOf(setOf("read_log")),
     ),
 
     /** A verb he wrote: what it does is its code ([ScriptOp]), so the contract is only that it has some. */

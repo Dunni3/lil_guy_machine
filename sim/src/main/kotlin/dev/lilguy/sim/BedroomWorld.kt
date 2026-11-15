@@ -106,6 +106,12 @@ class BedroomWorld private constructor(
     /** Patch to the tick it has grown back by, while it's bare. */
     private val bareUntil = linkedMapOf<String, Long>()
 
+    /** The run's weather, from the seed (Weather.kt); null without weather.yaml. */
+    val weather: Weather? = startContent.weather?.let { Weather(it, seed) }
+
+    /** What his recorders have logged, by thing and key. */
+    private val records = Records(startContent.weather?.station?.keeps ?: WeatherRules.Station().keeps)
+
     /** Bumped whenever what he owns or plays changes; with his last intent it keys [options], and the minute and need levels too between activities. */
     private var version = 0
     private var options: Options? = null
@@ -323,8 +329,12 @@ class BedroomWorld private constructor(
             add(find.yields, 1)
             bareUntil[patch] = ticks + clock.ticks(find.regrowHours * 60)
             version++
-            return listOf("+1 ${item(find.yields).name}", "the ${item(patch).name} will grow back by ${stamp(bareUntil.getValue(patch))}")
+            return listOf("+1 ${item(find.yields).name}", "the ${item(patch).name} will grow back by ${stamp(bareUntil.getValue(patch))}" + if (weather != null) ", sooner if it rains" else "")
         }
+
+        override fun logLock(thing: String) = content.item(thing)?.takeIf { records.of(thing).isEmpty() }?.let { "the ${it.name} hasn't logged anything yet; it logs each hour" }
+
+        override fun readLog(thing: String) = StationLog.summary(records.of(thing), ::stamp, clock.ticks(60).toLong()).let { listOf("the ${item(thing).name}'s log") + it }
 
         override fun roomLock(plan: String, site: String) = this@BedroomWorld.roomLock(plan, site)
 
@@ -714,6 +724,54 @@ class BedroomWorld private constructor(
         }
     }
 
+    // --- weather ---------------------------------------------------------------------------------
+
+    /**
+     * Each game hour: if it rained the hour just gone, bare patches grow back [WeatherRules.Rain.regrow] hours
+     * instead of one, and every recorder he owns logs the weather at its spot.
+     */
+    private fun weatherHour() {
+        val w = weather ?: return
+        val hour = clock.minutes(ticks) / 60
+        if (w.sky(hour - 1) == Sky.Rain && w.rules.rain.regrow > 1 && bareUntil.values.any { it > ticks }) {
+            val sooner = clock.ticks(((w.rules.rain.regrow - 1) * 60).roundToInt()).toLong()
+            bareUntil.replaceAll { _, until -> if (until > ticks) until - sooner else until }
+            version++
+        }
+        // A recorder he's carrying somewhere else logs nothing until it's set down.
+        owned.keys.filter { RECORDER in item(it).affords && item(it).slot != null && it != carrying }.forEach { id ->
+            val c = w.at(clock.minutes(ticks), outdoors(cellOf(id)))
+            records.record(id, StationLog.TEMPERATURE, ticks, Weather.round1(c.temperature))
+            records.record(id, StationLog.RAIN, ticks, Weather.round1(c.rain))
+            records.record(id, StationLog.PRESSURE, ticks, Weather.round1(c.pressure))
+            records.record(id, StationLog.LIGHT, ticks, Weather.round1(c.light))
+        }
+    }
+
+    private fun outdoors(cell: Cell): Boolean = layout.placeOf(cell)?.kind == PlaceKind.Outdoor
+
+    /** The weather at [cell] now; null without weather. */
+    fun conditionsAt(cell: Cell): Conditions? = weather?.at(clock.minutes(ticks), outdoors(cell))
+
+    /** How much of the sun gets through the sky now, 0 to 1: what a light engine multiplies daylight by. 1 without weather. */
+    fun daylight(): Double = weather?.daylight(clock.minutes(ticks) / 60) ?: 1.0
+
+    /** His mood's fall an hour while he's out in the cold, or null. */
+    private fun coldRate(): Double? {
+        val cold = weather?.rules?.cold ?: return null
+        val c = conditionsAt(guy.cell)?.takeIf { it.outdoors } ?: return null
+        return if (c.temperature < cold.below) cold.moodPerHour else null
+    }
+
+    /** The weather as he sees it from where he stands; null without weather or land. */
+    private fun weatherText(): String? = weather?.takeIf { layout.outdoors }?.seen(clock.minutes(ticks), outdoors(guy.cell))
+
+    private fun weatherView(): WeatherView? = weather?.let { w ->
+        val minute = clock.minutes(ticks)
+        val c = w.at(minute)
+        WeatherView(c.sky.id, Weather.round1(c.temperature), Weather.round1(w.rain(minute / 60)), w.daylight(minute / 60))
+    }
+
     /** `world.args`: each of the verb's argument slots as bound, or before binding what it asks for. */
     private fun scriptArgs(b: Bound): Map<String, String> = b.verb.args.keys.associateWith { b.resolve(it) }
 
@@ -958,6 +1016,32 @@ class BedroomWorld private constructor(
             custom[id] = (custom[id] ?: BedroomState.Custom()).copy(name = n)
             contentChanged()
             did += "renamed the ${s.name} the $n"
+        }
+
+        override fun record(id: String, key: String, value: Double): Int {
+            ownThing(id)
+            val k = key.trim()
+            if (!k.matches(LOG_KEY)) throw ScriptProblem("a key is 1 to 24 letters, digits or underscores, like \"moths\"")
+            return try {
+                records.record(id, k, ticks, value)
+            } catch (e: IllegalArgumentException) {
+                throw ScriptProblem(e.message ?: "can't log that")
+            }
+        }
+
+        override fun readings(id: String, key: String): List<Map<String, Any?>> {
+            ownThing(id)
+            return records.readings(id, key).map { mapOf("time" to stamp(it.tick), "value" to it.value) }
+        }
+
+        override fun conditions(id: String): Map<String, Any?> {
+            val s = ownThing(id)
+            val slot = s.slot ?: throw ScriptProblem("the ${s.name} doesn't stand anywhere, so it has no weather of its own")
+            val c = conditionsAt(layout.slotCells[slot] ?: throw ScriptProblem("the ${s.name} isn't standing anywhere now")) ?: throw ScriptProblem("there's no weather in this world")
+            return mapOf(
+                "sky" to c.sky.id, "temperature" to Weather.round1(c.temperature), "rain" to Weather.round1(c.rain),
+                "pressure" to Weather.round1(c.pressure), "light" to Weather.round1(c.light), "outdoors" to c.outdoors,
+            )
         }
     }
 
@@ -1688,6 +1772,7 @@ class BedroomWorld private constructor(
         applyMinute()
         val minute = clock.minuteOfDay(ticks)
         if (minute % 60 == 0) needs.flush(ticks)
+        if (minute % 60 == 0) weatherHour()
         if (minute % 60 == 0 && behaviors.isNotEmpty()) runBehaviors()
         content.commissions?.let { if (minute == GameClock.parseHhmm(it.arrive)) newCommission(it) }
         if (minute == 0) {
@@ -1717,6 +1802,7 @@ class BedroomWorld private constructor(
         val asleep = d != null && d.activity.effects.any { !it.awake }
         rate(Need.Fullness, if (asleep) r.asleepFullnessPerHour ?: r.fullnessPerHour else r.fullnessPerHour, "hunger")
         content.frustration?.let { rate(Need.Frustration, it.perHour, "fading") }
+        coldRate()?.let { rate(Need.Mood, it, "cold") }
         d?.activity?.effects?.forEach { it.minute(ops, d.bound) }
         music?.let { m -> m.spec.rates.forEach { (need, perHour) -> rate(needOf(need), paid(needOf(need), perHour, m.fresh), m.spec.name) } }
         // Low energy or fullness replaces the drift: mood just falls, at the steeper rate.
@@ -1774,6 +1860,7 @@ class BedroomWorld private constructor(
             thingState = thingState.mapValues { LinkedHashMap(it.value) },
             custom = LinkedHashMap(custom),
             behaviors = behaviors,
+            records = records.export(),
         )
     }
 
@@ -1853,6 +1940,7 @@ class BedroomWorld private constructor(
                 .onFailure { custom[id] = c.copy(slot = null); dropped += "the ${item(id).name} couldn't go back to ${c.slot}: ${it.message}" }
         }
         behaviors = s.behaviors.filterKeys { content.item(it) != null }
+        records.restore(s.records) { content.item(it) != null }
         thingState.clear()
         s.thingState.forEach { (id, kept) -> if (id == SELF || content.item(id) != null) thingState[id] = LinkedHashMap(kept) }
         knownCache = null
@@ -2055,6 +2143,7 @@ class BedroomWorld private constructor(
             behaviors = behaviors,
             stored = thingState.mapValues { (_, kept) -> kept.mapValues { it.value.toString() } },
             custom = LinkedHashMap(custom),
+            weather = weatherView(),
         )
         val snapshot = WorldSnapshot(ticks, map, entities, listOf(agentSnapshot()), eventLog(), life = life, layout = layout)
         return Published(snapshot, observe(entities))
@@ -2097,6 +2186,7 @@ class BedroomWorld private constructor(
             authored = authored.toList(),
             outcome = last?.outcome,
             news = news(),
+            weather = weatherText(),
         )
     }
 
@@ -2251,6 +2341,7 @@ class BedroomWorld private constructor(
         private const val BROKEN_HOURS = 3
         private val HEX = Regex("#[0-9a-fA-F]{6}")
         private val NAME = Regex("[\\p{L}\\p{N} '\\-]+")
+        private val LOG_KEY = Regex("[A-Za-z0-9_]{1,24}")
         private val DESIGN_JSON = kotlinx.serialization.json.Json { ignoreUnknownKeys = true; isLenient = true; coerceInputValues = true }
 
         /** A plain Kotlin value (from [ScriptSandbox.fromJs]) as JSON. */

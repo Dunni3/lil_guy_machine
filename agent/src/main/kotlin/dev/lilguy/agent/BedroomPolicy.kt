@@ -93,9 +93,33 @@ class BedroomPolicy(
                 Intent.Do("sketch") to "Sketch: $$money and $$held in art, short of the next pack of meals ($$mealPrice)."
             "sell_art" in can && meals == 0 ->
                 Intent.Do("sell_art") to "No food and too tired to sketch; sell what I hold."
-            else ->
-                Intent.Wait(BedroomPrompt.WAIT_TICKS) to "Nothing I need to do right now; wait."
+            else -> watching(obs, night) ?: (Intent.Wait(BedroomPrompt.WAIT_TICKS) to "Nothing I need to do right now; wait.")
         }
+    }
+
+    /** Game minutes at his last check of the station. */
+    private var checked: Long? = null
+    private val lookedRound = mutableSetOf<String>()
+
+    /**
+     * With a weather station, his spare daylight goes outdoors: look round each place once, collect
+     * whatever has grown back, and read the station every [CHECK_HOURS]. Without one, nothing: the
+     * baseline stays the baseline.
+     */
+    private fun watching(obs: Observation, night: Boolean): Pair<Intent, String>? {
+        if ((obs.owns.orEmpty()["weather_station"] ?: 0) == 0 || night) return null
+        val open = obs.activities.orEmpty().filter { it.locked == null }
+        val now = obs.clock?.let { (it.day - 1L) * GameClock.MINUTES_PER_DAY + GameClock.parseHhmm(it.time) } ?: return null
+        open.firstOrNull { it.id == "collect" }?.let { return Intent.Do("collect", on = it.on) to "Something has grown back at the ${it.on}; collect it." }
+        if (open.any { it.id == "check_station" } && checked.let { it == null || now - it >= CHECK_HOURS * 60 }) {
+            checked = now
+            return Intent.Do("check_station") to "Time to read the weather station."
+        }
+        open.firstOrNull { it.id == "explore" && it.on != null && it.on !in lookedRound }?.let {
+            lookedRound += it.on!!
+            return Intent.Do("explore", on = it.on) to "I haven't looked round from the ${it.on} yet."
+        }
+        return null
     }
 
     private companion object {
@@ -107,6 +131,7 @@ class BedroomPolicy(
         const val BEFORE_BED = 60
         const val MEAL_STOCK = 2
         const val SKETCH_ENERGY = 22
+        const val CHECK_HOURS = 8
         /** How many packs of meals' worth of cash and art to earn before stopping. */
         const val RESERVE_PACKS = 1
         val DOLLARS = Regex("""\$(\d+) for""")

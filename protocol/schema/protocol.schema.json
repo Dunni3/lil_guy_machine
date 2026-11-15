@@ -1317,6 +1317,16 @@
                 },
                 "easel_time": {
                     "type": "number"
+                },
+                "weather": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/Weather"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
                 }
             },
             "required": [
@@ -1333,7 +1343,8 @@
                 "held_for",
                 "fast_forward",
                 "thinking_ms",
-                "easel_time"
+                "easel_time",
+                "weather"
             ],
             "additionalProperties": false
         },
@@ -3475,6 +3486,31 @@
                 "money",
                 "holding",
                 "owns"
+            ],
+            "additionalProperties": false
+        },
+        "Weather": {
+            "title": "Weather",
+            "type": "object",
+            "properties": {
+                "sky": {
+                    "type": "string"
+                },
+                "temperature": {
+                    "type": "number"
+                },
+                "rain": {
+                    "type": "number"
+                },
+                "daylight": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "sky",
+                "temperature",
+                "rain",
+                "daylight"
             ],
             "additionalProperties": false
         },

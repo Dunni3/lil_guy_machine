@@ -386,6 +386,7 @@ function draw() {
     if (!view) {
       view = new RoomView(renderer, settings.camera, textures);
       view.lightHour = settings.hour;
+      view.sky = settings.sky;
       view.resize(canvas.clientWidth / Math.max(1, canvas.clientHeight));
     }
     view.render(life, content, track.sample(now), delta);

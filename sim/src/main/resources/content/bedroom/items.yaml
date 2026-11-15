@@ -60,6 +60,11 @@ items:
   - { id: lab_shelf, name: tall lab shelf, group: fixture, slot: lab_shelf, blocks: true }
   - { id: armchair, name: armchair, group: fixture, slot: armchair, qualities: { cozy: 2, soft: 1 } }
   - { id: floor_lamp, name: floor lamp, group: fixture, slot: floor_lamp, blocks: true, qualities: { warm: 1 } }
+  # A recorder: it stands outdoors (by the garden bench, and he can put it on any free spot on the land)
+  # and logs the weather at its spot each hour (weather.yaml); he
+  # reads the log there (verbs.yaml check_station). He asked for one (run 01a1e006, day 25): "a
+  # little machine that tracks ambient changes".
+  - { id: weather_station, name: weather station, group: gadget, slot: by_garden_bench, blocks: true, price: 40, affords: { recorder: {} } }
   # Where samples are studied (verbs.yaml `study_sample`).
   - { id: microscope, name: microscope, group: furniture, slot: microscope, blocks: true, price: 35 }
   # Taught by music_book.

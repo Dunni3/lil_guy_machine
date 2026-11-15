@@ -1,0 +1,49 @@
+# yaml-language-server: $schema=schema/weather.schema.json
+# The weather over the land (sim/.../Weather.kt). The sky changes once a game hour by a seeded chain,
+# so a run's weather is the same from the same seed. He sees the sky now (and how warm it feels when
+# he's out in it); never the pressure, the history, or what happened while he slept. A recorder
+# (the `recorder` affordance, the weather station) logs it at its spot each hour, and he goes there
+# to read it (verbs.yaml check_station).
+
+weather:
+  start: clear
+  # From each sky, the weight of each sky the next hour. Rain lasts about 4 hours (0.75 to stay);
+  # it comes out of cloud, so a clear spell clouds over first.
+  turns:
+    clear: { clear: 0.9, cloudy: 0.08, fog: 0.02 }
+    cloudy: { clear: 0.12, cloudy: 0.76, rain: 0.1, fog: 0.02 }
+    rain: { rain: 0.75, cloudy: 0.25 }
+    fog: { fog: 0.8, clear: 0.1, cloudy: 0.1 }
+  # Fog forms in the small hours and burns off by mid-morning.
+  fog: { from: "02:00", to: "10:00" }
+  # Degrees: coldest at `coldest`, warmest 12 hours later; each day drifts up to `drift` either way.
+  # A clear night loses its heat: `clear_night` more.
+  temperature:
+    mean: 12
+    swing: 5
+    coldest: "04:00"
+    drift: 3
+    sky: { clear: 1, cloudy: 0, rain: -3, fog: -2 }
+    clear_night: -3
+    indoors: 19
+  # Hidden. Each sky's level in hPa; the pressure at an hour is the mean over it and the next
+  # `lead_hours`, less a trough round rain (`drop` at a rainy hour, easing to nothing `lead_hours`
+  # before and `after_hours` after). So it falls for about 4 hours before rain, however short the
+  # shower, and climbs back after. The field guide's sparrows fly low in the hour before rain, when
+  # it's near the bottom.
+  pressure:
+    level: { clear: 1021, cloudy: 1014, fog: 1017, rain: 1006 }
+    lead_hours: 4
+    after_hours: 3
+    drop: 6
+    noise: 0.5
+  # While it rains, a bare patch grows back `regrow` hours an hour (world.yaml `finds`).
+  rain:
+    mm_per_hour: [0.5, 3]
+    regrow: 3
+  # What each sky lets through of the sun, for daylight and the station's light reading.
+  daylight: { clear: 1, cloudy: 0.6, rain: 0.4, fog: 0.5 }
+  # Outdoors in the cold his mood falls.
+  cold: { below: 6, mood_per_hour: -4 }
+  # A recorder keeps this many of each reading: two days of hours.
+  station: { keeps: 48 }

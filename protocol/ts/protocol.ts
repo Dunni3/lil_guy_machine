@@ -1,5 +1,5 @@
 /* Generated from schema/protocol.schema.json (protocol/.../*.kt) by gen_types.sh. Don't edit; run `make protocol-types`.
- * schema sha256: 740f60659401a2572f9ec1a48cf74f766f09c28e3c950e44d01322f76dccf853
+ * schema sha256: 4123fdef95e0d84e4a029c1a2038fc3ef09fa295276d79c6c897912884188ffc
  */
 
 /**
@@ -150,6 +150,7 @@ export interface FastState {
   fast_forward: number;
   thinking_ms: number | null;
   easel_time: number;
+  weather: Weather | null;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -224,6 +225,16 @@ export interface StatusView {
 export interface CellView {
   x: number;
   y: number;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "Weather".
+ */
+export interface Weather {
+  sky: string;
+  temperature: number;
+  rain: number;
+  daylight: number;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema

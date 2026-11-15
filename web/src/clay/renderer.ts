@@ -1,5 +1,5 @@
 import {
-  CircleGeometry, Color, DirectionalLight, DoubleSide, Group, HemisphereLight, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial,
+  CircleGeometry, Color, DirectionalLight, DoubleSide, Fog, Group, HemisphereLight, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial,
   NoToneMapping, OrthographicCamera, PCFSoftShadowMap, PointLight, Scene, SRGBColorSpace, Vector3, WebGLRenderer,
   type BufferGeometry, type Camera, type Material, type Texture,
 } from "three";
@@ -188,6 +188,28 @@ export class ClayRenderer {
   }
 
   /**
+   * What the sky does to the hour's light, after [setHour]: cloud and rain let only [daylight] of the
+   * sun through and grey the sky and background; fog is the scene's linear fog (per fragment, no
+   * extra pass), the background's colour. Null for no weather.
+   */
+  setWeather(w: { sky: string; daylight: number } | null) {
+    const d = this.light;
+    const dull = w ? 1 - w.daylight : 0;
+    this.sun.intensity = d.sunIntensity * (1 - dull);
+    if (dull > 0) {
+      d.background.lerp(OVERCAST, dull * 0.75);
+      d.pane.lerp(OVERCAST, dull * 0.6);
+      this.hemi.color.lerp(OVERCAST, dull * 0.6);
+    }
+    if (w?.sky === "fog") {
+      this.fog.color.copy(d.background);
+      this.scene.fog = this.fog;
+    } else this.scene.fog = null;
+  }
+
+  private readonly fog = new Fog("#d9d6d2", FOG_NEAR, FOG_FAR);
+
+  /**
    * The room's lamps: the brightest [LAMPS] of [glows] (in world space) light it, more as night
    * comes. Each light sits a little out from its glow toward [middle], the room's middle, so a lamp
    * against a wall lights the room rather than a hot spot on the wall.
@@ -327,5 +349,10 @@ export class ClayRenderer {
 
 /** How far out from its glow, toward the room's middle, a lamp's light is. */
 const LAMP_OUT = 0.9;
+/** The grey cloud and rain mix into the sky. */
+const OVERCAST = new Color("#b4b8c0");
+/** Fog in metres from the camera, which stands 120 m off (camera.ts). */
+const FOG_NEAR = 105;
+const FOG_FAR = 150;
 const scratch = new Vector3();
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));

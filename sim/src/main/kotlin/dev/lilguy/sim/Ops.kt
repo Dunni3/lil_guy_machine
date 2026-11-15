@@ -453,6 +453,12 @@ internal interface OpWorld {
     /** Takes what [patch] yields; the event's parts. */
     fun gather(patch: String): List<String>
 
+    /** Why the log of recorder [thing] can't be read now (it has logged nothing yet), or null. */
+    fun logLock(thing: String): String?
+
+    /** The log of recorder [thing], summed up as the event's parts. */
+    fun readLog(thing: String): List<String>
+
     /** Why there's no letter to open: none is waiting at the mail hatch; null when one is. */
     fun mailLock(): String?
 
@@ -560,6 +566,22 @@ data class GatherOp(val on: String) : Op() {
     override fun describe(w: OpWorld, b: Bound, forSale: Boolean) = listOfNotNull(w.content.world?.find(b.resolve(on))?.let { f -> "+1 ${w.item(f.yields).name}" })
 }
 
+/** Reads the log of the recorder bound to [what], standing at it: the last day of it, summed up ([StationLog]). */
+data class ReadLogOp(val what: String) : Op() {
+    override val key get() = "read_log"
+
+    override fun problems(c: BedroomContent, verb: VerbSpec) = listOfNotNull(
+        if (verb.args[what] == null && c.item(what) == null) "reads the log of '$what', which isn't an argument or an item" else null,
+        if (c.weather == null) "reads a log, but there's no weather (weather.yaml)" else null,
+    )
+
+    override fun lockReason(w: OpWorld, b: Bound) = w.logLock(b.resolve(what))
+
+    override fun finish(w: OpWorld, b: Bound) = w.readLog(b.resolve(what))
+
+    override fun describe(w: OpWorld, b: Bound, forSale: Boolean) = listOf("what ${w.content.item(b.resolve(what))?.takeIf { !forSale }?.let { "the ${it.name}" } ?: "it"} logged over the last day")
+}
+
 /** Builds the room whose plan is bound to [room] on the site bound to [site], or moves it there when it stands elsewhere. */
 data class PlaceRoomOp(val room: String, val site: String) : Op() {
     override val key get() = "place_room"
@@ -610,6 +632,7 @@ internal data class OpEntry(
     @SerialName("post_letter") val postLetter: NoParams? = null,
     val script: NoParams? = null,
     val define: NoParams? = null,
+    @SerialName("read_log") val readLog: String? = null,
 ) {
     @Serializable
     @SerialName("place_room")
@@ -647,7 +670,7 @@ internal data class OpEntry(
             sleep?.let { SleepOp }, enjoy?.let(::EnjoyOp), hear?.let(::HearOp), progress?.let { ProgressOp(it.book) }, practice?.let(::PracticeOp),
             write?.let { WriteOp(it.with, it.into, it.timing, it.showsAs, it.optional) }, draw?.let(::DrawOp), build?.let { BuildOp },
             survey?.let(::SurveyOp), gather?.let(::GatherOp), placeRoom?.let { PlaceRoomOp(it.room, it.site) }, openMail?.let { OpenMailOp }, postLetter?.let { PostLetterOp },
-            script?.let { ScriptOp }, define?.let { DefineOp },
+            script?.let { ScriptOp }, define?.let { DefineOp }, readLog?.let(::ReadLogOp),
         )
         require(set.size == 1) { "an effect is one op, such as `- need: { mood: 2 }`; this one has ${if (set.isEmpty()) "none" else set.joinToString { it.key }}" }
         return set.single()
@@ -678,6 +701,7 @@ internal data class OpEntry(
             PostLetterOp -> OpEntry(postLetter = NoParams())
             ScriptOp -> OpEntry(script = NoParams())
             DefineOp -> OpEntry(define = NoParams())
+            is ReadLogOp -> OpEntry(readLog = op.what)
         }
     }
 }

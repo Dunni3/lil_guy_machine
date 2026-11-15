@@ -36,6 +36,7 @@ class Spots(private val content: BedroomContent, private val layout: Layout, pri
         val from = s.slot?.takeIf { it in layout.slotCells } ?: return "the ${s.name} doesn't stand anywhere; only furniture and decor can be put somewhere else"
         if (spot == from) return "the ${s.name} is already at $spot"
         if (spot !in layout.slotCells) return "there's no spot called '$spot'"
+        if (RECORDER in s.affords && spot !in content.world?.slots.orEmpty()) return "the ${s.name} logs the weather where it stands, so it goes on a spot outdoors"
         if (isWall(spot) != isWall(from)) return "the ${s.name} goes ${if (isWall(from)) "in a wall" else "on the ground"}, and $spot is ${if (isWall(spot)) "in a wall" else "on the ground"}"
         val other = standing[spot]
         if (other != null && (!owns(other.id) || other.group == FIXTURE)) return "$spot is kept for the ${other.name}"
