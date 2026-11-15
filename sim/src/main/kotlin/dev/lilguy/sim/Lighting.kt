@@ -12,7 +12,7 @@ data class LightSpec(val strength: Double, val radius: Double)
  * [see]: the light a thing needs on its tile for him to make it out. [daylight]: the level outdoors by
  * time of day ("HH:MM" to level, straight lines between, wrapping at midnight). [indoors]: the share of
  * the daylight everywhere in a room, the sky's light coming in; a [window] adds its own share of the
- * daylight as a light of its radius, from the window's tile in the wall.
+ * daylight as a light of its radius, from the window's tile in the wall. [lantern]: the light he carries.
  */
 @Serializable
 data class LightRules(
@@ -20,6 +20,8 @@ data class LightRules(
     val daylight: Map<String, Double>,
     val indoors: Double = 0.4,
     val window: WindowLight = WindowLight(0.8, 8.0),
+    /** The lantern that goes with him, or null for none: enough to make out what's beside him, not to work by. */
+    val lantern: LightSpec? = null,
 ) {
     @Serializable
     data class WindowLight(val share: Double, val radius: Double)
@@ -43,6 +45,7 @@ data class LightRules(
             runCatching { GameClock.parseHhmm(t) }.onFailure { add("light.daylight: '$t' isn't HH:MM") }
             if (v < 0) add("light.daylight $t can't be negative")
         }
+        if (lantern != null && (lantern.strength <= 0 || lantern.radius < 0)) add("light.lantern needs a strength above 0 and a radius not negative")
         if (see <= 0 || indoors < 0 || window.share < 0 || window.radius < 0) add("light: see must be positive, and indoors and the window's share and radius not negative")
     }
 }
@@ -140,19 +143,19 @@ class Lighting(private val effects: Effects = Effects()) {
             return buildList {
                 add("where you stand: " + if (here < rules.see) "dark (light ${level(here)})" else "light ${level(here)}, from ${from(at)}")
                 // A lamp lights itself; it's said as what lights the rest, or else as glowing.
-                val glowing = lit.filter { field.source(it.cell)?.cell == it.cell }
+                val glowing = lit.filter { field.source(it.cell)?.name == "the ${it.name}" }
                 val groups = (lit - glowing.toSet()).sortedWith(compareByDescending<Landmark> { it.key }.thenByDescending { field[it.cell] }).groupBy { from(it.cell) }.entries.sortedByDescending { (_, ts) -> ts.maxOf { field[it.cell] } }.take(2)
                 groups.forEach { (src, ts) ->
                     val levels = ts.map { field[it.cell] }
                     val range = level(levels.min()).let { lo -> level(levels.max()).let { hi -> if (lo == hi) lo else "$lo to $hi" } }
                     add("lit by $src (light $range): " + names(ts.take(3)))
                 }
-                if (groups.isEmpty() && glowing.isNotEmpty()) add("glowing: " + names(glowing.take(3)))
+                glowing.filter { g -> groups.none { it.key == "the ${g.name}" } }.takeIf { it.isNotEmpty() }?.let { add("glowing: " + names(it.take(2))) }
                 if (dark.isNotEmpty()) {
                     val known = dark.filter { it.known }
                     add(
                         "too dark to see " + (if (lit.isEmpty()) "anything " + (if (outdoors) "here" else "in the room") else "the rest " + (if (outdoors) "here" else "of the room")) +
-                            if (known.isEmpty()) "" else "; you know ${names(known.sortedByDescending { it.key }.take(3))} ${if (known.size == 1) "is" else "are"} there",
+                            if (known.isEmpty()) "" else "; you remember ${names(known.sortedByDescending { it.key }.take(3))} there",
                     )
                 }
             }

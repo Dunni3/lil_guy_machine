@@ -138,9 +138,11 @@ comfort:
 # light of `window.share` of the daylight reaching `window.radius` tiles. Things with `light` (items.yaml)
 # light round them; walls and trees block light, and a light in a room lights only that room. He can make
 # out a thing with `see` light on it; at night what's darker isn't in what he sees, and a verb that
-# `needs` light (verbs.yaml) is locked where it would be done until there's that much.
+# `needs` light (verbs.yaml) is locked where it would be done until there's that much. `lantern`: the
+# small light that goes with him, enough to make out what's beside him but not to read or forage by.
 light:
   see: 1
+  lantern: { strength: 1.5, radius: 1.5 }
   indoors: 0.4
   window: { share: 0.8, radius: 8 }
   daylight: { "00:00": 0.5, "05:00": 0.5, "06:30": 6, "09:00": 10, "17:30": 9, "19:30": 4, "20:30": 1, "21:00": 0.5 }

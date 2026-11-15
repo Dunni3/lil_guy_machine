@@ -242,11 +242,20 @@ data class Entity(
     val motions: List<MotionView> = emptyList(),
     /** A short label (up to 24 characters) his code floats over it, or null. */
     val readout: String? = null,
+    /** The light it gives off in the sim, or null for none: renderers light the scene from these, not from how a model looks. */
+    val light: LightView? = null,
 )
 
 /** A named [part] of an invention's look moving as [kind] (spin, bob, sway, pulse, shake) at [speed], 1 gentle, up to 4. */
 @Serializable
 data class MotionView(val part: String, val kind: String, val speed: Float)
+
+/**
+ * A light in the sim: [strength] on its own tile (0 to 10, 10 is noon outdoors), fading to nothing a
+ * tile past [radius] tiles. The sim's daylight is the clock's; these are the lamps (and his lantern).
+ */
+@Serializable
+data class LightView(val strength: Double, val radius: Double)
 
 /** What a character is doing: its intent and how far along, the walk left, and what it's saying. */
 @Serializable

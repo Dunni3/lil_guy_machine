@@ -1,5 +1,5 @@
 /* Generated from schema/protocol.schema.json (protocol/.../*.kt) by gen_types.sh. Don't edit; run `make protocol-types`.
- * schema sha256: 637400523e9cd84e503ce074242d5ec489a23422763940efcc9d603e1808b6b6
+ * schema sha256: 7a661073dc69b2746389a02fe1abbf22a663872cb26de7d3396dfb9457252273
  */
 
 /**
@@ -190,6 +190,7 @@ export interface Entity {
   variant: string | null;
   motions: MotionView[];
   readout: string | null;
+  light: LightView | null;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -199,6 +200,14 @@ export interface MotionView {
   part: string;
   kind: string;
   speed: number;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "LightView".
+ */
+export interface LightView {
+  strength: number;
+  radius: number;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema

@@ -609,10 +609,10 @@ class BedroomWorld private constructor(
 
     // --- light -----------------------------------------------------------------------------------
 
-    /** What gives off light now: each placed thing with a `light`, but a patch that's been picked bare. */
+    /** What gives off light now: each placed thing with a `light`, but a patch that's been picked bare, and his lantern. */
     private fun lamps(): List<Emitter> = placed().mapNotNull { (spec, cell) ->
         spec.light?.takeIf { (bareUntil[spec.id] ?: 0) <= ticks }?.let { Emitter(spec.id, "the ${spec.name}", EffectKind.Light, cell, it.strength, it.radius) }
-    }
+    } + listOfNotNull(content.light?.lantern?.let { Emitter(LANTERN, "your lantern", EffectKind.Light, guy.cell, it.strength, it.radius) })
 
     /** The light on every tile now, worked out again only when the daylight, the layout or the lamps change. */
     fun lightField(): Field = lighting.field(content, layout, house, clock.minuteOfDay(ticks), lamps())
@@ -2198,7 +2198,7 @@ class BedroomWorld private constructor(
 
     override fun publish(): Published {
         val entities = buildList {
-            add(EntitySnapshot(guy.id, "guy", guy.x, guy.y, 1f, guy.facing.degrees, place = layout.placeOf(guy.x, guy.y)?.id))
+            add(EntitySnapshot(guy.id, "guy", guy.x, guy.y, 1f, guy.facing.degrees, place = layout.placeOf(guy.x, guy.y)?.id, light = content.light?.lantern))
             placed().forEach { (spec, cell) ->
                 val state = when {
                     spec.id == music?.on -> "playing ${music!!.itemId}"
@@ -2451,6 +2451,9 @@ class BedroomWorld private constructor(
         /** Hours in a row a thing's code may break before it stops. */
         /** What a thing's code wears by, before its id. */
         private const val THING_WEAR = "thing:"
+
+        /** His lantern's emitter id. */
+        private const val LANTERN = "lantern"
 
         /** What the light phrases name first: the things he does things at, before the decor. */
         private val KEY_GROUPS = setOf("furniture", "fixture", "tool")

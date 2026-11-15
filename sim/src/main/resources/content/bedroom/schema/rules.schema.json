@@ -522,6 +522,29 @@
                 "radius"
               ],
               "additionalProperties": false
+            },
+            "lantern": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "strength": {
+                      "type": "number"
+                    },
+                    "radius": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "strength",
+                    "radius"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [

@@ -30,7 +30,7 @@ class LightTest {
         assertNull(day.locked("read"), "by day the room is lit")
         val night = world("22:00", "novel")
         assertTrue(night.locked("read")!!.startsWith("too dark to read at the bed or the chair"), night.locked("read"))
-        assertTrue(night.locked("sketch")!!.startsWith("too dark to sketch at the desk"), night.locked("sketch"))
+        assertNull(night.locked("sketch"), "the desk's own lamp lights the desk")
         // The sunroom lamp stands by the bed: the bed is lit, the chair across the room still isn't.
         val lamp = world("22:00", "novel", "sunroom_lamp")
         assertNull(lamp.locked("read"))
@@ -54,13 +54,13 @@ class LightTest {
         assertTrue(!glow.remembered, "the glowcaps glow, so he sees them")
         assertTrue(obs.nearby.first { it.id == "moss_patch" }.remembered, "the moss is dark, but he found it there")
         val light = assertNotNull(obs.light)
-        assertTrue(light.any { it == "glowing: the glowcaps under the log" } && light.any { it.startsWith("too dark to see the rest here; you know") }, light.toString())
+        assertTrue(light.any { it == "glowing: the glowcaps under the log" } && light.any { it.startsWith("too dark to see the rest here; you remember") }, light.toString())
         assertTrue(w.locked("explore")!!.startsWith("too dark to explore"), w.locked("explore"))
-        // Somewhere he has never been, in the dark, he sees nothing at all.
+        // Somewhere he has never been, in the dark, he sees only what his lantern reaches beside him.
         assertIs<IntentStatus.Succeeded>(w.run(Intent.MoveTo(Target.Place("pond"))).status)
         val pond = w.observe(w.agentId)
-        assertTrue(pond.nearby.isEmpty(), pond.nearby.toString())
-        assertTrue(pond.light!!.any { it == "too dark to see anything here" }, pond.light.toString())
+        assertTrue(pond.nearby.all { it.distance <= 2 && !it.remembered }, pond.nearby.toString())
+        assertTrue(pond.light!!.any { it.startsWith("where you stand: light 2, from your lantern") }, pond.light.toString())
     }
 
     @Test
@@ -75,7 +75,7 @@ class LightTest {
         val night = target("23:00")
         val lamps = target("23:00", "sunroom_lamp", "string_lights", "amber_floor_lamp")
         assertTrue(noon > 60, "by day he sees the decor round him: $noon")
-        assertEquals(50.0, night, "in the dark he sees none of it")
+        assertTrue(night < 55, "in the dark he sees only what his lantern reaches: $night")
         assertTrue(lamps in 51.0..noon, "lamps bring back what they light: $lamps")
         val poster = world("12:00").observe(world("12:00").agentId).shop!!.first { it.id == "poster" }.gives
         assertTrue("house is full" !in poster && "in view (near you, lit)" in poster, poster)

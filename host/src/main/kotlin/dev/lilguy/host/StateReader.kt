@@ -13,6 +13,7 @@ import dev.lilguy.agent.memory.StoredMemory
 import dev.lilguy.agent.memory.Thought
 import dev.lilguy.protocol.AgentView
 import dev.lilguy.protocol.AnswerView
+import dev.lilguy.protocol.LightView
 import dev.lilguy.protocol.SearchView
 import dev.lilguy.protocol.SourceView
 import dev.lilguy.protocol.BookView
@@ -248,7 +249,7 @@ class StateReader(private val dbEvery: Duration = 1.seconds) {
 
     private fun entity(e: EntitySnapshot) = Entity(
         e.id.value, e.kind, e.x, e.y, e.height, e.facingDegrees, e.state, e.carriedBy?.value, e.place, e.color,
-        e.variant, e.motions.map { MotionView(it.part, it.kind, it.speed.toFloat()) }, e.readout,
+        e.variant, e.motions.map { MotionView(it.part, it.kind, it.speed.toFloat()) }, e.readout, e.light?.let { LightView(it.strength, it.radius) },
     )
 
     /** The map and its places: the layout's, kept while it's the same one; key-and-door's terrain alone. */

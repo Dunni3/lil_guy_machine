@@ -255,7 +255,7 @@ verbs:
     args: { on: explorable }
     at: [on]
     minutes: 40
-    needs: { light: 2 }
+    needs: { light: 3 }
     effects:
       - survey: on
       - practice: { nature: 0.1 }
@@ -266,7 +266,7 @@ verbs:
     args: { on: forageable }
     at: [on]
     minutes: 15
-    needs: { light: 2 }
+    needs: { light: 3 }
     effects:
       - gather: on
       - need: { energy: -1, stimulation: 2 }

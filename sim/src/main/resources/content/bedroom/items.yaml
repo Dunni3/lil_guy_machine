@@ -8,7 +8,8 @@ items:
   - { id: mail_hatch, name: mail hatch, group: fixture, slot: hatch, blocks: true }
   - { id: picture_rail, name: picture rail, group: fixture, slot: rail, blocks: true }
   - { id: bed, name: bed, group: furniture, slot: bed }
-  - { id: desk, name: desk, group: furniture, slot: desk, blocks: true }
+  # The desk has its own little lamp: enough to work at the desk by, not to read in the chair beside it.
+  - { id: desk, name: desk, group: furniture, slot: desk, blocks: true, light: { strength: 3.5, radius: 0.8 } }
   - { id: chair, name: chair, group: furniture, slot: chair }
   - { id: sketchbook, name: sketchbook, group: tool }
   # Where he invents: designs a thing of his own and builds it (verbs.yaml `invent`, rules.yaml `invent`).
