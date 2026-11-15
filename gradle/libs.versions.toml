@@ -9,6 +9,7 @@ ktor = "3.0.0"
 kaml = "0.61.0"
 slf4j = "2.0.16"
 sqlite = "3.46.1.0"
+rhino = "1.7.15"
 
 [libraries]
 gdx = { module = "com.badlogicgames.gdx:gdx", version.ref = "gdx" }
@@ -31,6 +32,8 @@ kaml = { module = "com.charleskorn.kaml:kaml", version.ref = "kaml" }
 # Ktor logs through SLF4J; the CLI and desktop bind it to nothing instead of printing a warning.
 slf4j-nop = { module = "org.slf4j:slf4j-nop", version.ref = "slf4j" }
 # :memory-sqlite, the long-term memory database. JVM only: its natives are not packaged for the TV.
+# :sim runs the verbs he writes as JavaScript. 1.7.15: interpreted mode runs on Android, and the 1.8 line wants Java 11.
+rhino = { module = "org.mozilla:rhino", version.ref = "rhino" }
 sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqlite" }
 
 [plugins]

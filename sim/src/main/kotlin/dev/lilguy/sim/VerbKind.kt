@@ -60,7 +60,7 @@ enum class VerbKind(
     @SerialName("expressive")
     Expressive(
         "expressive", "he writes something that persists",
-        allowed = setOf("need", "rate", "write"),
+        allowed = setOf("need", "rate", "write", "define"),
         required = listOf(setOf("write")),
     ),
 
@@ -79,6 +79,14 @@ enum class VerbKind(
         allowed = setOf("sell", "basket", "write", "need"),
         required = listOf(setOf("sell", "basket")),
         routine = true,
+    ),
+
+    /** A verb he wrote: what it does is its code ([ScriptOp]), so the contract is only that it has some. */
+    @SerialName("scripted")
+    Scripted(
+        "scripted", "does what the code he wrote says",
+        allowed = setOf("script", "need", "write"),
+        required = listOf(setOf("script")),
     ),
 
     /** Sleep. Not for inventing. */

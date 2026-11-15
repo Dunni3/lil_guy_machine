@@ -9,6 +9,8 @@ import dev.lilguy.sim.BedroomContent
 import dev.lilguy.sim.GameClock
 import dev.lilguy.sim.GatherOp
 import dev.lilguy.sim.SurveyOp
+import dev.lilguy.sim.BuildOp
+import dev.lilguy.sim.DefineOp
 import dev.lilguy.sim.GridWorld
 import dev.lilguy.sim.HearOp
 import dev.lilguy.sim.Intent
@@ -170,6 +172,20 @@ object BedroomPrompt {
             listOfNotNull(keep, study?.let { "$it studies one under a microscope, for nature skill." }, sell?.let { "$it sells them at the hatch." }).joinToString(" ")
     }
 
+    /**
+     * The code line: he can write what he and his things do, or null when nothing writes code. His own
+     * verbs, once he has some, are in the list of what he can do like any other.
+     */
+    private fun codeHint(content: BedroomContent): String? {
+        val devise = content.verbs.firstOrNull { v -> v.effects.any { it is DefineOp } }?.id ?: return null
+        val invent = content.verbs.firstOrNull { v -> v.effects.any { it is BuildOp } }?.id
+        val mine = content.verbs.filter { it.code != null }.map { it.id }
+        return "- Code: what you and your things can do isn't fixed. $devise writes JavaScript against your world: a new verb of your own (something you can do, with any of your things, that changes your needs, skills, money, things, where they stand, their colours and names, what's stored on them, or makes new things), " +
+            "or what one of your things does by itself every hour. Nothing caps what your code does." +
+            (invent?.let { " Things you $it get their function written with them: what they let you do, and what they do on their own." } ?: "") +
+            (if (mine.isEmpty()) "" else " Your own verbs so far: ${mine.joinToString()}; $devise can rewrite or fix them.")
+    }
+
     /** The variety line of the prompt: novelty and habituation, or null when the content has neither. */
     private fun varietyHint(content: BedroomContent): String? {
         val parts = buildList {
@@ -278,6 +294,7 @@ object BedroomPrompt {
             varietyHint(content),
             learningHint(content),
             outdoorsHint(content),
+            codeHint(content),
             artHint(content),
             reflectionHint(content),
             "- $lists",

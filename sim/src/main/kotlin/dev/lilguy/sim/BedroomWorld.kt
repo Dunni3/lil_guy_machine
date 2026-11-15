@@ -180,6 +180,27 @@ class BedroomWorld private constructor(
 
     /** Who he can write to and what has passed between them, for the letter writer. Readable from any thread. */
     @Volatile var correspondence: List<Correspondent> = emptyList()
+    /** The verbs he wrote, staged for each writing verb until it finishes. */
+    private val codes = mutableMapOf<String, AuthoredResult.Coded>()
+
+    /** Runs the code of the verbs he wrote ([ScriptOp]). */
+    private val sandbox = ScriptSandbox()
+
+    /** The verbs he wrote, oldest first; replaced rather than changed, so any thread can read it. */
+    @Volatile var coded: List<CodedVerb> = emptyList()
+        private set
+
+    /** What his code stored on things, item id (or `self`) to key to value. */
+    private val thingState = linkedMapOf<String, LinkedHashMap<String, kotlinx.serialization.json.JsonPrimitive>>()
+
+    /** What his code changed about his things (where they stand, their names and colours), to put back on a restore. */
+    private val custom = linkedMapOf<String, BedroomState.Custom>()
+
+    /** What a verb's code did as it last finished, by verb id, until [ScriptOp.finish] reports it. */
+    private val scriptRuns = mutableMapOf<String, List<String>>()
+
+    /** What his things do by themselves, item id to its `hourly` code; replaced rather than changed. */
+    @Volatile var behaviors: Map<String, ThingCode> = emptyMap()
         private set
     /** What he said on his latest trip that he's saving for, until he owns it. */
     private var savingFor: String? = null
@@ -357,8 +378,50 @@ class BedroomWorld private constructor(
 
         override fun mailText(): String? = mailbox.firstOrNull()?.let { l -> "a letter from ${l.from}" + if (mailbox.size > 1) " (${mailbox.size} waiting)" else "" }
 
+        override fun scriptLock(b: Bound): String? {
+            val code = b.verb.code ?: return "it has no code"
+            val run = sandbox.call(code.source, ScriptSandbox.CAN_DO, ScriptView("your verb ${b.verb.id}", b::paid), scriptArgs(b), b.verb.id, readOnly = true)
+            if (run.error != null) return "your code's canDo broke: ${run.error}"
+            return run.result?.takeIf { it.isNotBlank() && it != "true" && it != "null" }
+        }
+
+        override fun runScript(b: Bound): String? {
+            val code = b.verb.code ?: return "it has no code"
+            val view = ScriptView("your verb ${b.verb.id}", b::paid, b.verb.minutes ?: 60)
+            val run = sandbox.call(code.source, ScriptSandbox.FINISH, view, scriptArgs(b), b.verb.id)
+            version++
+            val did = view.did + run.says.map { "you said \"$it\"" }
+            if (run.error != null) {
+                scriptRuns.remove(b.verb.id)
+                return "your code broke: ${run.error}" + if (did.isEmpty()) "" else "; before it did, it had: " + did.joinToString(", ")
+            }
+            scriptRuns[b.verb.id] = did + listOfNotNull(run.result?.takeIf { it.isNotBlank() })
+            return null
+        }
+
+        override fun scriptParts(verb: String): List<String> = scriptRuns.remove(verb).orEmpty().ifEmpty { listOf("your code changed nothing") }
+
+        override fun defineFailed(verb: VerbSpec): String? {
+            val staged = codes[verb.id]
+            val why = when {
+                staged == null -> "you couldn't settle on the code, so nothing changed"
+                staged.design == null -> "you couldn't get the code written" + (staged.failed?.let { ": $it" } ?: "")
+                else -> CodeRules.problems(staged.design, content, sandbox).takeIf { it.isNotEmpty() }?.let { "the code didn't work: " + it.joinToString("; ") }
+            } ?: return null
+            codes.remove(verb.id)
+            return why
+        }
+
+        override fun define(verb: VerbSpec): List<String> = putCode(codes.remove(verb.id)!!.design!!)
+
+        override fun defineText(): String {
+            val n = coded.size
+            return "write the code for a new thing to do, or rewrite one of yours" + if (n == 0) "" else ": you've written $n (${coded.joinToString { it.verb.id }})"
+        }
+
         override fun build(verb: VerbSpec): List<String> {
-            val design = designs.remove(verb.id)!!.design!!
+            val staged = designs.remove(verb.id)!!
+            val design = staged.design!!
             val made = (content.invent!!.check(design, content, verb.minutes!!) as InventRules.Checked.Ok).invention.copy(tick = ticks)
             val spec = made.item
             this@BedroomWorld.content = content.plus(made)
@@ -376,7 +439,11 @@ class BedroomWorld private constructor(
                 spec.sellPrice?.let { "it sells for $$it" },
                 comfortNote,
                 newNote,
-            )
+            ) + (
+                // What it does, written with it: its verbs and its behavior, now that it has an id.
+                staged.code?.takeIf { !it.isEmpty }?.let { putCode(it.about(spec.id)) }
+                    ?: listOfNotNull(staged.codeFailed?.let { "you didn't get its code written ($it), so it doesn't do anything yet" })
+                )
         }
 
         override fun buildText(): String {
@@ -578,6 +645,254 @@ class BedroomWorld private constructor(
     private fun frustrated(): Double = content.frustration?.let { f -> (needs[Need.Frustration] - f.above).coerceAtLeast(0.0) * f.mood } ?: 0.0
 
     private fun moodTarget(): Double = (content.needs.moodBaseline + comfort() - boredom() - frustrated()).coerceIn(0.0, Needs.MAX)
+
+    // --- the verbs he writes --------------------------------------------------------------------
+
+    /** Puts [made] into his world: a new verb, or in place of his verb of the same id. */
+    private fun putVerb(made: CodedVerb) {
+        content = content.plusVerb(made.verb)
+        coded = if (coded.any { it.verb.id == made.verb.id }) coded.map { if (it.verb.id == made.verb.id) made else it } else coded + made
+        knownCache = null
+        options = null
+        version++
+    }
+
+    /** Puts in what [d] writes (its verbs, then its behaviors) as far as it checks out; the event's parts, a line for each and for what didn't go in. */
+    private fun putCode(d: CodeDesign): List<String> {
+        val parts = mutableListOf<String>()
+        d.verbs.forEach { v ->
+            when (val r = CodeRules.check(v, content, sandbox)) {
+                is CodeRules.Checked.Refused -> parts += "verb '${v.called}' didn't go in: " + r.problems.joinToString("; ")
+                is CodeRules.Checked.Ok -> runCatching { putVerb(CodedVerb(r.verb, d.why.trim(), ticks)) }
+                    .onSuccess {
+                        val code = r.verb.code!!
+                        parts += (if (r.rewrote) "rewrote your verb ${r.verb.id} (version ${code.version})" else "a new verb of your own, ${r.verb.id}") + ": ${code.says}" +
+                            " (${GameClock.duration(r.verb.minutes!!)}" + (r.verb.args["what"]?.let { ", with ${article(noun(it))}" } ?: "") + ")"
+                    }
+                    .onFailure { e -> parts += "verb '${v.called}' didn't go in: ${e.message}" }
+            }
+        }
+        d.behaviors.forEach { b ->
+            CodeRules.problem(b, content, sandbox)?.let { parts += "$it, so it didn't go in"; return@forEach }
+            val was = behaviors[b.thing]
+            behaviors = behaviors + (b.thing to ThingCode(b.code, b.says.trim(), (was?.version ?: 0) + 1, ticks))
+            parts += "the ${item(b.thing).name} " + (if (was != null) "does something new by itself: " else "now does something by itself: ") + b.says.trim()
+        }
+        version++
+        return parts
+    }
+
+    /** Each game hour: every thing he owns that has a behavior runs its `hourly`; what it does is a world event. Three broken hours in a row stop it. */
+    private fun runBehaviors() {
+        behaviors.forEach { (id, code) ->
+            if (count(id) == 0 || content.item(id) == null) return@forEach
+            val spec = item(id)
+            val view = ScriptView("your ${spec.name}")
+            val run = sandbox.call(code.source, ScriptSandbox.HOURLY, view, emptyMap(), id, extra = view.thing(id))
+            val said = run.says.map { "\"$it\"" }
+            if (run.error != null) {
+                val failures = code.failures + 1
+                val stop = failures >= BROKEN_HOURS
+                behaviors = if (stop) behaviors - id else behaviors + (id to code.copy(failures = failures))
+                event("your ${spec.name}'s code broke: ${run.error}" + if (stop) "; after $BROKEN_HOURS hours of that it stopped, until you write it again" else "")
+                return@forEach
+            }
+            if (code.failures > 0) behaviors = behaviors + (id to code.copy(failures = 0))
+            val what = view.did + said + listOfNotNull(run.result?.takeIf { it.isNotBlank() })
+            if (what.isNotEmpty()) event("your ${spec.name}: " + what.joinToString(", "))
+        }
+    }
+
+    /** `world.args`: each of the verb's argument slots as bound, or before binding what it asks for. */
+    private fun scriptArgs(b: Bound): Map<String, String> = b.verb.args.keys.associateWith { b.resolve(it) }
+
+    /** Content changed under the agent: what he knows and his options are rebuilt. */
+    private fun contentChanged() {
+        knownCache = null
+        options = null
+        version++
+    }
+
+    /** A thing he owns and can change with code (not a fixture of the house or the land, not a piece of art), or why not. */
+    private fun ownThing(id: String): ItemSpec {
+        val spec = content.item(id) ?: throw ScriptProblem("there's no thing '$id'; world.owns() lists yours")
+        if (count(id) == 0) throw ScriptProblem("you don't own a ${spec.name} ('$id')")
+        if (spec.group == "fixture") throw ScriptProblem("the ${spec.name} is part of the house or the land, not a thing of yours to change")
+        return spec
+    }
+
+    private fun isWall(slot: String) = slot in content.room.wallSlots
+
+    /**
+     * The world as his code sees it: a doing of a verb he wrote, or a thing's hour. [reason] goes on
+     * what it changes; [paid] scales need gains (a verb's wear); [minutes] is how long a thing it makes
+     * took. [did] is what it changed, for the event.
+     */
+    private inner class ScriptView(private val reason: String, private val paid: (String, Double) -> Double = { _, d -> d }, private val minutes: Int = 60) : ScriptWorld {
+        val did = mutableListOf<String>()
+
+        override fun time(): Map<String, Any?> {
+            val m = clock.minuteOfDay(ticks)
+            val r = clock.reading(ticks)
+            return mapOf("day" to r.day, "time" to r.time, "hour" to m / 60, "minute" to m % 60, "night" to (content.night?.covers(m) == true))
+        }
+
+        override fun needs() = Need.entries.associate { it.id to (needs[it] * 10).roundToInt() / 10.0 }
+        override fun money() = ledger.balance
+        override fun skills() = content.vocabulary.skills.associateWith { (skill(it) * 100).roundToInt() / 100.0 }
+        override fun owns(): Map<String, Int> = LinkedHashMap(owned)
+        override fun catalog(): Map<String, String> = content.items.filter { isKnown(it.id) }.associate { it.id to it.name }
+        override fun here(): String? = layout.placeOf(guy.x, guy.y)?.name
+
+        override fun thing(id: String): Map<String, Any?>? {
+            val s = content.item(id) ?: return null
+            return mapOf(
+                "id" to s.id, "name" to s.name, "group" to s.group, "uses" to s.affords.keys.toList(),
+                "qualities" to s.qualities, "spot" to s.slot, "color" to custom[id]?.color, "count" to count(id),
+                "state" to state(id),
+            )
+        }
+
+        override fun spots(): Map<String, Any?> {
+            val taken = content.items.mapNotNull { s -> s.slot?.let { it to s.id } }.toMap()
+            val free = layout.slotCells.keys.filter { it !in taken }
+            return mapOf(
+                "free" to mapOf("floor" to free.filter { !isWall(it) }, "wall" to free.filter { isWall(it) }),
+                "taken" to taken.filter { (_, id) -> count(id) > 0 && item(id).group != "fixture" },
+            )
+        }
+
+        override fun state(id: String): Map<String, Any?> = thingState[id].orEmpty().mapValues { (_, v) ->
+            when {
+                v is kotlinx.serialization.json.JsonNull -> null
+                v.isString -> v.content
+                v.content == "true" || v.content == "false" -> v.content == "true"
+                else -> v.content.toDoubleOrNull()
+            }
+        }
+
+        override fun need(name: String, delta: Double): Double {
+            val need = runCatching { needOf(name) }.getOrElse { throw ScriptProblem("'$name' isn't a need; they are ${Need.entries.joinToString { it.id }}") }
+            // Like any verb's, its gains in mood and stimulation shrink as it wears thin.
+            val applied = needs.change(ticks, need, paid(name, delta), reason)
+            if (applied.roundToInt() != 0) did += "$name ${signed(applied.roundToInt().toDouble())}"
+            return (needs[need] * 10).roundToInt() / 10.0
+        }
+
+        override fun earn(amount: Int, why: String): Int {
+            if (amount < 1) throw ScriptProblem("earn a whole number of dollars above 0")
+            ledger.credit(ticks, amount, why.ifBlank { reason }.take(80))
+            did += "+$$amount" + (why.takeIf { it.isNotBlank() }?.let { " ($it)" } ?: "")
+            version++
+            return ledger.balance
+        }
+
+        override fun spend(amount: Int, why: String): Boolean {
+            if (amount < 1) throw ScriptProblem("spend a whole number of dollars above 0")
+            if (!ledger.canAfford(amount)) return false
+            ledger.debit(ticks, amount, why.ifBlank { reason }.take(80))
+            did += "-$$amount" + (why.takeIf { it.isNotBlank() }?.let { " ($it)" } ?: "")
+            version++
+            return true
+        }
+
+        override fun practice(skill: String, amount: Double): Double {
+            if (skill !in content.vocabulary.skills) throw ScriptProblem("'$skill' isn't a skill; they are ${content.vocabulary.skills.joinToString()}")
+            did += practise(skill, amount)
+            return skill(skill)
+        }
+
+        override fun give(id: String, n: Int): Int {
+            val s = content.item(id)?.takeIf { isKnown(id) } ?: throw ScriptProblem("there's no kind of thing '$id'; world.catalog() lists them")
+            if (s.carried) throw ScriptProblem("art comes from drawing it, not from code")
+            if (s.group == "fixture") throw ScriptProblem("the ${s.name} is part of the house or the land")
+            if (n !in 1..MAX_GIVE) throw ScriptProblem("give 1 to $MAX_GIVE at a time")
+            add(id, n)
+            did += "+${quantity(id, n)}"
+            return count(id)
+        }
+
+        override fun take(id: String, n: Int): Int {
+            if (n < 1) throw ScriptProblem("take at least 1")
+            val taken = this@BedroomWorld.take(id, n)
+            taken.forEach { (t, k) -> did += "used ${quantity(t, k)}" }
+            return taken.values.sum()
+        }
+
+        override fun make(design: Map<String, Any?>): String {
+            val rules = content.invent ?: throw ScriptProblem("this world has no rules for making things")
+            val d = runCatching { DESIGN_JSON.decodeFromJsonElement(Design.serializer(), toJson(design)) }
+                .getOrElse { throw ScriptProblem("the design needs at least name and use: ${it.message?.lineSequence()?.firstOrNull()}") }
+            val made = when (val checked = rules.check(d, content, minutes)) {
+                is InventRules.Checked.Refused -> throw ScriptProblem("the ${d.name} can't be made: " + checked.problems.joinToString("; "))
+                is InventRules.Checked.Ok -> checked.invention.copy(cost = 0, tick = ticks)
+            }
+            content = content.plus(made)
+            inventions = inventions + made
+            contentChanged()
+            add(made.item.id, 1)
+            did += "made ${article(made.item.name)}"
+            return made.item.id
+        }
+
+        override fun setState(id: String, key: String, value: Any?) {
+            if (id != SELF) ownThing(id)
+            if (key.isBlank() || key.length > 40) throw ScriptProblem("a key is 1 to 40 characters")
+            val kept = thingState.getOrPut(id) { linkedMapOf() }
+            val v = when (value) {
+                null -> { kept.remove(key); if (kept.isEmpty()) thingState.remove(id); return }
+                is String -> kotlinx.serialization.json.JsonPrimitive(value.take(MAX_TEXT))
+                is Boolean -> kotlinx.serialization.json.JsonPrimitive(value)
+                is Double -> kotlinx.serialization.json.JsonPrimitive(if (value == Math.floor(value) && !value.isInfinite()) value.toLong() else value)
+                else -> throw ScriptProblem("a value is a string, a number, true or false, or null")
+            }
+            if (key !in kept && kept.size >= MAX_KEYS) throw ScriptProblem("a thing holds at most $MAX_KEYS keys")
+            if (id !in thingState && thingState.size >= MAX_STATEFUL) throw ScriptProblem("at most $MAX_STATEFUL things can hold state")
+            kept[key] = v
+            version++
+        }
+
+        override fun move(id: String, spot: String): String {
+            val s = ownThing(id)
+            val from = s.slot ?: throw ScriptProblem("the ${s.name} doesn't stand anywhere; only things in a spot can move")
+            if (spot == from) return spot
+            if (spot !in layout.slotCells) throw ScriptProblem("there's no spot '$spot' in your house; world.spots() lists them")
+            if (isWall(spot) != isWall(from)) throw ScriptProblem("the ${s.name} goes ${if (isWall(from)) "on a wall" else "on the floor"}, and $spot is ${if (isWall(spot)) "on a wall" else "on the floor"}")
+            val other = content.items.firstOrNull { it.slot == spot }
+            if (other != null && (count(other.id) == 0 || other.group == "fixture")) throw ScriptProblem("$spot is kept for the ${other.name}")
+            val cell = layout.slotCells.getValue(spot)
+            if (s.blocks && guy.cell == cell) throw ScriptProblem("you're standing on $spot")
+            content = content.mapItems { when (it.id) { id -> it.copy(slot = spot); other?.id -> it.copy(slot = from); else -> it } }
+            custom[id] = (custom[id] ?: BedroomState.Custom()).copy(slot = spot)
+            other?.let { custom[it.id] = (custom[it.id] ?: BedroomState.Custom()).copy(slot = from) }
+            contentChanged()
+            did += "moved the ${s.name} to $spot" + (other?.let { ", and the ${it.name} to $from" } ?: "")
+            return spot
+        }
+
+        override fun recolor(id: String, color: String) {
+            val s = ownThing(id)
+            val c = color.trim()
+            if (c.isNotEmpty() && !c.matches(HEX)) throw ScriptProblem("a colour is hex, like #7aa3c9")
+            custom[id] = (custom[id] ?: BedroomState.Custom()).copy(color = c.ifEmpty { null }?.lowercase())
+            version++
+            did += if (c.isEmpty()) "the ${s.name} has its own colours back" else "painted the ${s.name} $c"
+        }
+
+        override fun rename(id: String, name: String) {
+            val s = ownThing(id)
+            val n = name.trim().replace(Regex("\\s+"), " ")
+            if (n.length !in 2..40 || !n.matches(NAME)) throw ScriptProblem("a name is 2 to 40 letters, digits, spaces, hyphens or apostrophes")
+            if (content.items.any { it.id != id && it.name.equals(n, ignoreCase = true) }) throw ScriptProblem("there's already a thing called '$n'")
+            content = content.mapItems { if (it.id == id) it.copy(name = n) else it }
+            custom[id] = (custom[id] ?: BedroomState.Custom()).copy(name = n)
+            contentChanged()
+            did += "renamed the ${s.name} the $n"
+        }
+    }
+
+    /** The colours his code painted his things, item id to hex. */
+    fun colors(): Map<String, String> = custom.mapNotNull { (id, c) -> c.color?.let { id to it } }.toMap()
 
     // --- skills and books ------------------------------------------------------------------------
 
@@ -1069,7 +1384,7 @@ class BedroomWorld private constructor(
      * is replaced by the next trip's.
      */
     fun stage(verb: String, result: AuthoredResult) {
-        if (result is AuthoredResult.Basket || result is AuthoredResult.Designed || result is AuthoredResult.Composed) staging.add(verb to result)
+        if (result is AuthoredResult.Basket || result is AuthoredResult.Designed || result is AuthoredResult.Composed || result is AuthoredResult.Coded) staging.add(verb to result)
     }
 
     private fun applyNotes() {
@@ -1079,6 +1394,7 @@ class BedroomWorld private constructor(
                 is AuthoredResult.Basket -> baskets[verb] = staged
                 is AuthoredResult.Designed -> designs[verb] = staged
                 is AuthoredResult.Composed -> drafts[verb] = staged
+                is AuthoredResult.Coded -> codes[verb] = staged
                 else -> {}
             }
         }
@@ -1241,6 +1557,7 @@ class BedroomWorld private constructor(
         applyMinute()
         val minute = clock.minuteOfDay(ticks)
         if (minute % 60 == 0) needs.flush(ticks)
+        if (minute % 60 == 0 && behaviors.isNotEmpty()) runBehaviors()
         content.commissions?.let { if (minute == GameClock.parseHhmm(it.arrive)) newCommission(it) }
         if (minute == 0) {
             event("day ${clock.day(ticks)} begins")
@@ -1322,6 +1639,10 @@ class BedroomWorld private constructor(
             opened = opened.toList(),
             read = read.toList(),
             sent = sent.toList(),
+            coded = coded,
+            thingState = thingState.mapValues { LinkedHashMap(it.value) },
+            custom = LinkedHashMap(custom),
+            behaviors = behaviors,
         )
     }
 
@@ -1332,6 +1653,11 @@ class BedroomWorld private constructor(
             runCatching { content = content.plus(made) }
                 .onSuccess { inventions = inventions + made }
                 .onFailure { dropped += "invention '${made.item.id}' no longer fits the content: ${it.message}" }
+        }
+        s.coded.forEach { made ->
+            runCatching { content = content.plusVerb(made.verb) }
+                .onSuccess { coded = coded.filter { it.verb.id != made.verb.id } + made }
+                .onFailure { dropped += "his verb '${made.verb.id}' no longer fits the content: ${it.message}" }
         }
         fun has(id: String, what: String) = (content.item(id) != null).also { if (!it) dropped += "$what '$id' is no longer in the content" }
         owned.clear()
@@ -1387,6 +1713,18 @@ class BedroomWorld private constructor(
         sent.clear(); sent.addAll(s.sent)
         lettersSent = sent.toList()
         correspond()
+        // What his code changed about his things, once the house (and its slots) stands again.
+        custom.clear()
+        s.custom.forEach { (id, c) ->
+            if (!has(id, "changed thing")) return@forEach
+            runCatching { content = content.mapItems { if (it.id == id) it.copy(slot = c.slot ?: it.slot, name = c.name ?: it.name) else it } }
+                .onSuccess { custom[id] = c }
+                .onFailure { custom[id] = c.copy(slot = null); dropped += "the ${item(id).name} couldn't go back to ${c.slot}: ${it.message}" }
+        }
+        behaviors = s.behaviors.filterKeys { content.item(it) != null }
+        thingState.clear()
+        s.thingState.forEach { (id, kept) -> if (id == SELF || content.item(id) != null) thingState[id] = LinkedHashMap(kept) }
+        knownCache = null
         authoredCount = s.authoredCount
         lastPlanned = s.grid.last?.intent
         version++
@@ -1554,7 +1892,7 @@ class BedroomWorld private constructor(
                     (bareUntil[spec.id] ?: 0) > ticks -> "bare"
                     else -> null
                 }
-                add(EntitySnapshot(EntityId(spec.id), spec.group, cell.x + 0.5f, cell.y + 0.5f, if (spec.blocks) 1f else 0.2f, 0f, state, place = layout.placeOf(cell)?.id))
+                add(EntitySnapshot(EntityId(spec.id), spec.group, cell.x + 0.5f, cell.y + 0.5f, if (spec.blocks) 1f else 0.2f, 0f, state, place = layout.placeOf(cell)?.id, color = custom[spec.id]?.color))
             }
         }
         val d = doing
@@ -1763,6 +2101,29 @@ class BedroomWorld private constructor(
         private const val ESTIMATE_MINUTES = 10
         /** How far back [lately] looks, in game days. */
         private const val LATELY_DAYS = 2
+
+        /** What his code may store state on besides his things: himself. */
+        const val SELF = "self"
+        private const val MAX_GIVE = 100
+        private const val MAX_TEXT = 200
+        private const val MAX_KEYS = 20
+        private const val MAX_STATEFUL = 200
+        /** Hours in a row a thing's code may break before it stops. */
+        private const val BROKEN_HOURS = 3
+        private val HEX = Regex("#[0-9a-fA-F]{6}")
+        private val NAME = Regex("[\\p{L}\\p{N} '\\-]+")
+        private val DESIGN_JSON = kotlinx.serialization.json.Json { ignoreUnknownKeys = true; isLenient = true; coerceInputValues = true }
+
+        /** A plain Kotlin value (from [ScriptSandbox.fromJs]) as JSON. */
+        private fun toJson(v: Any?): kotlinx.serialization.json.JsonElement = when (v) {
+            null -> kotlinx.serialization.json.JsonNull
+            is String -> kotlinx.serialization.json.JsonPrimitive(v)
+            is Boolean -> kotlinx.serialization.json.JsonPrimitive(v)
+            is Number -> kotlinx.serialization.json.JsonPrimitive(v)
+            is Map<*, *> -> kotlinx.serialization.json.JsonObject(v.entries.associate { (k, x) -> k.toString() to toJson(x) })
+            is List<*> -> kotlinx.serialization.json.JsonArray(v.map(::toJson))
+            else -> kotlinx.serialization.json.JsonPrimitive(v.toString())
+        }
 
         /** "60%", to the nearest 10. */
         private fun percent(fresh: Double): String = "${(fresh * 10).roundToInt() * 10}%"

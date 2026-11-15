@@ -105,6 +105,14 @@ data class BedroomContent(
     fun plus(invention: Invention): BedroomContent =
         copy(items = items + invention.item, books = books + listOfNotNull(invention.book)).also { it.validate() }
 
+    /** The content with [verb], one he wrote, in it, in place of his verb of the same id if there is one. Checked like any content. */
+    fun plusVerb(verb: VerbSpec): BedroomContent =
+        copy(verbs = verbs.filter { it.id != verb.id } + verb).also { it.validate() }
+
+    /** The content with every item put through [change] (things moved to other slots, renamed). Checked like any content. */
+    fun mapItems(change: (ItemSpec) -> ItemSpec): BedroomContent =
+        copy(items = items.map(change)).also { it.validate() }
+
     /** Ids of everything above tier 0: what can be granted. */
     val gated: Set<String> get() = (items.filter { it.tier > 0 }.map { it.id } + verbs.filter { it.tier > 0 }.map { it.id }).toSet()
 
@@ -716,6 +724,8 @@ data class VerbSpec(
     @SerialName("by_day") val byDay: ByDay? = null,
     /** What repetition wears: each way of filling its arguments on its own (each record), or the verb as a whole (any book). */
     val wear: Wear = Wear.Items,
+    /** A verb he wrote: its JavaScript ([ScriptOp] runs it). Null for the world's own verbs. */
+    val code: VerbCode? = null,
 ) {
     /** Marked routine, or of a kind that always is (selling, sleeping). */
     val isRoutine: Boolean get() = routine || kind.routine

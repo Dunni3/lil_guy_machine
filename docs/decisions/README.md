@@ -97,3 +97,4 @@ these hold the outcome. Skim this index before related changes.
 - 2026-11-15 [Anyone with an account can write him letters; accounts are an email and a password on the host](2026-11-15-anyone-with-an-account-can-write-him-letters.md)
 - 2026-11-15 [He writes letters back, and on his own, to whoever has written to him](2026-11-15-he-writes-letters-back-and-on-his-own.md)
 - 2026-11-15 [The house holds only so much comfort, rooms hold more; the sunroom and microscope are open; he sees what he's been doing lately](2026-11-15-the-house-holds-only-so-much-comfort-and-he-sees-his-rut.md)
+- 2026-11-15 [He writes his own verbs, and what his things do, as JavaScript against a world API; nothing caps it](2026-11-15-he-writes-his-verbs-and-what-his-things-do-as-code.md)

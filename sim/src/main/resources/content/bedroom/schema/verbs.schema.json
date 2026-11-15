@@ -23,6 +23,7 @@
               "expressive",
               "social",
               "economic",
+              "scripted",
               "rest"
             ]
           },
@@ -455,6 +456,32 @@
                       "type": "null"
                     }
                   ]
+                },
+                "script": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": false,
+                      "description": "Runs the verb's own JavaScript (`code`, a verb he wrote): `canDo(world)`, if it has one, is its lock (a string back is why not; it may only look), and `finish(world)` runs as it finishes, against the world API (sim/.../Scripts.kt). Nothing it does is capped. Code that breaks fails the verb with the error. Only verbs he writes have it; content doesn't. (lock and finish)"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "define": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": false,
+                      "description": "Puts in the code he wrote in the verb's `write: { with: verb_code, timing: before }`: new verbs of his own (kind `scripted`) and what his things do by themselves each hour (`hourly(world, thing)`). Each part is checked (it parses, it has its function, names fit) and goes in or is reported; naming one of his verbs rewrites it. (at the finish)"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 }
               },
               "minProperties": 1,
@@ -596,6 +623,32 @@
             "enum": [
               "items",
               "verb"
+            ]
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "type": "string"
+                  },
+                  "says": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "source",
+                  "says"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
             ]
           }
         },

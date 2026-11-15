@@ -400,6 +400,14 @@ fun main(argv: Array<String>) {
                     writerModel?.let { Shopper(ledger.meter(it, TokenPurpose.Shop, priceOf(writerEndpoint!!)), fallback = picker) } ?: picker?.let { Shopper(it) }
                 },
                 inventor = writerModel?.takeIf { scenario == Scenario.Bedroom }?.let { Inventor(ledger.meter(it, TokenPurpose.Invent, priceOf(writerEndpoint!!))) },
+                // His code: the deciding model when it's a text model, else the writer.
+                coder = if (scenario != Scenario.Bedroom) null else
+                    decisionModel.takeIf { painting }?.let { dev.lilguy.agent.code.Coder(ledger.meter(it, TokenPurpose.Code, priceOf(endpoint))) }
+                        ?: writerModel?.let { dev.lilguy.agent.code.Coder(ledger.meter(it, TokenPurpose.Code, priceOf(writerEndpoint!!))) },
+                onCoded = { c ->
+                    life?.code(c)
+                    if (!quiet) printCoded(c)
+                },
                 // The real web, as the config's `search:` says; only a model that calls tools searches. --search none keeps him off it.
                 searcher = config.search?.takeIf { painting && !it.off && args.string("--search") != "none" }?.let { sc ->
                     Searcher(ledger.meter(WebSearches.create(sc), TokenPrice.of(sc)), sc.perDay)
@@ -668,6 +676,14 @@ private fun printSearch(s: Search) {
     val stamp = if (s.day != null) "d%2d %s".format(s.day, s.time) else "t=%4d".format(s.tick)
     val what = if (!s.found) "nothing (${s.error ?: "no results"})" else (s.summary ?: s.sources.joinToString { it.title }) + " [" + s.sources.joinToString { it.title } + "]"
     println("%s  searched the web for \"%s\": %s".format(stamp, s.query, what))
+}
+
+private fun printCoded(c: dev.lilguy.agent.code.Coded) {
+    val stamp = if (c.day != null) "d%2d %s".format(c.day, c.time) else "t=%4d".format(c.tick)
+    val what = c.error?.let { "FAILED: $it" } ?: c.design?.let { dev.lilguy.agent.code.CodeHandler.summary(it) } ?: "nothing"
+    println("%s  wrote code%s: %s%s".format(stamp, c.forThing?.let { " for the $it" } ?: "", what, if (c.redid.isEmpty()) "" else " (redone once: ${c.redid.joinToString("; ")})"))
+    c.design?.verbs?.forEach { v -> println(v.code.prependIndent("        | ")) }
+    c.design?.behaviors?.forEach { b -> println(b.code.prependIndent("        | ")) }
 }
 
 private fun printTrip(t: Trip) {

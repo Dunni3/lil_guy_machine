@@ -213,7 +213,7 @@ class StateReader(private val dbEvery: Duration = 1.seconds) {
 
     private val EntitySnapshot.isCharacter get() = kind == "guy"
 
-    private fun entity(e: EntitySnapshot) = Entity(e.id.value, e.kind, e.x, e.y, e.height, e.facingDegrees, e.state, e.carriedBy?.value, e.place)
+    private fun entity(e: EntitySnapshot) = Entity(e.id.value, e.kind, e.x, e.y, e.height, e.facingDegrees, e.state, e.carriedBy?.value, e.place, e.color)
 
     /** The map and its places: the layout's, kept while it's the same one; key-and-door's terrain alone. */
     private var worldFrom: Pair<Any, WorldView>? = null

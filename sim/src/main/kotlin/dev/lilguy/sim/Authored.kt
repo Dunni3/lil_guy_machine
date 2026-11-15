@@ -31,6 +31,7 @@ sealed interface AuthoredOp {
             "shopping" to setOf("events"),
             "invention" to setOf("events"),
             "letter" to setOf("events"),
+            "verb_code" to setOf("events"),
         )
 
         /** Where results can go: his event stream, short-term memory, and the sim's art pieces. */
@@ -132,14 +133,21 @@ sealed interface AuthoredResult {
     /**
      * What he designed at the workbench, staged before he starts building ([BedroomWorld.stage]) and
      * checked and built as he finishes ([BuildOp]). [failed]: why there's no design (the model's call
-     * failed); the build then fails.
+     * failed); the build then fails. [code]: what the thing does, written with it (its verbs and
+     * behavior, naming it `this`), put in when it's built; [codeFailed]: why that couldn't be written.
      */
-    data class Designed(val design: Design?, val failed: String? = null) : AuthoredResult
-
     /**
      * A letter he wrote, staged before he sits down to write it ([BedroomWorld.stage]) and put
      * through the hatch as he finishes ([PostLetterOp]): to the sender [to], saying [body].
      * [failed]: why there's no letter (the model's call failed); the verb then fails.
      */
     data class Composed(val to: Long?, val body: String?, val failed: String? = null) : AuthoredResult
+
+    data class Designed(val design: Design?, val failed: String? = null, val code: CodeDesign? = null, val codeFailed: String? = null) : AuthoredResult
+
+    /**
+     * A verb he wrote at his desk, staged before he starts ([BedroomWorld.stage]) and checked and put
+     * in as he finishes ([DefineOp]). [failed]: why there's none (the model's call failed).
+     */
+    data class Coded(val design: CodeDesign?, val failed: String? = null) : AuthoredResult
 }

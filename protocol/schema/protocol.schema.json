@@ -926,6 +926,16 @@
                             "type": "null"
                         }
                     ]
+                },
+                "color": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
                 }
             },
             "required": [
@@ -937,7 +947,8 @@
                 "facing_degrees",
                 "state",
                 "carried_by",
-                "place"
+                "place",
+                "color"
             ],
             "additionalProperties": false
         },

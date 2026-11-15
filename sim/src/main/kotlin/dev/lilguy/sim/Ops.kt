@@ -473,6 +473,23 @@ internal interface OpWorld {
 
     /** "Sam's letter is waiting for an answer", for the option; null for nothing to say. */
     fun letterText(): String?
+    /** Why [b]'s own code says it can't be done now (its `canDo`), or null. */
+    fun scriptLock(b: Bound): String?
+
+    /** Runs [b]'s `finish` as it finishes: why it broke, or null, keeping what it said for [scriptParts]. */
+    fun runScript(b: Bound): String?
+
+    /** What [verb]'s code said and returned as it finished: the event's parts. */
+    fun scriptParts(verb: String): List<String>
+
+    /** As [verb] finishes: why the staged verb design can't go in (none came, or it's refused), or null. */
+    fun defineFailed(verb: VerbSpec): String?
+
+    /** Puts in [verb]'s staged design; the event's parts. */
+    fun define(verb: VerbSpec): List<String>
+
+    /** "write the code for a new thing to do: you've written 2", for the option. */
+    fun defineText(): String
 }
 
 /**
@@ -591,6 +608,8 @@ internal data class OpEntry(
     @SerialName("place_room") val placeRoom: PlaceRoom? = null,
     @SerialName("open_mail") val openMail: NoParams? = null,
     @SerialName("post_letter") val postLetter: NoParams? = null,
+    val script: NoParams? = null,
+    val define: NoParams? = null,
 ) {
     @Serializable
     @SerialName("place_room")
@@ -628,6 +647,7 @@ internal data class OpEntry(
             sleep?.let { SleepOp }, enjoy?.let(::EnjoyOp), hear?.let(::HearOp), progress?.let { ProgressOp(it.book) }, practice?.let(::PracticeOp),
             write?.let { WriteOp(it.with, it.into, it.timing, it.showsAs, it.optional) }, draw?.let(::DrawOp), build?.let { BuildOp },
             survey?.let(::SurveyOp), gather?.let(::GatherOp), placeRoom?.let { PlaceRoomOp(it.room, it.site) }, openMail?.let { OpenMailOp }, postLetter?.let { PostLetterOp },
+            script?.let { ScriptOp }, define?.let { DefineOp },
         )
         require(set.size == 1) { "an effect is one op, such as `- need: { mood: 2 }`; this one has ${if (set.isEmpty()) "none" else set.joinToString { it.key }}" }
         return set.single()
@@ -656,6 +676,8 @@ internal data class OpEntry(
             is PlaceRoomOp -> OpEntry(placeRoom = PlaceRoom(op.room, op.site))
             OpenMailOp -> OpEntry(openMail = NoParams())
             PostLetterOp -> OpEntry(postLetter = NoParams())
+            ScriptOp -> OpEntry(script = NoParams())
+            DefineOp -> OpEntry(define = NoParams())
         }
     }
 }

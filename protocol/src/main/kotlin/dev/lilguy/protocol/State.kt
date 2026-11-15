@@ -224,6 +224,8 @@ data class Entity(
     @SerialName("carried_by") val carriedBy: String?,
     /** The [PlaceView] it's in, or null where the map has no places. */
     val place: String?,
+    /** The colour his code painted it, hex, or null for its own colours. */
+    val color: String? = null,
 )
 
 /** What a character is doing: its intent and how far along, the walk left, and what it's saying. */

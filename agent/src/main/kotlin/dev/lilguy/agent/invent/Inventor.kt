@@ -70,6 +70,8 @@ data class Drafted(
     val before: Design? = null,
     /** At the workbench: each tool he used before he built it, with its answer. */
     val steps: List<Looked> = emptyList(),
+    /** What it does: the code written for it once the design was settled, when there's a coder. */
+    val code: dev.lilguy.agent.code.Coded? = null,
 )
 
 /** What designs the thing he invents: a text model ([Inventor]) or a fixed list ([CannedInventor]). */
@@ -440,19 +442,26 @@ class InventionHandler(
     private val store: MemoryStore,
     private val run: String,
     private val onDraft: (Drafted) -> Unit = {},
+    /** Writes what each thing does (its verbs and behavior) once its design is settled; without one, things only sit there. */
+    private val coder: dev.lilguy.agent.code.Coder? = null,
 ) : AuthorHandler<Drafted> {
     override val name = "invention"
     override val writer: String get() = inventor.id
 
-    override suspend fun author(call: AuthorCall) = inventor.invent(call).also(onDraft)
+    override suspend fun author(call: AuthorCall): Drafted {
+        val drafted = inventor.invent(call)
+        val code = drafted.design?.let { d -> coder?.forThing(call, d) }
+        return drafted.copy(code = code).also(onDraft)
+    }
 
-    override fun staged(result: Drafted) = AuthoredResult.Designed(result.design, failed = result.error)
+    override fun staged(result: Drafted) = AuthoredResult.Designed(result.design, failed = result.error, code = result.code?.design, codeFailed = result.code?.error)
 
     override fun keep(result: Drafted, call: AuthorCall, ended: Observation, view: AuthoredView?, deliver: (AuthoredResult) -> Unit) {
         val design = result.design ?: return
         val like = design.qualities.keys.joinToString(", ")
+        val does = result.code?.design?.takeIf { !it.isEmpty }?.let { " What it does: " + dev.lilguy.agent.code.CodeHandler.summary(it) + "." }.orEmpty()
         val text = "I invented the ${design.name.trim()} and built it at my workbench" + (if (like.isEmpty()) "" else " ($like)") +
-            (design.why.trim().trimEnd('.').takeIf { it.isNotEmpty() }?.let { ": $it." } ?: ".")
+            (design.why.trim().trimEnd('.').takeIf { it.isNotEmpty() }?.let { ": $it." } ?: ".") + does
         if ("events" in call.op.into) store.appendEvent(run, result.tick, result.day, result.time, EventKind.Invention, text)
         deliver(AuthoredResult.Written(text))
     }

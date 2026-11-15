@@ -116,6 +116,11 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   `invent`, `Invention`; `BedroomContent.plus`). `BedroomWorld.content` grows during a run, so read it when needed. Inventions
   are saved in `BedroomState.inventions`, go to viewers in the protocol's `shop.inventions`, and the web renderer builds their
   models from the look (`web/src/room/parts.ts`). Things to look at stand in room.yaml's spare `spots`.
+- Code he writes (`docs/decisions/2026-11-15-he-writes-his-verbs-and-what-his-things-do-as-code.md`): `sim/.../Scripts.kt`
+  (the Rhino sandbox and the world API table, `ScriptApi.FUNCTIONS`, which the coder's brief and the oracle are made from),
+  `sim/.../CodedVerbs.kt` (verb and behavior designs, `CodeRules`, the `script` and `define` ops); the world side is
+  `BedroomWorld`'s `ScriptView`, `putCode` and `runBehaviors`. `devise` writes code at his desk; `invent` writes each thing's
+  function with it. The coder: `agent/.../code/Coder.kt` (deciding model if it's a text model, else the writer).
 - Art: `agent/.../art/`: `Painter.kt` (the deciding model draws each piece as a run of closed picks:
   subject, crayon box, then a stroke a call; `CommissionVoice` words each day's commission on a text
   model), `Strokes.kt` (the drawing spec as menus of strokes by stage: background, subject,

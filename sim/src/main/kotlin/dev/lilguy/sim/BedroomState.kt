@@ -74,7 +74,19 @@ data class BedroomState(
     val read: List<Letter> = emptyList(),
     /** The letters he has written, oldest first. */
     val sent: List<OutLetter> = emptyList(),
+    /** The verbs he wrote, oldest first (a rewrite replaces its verb in place): put back after the inventions. */
+    val coded: List<CodedVerb> = emptyList(),
+    /** What his code stored on things: item id (or `self`) to key to value. */
+    @SerialName("thing_state") val thingState: Map<String, Map<String, kotlinx.serialization.json.JsonPrimitive>> = emptyMap(),
+    /** What his code changed about his things: where they stand, what they're called, their colour. */
+    val custom: Map<String, Custom> = emptyMap(),
+    /** What his things do by themselves: item id to its `hourly` code. */
+    val behaviors: Map<String, ThingCode> = emptyMap(),
 ) {
+    /** One thing as his code left it: its [slot], [name] and [color], each null when unchanged. */
+    @Serializable
+    data class Custom(val slot: String? = null, val name: String? = null, val color: String? = null)
+
     @Serializable
     data class PendingNeed(val need: String, val reason: String, val delta: Double)
 

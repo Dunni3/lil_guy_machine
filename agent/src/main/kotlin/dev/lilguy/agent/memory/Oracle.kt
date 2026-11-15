@@ -71,6 +71,13 @@ object WorldDocs {
         add(DocSection("rules:gallery", "hanging art", enc(content.gallery)))
         add(DocSection("rules:qualities", "what items are worth to him", enc(content.qualityValue)))
         content.invent?.let { add(DocSection("rules:invent", "inventing: what he can design and build at a workbench, and what it costs", "$INVENT_RULE ${enc(it)}")) }
+        if (content.verbs.any { v -> v.effects.any { it is dev.lilguy.sim.DefineOp } }) add(
+            DocSection(
+                "rules:code", "code: writing his own verbs and what his things do, and the world API it uses",
+                "At his desk he writes JavaScript: a verb has function finish(world) (and canDo(world) to say why not), a thing's behavior has function hourly(world, thing), run every game hour while he owns it. Nothing caps what code does; code that throws fails the verb with the error. A thing he invents gets its code written with it. The API: " +
+                    dev.lilguy.sim.ScriptApi.reference().replace("\n", " "),
+            ),
+        )
         content.verbs.forEach { v -> add(DocSection("verb:${v.id}", "verb ${v.id}: ${v.phrase ?: v.id}", enc(v))) }
         content.items.forEach { i ->
             val users = content.verbs.filter { v -> i.id in v.at || (v.requires + v.args.values + v.effects.flatMap { it.asksFor }).any { it in i.names } }.map { it.id }

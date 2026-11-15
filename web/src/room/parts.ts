@@ -64,6 +64,17 @@ function lookParts(made: Invented): Part[] {
   }));
 }
 
+/** [base] painted [paint]: the paint's hue, with the base's lightness kept a little so the parts still tell apart. */
+function tinted(base: string, paint: string): string {
+  const rgb = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  if (!/^#[0-9a-f]{6}$/i.test(base)) return paint;
+  const b = rgb(base);
+  const p = rgb(paint);
+  const light = (b[0] + b[1] + b[2]) / 3 / 255;
+  const mixed = p.map((c, i) => Math.round(Math.min(255, Math.max(0, c * (0.7 + 0.6 * (light - 0.5)) * 0.85 + b[i] * 0.15))));
+  return "#" + mixed.map((c) => c.toString(16).padStart(2, "0")).join("");
+}
+
 /**
  * The room's models, each built into meshes once: an item's or prop's clay list (`ClayParts`) where
  * it has one, else its crayon list (`RoomParts`), which draws in clay just as well, only in the
@@ -71,6 +82,8 @@ function lookParts(made: Invented): Part[] {
  */
 export class Models {
   private readonly cache = new Map<string, ClayModel>();
+  /** Each model's part list, for painting it another colour. */
+  private readonly lists = new Map<ClayModel, Part[]>();
   private invented = new Map<string, Invented>();
   private inventedFrom: Invented[] | null = null;
 
@@ -86,8 +99,12 @@ export class Models {
     return this.invented.get(id)?.wall ?? false;
   }
 
-  /** The model for item [id] (of [kind], for the fallback); a patch that's [state] "bare" has its own. */
-  item(id: string, kind: string, state: string | null = null): ClayModel {
+  /**
+   * The model for item [id] (of [kind], for the fallback); a patch that's [state] "bare" has its own.
+   * [color]: the colour his code painted it, which every part takes on while keeping its light and dark.
+   */
+  item(id: string, kind: string, state: string | null = null, color: string | null = null): ClayModel {
+    if (color) return this.cached(`painted/${kind}/${id}/${state ?? ""}/${color}`, () => this.lists.get(this.item(id, kind, state))!.map((p) => ({ ...p, color: tinted(p.color, color) })));
     const made = this.invented.get(id);
     if (made && made.look.length > 0) return this.cached(`invented/${id}`, () => lookParts(made));
     const bare = state === "bare" ? parts.clay_items[`${id}_bare`] : undefined;
@@ -138,8 +155,10 @@ export class Models {
   private cached(key: string, list: () => Part[]): ClayModel {
     let m = this.cache.get(key);
     if (!m) {
-      m = new ClayModel(list());
+      const l = list();
+      m = new ClayModel(l);
       this.cache.set(key, m);
+      this.lists.set(m, l);
     }
     return m;
   }
