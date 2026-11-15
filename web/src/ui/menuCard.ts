@@ -380,7 +380,7 @@ function mouseHint(menu: Menu, v: PageView): string {
   if (menu.reading) return "Wheel scrolls · click the entry to go back to the list · × closes";
   if (menu.tab === "run") {
     const row = menu.runRow(v);
-    if (adjustable(row) && isAction(row)) return "‹ › pick the run · click Replay again to replay · × closes";
+    if (adjustable(row) && isAction(row)) return `‹ › pick the run · click ${row === "runs" ? "Saved runs again to go back to it" : "Replay again to replay"} · × closes`;
     const settings = entries("run", v).some((e) => adjustable(e.key as RunRow));
     if (isAction(row)) return "Click the picked row again to do it" + (settings ? " · ‹ › change a setting" : "") + " · × closes";
     return "‹ › change it · click a row to pick it · × or a click outside closes";
