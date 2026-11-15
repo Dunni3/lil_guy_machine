@@ -32,13 +32,19 @@ data class VerbDesign(
 )
 
 /**
- * What a thing does by itself, as the coder writes it: JavaScript with `hourly(world, thing)`, run
- * every game hour while he owns [thing] (its id, or `this` for the thing being invented), and what it
- * [says] it does.
+ * What a thing does by itself, as the coder writes it: JavaScript with one or more of the trigger
+ * functions ([Triggers.ALL]: `hourly(world, thing)`, `every(world, thing)` every [everyMinutes], and
+ * the ones for his arriving, leaving, finishing a verb, sleeping, waking and timers), run while he
+ * owns [thing] (its id, or `this` for the thing being invented), and what it [says] it does.
  */
 @Serializable
 @SerialName("behavior_design")
-data class BehaviorDesign(val thing: String, val says: String, val code: String)
+data class BehaviorDesign(
+    val thing: String,
+    val says: String,
+    val code: String,
+    @SerialName("every_minutes") val everyMinutes: Int? = null,
+)
 
 /**
  * One go at writing code: new or rewritten [verbs], and [behaviors] for things. At the workbench
@@ -61,9 +67,12 @@ data class CodeDesign(val verbs: List<VerbDesign> = emptyList(), val behaviors: 
     }
 }
 
-/** What a thing does by itself: its `hourly` code ([BehaviorDesign]), as kept with the world. [failures]: hours in a row it broke. */
+/**
+ * What a thing does by itself: its code ([BehaviorDesign]), as kept with the world. [failures]: runs in
+ * a row it broke. [every]: the minutes between its `every` runs, null without one.
+ */
 @Serializable
-data class ThingCode(val source: String, val says: String, val version: Int = 1, val tick: Long = 0, val failures: Int = 0)
+data class ThingCode(val source: String, val says: String, val version: Int = 1, val tick: Long = 0, val failures: Int = 0, val every: Int? = null)
 
 /** A verb he wrote, as saved with the world ([BedroomState.coded]): the [verb] and when ([tick]) and [why]. */
 @Serializable
@@ -125,7 +134,7 @@ object CodeRules {
         c.item(b.thing) == null -> "behavior for '${b.thing}': there's no such thing"
         b.says.isBlank() || b.says.length > 200 -> "behavior for '${b.thing}': says must say in a line what it does"
         b.code.length > MAX_SOURCE -> "behavior for '${b.thing}': the code is longer than $MAX_SOURCE characters"
-        else -> sandbox.check(b.code, ScriptSandbox.HOURLY)?.let { "behavior for '${b.thing}': $it" }
+        else -> Triggers.problem(b.code, b.everyMinutes, sandbox)?.let { "behavior for '${b.thing}': $it" }
     }
 
     /** Every problem in [d] against [c], verb by verb and behavior by behavior; empty when it all goes in. */

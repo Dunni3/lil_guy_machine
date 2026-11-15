@@ -19,9 +19,11 @@ import dev.lilguy.sim.CodeDesign
 import dev.lilguy.sim.CodeRules
 import dev.lilguy.sim.Design
 import dev.lilguy.sim.InventRules
+import dev.lilguy.sim.Invention
 import dev.lilguy.sim.Observation
 import dev.lilguy.sim.ScriptApi
 import dev.lilguy.sim.ScriptSandbox
+import dev.lilguy.sim.Triggers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
@@ -68,7 +70,7 @@ class Coder(private val model: DecisionModel, private val timeout: Duration = 12
     /** At his desk: new verbs, rewrites, or what a thing he has does by itself. */
     suspend fun write(call: AuthorCall): Coded {
         val content = world?.content ?: return failed(call.obs, "the coder isn't connected to a world")
-        return code(call, content, DESK + "\n\n" + brief(content, call.obs), null) { CodeRules.problems(it, content, sandbox) }
+        return code(call, content, DESK + "\n\n" + brief(content, call.obs, world?.inventions.orEmpty()), null) { CodeRules.problems(it, content, sandbox) }
     }
 
     /** At the workbench: what [design], which he's about to build, does. Null design or rules: nothing to write. */
@@ -81,7 +83,7 @@ class Coder(private val model: DecisionModel, private val timeout: Duration = 12
         val after = runCatching { content.plus(built) }.getOrElse { return failed(call.obs, it.message ?: "the design doesn't fit") }
         val about = "You're about to build this, your own invention, at your workbench:\n" + thingLine(design) +
             "\n\nIn your code it's \"${CodeDesign.THIS}\": use \"${CodeDesign.THIS}\" as a verb's `what` and `at`, and as a behavior's `thing`. Once it's built its id is `${built.item.id}`, which is what world.args.what and thing.id will be."
-        return code(call, after, WORKBENCH + "\n\n" + about + "\n\n" + brief(after, call.obs), design.name) { d -> CodeRules.problems(d.about(built.item.id), after, sandbox) }
+        return code(call, after, WORKBENCH + "\n\n" + about + "\n\n" + brief(after, call.obs, world?.inventions.orEmpty()), design.name) { d -> CodeRules.problems(d.about(built.item.id), after, sandbox) }
     }
 
     private fun failed(obs: Observation, error: String) = Coded(obs.tick, obs.clock?.day, obs.clock?.time, model.id, null, emptyList(), null, Usage(), Duration.ZERO, error)
@@ -128,7 +130,7 @@ class Coder(private val model: DecisionModel, private val timeout: Duration = 12
     private fun hints(content: BedroomContent) = SchemaHints(
         descriptions = mapOf(
             "code_design.verbs" to "New verbs of yours, or rewrites of yours (the same `called`). Can be empty.",
-            "code_design.behaviors" to "What things do by themselves each hour. Can be empty.",
+            "code_design.behaviors" to "What things do by themselves. Can be empty.",
             "code_design.why" to "Why you're writing this, first person, under 30 words.",
             "verb_design.called" to "Its name, a few plain words: \"water the plant\". Its id is these words joined with underscores.",
             "verb_design.phrase" to "What you do, for your list of things you can do: \"water the plant\".",
@@ -139,7 +141,8 @@ class Coder(private val model: DecisionModel, private val timeout: Duration = 12
             "verb_design.code" to "The JavaScript: function finish(world) { ... }, and canDo(world) if it can't always be done.",
             "behavior_design.thing" to "The id of the thing that does it.",
             "behavior_design.says" to "What it does by itself, in a line.",
-            "behavior_design.code" to "The JavaScript: function hourly(world, thing) { ... }.",
+            "behavior_design.code" to "The JavaScript: one or more of hourly, every, onArrive, onLeave, onFinish, onSleep, onWake, onTimer, each function(world, thing, ...).",
+            "behavior_design.every_minutes" to "Minutes between runs of its every(world, thing), ${Triggers.MIN_EVERY} to ${Triggers.MAX_EVERY}; null without one.",
         ),
     )
 
@@ -148,24 +151,25 @@ class Coder(private val model: DecisionModel, private val timeout: Duration = 12
         private const val TRIES = 2
 
         val INSTRUCTIONS = """
-            |Right now you are not choosing an action: you are writing code, the way things in your world work. For this reply only, ignore the reply format above: reply with one JSON object {"verbs": [{"called": ..., "phrase": ..., "says": ..., "minutes": ..., "what": ..., "at": ..., "code": ...}], "behaviors": [{"thing": ..., "says": ..., "code": ...}], "why": ...} and nothing else.
+            |Right now you are not choosing an action: you are writing code, the way things in your world work. For this reply only, ignore the reply format above: reply with one JSON object {"verbs": [{"called": ..., "phrase": ..., "says": ..., "minutes": ..., "what": ..., "at": ..., "code": ...}], "behaviors": [{"thing": ..., "says": ..., "code": ..., "every_minutes": ...}], "why": ...} and nothing else.
         """.trimMargin()
 
         private val DESK = """
-            |You're at your desk, writing code. Code is how you add to what your world can do: a verb is a new thing you can do, and a behavior is what one of your things does by itself every hour. Write something you'd like to be able to do, or give one of your things a use or a life of its own, or fix or improve one of your verbs. Make it yours: what you like, what your days are missing.
+            |You're at your desk, writing code. Code is how you add to what your world can do: a verb is a new thing you can do, and a behavior is what one of your things does by itself. Write something you'd like to be able to do, or give one of your things a use or a life of its own, or fix or improve one of your verbs. Make it yours: what you like, what your days are missing.
         """.trimMargin()
 
         private val WORKBENCH = """
-            |You're at your workbench, and before you build your invention you're working out what it does: its function. Give it verbs, the ways you use it or play with it or look after it, and if it fits a behavior, what it does by itself each hour. A thing that does something is worth more than one that only sits there; make it do something that matters to you.
+            |You're at your workbench, and before you build your invention you're working out what it does: its function. Give it verbs, the ways you use it or play with it or look after it, and if it fits a behavior, what it does by itself, and when. A thing that does something is worth more than one that only sits there; make it do something that matters to you.
         """.trimMargin()
 
         /** How code works, the API, an example, and what he has: the second half of the ask. */
-        internal fun brief(content: BedroomContent, obs: Observation): String {
+        internal fun brief(content: BedroomContent, obs: Observation, inventions: List<Invention> = emptyList()): String {
             val owned = obs.owns.orEmpty()
+            val made = inventions.associateBy { it.item.id }
             val things = content.items.filter { (owned[it.id] ?: 0) > 0 && !it.carried && it.group != "fixture" }.joinToString("\n") { s ->
                 "- ${s.id}: ${s.name} (${s.group}" + (if (s.affords.isEmpty()) "" else "; for ${s.affords.keys.joinToString()}") +
                     (if (s.qualities.isEmpty()) "" else "; ${s.qualities.entries.joinToString { (q, v) -> "$q ${v.toInt()}" }}") +
-                    (s.slot?.let { "; stands at $it" } ?: "") + ")"
+                    (s.slot?.let { "; stands at $it" } ?: "") + (made[s.id]?.let(::looks).orEmpty()) + ")"
             }
             val mine = content.verbs.filter { it.code != null }
             val verbs = if (mine.isEmpty()) "None yet." else mine.joinToString("\n\n") { v ->
@@ -173,7 +177,9 @@ class Coder(private val model: DecisionModel, private val timeout: Duration = 12
             }
             val others = content.verbs.filter { it.code == null }.joinToString { it.id }
             return """
-                |How code works. It's JavaScript (let, const, arrow functions; no Date, no imports, no network). A verb's code has `function finish(world)`, run as you finish doing it; what it returns (a string) is how it went. It may also have `function canDo(world)`, run whenever you're choosing: return a string saying why not to keep it off your list, or nothing when you can. canDo can only look. A behavior is `function hourly(world, thing)`, run every game hour while you own the thing; `thing` is world.thing(its id). What your code does happens: nothing caps it. Code that throws an error fails the verb with the error, and a behavior that breaks three hours running stops.
+                |How code works. It's JavaScript (let, const, arrow functions; in a for loop use let, not const; no Date, no imports, no network). A verb's code has `function finish(world)`, run as you finish doing it; what it returns (a string) is how it went. It may also have `function canDo(world)`, run whenever you're choosing: return a string saying why not to keep it off your list, or nothing when you can. canDo can only look. A behavior is what a thing does by itself while you own it: one or more of these functions, where `thing` is world.thing(its id):
+                |${Triggers.ALL.joinToString("\n") { "- ${it.second}" }}
+                |What your code does happens: nothing caps it. A thing's code reaches what's in its own place (a sprinkler in the garden waters the garden), what it does there you hear about when you're next there, and what it does for your mood or stimulation wears thin with repeating, as a verb's does. An invention can show the variants it was designed with, move its named parts and show a readout, so you can see what it's doing. Code that throws an error fails the verb with the error, and a behavior that breaks three runs in a row stops.
                 |
                 |The world API:
                 |${ScriptApi.reference()}
@@ -195,6 +201,7 @@ class Coder(private val model: DecisionModel, private val timeout: Duration = 12
                 |```js
                 |function hourly(world, thing) {
                 |  const water = thing.state.water || 0;
+                |  world.readout(thing.id, water > 0 ? "water " + water : "dry");
                 |  if (water <= 0) return;
                 |  world.setState(thing.id, "water", water - 1);
                 |  if (world.time().hour === 9) { world.setState(thing.id, "leaves", (thing.state.leaves || 0) + 1); return "grew a leaf"; }
@@ -214,7 +221,15 @@ class Coder(private val model: DecisionModel, private val timeout: Duration = 12
         }
 
         private fun thingLine(d: Design) = "- ${d.name}: for ${d.use}" + (if (d.qualities.isEmpty()) "" else "; ${d.qualities.entries.joinToString { (q, v) -> "$q ${v.toInt()}" }}") +
-            (d.place?.let { "; on the $it" } ?: "") + (d.why.takeIf { it.isNotBlank() }?.let { ". Why: $it" } ?: "")
+            (d.place?.let { "; on the $it" } ?: "") + looks(d.look.map { it.part }, d.variants.keys) + (d.why.takeIf { it.isNotBlank() }?.let { ". Why: $it" } ?: "")
+
+        /** "; parts: head, base; variants: spraying", for world.motion and world.show. */
+        private fun looks(i: Invention) = looks(i.look.map { it.part }, i.variants.keys)
+
+        private fun looks(parts: List<String>, variants: Collection<String>): String {
+            val named = parts.filter { it.isNotBlank() }.distinct()
+            return (if (named.isEmpty()) "" else "; parts: ${named.joinToString()}") + (if (variants.isEmpty()) "" else "; variants: ${variants.joinToString()}")
+        }
     }
 }
 

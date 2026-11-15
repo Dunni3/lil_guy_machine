@@ -19,7 +19,7 @@ data class GridState(
     @SerialName("say_until") val sayUntil: Long,
 ) {
     @Serializable
-    data class Event(val tick: Long, val text: String, val outcome: Boolean = false)
+    data class Event(val tick: Long, val text: String, val outcome: Boolean = false, val place: String? = null)
 
     @Serializable
     data class Last(val intent: Intent, val status: IntentStatus?, val outcome: String?)
@@ -80,10 +80,12 @@ data class BedroomState(
     @SerialName("thing_state") val thingState: Map<String, Map<String, kotlinx.serialization.json.JsonPrimitive>> = emptyMap(),
     /** What his code changed about his things: where they stand, what they're called, their colour. */
     val custom: Map<String, Custom> = emptyMap(),
-    /** What his things do by themselves: item id to its `hourly` code. */
+    /** What his things do by themselves: item id to its code. */
     val behaviors: Map<String, ThingCode> = emptyMap(),
     /** What his recorders logged: thing id to key to its latest readings, oldest first ([Records]). */
     val records: Map<String, Map<String, List<Reading>>> = emptyMap(),
+    /** How his things look by their code, their timers, and what they did where he wasn't ([Machines]). */
+    val machines: MachineState = MachineState(),
 ) {
     /** One thing as his code left it: its [slot], [name] and [color], each null when unchanged. */
     @Serializable

@@ -7,6 +7,7 @@ import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 import kotlin.math.sign
 import kotlin.math.sin
 import kotlin.random.Random
@@ -208,9 +209,14 @@ class BedroomWorld private constructor(
     /** His verbs whose code broke the last time he did them, until they run clean or he rewrites them; while any is, writing code doesn't wear thin. */
     private val brokenVerbs = mutableSetOf<String>()
 
-    /** What his things do by themselves, item id to its `hourly` code; replaced rather than changed. */
+    /** What his things do by themselves, item id to its code; replaced rather than changed. */
     @Volatile var behaviors: Map<String, ThingCode> = emptyMap()
         private set
+
+    /** His things' code over time: triggers, looks, timers, what happened where he wasn't ([Machines]). */
+    private val machines = Machines(sandbox)
+    private val machineHost: MachineHost = MachineWorld()
+    private val reach = Reach(machineHost)
     /** What he said on his latest trip that he's saving for, until he owns it. */
     private var savingFor: String? = null
     /** [on]: what it plays on, for the renderer's "playing" state. */
@@ -692,36 +698,62 @@ class BedroomWorld private constructor(
         d.behaviors.forEach { b ->
             CodeRules.problem(b, content, sandbox)?.let { parts += "$it, so it didn't go in"; return@forEach }
             val was = behaviors[b.thing]
-            behaviors = behaviors + (b.thing to ThingCode(b.code, b.says.trim(), (was?.version ?: 0) + 1, ticks))
+            behaviors = behaviors + (b.thing to ThingCode(b.code, b.says.trim(), (was?.version ?: 0) + 1, ticks, every = b.everyMinutes))
             parts += "the ${item(b.thing).name} " + (if (was != null) "does something new by itself: " else "now does something by itself: ") + b.says.trim()
         }
         version++
         return parts
     }
 
-    /** Each game hour: every thing he owns that has a behavior runs its `hourly`; what it does is a world event. Three broken hours in a row stop it. */
-    private fun runBehaviors() {
-        behaviors.forEach { (id, code) ->
-            if (count(id) == 0 || content.item(id) == null) return@forEach
-            val spec = item(id)
-            val view = ScriptView("your ${spec.name}")
-            val run = sandbox.call(code.source, ScriptSandbox.HOURLY, view, emptyMap(), id, extra = view.thing(id))
-            val said = run.says.map { "\"$it\"" }
-            if (run.error != null) {
-                val failures = code.failures + 1
-                val stop = failures >= BROKEN_HOURS
-                behaviors = if (stop) behaviors - id else behaviors + (id to code.copy(failures = failures))
-                val undone = view.undo()
-                event(
-                    "your ${spec.name}'s code broke: ${run.error}" + (if (undone.isEmpty()) "" else "; what it did before that is undone (${undone.joinToString(", ")})") +
-                        if (stop) "; after $BROKEN_HOURS hours of that it stopped, until you write it again" else "",
-                )
-                return@forEach
-            }
-            if (code.failures > 0) behaviors = behaviors + (id to code.copy(failures = 0))
-            val what = view.did + said + listOfNotNull(run.result?.takeIf { it.isNotBlank() })
-            if (what.isNotEmpty()) event("your ${spec.name}: " + what.joinToString(", "))
+    /** The world as [Machines] and [Reach] see it. */
+    private inner class MachineWorld : MachineHost {
+        override val content get() = this@BedroomWorld.content
+        override val layout get() = this@BedroomWorld.layout
+        override val ticks get() = this@BedroomWorld.ticks
+        override val behaviors get() = this@BedroomWorld.behaviors
+        override fun setBehavior(id: String, code: ThingCode?) {
+            this@BedroomWorld.behaviors = if (code == null) behaviors - id else behaviors + (id to code)
         }
+        override fun count(id: String) = this@BedroomWorld.count(id)
+        override fun knows(id: String) = isKnown(id)
+        override fun cellOf(id: String) = content.item(id)?.slot?.let { layout.slotCells[it] }
+        override fun hisCell() = guy.cell
+        override fun bareUntil(patch: String) = this@BedroomWorld.bareUntil[patch]?.takeIf { it > ticks }
+        override fun setBareUntil(patch: String, until: Long?) {
+            if (until == null) this@BedroomWorld.bareUntil.remove(patch) else this@BedroomWorld.bareUntil[patch] = until
+            version++
+        }
+        override fun ticksIn(minutes: Double) = (minutes * clock.ticksPerMinute).roundToLong()
+        override fun minutes() = clock.minutes(ticks)
+        override fun minuteStart() = clock.isMinuteStart(ticks)
+        override fun stamp(tick: Long) = this@BedroomWorld.stamp(tick)
+        override fun invention(id: String) = inventions.firstOrNull { it.item.id == id }
+        override fun event(text: String, place: String?) = this@BedroomWorld.event(text, place)
+        override fun changed() {
+            version++
+        }
+
+        /** A thing's code runs as "your <thing>"; its gains in mood and stimulation wear thin as a verb's do, by how often it runs. */
+        override fun run(id: String, code: ThingCode, fn: String, extra: List<Any?>, limit: Long): MachineRun {
+            val key = "$THING_WEAR$id"
+            val fresh = freshness(key)
+            val view = ScriptView("your ${item(id).name}", { name, d -> paid(needOf(name), d, fresh) }, self = id)
+            val run = sandbox.call(code.source, fn, view, emptyMap(), id, extra = listOf(view.thing(id)) + extra, limit = limit)
+            content.habituation?.takeIf { view.gained }?.let { h ->
+                val share = if (fn == Triggers.EVERY) (code.every ?: 60) / 60.0 else 1.0
+                wear[key] = (1.0 - fresh + h.perRepeat * share.coerceAtMost(1.0)).coerceAtMost(1.0) to ticks
+            }
+            // What broken code changed before it broke is undone, as for his verbs.
+            return MachineRun(run, view.did, if (run.error != null) view.undo() else emptyList())
+        }
+    }
+
+    /** How fresh what wears by [key] is: 1 when fresh, down to 0 when worn out (`thing:<id>` for a thing's code). */
+    private fun freshness(key: String): Double {
+        val h = content.habituation ?: return 1.0
+        val (level, since) = wear[key] ?: return 1.0
+        val hours = (ticks - since).toDouble() / clock.ticks(60)
+        return 1.0 - (level - h.recoverPerHour * hours).coerceIn(0.0, 1.0)
     }
 
     // --- weather ---------------------------------------------------------------------------------
@@ -822,8 +854,16 @@ class BedroomWorld private constructor(
      * what it changes; [paid] scales need gains (a verb's wear); [minutes] is how long a thing it makes
      * took. [did] is what it changed, for the event.
      */
-    private inner class ScriptView(private val reason: String, private val paid: (String, Double) -> Double = { _, d -> d }, private val minutes: Int = 60) : ScriptWorld {
+    private inner class ScriptView(
+        private val reason: String,
+        private val paid: (String, Double) -> Double = { _, d -> d },
+        private val minutes: Int = 60,
+        /** The thing whose code this is; null in a verb, where it's him. */
+        private val self: String? = null,
+    ) : ScriptWorld {
         val did = mutableListOf<String>()
+        /** It raised his mood or stimulation, which wears. */
+        var gained = false
 
         // What the world was before his code ran, for [undo]: everything the API below can change.
         private val wasContent = content
@@ -904,6 +944,7 @@ class BedroomWorld private constructor(
             val need = runCatching { needOf(name) }.getOrElse { throw ScriptProblem("'$name' isn't a need; they are ${Need.entries.joinToString { it.id }}") }
             // Like any verb's, its gains in mood and stimulation shrink as it wears thin.
             val applied = needs.change(ticks, need, paid(name, delta), reason)
+            if (applied > 0 && (need == Need.Mood || need == Need.Stimulation)) gained = true
             if (applied.roundToInt() != 0) did += "$name ${signed(applied.roundToInt().toDouble())}"
             return (needs[need] * 10).roundToInt() / 10.0
         }
@@ -1043,6 +1084,17 @@ class BedroomWorld private constructor(
                 "pressure" to Weather.round1(c.pressure), "light" to Weather.round1(c.light), "outdoors" to c.outdoors,
             )
         }
+
+        override fun place(id: String) = reach.place(id)
+        override fun near(id: String, tiles: Int) = reach.near(id, tiles)
+        override fun where() = reach.where()
+        override fun patches(place: String?) = reach.patches(place)
+        override fun things(place: String) = reach.things(place)
+        override fun regrow(patch: String, hours: Double) = reach.regrow(patch, hours, self, did)
+        override fun show(id: String, variant: String?) = machines.show(machineHost, id, variant, did)
+        override fun motion(id: String, part: String, kind: String?, speed: Double) = machines.motion(machineHost, id, part, kind, speed)
+        override fun readout(id: String, text: String?) = machines.readout(machineHost, id, text)
+        override fun after(minutes: Int, key: String, id: String?) = machines.after(machineHost, minutes, key, id, self)
     }
 
     /** The colours his code painted his things, item id to hex. */
@@ -1468,6 +1520,7 @@ class BedroomWorld private constructor(
                 val full = if (until != null) clock.ticksUntil(ticks, GameClock.parseHhmm(until.time)) else clock.ticks(a.minutes!!).toLong()
                 val length = byDay(a)?.minutes?.let { min(full, clock.ticks(it).toLong()) } ?: full
                 doing = Doing(bound(a, args), ticks, ticks + length)
+                if (a.effects.any { it is SleepOp }) machines.queue(Trigger.Sleep)
             },
             done = {
                 val d = doing!!
@@ -1479,6 +1532,7 @@ class BedroomWorld private constructor(
     }
 
     override fun workEnded(handle: Handle) {
+        if (doing?.activity?.effects?.any { it is SleepOp } == true) machines.queue(Trigger.Wake)
         doing = null
         if (carrying != null) {
             carrying = null
@@ -1501,6 +1555,7 @@ class BedroomWorld private constructor(
         outcome("finished ${a.id}" + if (parts.isEmpty()) "" else ": " + parts.joinToString(", "))
         done = done + (a.id to (done[a.id]?.let { it.copy(count = it.count + 1, lastTick = ticks) } ?: VerbTally(1, ticks)))
         if (!a.isRoutine) recent.addLast(a.id to ticks)
+        machines.queue(Trigger.Finish(a.id))
         return null
     }
 
@@ -1768,17 +1823,17 @@ class BedroomWorld private constructor(
                 event("the ${item(it.itemId).name} finished")
             }
         }
-        if (!clock.isMinuteStart(ticks)) return
+        if (!clock.isMinuteStart(ticks)) return machines.afterTick(machineHost)
         applyMinute()
         val minute = clock.minuteOfDay(ticks)
         if (minute % 60 == 0) needs.flush(ticks)
         if (minute % 60 == 0) weatherHour()
-        if (minute % 60 == 0 && behaviors.isNotEmpty()) runBehaviors()
         content.commissions?.let { if (minute == GameClock.parseHhmm(it.arrive)) newCommission(it) }
         if (minute == 0) {
             event("day ${clock.day(ticks)} begins")
             correspond()
         }
+        machines.afterTick(machineHost)
     }
 
     /** What stimulation loses an awake hour now: flat, or scaled by his level when the rules say where it's full ([NeedRules.stimulationDrainAt]). */
@@ -1861,6 +1916,7 @@ class BedroomWorld private constructor(
             custom = LinkedHashMap(custom),
             behaviors = behaviors,
             records = records.export(),
+            machines = machines.export(),
         )
     }
 
@@ -1941,6 +1997,7 @@ class BedroomWorld private constructor(
         }
         behaviors = s.behaviors.filterKeys { content.item(it) != null }
         records.restore(s.records) { content.item(it) != null }
+        machines.restore(s.machines) { content.item(it) != null }
         thingState.clear()
         s.thingState.forEach { (id, kept) -> if (id == SELF || content.item(id) != null) thingState[id] = LinkedHashMap(kept) }
         knownCache = null
@@ -2111,7 +2168,13 @@ class BedroomWorld private constructor(
                     (bareUntil[spec.id] ?: 0) > ticks -> "bare"
                     else -> null
                 }
-                add(EntitySnapshot(EntityId(spec.id), spec.group, cell.x + 0.5f, cell.y + 0.5f, if (spec.blocks) 1f else 0.2f, 0f, state, carriedBy = guy.id.takeIf { spec.id == carrying }, place = layout.placeOf(cell)?.id, color = custom[spec.id]?.color))
+                val look = machines.look(spec.id)
+                add(
+                    EntitySnapshot(
+                        EntityId(spec.id), spec.group, cell.x + 0.5f, cell.y + 0.5f, if (spec.blocks) 1f else 0.2f, 0f, state, carriedBy = guy.id.takeIf { spec.id == carrying }, place = layout.placeOf(cell)?.id, color = custom[spec.id]?.color,
+                        variant = look?.variant, motions = look?.motions.orEmpty(), readout = look?.readout,
+                    ),
+                )
             }
         }
         val d = doing
@@ -2187,6 +2250,7 @@ class BedroomWorld private constructor(
             outcome = last?.outcome,
             news = news(),
             weather = weatherText(),
+            newsPlaces = newsPlaces { layout.place(it)?.name },
         )
     }
 
@@ -2338,7 +2402,8 @@ class BedroomWorld private constructor(
         private const val MAX_KEYS = 20
         private const val MAX_STATEFUL = 200
         /** Hours in a row a thing's code may break before it stops. */
-        private const val BROKEN_HOURS = 3
+        /** What a thing's code wears by, before its id. */
+        private const val THING_WEAR = "thing:"
         private val HEX = Regex("#[0-9a-fA-F]{6}")
         private val NAME = Regex("[\\p{L}\\p{N} '\\-]+")
         private val LOG_KEY = Regex("[A-Za-z0-9_]{1,24}")

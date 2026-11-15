@@ -100,3 +100,4 @@ these hold the outcome. Skim this index before related changes.
 - 2026-11-15 [He writes his own verbs, and what his things do, as JavaScript against a world API; nothing caps it](2026-11-15-he-writes-his-verbs-and-what-his-things-do-as-code.md)
 - 2026-11-15 [He puts his things down at free spots, outdoors included (`put`, the `place` tool)](2026-11-15-he-puts-his-things-down-at-free-spots-outdoors-included.md)
 - 2026-11-15 [Weather is a seeded hourly chain with a hidden pressure; a station outdoors logs it, and he reads it standing there](2026-11-15-weather-is-a-seeded-chain-and-a-station-logs-it.md)
+- 2026-11-15 [His machines show their state, reach what's in their own place, and react to more than the hour; events can belong to a place](2026-11-15-his-machines-show-their-state-reach-their-place-and-react-to-more-than-the-hour.md)

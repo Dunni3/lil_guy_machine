@@ -22,7 +22,8 @@ import kotlin.time.TimeSource
  *
  * [thinkTime] fakes model latency for watched runs; tests and the CLI use zero. [script] is a dev aid
  * for screenshots (LILGUY_SCRIPT): verbs done first, in order, each skipped if it's locked when its
- * turn comes; `put:<thing>:<spot>` puts a thing there instead, skipped unless `put` offers both.
+ * turn comes; `put:<thing>:<spot>` puts a thing there instead, skipped unless `put` offers both. `verb@thing` does it on that thing
+ * (`explore@garden_bench`).
  */
 class BedroomPolicy(
     private val thinkTime: Duration = Duration.ZERO,
@@ -50,7 +51,8 @@ class BedroomPolicy(
         val can = activities.filter { it.locked == null }.map { it.id }.toSet()
         while (script.isNotEmpty()) {
             val verb = script.removeFirst()
-            if (verb in can) return Intent.Do(verb) to "Scripted: $verb."
+            val on = verb.substringAfter('@', "").ifEmpty { null }
+            if (verb.substringBefore('@') in can) return Intent.Do(verb.substringBefore('@'), on = on) to "Scripted: $verb."
             val put = verb.split(':').takeIf { it.size == 3 && it[0] == "put" } ?: continue
             val offered = obs.put ?: continue
             if (put[1] in offered.things + offered.wall.orEmpty() && offered.spots.any { put[2] in it.floor + it.wall.orEmpty() }) {

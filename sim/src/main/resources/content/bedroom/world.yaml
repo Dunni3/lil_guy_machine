@@ -63,6 +63,7 @@ world:
     # only: a thing that goes in a wall stays indoors.
     by_front_door: [15, 13]
     by_garden_bench: [7, 17]
+    by_seedpod_bush: [9, 20]
     pond_shore: [25, 23]
     by_clearing_log: [30, 19]
     trailside: [23, 15]

@@ -63,7 +63,7 @@ fun main() {
         days = days,
         search = get("LILGUY_SEARCH"),
     )).let { s -> get("LILGUY_PAINTER")?.toDoubleOrNull()?.let { secs -> s.copy(painter = { RandomPicker(secs.seconds, seed = System.nanoTime()) }) } ?: s }
-        .let { s -> if (get("LILGUY_INVENTOR").isNullOrEmpty()) s else s.copy(inventor = { CannedInventor() }) }.let { s ->
+        .let { s -> if (get("LILGUY_INVENTOR").isNullOrEmpty()) s else s.copy(inventor = { CannedInventor.of(get("LILGUY_INVENTOR")!!) }) }.let { s ->
         val extra = get("LILGUY_START_ITEMS").orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
             .associate { it.substringBefore('=') to (it.substringAfter('=', "1").toIntOrNull() ?: 1) }
         if (extra.isEmpty()) s else s.copy(startItems = extra)

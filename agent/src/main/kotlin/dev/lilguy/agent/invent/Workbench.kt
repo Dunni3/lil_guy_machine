@@ -31,6 +31,7 @@ data class BuildArgs(
     val place: String?,
     val book: BookDesign?,
     val why: String,
+    val variants: List<VariantPick> = emptyList(),
 )
 
 /**
@@ -128,7 +129,7 @@ class Workbench(
     private fun build(args: JsonObject): JsonObject {
         if (parts.isEmpty()) throw ActionSchema.InvalidReply("there's nothing on the bench yet: add its shapes with add_part first, then build")
         val b = JSON.decodeFromJsonElement(BuildArgs.serializer(), args)
-        val reply = DesignReply(b.name, b.use, b.qualities, b.place, parts.toList(), b.book, b.why)
+        val reply = DesignReply(b.name, b.use, b.qualities, b.place, parts.toList(), b.book, b.why, b.variants)
         val design = reply.design()
         val wrong = problems(design)
         if (wrong.isNotEmpty()) throw ActionSchema.InvalidReply("that can't be built: ${wrong.joinToString("; ")}")
@@ -189,6 +190,17 @@ class Workbench(
             enums = mapOf("look_part.shape" to LookPart.SHAPES),
         )
 
+        /** What a variant's fields mean. */
+        val variantHints = mapOf(
+            "variant_pick.name" to "Its name, lower case, letters, digits or underscores: \"spraying\".",
+            "variant_pick.changes" to "What it changes, a part at a time.",
+            "part_change.part" to "A part you named in its look; every shape with that part changes.",
+            "part_change.color" to "Hex, or null to keep it.",
+            "part_change.glow" to "0 to 1, or null to keep it.",
+            "part_change.scale" to "${dev.lilguy.sim.PartChange.MIN_SCALE} to ${dev.lilguy.sim.PartChange.MAX_SCALE} about its bottom centre, or null to keep it.",
+            "part_change.hidden" to "True to hide it in this look.",
+        )
+
         /** What `build`'s fields mean and may be. */
         private fun buildHints(rules: InventRules, content: BedroomContent) = SchemaHints(
             descriptions = mapOf(
@@ -198,9 +210,10 @@ class Workbench(
                 "build_args.place" to "Only for a viewable thing: floor or wall. Null otherwise.",
                 "build_args.book" to "Only for a readable thing: the book it is. Null otherwise.",
                 "build_args.why" to "Why you're making it, first person, under ${Inventor.WHY_CAP} words.",
+                "build_args.variants" to Inventor.VARIANTS_HINT,
                 "book_design.chapters" to "${rules.book.minChapters} to ${rules.book.maxChapters} chapters, one sentence each of what's in it.",
                 "book_design.skill" to "The one skill reading it raises, or null.",
-            ),
+            ) + variantHints,
             enums = mapOf(
                 "build_args.use" to rules.uses.keys.toList(),
                 "build_args.place" to listOf(InventRules.FLOOR, InventRules.WALL),

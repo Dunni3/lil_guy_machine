@@ -24,6 +24,8 @@ import dev.lilguy.protocol.CodeState
 import dev.lilguy.protocol.CodedVerbView
 import dev.lilguy.protocol.Invented
 import dev.lilguy.protocol.LookShape
+import dev.lilguy.protocol.MotionView
+import dev.lilguy.protocol.VariantChange
 import dev.lilguy.protocol.CellView
 import dev.lilguy.protocol.Clock
 import dev.lilguy.protocol.CommissionView
@@ -151,6 +153,9 @@ class StateReader(private val dbEvery: Duration = 1.seconds) {
                                 )
                             },
                             made.tick,
+                            made.variants.mapValues { (_, changes) ->
+                                changes.map { c -> VariantChange(c.part, c.color, c.glow?.toFloat(), c.rotX?.toFloat(), c.rotY?.toFloat(), c.rotZ?.toFloat(), c.scale?.toFloat(), c.hidden) }
+                            },
                         )
                     },
                 )
@@ -174,7 +179,7 @@ class StateReader(private val dbEvery: Duration = 1.seconds) {
             },
             behaviors = l.behaviors.map { (thing, b) ->
                 val when_ = at(b.tick)
-                BehaviorView(thing, b.says, b.source, b.version, b.failures, b.tick, when_?.day, when_?.time)
+                BehaviorView(thing, b.says, b.source, b.version, b.failures, b.tick, when_?.day, when_?.time, b.every)
             },
             stored = l.stored,
             changed = l.custom.map { (id, c) -> ChangedView(id, c.slot, c.name, c.color) },
@@ -241,7 +246,10 @@ class StateReader(private val dbEvery: Duration = 1.seconds) {
 
     private val EntitySnapshot.isCharacter get() = kind == "guy"
 
-    private fun entity(e: EntitySnapshot) = Entity(e.id.value, e.kind, e.x, e.y, e.height, e.facingDegrees, e.state, e.carriedBy?.value, e.place, e.color)
+    private fun entity(e: EntitySnapshot) = Entity(
+        e.id.value, e.kind, e.x, e.y, e.height, e.facingDegrees, e.state, e.carriedBy?.value, e.place, e.color,
+        e.variant, e.motions.map { MotionView(it.part, it.kind, it.speed.toFloat()) }, e.readout,
+    )
 
     /** The map and its places: the layout's, kept while it's the same one; key-and-door's terrain alone. */
     private var worldFrom: Pair<Any, WorldView>? = null

@@ -62,6 +62,27 @@ interface ScriptWorld {
     fun readings(id: String, key: String): List<Map<String, Any?>> = emptyList()
     /** The weather where [id] stands now: `{ sky, temperature, rain, pressure, light, outdoors }`. */
     fun conditions(id: String): Map<String, Any?> = throw ScriptProblem("there's no weather here")
+
+    // Where things are, and what reaches what ([Reach]).
+    /** The id of the place thing [id] stands in (or `self`: the one he's in); null for a thing that stands nowhere. */
+    fun place(id: String): String?
+    /** `{ you: tiles or null, things: [{ id, name, tiles }] }`: what's within [tiles] tiles' walk of [id]. */
+    fun near(id: String, tiles: Int): Map<String, Any?>
+    /** `{ x, y, place, name }`: his tile and the place he's in. */
+    fun where(): Map<String, Any?>
+    /** The patches he knows of (in [place], or all): `[{ id, name, place, yields, bare, until, hours }]`. */
+    fun patches(place: String?): List<Map<String, Any?>>
+    /** What stands in [place]: `[{ id, name, group, mine }]`. */
+    fun things(place: String): List<Map<String, Any?>>
+    /** Brings a bare [patch] [hours] closer to growing back; the hours left after (0 when it's grown). */
+    fun regrow(patch: String, hours: Double): Double
+
+    // How his things show what they're doing ([Machines]).
+    fun show(id: String, variant: String?)
+    fun motion(id: String, part: String, kind: String?, speed: Double)
+    fun readout(id: String, text: String?)
+    /** In [minutes] game minutes, thing [id]'s `onTimer(world, thing, key)` runs. */
+    fun after(minutes: Int, key: String, id: String?)
 }
 
 /** A bad call from his code, in words he can act on; his script sees it as an `Error`. */
@@ -72,7 +93,7 @@ class ScriptProblem(message: String) : RuntimeException(message)
  * it did), [says] what it said ([ScriptApi] `say` and `console.log`), and [result] the text
  * `finish` returned.
  */
-data class ScriptRun(val result: String?, val says: List<String>, val error: String? = null)
+data class ScriptRun(val result: String?, val says: List<String>, val error: String? = null, val steps: Long = 0)
 
 /**
  * The `world` API: each function with its signature and what it does. The coder's brief and the
@@ -110,6 +131,19 @@ object ScriptApi {
         Fn("record", "world.record(id, key, value)", "logs a number under key on a thing of yours; each key keeps its latest readings (two days of hours); returns how many it keeps", true) { w, a -> w.record(a.str(0, "id"), a.str(1, "key"), a.num(2, "value")) },
         Fn("readings", "world.readings(id, key)", "what a thing of yours has logged under key, oldest first: [{ time: \"d3 04:00\", value }]; a weather station logs temperature, rain, pressure and light", false) { w, a -> w.readings(a.str(0, "id"), a.str(1, "key")) },
         Fn("conditions", "world.conditions(id)", "the weather where a thing of yours stands now: { sky, temperature, rain (mm in the last hour), pressure (hPa), light (0 to 100), outdoors }", false) { w, a -> w.conditions(a.str(0, "id")) },
+
+        // Where things are, and what reaches what.
+        Fn("place", "world.place(id)", "the id of the place a thing stands in (\"self\" for yours), like \"garden\"; null for a thing that stands nowhere", false) { w, a -> w.place(a.str(0, "id")) },
+        Fn("near", "world.near(id, tiles)", "what's within that many tiles' walk of a thing (1 to ${Reach.MOST_TILES}): { you: tiles away or null, things: [{ id, name, tiles }] }", false) { w, a -> w.near(a.str(0, "id"), a.int(1, "tiles")) },
+        Fn("where", "world.where()", "where you are: { x, y, place, name }", false) { w, _ -> w.where() },
+        Fn("patches", "world.patches(place)", "the patches you know of where things grow, in a place or (no argument) all: [{ id, name, place, yields, bare, until, hours }]; hours is how long until a bare one grows back", false) { w, a -> w.patches(a.optStr(0)) },
+        Fn("things", "world.things(place)", "what stands in a place: [{ id, name, group, mine }]", false) { w, a -> w.things(a.str(0, "place")) },
+        Fn("regrow", "world.regrow(patch, hours)", "brings a bare patch that many hours closer to growing back; the code's thing (or you, in a verb) must be in the patch's place; returns the hours left", true) { w, a -> w.regrow(a.str(0, "patch"), a.num(1, "hours")) },
+        // How his things show what they're doing.
+        Fn("show", "world.show(id, variant)", "shows one of the variants your invention was designed with; null for its own look", true) { w, a -> w.show(a.str(0, "id"), a.optStr(1)) },
+        Fn("motion", "world.motion(id, part, kind, speed)", "moves a named part of your invention: kind is ${Machines.MOTIONS.joinToString()}; speed 0.1 to ${Machines.MAX_SPEED.toInt()} (1 is gentle); null kind or speed 0 stops it", true) { w, a -> w.motion(a.str(0, "id"), a.str(1, "part"), a.optStr(2), a.optNum(3) ?: 1.0) },
+        Fn("readout", "world.readout(id, text)", "a short label (up to ${Machines.READOUT} characters) floating over a thing of yours, like \"62%\" or \"watering\"; null clears it", true) { w, a -> w.readout(a.str(0, "id"), a.optStr(1)) },
+        Fn("after", "world.after(minutes, key, id)", "in that many game minutes (1 to ${Machines.MOST_TIMER}), runs onTimer(world, thing, key) of a thing of yours (id; this thing when left out); the same key again resets it", true) { w, a -> w.after(a.int(0, "minutes"), a.str(1, "key"), a.optStr(2)) },
     )
 
     /** The API as lines for a prompt: one per function, plus `say` and the verb's arguments. */
@@ -126,6 +160,7 @@ object ScriptApi {
     private fun List<Any?>.num(i: Int, name: String): Double = (getOrNull(i) as? Double)?.takeIf { !it.isNaN() } ?: throw ScriptProblem("argument ${i + 1} ($name) must be a number")
     private fun List<Any?>.int(i: Int, name: String): Int = num(i, name).let { if (it != Math.floor(it)) throw ScriptProblem("argument ${i + 1} ($name) must be a whole number") else it.toInt() }
     private fun List<Any?>.optInt(i: Int): Int? = getOrNull(i)?.let { int(i, "n") }
+    private fun List<Any?>.optNum(i: Int): Double? = getOrNull(i)?.let { num(i, "speed") }
 
     @Suppress("UNCHECKED_CAST")
     private fun List<Any?>.obj(i: Int, name: String): Map<String, Any?> = getOrNull(i) as? Map<String, Any?> ?: throw ScriptProblem("argument ${i + 1} ($name) must be an object")
@@ -138,9 +173,9 @@ object ScriptApi {
  * Not thread-safe: the sim thread runs it.
  */
 class ScriptSandbox(private val steps: Int = STEPS) {
-    private class OutOfSteps : Error("it ran too long (more than $STEPS steps); a loop that never ends?")
+    private class OutOfSteps(limit: Long) : Error("it ran too long (more than $limit steps); a loop that never ends?")
 
-    private class Counter(var n: Long = 0)
+    private class Counter(val limit: Long, var n: Long = 0)
 
     private val factory = object : ContextFactory() {
         override fun makeContext(): Context = super.makeContext().apply {
@@ -154,7 +189,7 @@ class ScriptSandbox(private val steps: Int = STEPS) {
         override fun observeInstructionCount(cx: Context, instructionCount: Int) {
             val c = cx.getThreadLocal(COUNTER) as? Counter ?: return
             c.n += instructionCount
-            if (c.n > steps) throw OutOfSteps()
+            if (c.n > c.limit) throw OutOfSteps(c.limit)
         }
     }
 
@@ -164,31 +199,44 @@ class ScriptSandbox(private val steps: Int = STEPS) {
     }
 
     /** What's wrong with [source] as code (it doesn't parse, or has no function [needs]), or null. */
-    fun check(source: String, needs: String = FINISH): String? = factory.call { cx ->
+    fun check(source: String, needs: String = FINISH): String? = when (val f = functions(source, listOf(needs))) {
+        is Defined.Broken -> f.problem
+        is Defined.Has -> if (needs !in f.names) "it needs a function $needs(world${if (needs == HOURLY) ", thing" else ""})" else null
+    }
+
+    /** Which of [names] [source] defines as top-level functions, or why it doesn't run. */
+    fun functions(source: String, names: Collection<String>): Defined = factory.call { cx ->
         try {
             val scope = scope(cx)
-            cx.putThreadLocal(COUNTER, Counter())
+            cx.putThreadLocal(COUNTER, Counter(steps.toLong()))
             compile(cx, source).exec(cx, scope)
-            if (scope.get(needs, scope) !is Function) "it needs a function $needs(world${if (needs == HOURLY) ", thing" else ""})" else null
+            Defined.Has(names.filter { scope.get(it, scope) is Function }.toSet())
         } catch (e: OutOfSteps) {
-            "its top level " + e.message
+            Defined.Broken("its top level " + e.message)
         } catch (e: RhinoException) {
-            describe(e)
+            Defined.Broken(describe(e))
         } catch (e: WrappedException) {
-            e.wrappedException.message
+            Defined.Broken(e.wrappedException.message ?: e.wrappedException.toString())
         }
     }
 
+    sealed interface Defined {
+        data class Has(val names: Set<String>) : Defined
+        data class Broken(val problem: String) : Defined
+    }
+
     /**
-     * Calls [fn] (`finish` or `canDo`) of [source] with [world] as its `world`. [readOnly]: a
-     * function that changes anything breaks (for `canDo`). [args] and [verb] are `world.args` and
-     * `world.verb`. A missing [fn] returns an empty run.
+     * Calls [fn] (`finish` or `canDo`, or a thing's trigger) of [source] with [world] as its `world`
+     * and [extra] after it. [readOnly]: a function that changes anything breaks (for `canDo`). [args]
+     * and [verb] are `world.args` and `world.verb`. [limit]: the most steps it may take, at most
+     * [steps]. A missing [fn] returns an empty run. [ScriptRun.steps] is about how many it took.
      */
-    fun call(source: String, fn: String, world: ScriptWorld, args: Map<String, String>, verb: String, readOnly: Boolean = false, extra: Any? = null): ScriptRun {
+    fun call(source: String, fn: String, world: ScriptWorld, args: Map<String, String>, verb: String, readOnly: Boolean = false, extra: List<Any?> = emptyList(), limit: Long = steps.toLong()): ScriptRun {
         val says = mutableListOf<String>()
+        val counter = Counter(minOf(limit, steps.toLong()))
         return factory.call { cx ->
             try {
-                cx.putThreadLocal(COUNTER, Counter())
+                cx.putThreadLocal(COUNTER, counter)
                 val scope = scope(cx)
                 compile(cx, source).exec(cx, scope)
                 val f = scope.get(fn, scope) as? Function ?: return@call ScriptRun(null, emptyList())
@@ -197,16 +245,16 @@ class ScriptSandbox(private val steps: Int = STEPS) {
                 val console = cx.newObject(scope)
                 ScriptableObject.putProperty(console, "log", lambda(scope, "log") { a -> say(says, a.joinToString(" ") { it?.let(::text) ?: "null" }) })
                 ScriptableObject.putProperty(scope, "console", console)
-                val out = f.call(cx, scope, scope, if (extra == null) arrayOf(api) else arrayOf(api, toJs(cx, scope, extra)))
-                ScriptRun(out.takeIf { it != null && it !is Undefined }?.let { Context.toString(it) }?.take(TEXT), says.toList())
+                val out = f.call(cx, scope, scope, (listOf<Any?>(api) + extra.map { toJs(cx, scope, it) }).toTypedArray())
+                ScriptRun(out.takeIf { it != null && it !is Undefined }?.let { Context.toString(it) }?.take(TEXT), says.toList(), steps = counter.n)
             } catch (e: OutOfSteps) {
-                ScriptRun(null, says.toList(), "$fn " + e.message)
+                ScriptRun(null, says.toList(), "$fn " + e.message, counter.n)
             } catch (e: RhinoException) {
-                ScriptRun(null, says.toList(), describe(e))
+                ScriptRun(null, says.toList(), describe(e), counter.n)
             } catch (e: WrappedException) {
-                ScriptRun(null, says.toList(), (e.wrappedException as? ScriptProblem)?.message ?: e.wrappedException.toString())
+                ScriptRun(null, says.toList(), (e.wrappedException as? ScriptProblem)?.message ?: e.wrappedException.toString(), counter.n)
             } catch (e: StackOverflowError) {
-                ScriptRun(null, says.toList(), "$fn recursed too deep")
+                ScriptRun(null, says.toList(), "$fn recursed too deep", counter.n)
             }
         }
     }
