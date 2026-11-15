@@ -7,6 +7,7 @@ import dev.lilguy.decision.Attempt
 import dev.lilguy.decision.DecisionFailed
 import dev.lilguy.decision.DecisionModel
 import dev.lilguy.decision.DecisionRequest
+import dev.lilguy.decision.Looked
 import dev.lilguy.decision.Usage
 import dev.lilguy.sim.EntityId
 import dev.lilguy.sim.Intent
@@ -67,8 +68,13 @@ class AgentRuntime(
         val schema: JsonObject? = null,
         /** The long-term memories and earlier thoughts put into this decision's prompt. */
         val recalled: List<String> = emptyList(),
-        /** When [intent]'s verb writes a thought before it starts: what he thought, or why there's no thought. */
+        /**
+         * When [intent]'s verb writes a thought before it starts: what he thought, or why there's no
+         * thought. For a model that calls tools, what it said he thought as it chose.
+         */
         val thought: Thought? = null,
+        /** What a model that calls tools looked at before it chose ([dev.lilguy.decision.ToolSet.looks]). */
+        val looks: List<Looked> = emptyList(),
     ) {
         val fellBack: Boolean get() = error != null
     }
@@ -148,6 +154,7 @@ class AgentRuntime(
                     latency = decision.latency,
                     usage = decision.usage,
                     attempts = decision.attempts,
+                    looks = decision.looks,
                 )
             } catch (e: TimeoutCancellationException) {
                 base.copy(intent = fallback(e), latency = started.elapsedNow(), error = "timed out after ${request.timeout}")
@@ -161,12 +168,15 @@ class AgentRuntime(
                     error = e.message ?: e.toString(),
                     usage = e.usage,
                     attempts = e.attempts,
+                    looks = e.looked,
                 )
             } catch (e: Exception) {
                 base.copy(intent = fallback(e), latency = started.elapsedNow(), error = e.message ?: e.toString())
             } finally {
                 decidingSince = null
             }
+            // A model that calls tools says what he thinks as he chooses: that's his thought of the moment.
+            val spoken = if (request.tools != null && record.error == null && forced == null) record.rationale?.let { longTerm?.thought(obs, it, model.id) } else null
             val brief = prompts.persona?.let { AgentMemory.Brief(it(), PromptBuilder.situationOf(request), request.system) }
             // A verb's `before` authored ops (a thought) are more model calls before the sim starts it; he stands still meanwhile, as he does while deciding.
             val thought = if (longTerm != null && brief != null) {
@@ -181,7 +191,7 @@ class AgentRuntime(
             if (reflection != null && (record.intent as? Intent.Do)?.activity == reflection.first) sinceReflection = 0 else sinceReflection++
             memory.record(obs.tick, record.intent, thought?.text, record.rationale)
             recent = memory.recent()
-            val done = record.copy(thought = thought)
+            val done = record.copy(thought = thought ?: spoken)
             lastDecision = done
             onDecision(done)
             world.submit(id, record.intent)

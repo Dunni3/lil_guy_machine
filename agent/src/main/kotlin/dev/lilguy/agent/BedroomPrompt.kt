@@ -209,7 +209,7 @@ object BedroomPrompt {
      * writes is left out). [self] is his self-model as the prompt shows it, or null when nothing
      * revises it ([Persona.text]). [tools]: he acts by calling one ([BedroomTools]), not by writing a reply.
      */
-    fun system(content: BedroomContent, ticksPerMinute: Int, self: String? = null, tools: Boolean = false): String {
+    fun system(content: BedroomContent, ticksPerMinute: Int, self: String? = null, tools: Boolean = false, looks: Set<String> = emptySet()): String {
         val r = content.needs
         val actions = examples(content, ticksPerMinute).joinToString("\n") { (intent, what) ->
             "- ${PromptBuilder.tag(intent)}: $what\n  ${PromptBuilder.exampleJson.encodeToString(Intent.serializer(), intent)}"
@@ -261,7 +261,7 @@ object BedroomPrompt {
             "- $lists",
             "- Nothing ends the game. An action that can't be done fails at once, and ${if (tools) "its result" else "lastResult"} says why. Read it and choose something else rather than repeating it.",
         ).joinToString("\n")
-        if (tools) return toolSystem(content, self, wants, life, music)
+        if (tools) return toolSystem(content, self, wants, life, music, looks)
         return """
             |${Persona.text(content, self)}
             |
@@ -289,7 +289,7 @@ object BedroomPrompt {
     }
 
     /** [system] for a model that acts by calling tools: no action examples or reply format, and the status message's fields. */
-    private fun toolSystem(content: BedroomContent, self: String?, wants: String, life: String, music: String): String = """
+    private fun toolSystem(content: BedroomContent, self: String?, wants: String, life: String, music: String, looks: Set<String>): String = """
         |${Persona.text(content, self)}
         |
         |You live in this bedroom. You need money $wants. Each turn you choose what to do next by calling one tool; the game carries it out, then tells you how it went and how things stand.
@@ -297,7 +297,8 @@ object BedroomPrompt {
         |How your life works:
         |$life
         |
-        |Call exactly one tool each turn: the one thing you do next. Put your reasoning, in a sentence or two, in its `reason`. Use only the values its arguments allow.
+        |Each turn ends with one tool that acts: the one thing you do next. Its `thought` is what goes through your head as you choose it, in your own voice: it's your thought of the moment, and it's what you'll remember of it later. Use only the values its arguments allow.
+${lookText(looks)}
         |
         |Your earlier calls are your recent actions; each result says when it started and how it ended. Then comes how things stand now, as JSON:
         |- clock: day and time. money: dollars. needs: ${needNames(content).let { it.dropLast(1).joinToString(", ") + " and " + it.last() }}, 0 to 100.
@@ -308,6 +309,16 @@ object BedroomPrompt {
         |
         |After that you may see what you remember from earlier (memories, and thoughts you had), and what you decided the last time you stopped to think. Those thoughts are your own words: let the plans in them shape what you do with your hours.
     """.trimMargin()
+
+    /** The system prompt's paragraph on [looks] ("recall", "ask"), with its blank line before; empty for none. */
+    private fun lookText(looks: Set<String>): String {
+        val what = listOfNotNull(
+            "`recall` searches your memories and earlier thoughts for something you're trying to remember".takeIf { "recall" in looks },
+            "`ask` asks how something in your world works".takeIf { "ask" in looks },
+        )
+        if (what.isEmpty()) return ""
+        return "\n        |\n        |Before you act you may look, up to ${BedroomTools.MAX_LOOKS} times a turn, and looking takes no time: ${what.joinToString(", and ")}. Look when it would change what you do: what you meant to do, how something went last time, how to reach something you can't do yet."
+    }
 
     /**
      * The reply schema for one observation: do() takes only activities that aren't locked, and

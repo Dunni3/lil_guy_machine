@@ -84,6 +84,8 @@ data class Decision<A>(
     val raw: String,
     /** Every reply that came back, in order; the last one is [raw]. Empty for in-process models. */
     val attempts: List<Attempt> = emptyList(),
+    /** What it looked at first ([ToolSet.looks]), in order. */
+    val looks: List<Looked> = emptyList(),
 )
 
 data class Usage(val promptTokens: Int = 0, val completionTokens: Int = 0) {
@@ -102,4 +104,6 @@ class DecisionFailed(
     val attempts: List<Attempt> = emptyList(),
     val usage: Usage = Usage(),
     cause: Throwable? = null,
+    /** What it looked at before it failed. */
+    val looked: List<Looked> = emptyList(),
 ) : Exception(message, cause)

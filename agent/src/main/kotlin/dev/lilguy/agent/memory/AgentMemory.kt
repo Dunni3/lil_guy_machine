@@ -150,7 +150,13 @@ class AgentMemory(
     val writer: String? get() = summarizer?.writer
 
     /** The model that writes his thoughts, or null. */
-    val thoughtWriter: String? get() = authors.writer("thought")
+    val thoughtWriter: String? get() = authors.writer("thought") ?: decidingThinker
+
+    /** The deciding model, once it has said what it thinks as it chose ([thought]). */
+    @Volatile private var decidingThinker: String? = null
+
+    /** True when he can ask how his world works ([ask]). */
+    val canAsk: Boolean get() = thinker?.oracle != null
 
     /** The model that revises his self-model, or null. */
     val selfWriter: String? get() = selfModeler?.writer
@@ -349,6 +355,62 @@ class AgentMemory(
         }
     }
 
+    /**
+     * What he thought as he chose, said by the deciding model ([thinker]) rather than a think: it
+     * goes into the event stream and becomes his [plan], like a kept thought. Returns it, or null
+     * for a blank one or the same words as his latest.
+     */
+    fun thought(obs: Observation, text: String, thinker: String): Thought? {
+        val words = text.trim()
+        if (words.isEmpty() || words == plan?.text) return null
+        decidingThinker = thinker
+        val t = Thought(obs.tick, obs.clock?.day, obs.clock?.time, thinker, words, raw = null, usage = dev.lilguy.decision.Usage(), latency = kotlin.time.Duration.ZERO)
+        thoughtLog += t
+        keptThoughts += append(obs, EventKind.Thought, words) to t
+        plan = t
+        return t
+    }
+
+    /**
+     * He tries to remember [query]: the few memories, day memories and earlier thoughts that answer
+     * it best, oldest first, as text lines. Jev scores them against it when there's a [scorer];
+     * otherwise by keywords. Any of his life, not only what recall would show now.
+     */
+    suspend fun search(query: String, obs: Observation, n: Int = SEARCH_RESULTS): List<String> {
+        val all = (store.memories(run, 2).map { Recollection(Recollection.Kind.Day, it.id, "Day ${it.span.toDay ?: ""}".trimEnd(), it.text, it.importance, orderOf(it.span.toDay, it.span.toTime) ?: it.toId) } +
+            store.memories(run, 1).map { Recollection(Recollection.Kind.Memory, it.id, it.span.label, it.text, it.importance, orderOf(it.span.toDay, it.span.toTime) ?: it.toId) } +
+            keptThoughts.map { (id, t) -> Recollection(Recollection.Kind.Thought, id, Span(t.day, t.time, t.day, t.time).label, t.text.orEmpty(), null, orderOf(t.day, t.time) ?: id) })
+            .sortedBy { it.order }.takeLast(SEARCHED)
+        if (all.isEmpty()) return emptyList()
+        val scores = scorer?.search(buildJsonObject {
+            about?.let { put("who", it) }
+            obs.clock?.let { put("time", "day ${it.day}, ${it.time}") }
+            put("looking_for", query)
+        }, all).orEmpty()
+        val picked = if (scores.isNotEmpty()) all.filter { (scores[it.key] ?: 0.0) >= SEARCH_FLOOR }.sortedByDescending { scores[it.key] }.take(n)
+        else Keywords.rank(all, query, n, { it.text }, { it.order }).map { it.first }
+        return picked.sortedBy { it.order }.map(rule::render)
+    }
+
+    /**
+     * He asks how his world works, as he would while thinking: the oracle answers from the world's
+     * docs and [situation]. A kept answer goes into the event stream and his later prompts. Null
+     * when nothing can answer ([canAsk]).
+     */
+    suspend fun ask(question: String, obs: Observation, situation: String): Answer? {
+        val oracle = thinker?.oracle ?: return null
+        val started = kotlin.time.TimeSource.Monotonic.markNow()
+        val (opened, text, usage) = oracle.answer(question, situation)
+        val reply = Thought(obs.tick, obs.clock?.day, obs.clock?.time, oracle.writer, text.getOrNull(), null, usage, started.elapsedNow(), text.exceptionOrNull()?.let { "answer: ${it.message ?: it}" })
+        val answer = Answer(question, opened, reply)
+        onAnswer(answer)
+        reply.text?.let { t ->
+            append(obs, EventKind.Answer, "I asked \"$question\": $t")
+            keptAnswers += answer
+        }
+        return answer
+    }
+
     /** He's going to sleep on [day]: the rest of the day becomes memories, then a day memory, then his self-model is revised. */
     private suspend fun night(s: Summarizer, day: Int?) {
         s.flush()
@@ -409,7 +471,8 @@ class AgentMemory(
         val inDays = days.lastOrNull()?.toId ?: 0L
         val memories = store.memories(run, 1).filter { it.id > inDays || (today != null && (it.span.toDay ?: 0) >= today - 1) }
         val current = plan
-        val thoughts = keptThoughts.filter { (_, t) -> !(current != null && t.tick == current.tick && t.text == current.text) }
+        // Thoughts of today and yesterday; older ones live on in the day memories, as the memories do.
+        val thoughts = keptThoughts.filter { (_, t) -> !(current != null && t.tick == current.tick && t.text == current.text) && (today == null || (t.day ?: today) >= today - 1) }
         return days.map { Recollection(Recollection.Kind.Day, it.id, "Day ${it.span.toDay ?: ""}".trimEnd(), it.text, it.importance, orderOf(it.span.toDay, it.span.toTime) ?: it.toId) } +
             memories.map { Recollection(Recollection.Kind.Memory, it.id, it.span.label, it.text, it.importance, orderOf(it.span.toDay, it.span.toTime) ?: it.toId) } +
             thoughts.map { (id, t) ->
@@ -453,5 +516,12 @@ class AgentMemory(
 
         /** How many of his latest answers each prompt shows. */
         const val SHOWN_ANSWERS = 2
+
+        /** Most recollections one [search] returns, of the latest [SEARCHED] it looks through. */
+        const val SEARCH_RESULTS = 5
+        const val SEARCHED = 150
+
+        /** Below this score (0 to 1) a recollection doesn't answer the search: "touches the same things". */
+        const val SEARCH_FLOOR = 0.5
     }
 }

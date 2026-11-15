@@ -85,3 +85,4 @@ these hold the outcome. Skim this index before related changes.
 - 2026-11-15 [Fun drains in proportion to its level, and a subject he has never drawn is new](2026-11-15-fun-drains-in-proportion-and-new-subjects-are-new.md)
 - 2026-11-15 [Clay replaces crayon; models stay part lists, with clay fields; the web app is built first and the TV viewer rebuilt later](2026-11-15-clay-replaces-crayon-and-models-stay-part-lists.md)
 - 2026-11-15 [A text model decides by calling his verbs as tools; Jev keeps recall, significance and painting](2026-11-15-a-text-model-decides-by-calling-his-verbs-as-tools.md)
+- 2026-11-15 [A model that calls tools can look before it acts, and thinks as it chooses; no think verb for it](2026-11-15-a-tool-model-looks-before-it-acts-and-thinks-as-it-chooses.md)

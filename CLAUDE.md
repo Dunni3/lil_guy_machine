@@ -62,7 +62,8 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   (`BedroomContent.taught`, `BedroomWorld.knownContent()`, which the prompt is built from).
   A model that calls tools (an `openai_compat` endpoint) decides by calling one of his verbs as a tool
   (`agent/.../BedroomTools.kt`, `PromptBuilder.ToolTurn`; `docs/decisions/2026-11-15-a-text-model-decides-*`): his recent actions
-  go back as his own calls with their outcomes as results. `menu.yaml` groups his options into a tree for Jev, who walks down it by beam search
+  go back as his own calls with their outcomes as results; each call's `thought` is his thought of the moment (`AgentMemory.thought`), and before
+  acting he may look (`ToolSet.looks`: `recall`, `AgentMemory.search`; `ask`, the oracle), so he isn't offered think. `menu.yaml` groups his options into a tree for Jev, who walks down it by beam search
   (`decision/.../BeamSearch.kt`, `beam` on the endpoint) instead of picking from one flat list. Skills
   (`vocabulary.skills`, rules.yaml `skills`) rise with `practice` and reading. Needs are energy,
   fullness, mood, stimulation and frustration. `make content-docs` regenerates the content's
