@@ -55,7 +55,7 @@ replays whatever came after the save: at most the last 10 game minutes, plus wha
 Anyone can make an account (an email and a password) and write him letters from the **Write to him** button on
 `/room/`. The host keeps accounts and letters in `runs/accounts.db` (`LILGUY_ACCOUNTS_DB`; `none` turns letters off),
 never synced to the server's API. While a run is going it puts each new letter through his mail hatch, he opens it with
-`read_mail`, and the sender's list shows when he has. Limits: 1000 characters, 5 letters an account a day, and 5 wrong
+`read_mail`, and the sender's list shows when he has. Limits: 1000 characters a letter (as many letters as anyone likes), and 5 wrong
 passwords in a row lock an email for 15 minutes. The calls are listed in `protocol/.../Mail.kt`; the design is in
 `docs/decisions/2026-11-15-anyone-with-an-account-can-write-him-letters.md`.
 

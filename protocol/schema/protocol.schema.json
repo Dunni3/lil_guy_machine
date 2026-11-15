@@ -1840,12 +1840,6 @@
                         "$ref": "#/$defs/HisLetter"
                     }
                 },
-                "per_day": {
-                    "type": "integer"
-                },
-                "left": {
-                    "type": "integer"
-                },
                 "max_length": {
                     "type": "integer"
                 }
@@ -1853,8 +1847,6 @@
             "required": [
                 "letters",
                 "replies",
-                "per_day",
-                "left",
                 "max_length"
             ],
             "additionalProperties": false

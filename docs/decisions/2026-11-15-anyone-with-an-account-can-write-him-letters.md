@@ -19,7 +19,7 @@ after making an account, and an account should be no more than an email and a pa
   admin login is unchanged and separate.
 - **Guessing is slowed per email:** 5 wrong passwords in a row lock that email for 15 minutes. Signing
   in says "wrong email or password" either way; signing up does say when an email is taken.
-- **Letters are at most 1000 characters, 5 an account in any 24 hours,** signed with a name the sender
+- **Letters are at most 1000 characters, with no cap on how many** (there was 5 an account a day at first), signed with a name the sender
   picks (at most 40 characters). He sees the name, never the email.
 - **They come in through the mail hatch.** The life polls the store every 2 s (at once after a send)
   and, only while a run is going, posts waiting letters into the world (`BedroomWorld.post`), which
