@@ -21,6 +21,32 @@ endpoints:
     base_url: https://api.typesafe.ai
     api_key_env: TYPESAFE_API_KEY
     model: jev-latest
+    price_in: 0.042
+    price_out: 0
+  # Google's OpenAI-compatible endpoint. Gemini 3.5 models think before they answer unless told not to, and
+  # bill the thinking as output, so reasoning_effort: low is most of the saving on gemini. Prices are
+  # Google's list prices (Nov 2026).
+  gemini:
+    kind: openai_compat
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai
+    api_key_env: GEMINI_API_KEY
+    model: gemini-3.5-flash
+    timeout_s: 60
+    reasoning_effort: low
+    price_in: 1.5
+    price_out: 9
+  # The live life's writer: memories, thoughts, the self-model, shopping, commissions. About a tenth of
+  # gemini's cost a call, with thoughts and memories as good in side-by-side replays.
+  gemini-lite:
+    kind: openai_compat
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai
+    api_key_env: GEMINI_API_KEY
+    model: gemini-3.5-flash-lite
+    timeout_s: 60
+    reasoning_effort: low  # it seldom thinks, but once spent 20k tokens on a one-line thought
+    max_tokens: 4096       # counts the thinking too, so it caps a runaway at about a cent
+    price_in: 0.3
+    price_out: 2.5
   hosted:
     kind: openai_compat
     base_url: https://api.provider.example/v1
@@ -35,8 +61,8 @@ endpoints:
 agents:
   - character: hero
     endpoint: typesafe        # swap to "local" with no code change
-    memory_endpoint: hosted   # writes long-term memories; must write text (not typesafe). Optional.
-    writer_endpoint: hosted   # writes his thoughts (think), his self-model each night and the day's
+    memory_endpoint: gemini-lite # writes long-term memories; must write text (not typesafe). Optional.
+    writer_endpoint: gemini-lite # writes his thoughts (think), his self-model each night and the day's
                               # commission; must write text. Defaults to memory_endpoint; "none" and
                               # he isn't offered think. (journal_endpoint is the old name, still read.)
     recall_endpoint: typesafe # scores which memories and thoughts reach each prompt, and each event's

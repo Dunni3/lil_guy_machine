@@ -52,6 +52,8 @@ class ModelSetup(
     val painter: (() -> DecisionModel)? = null,
     /** A fresh inventor for each run that designs what he invents instead of the writer; a dev aid for watching him invent with no endpoint (LILGUY_INVENTOR). */
     val inventor: (() -> Inventing)? = null,
+    /** Game minutes per real second the first run starts at; the Run page changes it. */
+    val speed: Int = RunSettings.DEFAULT_SPEED,
 ) {
     class Prices(val decision: TokenPrice? = null, val memory: TokenPrice? = null, val writer: TokenPrice? = null, val recall: TokenPrice? = null)
 
@@ -65,10 +67,11 @@ class ModelSetup(
         startItems: Map<String, Int> = this.startItems,
         painter: (() -> DecisionModel)? = this.painter,
         inventor: (() -> Inventing)? = this.inventor,
-    ) = ModelSetup(create, scenario, ticksPerMinute, timeout, logDir, notice, memoryModel, days, writerModel, prices, paints, recallScorer, startItems, painter, inventor)
+        speed: Int = this.speed,
+    ) = ModelSetup(create, scenario, ticksPerMinute, timeout, logDir, notice, memoryModel, days, writerModel, prices, paints, recallScorer, startItems, painter, inventor, speed)
 
     /** The Run page's starting values; the viewer changes them from there. */
-    val settings: RunSettings get() = RunSettings(days, ticksPerMinute = ticksPerMinute)
+    val settings: RunSettings get() = RunSettings(days, speed = speed, ticksPerMinute = ticksPerMinute)
 
     fun logFor(run: Int, modelId: String): DecisionLog? =
         logDir?.let { DecisionLog(File(it, "run-%03d.jsonl".format(run)), run = "${it.name}-$run", model = modelId) }
