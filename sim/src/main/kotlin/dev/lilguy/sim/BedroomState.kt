@@ -64,6 +64,8 @@ data class BedroomState(
     val explored: List<String> = emptyList(),
     /** Patch to the tick it grows back by, while bare. */
     val bare: Map<String, Long> = emptyMap(),
+    /** Rooms built onto the house: room id to site id. */
+    val house: Map<String, String> = emptyMap(),
 ) {
     @Serializable
     data class PendingNeed(val need: String, val reason: String, val delta: Double)

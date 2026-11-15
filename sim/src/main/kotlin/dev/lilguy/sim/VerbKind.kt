@@ -52,8 +52,8 @@ enum class VerbKind(
     @SerialName("transformative")
     Transformative(
         "transformative", "changes the state of an item he has",
-        allowed = setOf("need", "rate", "set_state"),
-        required = listOf(setOf("set_state")),
+        allowed = setOf("need", "rate", "set_state", "place_room"),
+        required = listOf(setOf("set_state", "place_room")),
     ),
 
     /** Writing something that persists: a thought, later letters. */

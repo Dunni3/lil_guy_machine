@@ -19,7 +19,17 @@ data class WorldContent(
     val slots: Map<String, List<Int>> = emptyMap(),
     /** What grows on the land: a patch (an item on a slot) and what collecting there yields. */
     val finds: List<FindSpec> = emptyList(),
+    /** Rooms he can build onto the house. */
+    val rooms: List<RoomModule> = emptyList(),
+    /** Where a room can stand. */
+    val sites: List<SiteSpec> = emptyList(),
 ) {
+    fun room(id: String): RoomModule? = rooms.firstOrNull { it.id == id }
+
+    fun roomFor(plan: String): RoomModule? = rooms.firstOrNull { it.plan == plan }
+
+    fun site(id: String): SiteSpec? = sites.firstOrNull { it.id == id }
+
     fun find(patch: String): FindSpec? = finds.firstOrNull { it.patch == patch }
 
     val width: Int get() = lot.firstOrNull()?.length ?: 0
@@ -42,6 +52,19 @@ data class WorldContent(
             if (!ok) add("world slot '$name' at $at must be a walkable tile of the lot")
         }
         finds.forEach { f -> if (f.regrowHours <= 0) add("find ${f.patch}: regrow_hours must be above 0") }
+        rooms.forEach { r ->
+            if (r.rows.isEmpty() || r.rows.any { it.length != r.rows[0].length }) add("room ${r.id}: rows must all be the same length")
+            r.rows.forEach { row -> row.forEach { c -> if (c != '#' && c != '.' && c.toString() !in r.slots) add("room ${r.id}: '$c' isn't '#', '.' or one of its slots") } }
+            if (r.id == house.room || places.any { it.id == r.id }) add("room ${r.id} has the id of another place")
+            sites.forEach { s ->
+                val w = r.rows.firstOrNull()?.length ?: 0
+                if (s.at.size != 2 || s.at[0] < 0 || s.at[1] < 0 || s.at[0] + w > width || s.at[1] + r.rows.size > height) add("room ${r.id} doesn't fit on ${s.id}")
+            }
+        }
+        sites.forEach { s ->
+            if (s.door.size != 2) add("site ${s.id}: door must be [x, y]")
+            if (s.nextTo != null && site(s.nextTo) == null) add("site ${s.id} is next to '${s.nextTo}', which isn't a site")
+        }
         if (finds.map { it.patch }.toSet().size != finds.size) add("each patch may have one find")
         val ids = places.map { it.id }
         if (ids.size != ids.toSet().size) add("world place ids must be unique")
@@ -64,6 +87,31 @@ data class HouseSpec(
     val at: List<Int>,
     /** The front door: a tile of the bedroom's outer wall, from its top-left, that opens onto the lot. */
     val door: List<Int>,
+)
+
+/** A room he can build: its [plan] (the item bought), its rows (walls included) and slots, what comes with it, and what it's like to him. */
+@Serializable
+data class RoomModule(
+    val id: String,
+    val plan: String,
+    val name: String,
+    val says: String = "",
+    val qualities: Map<String, Double> = emptyMap(),
+    val rows: List<String>,
+    /** Map letter to slot name. */
+    val slots: Map<String, String> = emptyMap(),
+    /** Items that come with the room, standing in its slots. */
+    val items: List<String> = emptyList(),
+)
+
+/** Where a room can stand: its top-left tile on the lot, the doorway into the room it joins, and the site whose room that is (null: the bedroom). */
+@Serializable
+data class SiteSpec(
+    val id: String,
+    val name: String,
+    val at: List<Int>,
+    val door: List<Int>,
+    @SerialName("next_to") val nextTo: String? = null,
 )
 
 /** A patch ([patch], an item on a lot slot) that [yields] an item when he collects there, then is bare for [regrowHours]. */

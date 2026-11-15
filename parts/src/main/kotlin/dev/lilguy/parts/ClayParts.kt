@@ -32,6 +32,7 @@ object ClayParts {
         "bed", "desk", "chair", "easel", "record_player", "plant", "rug", "mail_hatch", "picture_rail", "poster",
         "lava_lamp", "mushroom_lamp", "string_lights", "cloud_light",
         "microscope", "garden_bench", "forest_trail", "clearing_log", "pond_edge",
+        "lab_bench", "lab_shelf", "armchair", "floor_lamp",
     ) + PATCHES.flatMap { listOf(it, "${it}_bare") }
 
     /** The clay model of item [id]. */
@@ -59,6 +60,10 @@ object ClayParts {
             "forest_trail" -> trailSign()
             "clearing_log" -> log(1.3f)
             "pond_edge" -> pondEdge()
+            "lab_bench" -> labBench()
+            "lab_shelf" -> labShelf()
+            "armchair" -> armchair()
+            "floor_lamp" -> floorLamp()
             else -> {
                 val bare = id.endsWith("_bare")
                 when (id.removeSuffix("_bare")) {
@@ -296,6 +301,47 @@ object ClayParts {
         cylinder(INK, 0.0f, 0.99f, -0.14f, 0.05f, 0.07f, 0.05f, rotX = -30f)
         box(LENS, 0f, 0.6f, 0.06f, 0.14f, 0.012f, 0.1f, round = 0.004f)
         for (sx in listOf(-0.16f, 0.18f)) cylinder(LENS, sx, 0.55f, 0.12f, 0.06f, 0.09f, 0.06f, taper = 0.85f, opacity = 0.7f)
+    }
+
+    /** A white bench with flasks and a glowing analyser screen, as the sketch's lab. */
+    private fun PartList.labBench() {
+        box(TRIM, 0f, 0f, 0f, 0.96f, 0.62f, 0.6f, round = 0.04f)
+        box("#e9d2b6", 0f, 0.62f, 0f, 1.0f, 0.05f, 0.64f, round = 0.02f)
+        for ((x, c) in listOf(-0.3f to "#bfeee0", -0.12f to "#f6c4cf")) {
+            sphere(LENS, x, 0.67f, 0.08f, 0.14f, 0.14f, 0.14f, opacity = 0.6f)
+            cylinder(c, x, 0.68f, 0.08f, 0.09f, 0.05f, 0.09f)
+            cylinder(LENS, x, 0.79f, 0.08f, 0.04f, 0.1f, 0.04f, opacity = 0.6f)
+        }
+        box(INK, 0.24f, 0.67f, -0.12f, 0.34f, 0.26f, 0.2f, round = 0.03f)
+        box(AMBER, 0.24f, 0.72f, -0.015f, 0.26f, 0.16f, 0.01f, round = 0.01f, glow = 0.8f)
+    }
+
+    private fun PartList.labShelf() {
+        // Open at the front: a back, two sides, a top and boards, so the jars show.
+        box(WOOD_D, 0f, 0f, -0.15f, 0.8f, 1.7f, 0.04f, round = 0.015f)
+        for (sx in listOf(-0.38f, 0.38f)) box(WOOD_D, sx, 0f, 0f, 0.04f, 1.7f, 0.34f, round = 0.015f)
+        box(WOOD_D, 0f, 1.66f, 0f, 0.8f, 0.04f, 0.34f, round = 0.015f)
+        for (y in listOf(0.02f, 0.45f, 0.9f, 1.35f)) box(WOOD, 0f, y, 0.02f, 0.72f, 0.03f, 0.3f, round = 0.01f)
+        val colors = listOf("#bfeee0", "#86b96a", "#6fb3c9", "#ffc47a")
+        for (row in 0 until 3) for (i in 0 until 3) {
+            val x = -0.24f + i * 0.24f
+            val y = 0.48f + row * 0.45f
+            cylinder(LENS, x, y, 0.06f, 0.12f, 0.16f, 0.12f, opacity = 0.5f)
+            sphere(colors[(row + i) % colors.size], x, y + 0.02f, 0.06f, 0.08f, 0.08f, 0.08f)
+        }
+    }
+
+    private fun PartList.armchair() {
+        box(CORAL, 0f, 0f, 0f, 0.84f, 0.42f, 0.8f, round = 0.12f)
+        box(CORAL, 0f, 0.42f, -0.3f, 0.84f, 0.5f, 0.2f, round = 0.1f)
+        for (sx in listOf(-0.36f, 0.36f)) box(CORAL, sx, 0.42f, 0f, 0.14f, 0.2f, 0.7f, round = 0.07f)
+        box(PEACH, 0f, 0.42f, 0.06f, 0.56f, 0.1f, 0.56f, round = 0.05f)
+    }
+
+    private fun PartList.floorLamp() {
+        cylinder(INK, 0f, 0f, 0f, 0.34f, 0.04f, 0.34f, round = 0.015f)
+        cylinder(BRASS, 0f, 0.04f, 0f, 0.04f, 1.36f, 0.04f)
+        cylinder(SHADE, 0f, 1.3f, 0f, 0.46f, 0.34f, 0.46f, taper = 0.6f, glow = 1f)
     }
 
     private fun PartList.gardenBench() {

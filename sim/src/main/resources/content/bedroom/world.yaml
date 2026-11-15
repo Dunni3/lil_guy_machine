@@ -67,6 +67,49 @@ world:
     - { patch: beetle_log, yields: violet_beetle, regrow_hours: 48 }
     - { patch: pond_patch, yields: pond_water, regrow_hours: 12 }
     - { patch: seedpod_bush, yields: amber_seed_pod, regrow_hours: 36 }
+  # Rooms he can add to the house: each is bought as a plan (an item in items.yaml, group room), then
+  # built on a site with `build_room`, which also moves a built one. Rows as room.yaml's, walls
+  # included; a slot letter is where one of its `items` stands, which come with the room. `qualities`
+  # are what the room is like to him, scored by his affinities into comfort while it stands.
+  rooms:
+    - id: lab
+      plan: lab_plan
+      name: the lab
+      says: a small lab with a bench and a tall shelf
+      qualities: { strange: 1, bright: 1 }
+      rows:
+        - "########"
+        - "#L....S#"
+        - "#......#"
+        - "#......#"
+        - "#......#"
+        - "#......#"
+        - "#......#"
+        - "########"
+      slots: { L: lab_bench, S: lab_shelf }
+      items: [lab_bench, lab_shelf]
+    - id: sunroom
+      plan: sunroom_plan
+      name: the sunroom
+      says: a bright room with an armchair and a floor lamp
+      qualities: { cozy: 2, bright: 1, calm: 1 }
+      rows:
+        - "########"
+        - "#A....F#"
+        - "#......#"
+        - "#......#"
+        - "#......#"
+        - "#......#"
+        - "#......#"
+        - "########"
+      slots: { A: armchair, F: floor_lamp }
+      items: [armchair, floor_lamp]
+  # Where a room can stand: its top-left tile on the lot, and the doorway into the room it joins
+  # (`next_to`: a site whose room must stand first; none means the bedroom). Rooms share the wall
+  # they meet at, so a site's left column is its neighbour's right wall.
+  sites:
+    - { id: site_east, name: east of your bedroom, at: [20, 5], door: [20, 8] }
+    - { id: site_far_east, name: "east again, next to that room", at: [27, 5], door: [27, 8], next_to: site_east }
   # Named places outdoors, the first whose rects hold a tile wins; rooms come before all of them.
   # A rect is [x0, y0, x1, y1], tiles inclusive. `says` is the line his map gives the place.
   places:

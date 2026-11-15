@@ -52,7 +52,8 @@ export interface RoomDef {
   lip: number;
   /** How far into the room the back and left walls' faces are, from the map's edge (their tiles' depth). */
   backWall: number;
-  window: WindowDef;
+  /** The window in the back wall, if it has one. */
+  window: WindowDef | null;
   clock: WallFixture;
   /** The wall shelf his books and records go on, and the peg his guitar hangs from, at floor height (their part lists stand on the floor). */
   shelf: WallFixture;
@@ -85,4 +86,18 @@ export const BEDROOM: RoomDef = {
   stands: [SKETCH, PAINTING],
   work: { sketch: SKETCH, journal: SKETCH, paint: PAINTING },
   wallSpots: constants.FRAME_XS.map((x) => ({ on: "picture_rail", x, y: constants.FRAME_BOTTOM, z: 0 })),
+};
+
+/** A room he built onto the house: walls and floor only; what's in it stands in its slots. */
+export const ADDED_ROOM: RoomDef = {
+  wallHeight: 2.4,
+  lip: 0.22,
+  backWall: 1,
+  window: null,
+  clock: { x: 0, y: 0 },
+  shelf: { x: 0, y: 0 },
+  guitar: { x: 0, y: 0 },
+  stands: [],
+  work: {},
+  wallSpots: [],
 };

@@ -58,7 +58,9 @@
                 "staple",
                 "explorable",
                 "forageable",
-                "specimen"
+                "specimen",
+                "buildable",
+                "site"
               ]
             },
             "additionalProperties": {

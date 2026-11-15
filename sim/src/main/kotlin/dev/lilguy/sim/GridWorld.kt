@@ -19,9 +19,13 @@ import kotlin.math.roundToInt
  * the end of its constructor, once its own state exists.
  */
 abstract class GridWorld protected constructor(
-    val map: TileMap,
+    map: TileMap,
     protected val guy: Character,
 ) : World {
+    /** The terrain; a world whose house changes (a room built or moved) swaps in a new one between ticks. */
+    @Volatile var map: TileMap = map
+        protected set
+
     protected var ticks = 0L
         private set
     private val inbox = ConcurrentLinkedQueue<Handle>()

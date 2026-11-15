@@ -71,7 +71,8 @@ class Layout private constructor(
     fun rowsOf(rect: Rect): List<String> = (maxOf(rect.y0, 0)..minOf(rect.y1, map.height - 1)).map { y -> rows[y].substring(maxOf(rect.x0, 0), minOf(rect.x1, map.width - 1) + 1) }
 
     companion object {
-        fun of(content: BedroomContent): Layout {
+        /** The map with the bedroom, and each room of [house] (room id to site id) built on its site. */
+        fun of(content: BedroomContent, house: Map<String, String> = emptyMap()): Layout {
             val room = content.room
             val roomRows = room.rows
             require(roomRows.isNotEmpty() && roomRows.all { it.length == roomRows[0].length }) { "room rows must all be the same length" }
@@ -115,12 +116,29 @@ class Layout private constructor(
                 letters[y][x] = letter
             }
             world?.slots?.forEach { (name, at) -> slotCells[name] = Cell(at[0], at[1]) }
+            // Rooms built onto the house: their rows over the lot, sharing the wall they meet at.
+            val built = house.map { (roomId, siteId) ->
+                val r = requireNotNull(world?.room(roomId)) { "no room '$roomId'" }
+                val s = requireNotNull(world.site(siteId)) { "no site '$siteId'" }
+                r.rows.forEachIndexed { ry, row ->
+                    row.forEachIndexed { rx, c ->
+                        val x = s.at[0] + rx
+                        val y = s.at[1] + ry
+                        val slot = r.slots[c.toString()]
+                        if (slot != null) slotCells[slot] = Cell(x, y)
+                        terrain[y * width + x] = if (c == '#') Terrain.Wall else Terrain.Floor
+                        letters[y][x] = if (c == '#') '#' else '.'
+                    }
+                }
+                r to s
+            }
             val missing = room.slots.values.toSet() - slotCells.keys
             require(missing.isEmpty()) { "slots $missing aren't in the room" }
 
             val roomId = world?.house?.room ?: "bedroom"
             val roomRect = Rect(origin.x, origin.y, origin.x + rw - 1, origin.y + rh - 1)
             val places = mutableListOf(Place(roomId, world?.house?.name ?: "your bedroom", PlaceKind.Room, listOf(roomRect), "where you live"))
+            built.forEach { (r, s) -> places += Place(r.id, r.name, PlaceKind.Room, listOf(Rect(s.at[0], s.at[1], s.at[0] + r.rows[0].length - 1, s.at[1] + r.rows.size - 1)), r.says) }
             world?.places?.forEach { p -> places += Place(p.id, p.name, PlaceKind.Outdoor, p.rects.map { Rect(it[0], it[1], it[2], it[3]) }, p.says) }
             val index = IntArray(width * height) { -1 }
             for (y in 0 until height) for (x in 0 until width) {
@@ -142,6 +160,13 @@ class Layout private constructor(
                 }
                 val outside = places.drop(1).firstOrNull { p -> p.rects.any { out in it } }?.id
                 doors += Door("front_door", cell, roomId, outside)
+            }
+            built.forEach { (r, s) ->
+                val cell = Cell(s.door[0], s.door[1])
+                terrain[cell.y * width + cell.x] = Terrain.Floor
+                letters[cell.y][cell.x] = '+'
+                val joins = s.nextTo?.let { n -> built.firstOrNull { it.second.id == n }?.first?.id } ?: roomId
+                doors += Door("door_${r.id}", cell, r.id, joins)
             }
             return Layout(
                 TileMap(width, height, terrain), letters.map { String(it) }, places, index, slotCells,

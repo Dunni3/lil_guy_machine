@@ -444,6 +444,12 @@ internal interface OpWorld {
     /** Why [patch] has nothing to collect now (it hasn't grown back), or null. */
     fun bare(patch: String): String?
 
+    /** Why [plan]'s room can't be built (or moved) onto [site] now, or null. */
+    fun roomLock(plan: String, site: String): String?
+
+    /** Builds (or moves) [plan]'s room onto [site]; the event's parts. */
+    fun placeRoom(plan: String, site: String): List<String>
+
     /** Takes what [patch] yields; the event's parts. */
     fun gather(patch: String): List<String>
 }
@@ -516,6 +522,26 @@ data class GatherOp(val on: String) : Op() {
     override fun describe(w: OpWorld, b: Bound, forSale: Boolean) = listOfNotNull(w.content.world?.find(b.resolve(on))?.let { f -> "+1 ${w.item(f.yields).name}" })
 }
 
+/** Builds the room whose plan is bound to [room] on the site bound to [site], or moves it there when it stands elsewhere. */
+data class PlaceRoomOp(val room: String, val site: String) : Op() {
+    override val key get() = "place_room"
+
+    override fun problems(c: BedroomContent, verb: VerbSpec) = listOfNotNull(
+        if (verb.args[room] == null) "place_room's room must be an argument slot (`what`)" else null,
+        if (verb.args[site] == null) "place_room's site must be an argument slot (`on`)" else null,
+        if (c.world?.rooms.isNullOrEmpty()) "places rooms, but world.yaml has none" else null,
+    )
+
+    override fun lockReason(w: OpWorld, b: Bound) = w.roomLock(b.resolve(room), b.resolve(site))
+
+    override fun gone(w: OpWorld, b: Bound) = w.roomLock(b.resolve(room), b.resolve(site))
+
+    override fun finish(w: OpWorld, b: Bound) = w.placeRoom(b.resolve(room), b.resolve(site))
+
+    override fun describe(w: OpWorld, b: Bound, forSale: Boolean) =
+        listOfNotNull(w.content.world?.roomFor(b.resolve(room))?.let { r -> "${r.name} on ${w.content.world?.site(b.resolve(site))?.name ?: b.resolve(site)}" })
+}
+
 /**
  * How an op is written in content: a one-key map, `- need: { mood: 2 }`. Exactly one field is set;
  * [OpSerializer] turns it into the [Op]. Its descriptor is what the content schema shows.
@@ -541,7 +567,12 @@ internal data class OpEntry(
     val build: NoParams? = null,
     val survey: String? = null,
     val gather: String? = null,
+    @SerialName("place_room") val placeRoom: PlaceRoom? = null,
 ) {
+    @Serializable
+    @SerialName("place_room")
+    data class PlaceRoom(val room: String, val site: String)
+
     @Serializable
     @SerialName("write")
     data class Write(val with: String, val into: List<String>, val timing: Timing = Timing.During, @SerialName("shows_as") val showsAs: String? = null, val optional: Boolean = false)
@@ -573,7 +604,7 @@ internal data class OpEntry(
             setState?.let { SetStateOp(it.target, it.state) }, background?.let { BackgroundOp(it.name, it.minutes, it.rates) },
             sleep?.let { SleepOp }, enjoy?.let(::EnjoyOp), hear?.let(::HearOp), progress?.let { ProgressOp(it.book) }, practice?.let(::PracticeOp),
             write?.let { WriteOp(it.with, it.into, it.timing, it.showsAs, it.optional) }, draw?.let(::DrawOp), build?.let { BuildOp },
-            survey?.let(::SurveyOp), gather?.let(::GatherOp),
+            survey?.let(::SurveyOp), gather?.let(::GatherOp), placeRoom?.let { PlaceRoomOp(it.room, it.site) },
         )
         require(set.size == 1) { "an effect is one op, such as `- need: { mood: 2 }`; this one has ${if (set.isEmpty()) "none" else set.joinToString { it.key }}" }
         return set.single()
@@ -599,6 +630,7 @@ internal data class OpEntry(
             BuildOp -> OpEntry(build = NoParams())
             is SurveyOp -> OpEntry(survey = op.on)
             is GatherOp -> OpEntry(gather = op.on)
+            is PlaceRoomOp -> OpEntry(placeRoom = PlaceRoom(op.room, op.site))
         }
     }
 }
