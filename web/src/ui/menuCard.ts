@@ -2,7 +2,7 @@ import type { LifeState } from "../../../protocol/ts/protocol";
 import type { Layer, Panel } from "./layer";
 import type { Menu, Spot } from "./menu";
 import { TABS, detail, empty, entries, stateColor, type Entry, type PageView, type Para } from "./pages";
-import { COLORS, fit, font, lineHeight, roundRect, wrap, type Frame } from "./paper";
+import { COLORS, fit, font, lineHeight, monoFont, roundRect, wrap, wrapCode, type Frame } from "./paper";
 import { adjustable, isAction, value, type RunRow } from "./run";
 
 // The card, in units of the app's frame (`GameMenu`): right of the HUD's needs card, so his needs
@@ -261,7 +261,7 @@ export class MenuCard {
       for (let k = menu.scroll; k < end; k++) {
         const l = lines[k];
         y += l.gap;
-        ctx.font = font(l.scale, u, l.scale <= 1.2 ? 600 : 500);
+        ctx.font = l.mono ? monoFont(l.scale, u) : font(l.scale, u, l.scale <= 1.2 ? 600 : 500);
         ctx.fillStyle = l.color;
         ctx.fillText(l.text, (DETAIL_X + l.indent) * u, y * u);
         y += l.height - l.gap;
@@ -343,6 +343,7 @@ interface Line {
   color: string;
   indent: number;
   gap: number;
+  mono?: boolean;
   /** Units it takes, gap included. */
   height: number;
 }
@@ -351,10 +352,12 @@ interface Line {
 function layout(ctx: CanvasRenderingContext2D, rows: Para[], width: number, u: number): Line[] {
   const out: Line[] = [];
   for (const r of rows) {
-    ctx.font = font(r.scale, u, r.scale <= 1.2 ? 600 : 500);
-    wrap(ctx, r.text, (width - r.indent) * u).forEach((text, i) => {
+    ctx.font = r.mono ? monoFont(r.scale, u) : font(r.scale, u, r.scale <= 1.2 ? 600 : 500);
+    const lines = r.mono ? wrapCode(ctx, r.text, (width - r.indent) * u) : wrap(ctx, r.text, (width - r.indent) * u);
+    lines.forEach((text, i) => {
       const gap = i === 0 ? r.gap : 0;
-      out.push({ text, scale: r.scale, color: r.color, indent: r.indent, gap, height: gap + lineHeight(r.scale, 1) });
+      const height = r.mono ? lineHeight(r.scale * 0.92, 1) : lineHeight(r.scale, 1);
+      out.push({ text, scale: r.scale, color: r.color, indent: r.indent, gap, mono: r.mono, height: gap + height });
     });
   }
   return out;

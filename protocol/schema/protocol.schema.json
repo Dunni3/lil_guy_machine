@@ -158,6 +158,61 @@
             ],
             "additionalProperties": false
         },
+        "BehaviorView": {
+            "title": "BehaviorView",
+            "type": "object",
+            "properties": {
+                "thing": {
+                    "type": "string"
+                },
+                "says": {
+                    "type": "string"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                },
+                "failures": {
+                    "type": "integer"
+                },
+                "tick": {
+                    "type": "integer"
+                },
+                "day": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "time": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "thing",
+                "says",
+                "source",
+                "version",
+                "failures",
+                "tick",
+                "day",
+                "time"
+            ],
+            "additionalProperties": false
+        },
         "BookView": {
             "title": "BookView",
             "type": "object",
@@ -294,6 +349,52 @@
             ],
             "additionalProperties": false
         },
+        "ChangedView": {
+            "title": "ChangedView",
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "spot": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "name": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "color": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "id",
+                "spot",
+                "name",
+                "color"
+            ],
+            "additionalProperties": false
+        },
         "Clock": {
             "title": "Clock",
             "type": "object",
@@ -306,6 +407,138 @@
                 }
             },
             "required": [
+                "day",
+                "time"
+            ],
+            "additionalProperties": false
+        },
+        "CodeState": {
+            "title": "CodeState",
+            "type": "object",
+            "properties": {
+                "verbs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/CodedVerbView"
+                    }
+                },
+                "behaviors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/BehaviorView"
+                    }
+                },
+                "stored": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "changed": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/ChangedView"
+                    }
+                }
+            },
+            "required": [
+                "verbs",
+                "behaviors",
+                "stored",
+                "changed"
+            ],
+            "additionalProperties": false
+        },
+        "CodedVerbView": {
+            "title": "CodedVerbView",
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "phrase": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "says": {
+                    "type": "string"
+                },
+                "minutes": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "what": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "at": {
+                    "type": "string"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                },
+                "why": {
+                    "type": "string"
+                },
+                "tick": {
+                    "type": "integer"
+                },
+                "day": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "time": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "id",
+                "phrase",
+                "says",
+                "minutes",
+                "what",
+                "at",
+                "source",
+                "version",
+                "why",
+                "tick",
                 "day",
                 "time"
             ],
@@ -670,6 +903,16 @@
                             "type": "null"
                         }
                     ]
+                },
+                "code": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/CodeState"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
                 }
             },
             "required": [
@@ -687,7 +930,8 @@
                 "shop",
                 "mind",
                 "tokens",
-                "logs"
+                "logs",
+                "code"
             ],
             "additionalProperties": false
         },
@@ -1279,6 +1523,9 @@
                     "items": {
                         "$ref": "#/$defs/LookShape"
                     }
+                },
+                "tick": {
+                    "type": "integer"
                 }
             },
             "required": [
@@ -1291,7 +1538,8 @@
                 "wall",
                 "cost",
                 "why",
-                "look"
+                "look",
+                "tick"
             ],
             "additionalProperties": false
         },
@@ -1360,6 +1608,9 @@
                 },
                 "logs": {
                     "$ref": "#/$defs/Logs"
+                },
+                "code": {
+                    "$ref": "#/$defs/CodeState"
                 }
             },
             "required": [
@@ -1377,7 +1628,8 @@
                 "shop",
                 "mind",
                 "tokens",
-                "logs"
+                "logs",
+                "code"
             ],
             "additionalProperties": false
         },

@@ -1920,6 +1920,10 @@ class BedroomWorld private constructor(
             inventions = invented,
             verbs = current.verbs,
             done = done,
+            coded = coded,
+            behaviors = behaviors,
+            stored = thingState.mapValues { (_, kept) -> kept.mapValues { it.value.toString() } },
+            custom = LinkedHashMap(custom),
         )
         val snapshot = WorldSnapshot(ticks, map, entities, listOf(agentSnapshot()), eventLog(), life = life, layout = layout)
         return Published(snapshot, observe(entities))

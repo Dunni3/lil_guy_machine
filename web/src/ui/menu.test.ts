@@ -31,9 +31,25 @@ test("viewers get the pages and a sign-in but no run controls; the admin's keys 
       { seq: 2, tick: 9, day: 1, time: "09:00", query: "teal paint", searcher: "gemini-search:m", summary: null, sources: [], queries: [], error: "enough for today", refused: true, latency_ms: 0, thought: null, then: null },
     ],
   };
-  const full = { ...watching, life: { ...host, logs, mind: { ...host.mind, self_text: "seed", self_model: self, plan: logs.thoughts[0] } } };
+  // What he made: an invention with a verb and an hourly behavior, a verb of his own, and a value his code kept.
+  const lamp = { id: "pebble_lamp", name: "pebble lamp", group: "decor", use: "viewable", like: { calm: 2 }, price: null, wall: false, cost: 12, why: "for the dark", look: [], tick: 9 };
+  const verb = (id: string, what: string | null, source: string) => ({ id, phrase: id.replace(/_/g, " "), says: "calms him", minutes: 10, what, at: "here", source, version: 1, why: "", tick: 9, day: 1, time: "09:00" });
+  const code = {
+    verbs: [verb("glow_lamp", "pebble_lamp", "function finish(world) {\n  world.need('mood', 2);\n}"), verb("stretch", null, "function finish(world) { world.need('energy', 1); }")],
+    behaviors: [{ thing: "pebble_lamp", says: "hums", source: "function hourly(world, thing) {}", version: 1, failures: 0, tick: 9, day: 1, time: "09:00" }],
+    stored: { pebble_lamp: { lit: "true" } },
+    changed: [{ id: "pebble_lamp", spot: null, name: "moon lamp", color: "#88aaff" }],
+  };
+  const shop = { ...host.shop, inventions: [lamp] };
+  const full = { ...watching, life: { ...host, logs, shop, code, mind: { ...host.mind, self_text: "seed", self_model: self, plan: logs.thoughts[0] } } };
   for (const v of [watching, full]) for (const { id } of TABS) for (const e of entries(id, v)) expect(detail(id, v, e).length).toBeGreaterThan(0);
-  expect(TABS.map(({ id }) => entries(id, full).length)).toEqual([1, host.shop.catalog.length, 1, 2, 2, 3, 1]);
+  expect(TABS.map(({ id }) => entries(id, full).length)).toEqual([1, entries("shop", full).length, 3, 1, 2, 2, 3, 1]);
+  // MADE: the invention (by the name his code gave it) carries its verb, its behavior and their code; his other verb is its own entry.
+  const made = entries("made", full);
+  expect(made.map((e) => e.title)).toEqual(["moon lamp", "stretch", "What his code changed"]);
+  const lampText = detail("made", full, made[0]);
+  expect(lampText.filter((p) => p.mono).map((p) => p.text)).toEqual([code.verbs[0].source, code.behaviors[0].source]);
+  expect(lampText.map((p) => p.text)).toEqual(expect.arrayContaining(["Every hour, by itself: hums", "lit = true"]));
   // A thought says what he searched the web for before it; the WEB tab has the search with that thought.
   expect(entries("thoughts", full)[0].title).toContain("searched 1");
   expect(detail("web", full, entries("web", full)[1]).map((p) => p.text)).toEqual(expect.arrayContaining(["Blue again?", "Blue and a little green.", "https://paint.example/teal"]));

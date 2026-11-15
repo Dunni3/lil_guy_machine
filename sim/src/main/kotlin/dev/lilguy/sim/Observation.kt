@@ -269,6 +269,14 @@ data class LifeSnapshot(
     val verbs: List<VerbView> = emptyList(),
     /** Verb id to how often he has finished it this run. */
     val done: Map<String, VerbTally> = emptyMap(),
+    /** The verbs he wrote, oldest first. */
+    val coded: List<CodedVerb> = emptyList(),
+    /** What his things do by themselves, item id to its `hourly` code. */
+    val behaviors: Map<String, ThingCode> = emptyMap(),
+    /** What his code stored on things: item id (or `self`) to key to the value as JSON. */
+    val stored: Map<String, Map<String, String>> = emptyMap(),
+    /** What his code changed about his things (where they stand, their names and colours), by item id. */
+    val custom: Map<String, BedroomState.Custom> = emptyMap(),
 )
 
 data class EntitySnapshot(
