@@ -26,6 +26,7 @@ import dev.lilguy.agent.art.ArtStudio
 import dev.lilguy.agent.art.CommissionVoice
 import dev.lilguy.agent.art.Painter
 import dev.lilguy.agent.memory.Oracle
+import dev.lilguy.agent.web.Searcher
 import dev.lilguy.agent.memory.AgentMemory
 import dev.lilguy.agent.memory.InMemoryStore
 import dev.lilguy.agent.memory.MemoryScorer
@@ -183,6 +184,7 @@ class SimSession(
     private var writer: DecisionModel? = null
     private var textWriter: DecisionModel? = null
     private var scorerModel: Any? = null
+    private var searchClient: Any? = null
     private var log: DecisionLog? = null
     /** Decisions from the agent coroutine, waiting for the render thread to file them in [history]. */
     private var inbox = ConcurrentLinkedQueue<AgentRuntime.DecisionRecord>()
@@ -389,6 +391,11 @@ class SimSession(
             // What he invents: the writer designs it; a canned inventor stands in when the setup has one.
             inventor = if (setup.scenario != Scenario.Bedroom) null else setup.inventor?.invoke() ?: jw?.let { Inventor(ledger.meter(it, TokenPurpose.Invent, setup.prices.writer)) },
             onDraft = { d -> lr?.invention(d) },
+            // The real web, for a model that calls tools; the session closes it with the run.
+            searcher = setup.search?.takeIf { setup.scenario == Scenario.Bedroom }?.invoke()?.let { web ->
+                searchClient = web
+                Searcher(ledger.meter(web, setup.prices.search), setup.searchesPerDay)
+            },
         )
         val (gw, r) = setup.scenario.create(
             m, setup.timeout, settings.ticksPerMinute, longTerm = memory, startItems = setup.startItems,
@@ -476,6 +483,7 @@ class SimSession(
         (writer as? AutoCloseable)?.close()
         (textWriter as? AutoCloseable)?.close()
         (scorerModel as? AutoCloseable)?.close()
+        (searchClient as? AutoCloseable)?.close()
         log?.close()
         runScope = null
         agent = null
@@ -483,6 +491,7 @@ class SimSession(
         writer = null
         textWriter = null
         scorerModel = null
+        searchClient = null
         log = null
         moments.clear()
         recent.clear()

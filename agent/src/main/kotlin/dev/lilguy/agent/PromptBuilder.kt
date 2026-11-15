@@ -55,6 +55,8 @@ class PromptBuilder(
         val tools: (Observation) -> ToolSet,
         val status: (Observation) -> Observation,
         val call: (Intent) -> Pair<String, JsonObject>,
+        /** A line before the closing instruction, when there's something to point out (that he hasn't searched today). */
+        val note: (Observation) -> String? = { null },
     )
 
     /** A fixed system prompt and persona. */
@@ -92,7 +94,8 @@ class PromptBuilder(
         found: List<String> = emptyList(),
     ): DecisionRequest {
         val obs = view(observed)
-        if (tools && toolTurn != null) return toolRequest(toolTurn, obs, recent, memories, thought, found)
+        // His latest thought is the last call's in the history, so it isn't shown again.
+        if (tools && toolTurn != null) return toolRequest(toolTurn, obs, recent, memories, null, found)
         val history = recent.joinToString("\n") { e ->
             "${stamp(e.tick)}: ${json.encodeToString(Intent.serializer(), e.intent)} -> ${e.result?.let(::describe) ?: "running"}" +
                 (e.thought?.let { "; you thought: \"$it\"" } ?: "")
@@ -125,21 +128,31 @@ class PromptBuilder(
             messages += Message(Message.Role.User, HISTORY_HEADER)
             recent.forEachIndexed { i, e ->
                 val (name, args) = turn.call(e.intent)
-                val call = ToolCall("call_${e.tick}_$i", name, JsonObject(mapOf(BedroomTools.REASON to JsonPrimitive(e.reason.orEmpty())) + args))
+                // What he thought as he chose it is his own words, said before the call.
+                val call = ToolCall("call_${e.tick}_$i", name, args)
                 val ended = e.result?.let(::describe) ?: "still going"
                 val result = "Started ${stamp(e.tick)}. " + (e.outcome?.let { "$ended: $it" } ?: ended) + (e.thought?.let { " You thought: \"$it\"" } ?: "")
-                messages += Message(Message.Role.Assistant, "", call)
+                messages += Message(Message.Role.Assistant, e.reason.orEmpty(), call)
                 messages += Message(Message.Role.Tool, result, call)
             }
         }
+        val tools = turn.tools(obs)
         val user = buildString {
             appendLine(STATUS_HEADER)
             appendLine(statusJson.encodeToString(Observation.serializer(), turn.status(obs)))
             recall(memories, thought, found)
-            append(CALL)
+            turn.note(obs)?.let { appendLine(it) }
+            append(
+                when {
+                    tools.ponder != null && tools.looks.isEmpty() -> THINK
+                    tools.ponder != null -> THINK_LOOK
+                    tools.looks.isEmpty() -> CALL
+                    else -> LOOK_THEN_CALL
+                },
+            )
         }
         messages += Message(Message.Role.User, user)
-        return DecisionRequest(system = turn.system(), messages = messages, timeout = timeout, tools = turn.tools(obs))
+        return DecisionRequest(system = turn.system(), messages = messages, timeout = timeout, tools = tools)
     }
 
     private fun StringBuilder.recall(memories: List<String>, thought: String?, found: List<String>) {
@@ -175,7 +188,7 @@ class PromptBuilder(
         }
         if (found.isNotEmpty()) {
             state = JsonObject(state + ("found_out" to JsonArray(found.map(::JsonPrimitive))))
-            instructions += " `state.found_out` is what he found out lately by asking how his world works: questions he asked and their answers, oldest first."
+            instructions += " `state.found_out` is what he found out lately by asking how his world works or looking things up online: questions he asked and their answers, oldest first."
         }
         return set.copy(state = state, instructions = instructions)
     }
@@ -184,21 +197,24 @@ class PromptBuilder(
         private const val OBSERVATION_HEADER = "Observation:"
         const val MEMORY_HEADER = "What you remember from earlier (memories, and thoughts you had), oldest first:"
         const val THOUGHT_HEADER = "What you decided the last time you stopped to think (your plan for now):"
-        const val FOUND_HEADER = "What you found out lately by asking how your world works, oldest first:"
+        const val FOUND_HEADER = "What you found out lately, by asking how your world works or looking things up online, oldest first:"
         private const val ASK = "Choose your next action."
         private const val STATUS_HEADER = "How things stand now:"
         private const val HISTORY_HEADER = "Your recent actions, oldest first, are the calls below; each result says when it started and how it ended."
         private const val CALL = "Call one tool: what you do next."
+        private const val LOOK_THEN_CALL = "If something you'd remember, or don't know about how your world works, would change what you do, look first. Then call one tool that acts: what you do next."
+        private const val THINK = "Think it over, and act when you know what you want."
+        private const val THINK_LOOK = "Think, remember or act: say what you're thinking, recall something or ask how something works, or do what you want to do next."
 
         /**
          * His situation, for authored ops: the request's last user message without the closing ask,
          * and, when the request put his recent actions as tool calls, those as lines first.
          */
         fun situationOf(request: DecisionRequest): String {
-            val now = request.messages.lastOrNull { it.role == Message.Role.User }?.content?.removeSuffix(ASK)?.removeSuffix(CALL)?.trimEnd().orEmpty()
+            val now = request.messages.lastOrNull { it.role == Message.Role.User }?.content?.removeSuffix(ASK)?.removeSuffix(CALL)?.removeSuffix(LOOK_THEN_CALL)?.removeSuffix(THINK)?.removeSuffix(THINK_LOOK)?.trimEnd().orEmpty()
             val calls = request.messages.filter { it.role == Message.Role.Tool && it.call != null }.map { m ->
                 val c = m.call!!
-                "- ${c.name} ${JsonObject(c.arguments - BedroomTools.REASON)}: ${m.content}"
+                "- ${c.name} ${JsonObject(c.arguments - BedroomTools.THOUGHT)}: ${m.content}"
             }
             return if (calls.isEmpty()) now else "Your recent actions, oldest first:\n${calls.joinToString("\n")}\n$now"
         }

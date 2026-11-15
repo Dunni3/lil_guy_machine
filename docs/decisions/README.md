@@ -86,3 +86,7 @@ these hold the outcome. Skim this index before related changes.
 - 2026-11-15 [Clay replaces crayon; models stay part lists, with clay fields; the web app is built first and the TV viewer rebuilt later](2026-11-15-clay-replaces-crayon-and-models-stay-part-lists.md)
 - 2026-11-15 [The world is one map: the house stands on a lot, places are named regions, protocol 3 sends it](2026-11-15-the-world-is-one-map-with-places-as-regions.md)
 - 2026-11-15 [A text model decides by calling his verbs as tools; Jev keeps recall, significance and painting](2026-11-15-a-text-model-decides-by-calling-his-verbs-as-tools.md)
+- 2026-11-15 [A model that calls tools can look before it acts, and thinks as it chooses; no think verb for it](2026-11-15-a-tool-model-looks-before-it-acts-and-thinks-as-it-chooses.md)
+- 2026-11-15 [He builds what he invents at the workbench a shape at a time](2026-11-15-he-builds-what-he-invents-at-the-workbench-a-shape-at-a-time.md)
+- 2026-11-15 [Calling is optional for a tool model; what he writes is his thought, and a turn that runs out of steps is think](2026-11-15-calling-is-optional-and-what-he-writes-is-his-thought.md)
+- 2026-11-15 [He searches the real web as a look, read-only, through Gemini grounded on Google Search](2026-11-15-he-searches-the-real-web-as-a-look.md)

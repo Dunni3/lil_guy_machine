@@ -21,18 +21,27 @@ import kotlinx.serialization.json.putJsonObject
 /**
  * The bedroom's decision as tools, for models that call them: one tool per verb he can do now,
  * named by its id and described by what it takes and gives, with `what` and `on` as enums of the
- * things he could do it with; `buy` while there's a shop to buy from; and `wait`. Every tool takes
- * a `reason` first, which becomes the reply's `thought`. Locked verbs aren't tools: the status
- * message lists them with why ([view]).
+ * things he could do it with; `buy` while there's a shop to buy from; and `wait`. Calling is optional:
+ * what he writes is his thought of the moment, and a reply of only text is him thinking, put back so
+ * he goes on. Every tool also takes an optional `thought`, for when he acts without writing. Locked
+ * verbs aren't tools: the status message lists them with why ([view]). [looks] are `recall`,
+ * `ask` and `search`, which answer and let him go on. When [MAX_STEPS] go by without an action, he's sat and
+ * thought: the turn ends as the [ponder] intent.
  */
 object BedroomTools {
-    const val REASON = "reason"
+    const val THOUGHT = "thought"
+
+    /** Words his thought may run to. */
+    const val THOUGHT_WORDS = 80
 
     /** What an argument is set to when the thing can be done without it. */
     const val NONE = "none"
 
-    /** The tools for [obs], as models deciding see it ([BedroomPrompt.deciding]). */
-    fun of(obs: Observation, ticksPerMinute: Int): ToolSet {
+    /**
+     * The tools for [obs], as models deciding see it ([BedroomPrompt.deciding]). [ponder] is what he
+     * does when his steps run out with no action (think); null makes every reply call a tool.
+     */
+    fun of(obs: Observation, ticksPerMinute: Int, looks: List<ToolSet.Look> = emptyList(), ponder: Intent? = null): ToolSet {
         val open = obs.activities.orEmpty().filter { it.locked == null }
         val tools = buildList {
             open.groupBy { it.id }.forEach { (id, ways) ->
@@ -57,7 +66,64 @@ object BedroomTools {
                 reply(args, Intent.Wait(minutes * ticksPerMinute))
             })
         }
-        return ToolSet(tools)
+        return ToolSet(
+            tools, looks, MAX_STEPS,
+            ponder = ponder?.let { intent -> { said -> reply(buildJsonObject { put(THOUGHT, said) }, intent) } },
+            thoughtArg = THOUGHT,
+        )
+    }
+
+    /** Said at his turn until he has searched the web that day. */
+    const val SEARCH_NOTE = "You haven't looked anything up online today. What are you wondering about: something in what you're reading, drawing or listening to, " +
+        "or something you'd like to make or try? Search the internet for it before you act; what you find out is yours to use."
+
+    /** Replies he may give in one turn without acting: each one of thinking, of looks, or both. */
+    const val MAX_STEPS = 5
+
+    /**
+     * `recall` searches his memories and earlier thoughts with [recall]; `ask` asks how his world
+     * works with [ask]; `search` searches the real web with [search]. Any is left out when null.
+     */
+    fun looks(
+        recall: (suspend (String) -> String)?,
+        ask: (suspend (String) -> String)?,
+        search: (suspend (String) -> String)? = null,
+    ): List<ToolSet.Look> = listOfNotNull(
+        recall?.let { r ->
+            ToolSet.Look(
+                "recall",
+                "Try to remember something: what happened, something you did or found out, a plan you made. It searches your memories and earlier thoughts and gives back the few that fit. It takes no time; then choose what to do.",
+                text("query", "What you're trying to remember, in a few words."),
+            ) { args -> r(string(args, "query")) }
+        },
+        ask?.let { a ->
+            ToolSet.Look(
+                "ask",
+                "Ask how something in your world works, and someone who knows its workings answers: how to get to something you can't do yet, what something is for, what you could do that you haven't tried. It takes no time; then choose what to do.",
+                text("question", "Your question, first person, under 30 words."),
+            ) { args -> a(string(args, "question")) }
+        },
+        search?.let { s ->
+            ToolSet.Look(
+                "search",
+                "Search the internet: the real one, outside your room. You get back what the top results say and which sites said it. " +
+                    "Look up anything you're curious about in the real world: how to do something, what something is, music, art, books, ideas, what's going on. " +
+                    "It's only for reading; it doesn't change anything in your room. It takes no time; then choose what to do.",
+                text("query", "What to search for, as you'd type it into a search engine."),
+            ) { args -> s(string(args, "query")) }
+        },
+    )
+
+    private fun text(name: String, description: String) = buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") {
+            putJsonObject(name) {
+                put("type", "string")
+                put("description", description)
+            }
+        }
+        putJsonArray("required") { add(name) }
+        put("additionalProperties", false)
     }
 
     /**
@@ -108,13 +174,13 @@ object BedroomTools {
         }
     }
 
-    /** `reason`, then each of [enums] as a required string enum, then `minutes` when [minutes] is set. */
+    /** An optional `thought`, then each of [enums] as a required string enum, then `minutes` when [minutes] is set. */
     private fun parameters(enums: Map<String, List<String>>, minutes: IntRange? = null) = buildJsonObject {
         put("type", "object")
         putJsonObject("properties") {
-            putJsonObject(REASON) {
+            putJsonObject(THOUGHT) {
                 put("type", "string")
-                put("description", "Why you're doing this, in a sentence or two, in your own words.")
+                put("description", "Only if you haven't said it: what goes through your head as you choose this, in your own voice. First person, under $THOUGHT_WORDS words.")
             }
             enums.forEach { (name, values) ->
                 putJsonObject(name) {
@@ -132,7 +198,6 @@ object BedroomTools {
             }
         }
         putJsonArray("required") {
-            add(REASON)
             enums.keys.forEach { add(it) }
             if (minutes != null) add("minutes")
         }
@@ -142,7 +207,7 @@ object BedroomTools {
     private val json = Json { encodeDefaults = true; explicitNulls = true }
 
     private fun reply(args: JsonObject, intent: Intent): JsonObject =
-        json.encodeToJsonElement(AgentReply.serializer(), AgentReply(string(args, REASON, ""), intent)).jsonObject
+        json.encodeToJsonElement(AgentReply.serializer(), AgentReply(string(args, THOUGHT, ""), intent)).jsonObject
 
     private fun string(args: JsonObject, name: String, default: String? = null): String =
         (args[name] as? JsonPrimitive)?.contentOrNull ?: default ?: throw ActionSchema.InvalidReply("missing `$name`")

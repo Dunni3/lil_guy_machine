@@ -58,6 +58,9 @@ enum class EventKind(val id: String) {
     /** A question he asked about how his world works, and the answer. */
     Answer("answer"),
 
+    /** Something he looked up on the real web, and what the results said. */
+    Search("search"),
+
     /** A shopping trip in his words: what he picked and why, what he's saving for, what caught his eye. */
     Shopping("shopping"),
 

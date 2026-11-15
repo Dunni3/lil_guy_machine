@@ -1,5 +1,5 @@
 /* Generated from schema/protocol.schema.json (protocol/.../*.kt) by gen_types.sh. Don't edit; run `make protocol-types`.
- * schema sha256: 23c320809130d61769b74f30fe4aa078cd64723c999009befad661fb629c4144
+ * schema sha256: 954b4046f56ec96869931a7696a2a8558c0510e789b7abbcdb0689ea0003c71f
  */
 
 /**
@@ -122,6 +122,7 @@ export interface Models {
   self: string | null;
   scorer: string | null;
   artist: string | null;
+  search: string | null;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -433,6 +434,13 @@ export interface LookShape {
   rot_y: number;
   rot_z: number;
   color: string;
+  part: string;
+  taper: number;
+  cut: number;
+  hole: number;
+  arc: number;
+  glow: number;
+  opacity: number;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -525,6 +533,7 @@ export interface Logs {
   revisions: RevisionView[];
   trips: TripView[];
   drawings: DrawingView[];
+  searches: SearchView[];
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -630,6 +639,35 @@ export interface DrawingView {
   palette: number[];
   size: number;
   rows: string[];
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "SearchView".
+ */
+export interface SearchView {
+  seq: number;
+  tick: number;
+  day: number | null;
+  time: string | null;
+  query: string;
+  searcher: string;
+  summary: string | null;
+  sources: SourceView[];
+  queries: string[];
+  error: string | null;
+  refused: boolean;
+  latency_ms: number;
+  thought: string | null;
+  then: string | null;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "SourceView".
+ */
+export interface SourceView {
+  title: string;
+  url: string;
+  snippet: string | null;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema

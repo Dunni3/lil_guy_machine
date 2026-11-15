@@ -16,6 +16,8 @@ import kotlin.time.Duration.Companion.milliseconds
 data class EndpointsFile(
     val endpoints: Map<String, EndpointConfig> = emptyMap(),
     val agents: List<AgentConfig> = emptyList(),
+    /** How he searches the web, if he does ([WebSearches]); a model that calls tools gets a `search` look. */
+    val search: SearchConfig? = null,
 ) {
     /** The endpoint the first character is configured to use, if any. */
     val defaultEndpoint: String? get() = agents.firstOrNull()?.endpoint
@@ -62,6 +64,8 @@ data class EndpointConfig(
     @SerialName("price_in") val priceIn: Double? = null,
     /** Dollars per million output tokens. */
     @SerialName("price_out") val priceOut: Double? = null,
+    /** Dollars per million input tokens read from the server's prompt cache; unset, they cost [priceIn]. */
+    @SerialName("price_cached") val priceCached: Double? = null,
     /** TypeSafe: how many paths [BeamSearch] keeps when the options come in groups; 0 asks over the flat list. */
     val beam: Int = 3,
 ) {

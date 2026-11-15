@@ -49,6 +49,9 @@ import dev.lilguy.agent.Scenario
 import dev.lilguy.agent.runLockstep
 import dev.lilguy.decision.DecisionModel
 import dev.lilguy.decision.Endpoints
+import dev.lilguy.decision.WebSearches
+import dev.lilguy.agent.web.Search
+import dev.lilguy.agent.web.Searcher
 import dev.lilguy.decision.Scorer
 import dev.lilguy.decision.StructuredOutput
 import dev.lilguy.decision.withBeam
@@ -121,6 +124,8 @@ private const val USAGE = """lil guy machine cli: lockstep runs of the key-and-d
                       policy and a replay don't draw
   --painter-endpoint N bedroom: endpoint that draws his art instead of the deciding one (typesafe is
                       cheapest: two picks a stroke). Defaults to the config's painter_endpoint
+  --search none       bedroom: keep him off the web; otherwise a model that calls tools may search it
+                      as the config's search: block says
   --grant IDS         bedroom: unlock gated content, comma-separated ids (e.g. paint,easel,canvas,painting)
   --affinities Q=W    bedroom: his personality for these runs, quality=weight pairs over the content's
                       default (e.g. calm=2,loud=-1); weights -1 to 2
@@ -162,7 +167,7 @@ private class Args(argv: Array<String>) {
     companion object {
         val FLAGS = setOf("--quiet", "--no-log", "--help", "--content-docs", "--no-db", "--no-bodies", "--sync")
         val KNOWN = FLAGS + setOf(
-            "--scenario", "--endpoint", "--runs", "--days", "--minute-ticks", "--ticks", "--max-decisions", "--config", "--strategy", "--beam", "--log-dir", "--replay", "--memory", "--memory-endpoint", "--writer-endpoint", "--journal-endpoint", "--recall-endpoint", "--painter-endpoint", "--grant",
+            "--scenario", "--endpoint", "--runs", "--days", "--minute-ticks", "--ticks", "--max-decisions", "--config", "--strategy", "--beam", "--log-dir", "--replay", "--memory", "--memory-endpoint", "--writer-endpoint", "--journal-endpoint", "--recall-endpoint", "--painter-endpoint", "--search", "--grant",
             "--affinities", "--curiosity", "--db", "--resume", "--import-runs", "--server-schema",
         )
     }
@@ -393,6 +398,11 @@ fun main(argv: Array<String>) {
                     writerModel?.let { Shopper(ledger.meter(it, TokenPurpose.Shop, priceOf(writerEndpoint!!)), fallback = picker) } ?: picker?.let { Shopper(it) }
                 },
                 inventor = writerModel?.takeIf { scenario == Scenario.Bedroom }?.let { Inventor(ledger.meter(it, TokenPurpose.Invent, priceOf(writerEndpoint!!))) },
+                // The real web, as the config's `search:` says; only a model that calls tools searches. --search none keeps him off it.
+                searcher = config.search?.takeIf { painting && !it.off && args.string("--search") != "none" }?.let { sc ->
+                    Searcher(ledger.meter(WebSearches.create(sc), TokenPrice.of(sc)), sc.perDay)
+                },
+                onSearch = { s -> if (!quiet) printSearch(s) },
                 onDraft = { d -> life?.invention(d) },
                 onTrip = { t ->
                     log?.write(t)
@@ -518,7 +528,8 @@ private fun runOnce(
             val note = if (d.error != null) "FALLBACK: ${d.error}" else d.rationale.orEmpty()
             val tries = if (d.attempts.size > 1) " [${d.attempts.size} tries]" else ""
             println("%s  decide  %-52s %5d ms%s  %s".format(stampOf(d.tick), intent, d.latency.inWholeMilliseconds, tries, note))
-            d.thought?.let { println("%s  thought %s".format(stampOf(d.tick), it.text?.let { t -> "\"$t\"" } ?: "FAILED: ${it.error}")) }
+            d.looks.forEach { l -> println("%s  %s %s -> %s".format(stampOf(d.tick), l.name, l.arguments.values.joinToString(" "), l.result.replace('\n', ' ').take(160))) }
+            d.thought?.takeIf { it.text != d.rationale }?.let { println("%s  thought %s".format(stampOf(d.tick), it.text?.let { t -> "\"$t\"" } ?: "FAILED: ${it.error}")) }
         }
     }
     val bedroom = world as? BedroomWorld
@@ -643,6 +654,12 @@ private fun printAnswer(a: Answer) {
     val r = a.reply
     val stamp = if (r.day != null) "d%2d %s".format(r.day, r.time) else "t=%4d".format(r.tick)
     println("%s  asked \"%s\" (opened %s): %s".format(stamp, a.question, a.opened.joinToString(), r.text ?: "FAILED: ${r.error}"))
+}
+
+private fun printSearch(s: Search) {
+    val stamp = if (s.day != null) "d%2d %s".format(s.day, s.time) else "t=%4d".format(s.tick)
+    val what = if (!s.found) "nothing (${s.error ?: "no results"})" else (s.summary ?: s.sources.joinToString { it.title }) + " [" + s.sources.joinToString { it.title } + "]"
+    println("%s  searched the web for \"%s\": %s".format(stamp, s.query, what))
 }
 
 private fun printTrip(t: Trip) {

@@ -252,6 +252,10 @@ class LifeRecorder(val recorder: RunRecorder, private val autosaveMinutes: Int =
         result = buildJsonObject {
             d.design?.let { put("design", RowJson.encodeToJsonElement(Design.serializer(), it)) }
             putJsonArray("redid") { d.redid.forEach { add(JsonPrimitive(it)) } }
+            d.before?.let { put("before_look_over", RowJson.encodeToJsonElement(Design.serializer(), it)) }
+            if (d.steps.isNotEmpty()) putJsonArray("steps") {
+                d.steps.forEach { s -> add(buildJsonObject { put("tool", s.name); put("args", s.arguments); put("answer", s.result) }) }
+            }
         },
         error = d.error,
     )

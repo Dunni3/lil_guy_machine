@@ -7,6 +7,7 @@ import dev.lilguy.decision.Attempt
 import dev.lilguy.decision.DecisionFailed
 import dev.lilguy.decision.DecisionModel
 import dev.lilguy.decision.DecisionRequest
+import dev.lilguy.decision.Looked
 import dev.lilguy.decision.Usage
 import dev.lilguy.sim.EntityId
 import dev.lilguy.sim.Intent
@@ -67,8 +68,17 @@ class AgentRuntime(
         val schema: JsonObject? = null,
         /** The long-term memories and earlier thoughts put into this decision's prompt. */
         val recalled: List<String> = emptyList(),
-        /** When [intent]'s verb writes a thought before it starts: what he thought, or why there's no thought. */
+        /**
+         * When [intent]'s verb writes a thought before it starts: what he thought, or why there's no
+         * thought. For a model that calls tools, what it said he thought as it chose.
+         */
         val thought: Thought? = null,
+        /** What a model that calls tools looked at before it chose ([dev.lilguy.decision.ToolSet.looks]). */
+        val looks: List<Looked> = emptyList(),
+        /** What it wrote along the way without acting, in order. */
+        val musings: List<String> = emptyList(),
+        /** The turn ran out of steps with no action, so he sat and thought ([dev.lilguy.decision.ToolSet.ponder]). */
+        val pondered: Boolean = false,
     ) {
         val fellBack: Boolean get() = error != null
     }
@@ -127,8 +137,10 @@ class AgentRuntime(
             val recalled = longTerm?.recall(obs).orEmpty()
             // His latest kept thought, shown in every prompt until the next one replaces it.
             val plan = longTerm?.plan?.let { t -> t.text?.let { "${prompts.stampOf(t.tick)}: $it" } }
-            // His latest answers from asking how his world works.
-            val found = longTerm?.answers().orEmpty().map { a -> "${prompts.stampOf(a.tick)}: I asked \"${a.question}\": ${a.reply.text}" }
+            // His latest answers from asking how his world works, and what he last looked up on the web.
+            val found = (longTerm?.answers().orEmpty().map { a -> a.tick to "I asked \"${a.question}\": ${a.reply.text}" } +
+                longTerm?.lookedUp().orEmpty().mapNotNull { s -> s.remembered()?.let { s.tick to it } })
+                .sortedBy { it.first }.map { (tick, text) -> "${prompts.stampOf(tick)}: $text" }
             val caps = model.capabilities
             val request = prompts.build(obs, memory.recent(), closedChoice = caps.closedChoice, tools = caps.toolCalls && !caps.closedChoice, memories = recalled, thought = plan, found = found)
             val schema = schemaFor(obs)
@@ -141,13 +153,19 @@ class AgentRuntime(
                 base.copy(intent = Intent.Do(forced.first), rationale = "Time to ${forced.first} (every ${forced.second} decisions).")
             } else try {
                 val decision = withTimeout(request.timeout) { model.decide(request, schema) }
+                // A turn that ended in thought is its verb (think), or a wait when that can't be done now (he just did).
+                val thinks = (decision.value.intent as? Intent.Do)?.takeIf { decision.pondered }
+                val intent = if (thinks != null && obs.activities.orEmpty().none { it.id == thinks.activity && it.locked == null }) fallback(IllegalStateException("can't ${thinks.activity} now")) else decision.value.intent
                 base.copy(
-                    intent = decision.value.intent,
+                    intent = intent,
                     rationale = decision.rationale,
                     raw = decision.raw,
                     latency = decision.latency,
                     usage = decision.usage,
                     attempts = decision.attempts,
+                    looks = decision.looks,
+                    musings = decision.musings,
+                    pondered = decision.pondered,
                 )
             } catch (e: TimeoutCancellationException) {
                 base.copy(intent = fallback(e), latency = started.elapsedNow(), error = "timed out after ${request.timeout}")
@@ -161,15 +179,20 @@ class AgentRuntime(
                     error = e.message ?: e.toString(),
                     usage = e.usage,
                     attempts = e.attempts,
+                    looks = e.looked,
+                    musings = e.musings,
                 )
             } catch (e: Exception) {
                 base.copy(intent = fallback(e), latency = started.elapsedNow(), error = e.message ?: e.toString())
             } finally {
                 decidingSince = null
             }
+            // A model that calls tools says what he thinks as he chooses: that's his thought of the moment.
+            val spoken = if (request.tools != null && record.error == null && forced == null) record.rationale?.let { longTerm?.thought(obs, it, model.id) } else null
             val brief = prompts.persona?.let { AgentMemory.Brief(it(), PromptBuilder.situationOf(request), request.system) }
             // A verb's `before` authored ops (a thought) are more model calls before the sim starts it; he stands still meanwhile, as he does while deciding.
-            val thought = if (longTerm != null && brief != null) {
+            // A turn that ended in thought has its thought already: what he wrote.
+            val thought = if (longTerm != null && brief != null && !record.pondered) {
                 decidingSince = TimeSource.Monotonic.markNow()
                 try {
                     longTerm.before(obs, record.intent, brief).filterIsInstance<Thought>().firstOrNull()
@@ -181,7 +204,7 @@ class AgentRuntime(
             if (reflection != null && (record.intent as? Intent.Do)?.activity == reflection.first) sinceReflection = 0 else sinceReflection++
             memory.record(obs.tick, record.intent, thought?.text, record.rationale)
             recent = memory.recent()
-            val done = record.copy(thought = thought)
+            val done = record.copy(thought = thought ?: spoken)
             lastDecision = done
             onDecision(done)
             world.submit(id, record.intent)

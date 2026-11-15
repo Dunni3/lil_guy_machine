@@ -25,10 +25,18 @@ test("viewers get the pages and a sign-in but no run controls; the admin's keys 
     memories: [{ seq: 1, level: 2, span: "day 1", from_day: 1, to_day: 1, text: "A day.", importance: 0.5 }],
     revisions: [{ seq: 1, day: 1, changed: true, note: "more blue", self, error: null }, { seq: 2, day: 2, changed: false, note: null, self: null, error: "timeout" }],
     trips: [{ seq: 1, tick: 9, day: 1, time: "09:00", shopper: "w", catalog: ["- easel (Easel), $17, paints"], buy: [{ item: "easel", why: "to paint" }], save_for: null, chose_saving: true, note: null, error: null, fell_back: null }],
+
+    searches: [
+      { seq: 1, tick: 9, day: 1, time: "09:00", query: "how to mix teal", searcher: "gemini-search:m", summary: "Blue and a little green.", sources: [{ title: "paint.example", url: "https://paint.example/teal", snippet: "Blue and green" }], queries: [], error: null, refused: false, latency_ms: 900, thought: "Blue again?", then: "paint" },
+      { seq: 2, tick: 9, day: 1, time: "09:00", query: "teal paint", searcher: "gemini-search:m", summary: null, sources: [], queries: [], error: "enough for today", refused: true, latency_ms: 0, thought: null, then: null },
+    ],
   };
   const full = { ...watching, life: { ...host, logs, mind: { ...host.mind, self_text: "seed", self_model: self, plan: logs.thoughts[0] } } };
   for (const v of [watching, full]) for (const { id } of TABS) for (const e of entries(id, v)) expect(detail(id, v, e).length).toBeGreaterThan(0);
-  expect(TABS.map(({ id }) => entries(id, full).length)).toEqual([1, host.shop.catalog.length, 1, 2, 3, 1]);
+  expect(TABS.map(({ id }) => entries(id, full).length)).toEqual([1, host.shop.catalog.length, 1, 2, 2, 3, 1]);
+  // A thought says what he searched the web for before it; the WEB tab has the search with that thought.
+  expect(entries("thoughts", full)[0].title).toContain("searched 1");
+  expect(detail("web", full, entries("web", full)[1]).map((p) => p.text)).toEqual(expect.arrayContaining(["Blue again?", "Blue and a little green.", "https://paint.example/teal"]));
   expect(entries("shop", watching).length).toBe(host.shop.catalog.length);
   expect(entries("run", watching).map((e) => e.key)).toEqual(["signin"]);
   // A viewer's first opening lands on Sign in, so the admin finds it; after that the tab stays where they left it.
