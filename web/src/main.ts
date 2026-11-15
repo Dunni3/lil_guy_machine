@@ -7,6 +7,7 @@ import { readSettings } from "./settings";
 import { StreamClient } from "./stream/client";
 import { Track } from "./stream/track";
 import { Admin, SignIn } from "./ui/admin";
+import { Mail } from "./ui/mail";
 import { Hud } from "./ui/hud";
 import { pressOf } from "./ui/keys";
 import { ThingLabel } from "./ui/label";
@@ -60,6 +61,7 @@ resize();
 
 const admin = new Admin(settings.life);
 const signIn = new SignIn(admin);
+const mail = new Mail(settings.life, settings.broadcast);
 const menu = new Menu();
 const hud = new Hud(layer, settings.broadcast);
 const card = new MenuCard(layer);
@@ -104,7 +106,7 @@ function act(a: Act) {
 
 /** The remote's keys, as `RemoteInput.kt` lays them out; nothing here moves the guy. */
 window.addEventListener("keydown", (e) => {
-  if (settings.broadcast || signIn.open) return;
+  if (settings.broadcast || signIn.open || mail.open) return;
   const press = pressOf(e);
   const life = stream.state.life;
   if (!press || !life) return;
@@ -150,7 +152,7 @@ const ndc = new Vector2();
 /** What the mouse is over in the room this frame (the camera may have moved under it), for [ThingLabel]. */
 function hovered() {
   const m = pointer.mouse;
-  if (!m || !view || menu.open || signIn.open) return null;
+  if (!m || !view || menu.open || signIn.open || mail.open) return null;
   ndc.set((m.x / layer.width) * 2 - 1, 1 - (m.y / layer.height) * 2);
   raycaster.setFromCamera(ndc, renderer.camera);
   return view.pick(raycaster.ray);
@@ -158,7 +160,7 @@ function hovered() {
 
 function pointerView(): PageView | null {
   const life = stream.state.life;
-  return life && !signIn.open ? pageView(life) : null;
+  return life && !signIn.open && !mail.open ? pageView(life) : null;
 }
 
 function spotAt(e: MouseEvent): Spot | null {

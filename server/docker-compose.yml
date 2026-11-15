@@ -42,6 +42,8 @@ services:
     environment:
       LILGUY_HOST_BIND: 0.0.0.0
       LILGUY_DB: /data/lilguy.db
+      # Viewers' accounts and their letters to him: on the volume, never synced to the API.
+      LILGUY_ACCOUNTS_DB: /data/accounts.db
       LILGUY_SYNC_URL: http://api:8787
       JAVA_OPTS: -Xmx512m
     mem_limit: 800m

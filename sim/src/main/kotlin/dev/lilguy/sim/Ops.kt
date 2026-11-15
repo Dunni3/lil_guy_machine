@@ -452,6 +452,15 @@ internal interface OpWorld {
 
     /** Takes what [patch] yields; the event's parts. */
     fun gather(patch: String): List<String>
+
+    /** Why there's no letter to open: none is waiting at the mail hatch; null when one is. */
+    fun mailLock(): String?
+
+    /** Opens the oldest letter waiting; the event's parts, the letter among them. */
+    fun openMail(): List<String>
+
+    /** "a letter from Sam is waiting (2 in all)", for the option; null when none is. */
+    fun mailText(): String?
 }
 
 /**
@@ -568,6 +577,7 @@ internal data class OpEntry(
     val survey: String? = null,
     val gather: String? = null,
     @SerialName("place_room") val placeRoom: PlaceRoom? = null,
+    @SerialName("open_mail") val openMail: NoParams? = null,
 ) {
     @Serializable
     @SerialName("place_room")
@@ -604,7 +614,7 @@ internal data class OpEntry(
             setState?.let { SetStateOp(it.target, it.state) }, background?.let { BackgroundOp(it.name, it.minutes, it.rates) },
             sleep?.let { SleepOp }, enjoy?.let(::EnjoyOp), hear?.let(::HearOp), progress?.let { ProgressOp(it.book) }, practice?.let(::PracticeOp),
             write?.let { WriteOp(it.with, it.into, it.timing, it.showsAs, it.optional) }, draw?.let(::DrawOp), build?.let { BuildOp },
-            survey?.let(::SurveyOp), gather?.let(::GatherOp), placeRoom?.let { PlaceRoomOp(it.room, it.site) },
+            survey?.let(::SurveyOp), gather?.let(::GatherOp), placeRoom?.let { PlaceRoomOp(it.room, it.site) }, openMail?.let { OpenMailOp },
         )
         require(set.size == 1) { "an effect is one op, such as `- need: { mood: 2 }`; this one has ${if (set.isEmpty()) "none" else set.joinToString { it.key }}" }
         return set.single()
@@ -631,6 +641,7 @@ internal data class OpEntry(
             is SurveyOp -> OpEntry(survey = op.on)
             is GatherOp -> OpEntry(gather = op.on)
             is PlaceRoomOp -> OpEntry(placeRoom = PlaceRoom(op.room, op.site))
+            OpenMailOp -> OpEntry(openMail = NoParams())
         }
     }
 }

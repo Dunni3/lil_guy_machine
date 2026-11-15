@@ -64,6 +64,14 @@ enum class VerbKind(
         required = listOf(setOf("write")),
     ),
 
+    /** Hearing from someone outside the world: opening a letter that came through the mail hatch. */
+    @SerialName("social")
+    Social(
+        "social", "he hears from someone outside the world",
+        allowed = setOf("need", "rate", "open_mail", "write"),
+        required = listOf(setOf("open_mail")),
+    ),
+
     /** Money moves: selling, or a shopping trip's checkout; a single purchase is the built-in `buy`. Not for inventing. */
     @SerialName("economic")
     Economic(

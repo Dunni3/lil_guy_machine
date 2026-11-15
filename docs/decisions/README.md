@@ -94,3 +94,4 @@ these hold the outcome. Skim this index before related changes.
 - 2026-11-15 [The land is explored from lookouts, samples are collected from patches that regrow, and kept, studied or sold](2026-11-15-the-land-is-explored-and-samples-are-collected.md)
 - 2026-11-15 [Memories carry places, and recall favours memories of where he is](2026-11-15-memories-carry-places-and-recall-favours-where-he-is.md)
 - 2026-11-15 [Rooms are bought as plans and built onto the house on sites; building again moves one](2026-11-15-rooms-are-bought-as-plans-and-built-on-sites.md)
+- 2026-11-15 [Anyone with an account can write him letters; accounts are an email and a password on the host](2026-11-15-anyone-with-an-account-can-write-him-letters.md)

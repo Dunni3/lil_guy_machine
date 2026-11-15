@@ -1,5 +1,5 @@
 /* Generated from schema/protocol.schema.json (protocol/.../*.kt) by gen_types.sh. Don't edit; run `make protocol-types`.
- * schema sha256: 954b4046f56ec96869931a7696a2a8558c0510e789b7abbcdb0689ea0003c71f
+ * schema sha256: a5053957d7282560eea4aad3b2ce463c2d489393fb1a6779a4243c92e748727e
  */
 
 /**
@@ -27,6 +27,12 @@ export interface Protocol {
   result: CommandResult;
   viewer: Viewer;
   runs: RunList;
+  credentials: Credentials;
+  signed_in: SignedIn;
+  account: Account;
+  letter_draft: LetterDraft;
+  mailbag: Mailbag;
+  mail_error: MailError;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -824,6 +830,67 @@ export interface SavedRun {
   reached: string | null;
   days: number;
   live: boolean;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "Credentials".
+ */
+export interface Credentials {
+  email: string;
+  password: string;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "SignedIn".
+ */
+export interface SignedIn {
+  email: string;
+  token: string;
+  expires_at: string;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "Account".
+ */
+export interface Account {
+  email: string;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "LetterDraft".
+ */
+export interface LetterDraft {
+  from: string;
+  body: string;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "Mailbag".
+ */
+export interface Mailbag {
+  letters: SentLetter[];
+  per_day: number;
+  left: number;
+  max_length: number;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "SentLetter".
+ */
+export interface SentLetter {
+  id: number;
+  from: string;
+  body: string;
+  sent_at: string;
+  status: string;
+  opened_at: string | null;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "MailError".
+ */
+export interface MailError {
+  error: string;
 }
 
 /** The protocol version these types are for; send it as ?v= when joining a stream. */
