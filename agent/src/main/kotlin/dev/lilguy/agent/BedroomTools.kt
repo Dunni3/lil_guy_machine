@@ -22,17 +22,21 @@ import kotlinx.serialization.json.putJsonObject
  * The bedroom's decision as tools, for models that call them: one tool per verb he can do now,
  * named by its id and described by what it takes and gives, with `what` and `on` as enums of the
  * things he could do it with; `buy` while there's a shop to buy from; and `wait`. Every tool takes
- * a `reason` first, which becomes the reply's `thought`. Locked verbs aren't tools: the status
- * message lists them with why ([view]).
+ * a `thought` first, what goes through his head as he chooses it, which becomes the reply's
+ * `thought` and his thought of the moment. Locked verbs aren't tools: the status message lists
+ * them with why ([view]). [looks] are `recall` and `ask`, which answer and let him go on.
  */
 object BedroomTools {
-    const val REASON = "reason"
+    const val THOUGHT = "thought"
+
+    /** Words his thought may run to. */
+    const val THOUGHT_WORDS = 80
 
     /** What an argument is set to when the thing can be done without it. */
     const val NONE = "none"
 
     /** The tools for [obs], as models deciding see it ([BedroomPrompt.deciding]). */
-    fun of(obs: Observation, ticksPerMinute: Int): ToolSet {
+    fun of(obs: Observation, ticksPerMinute: Int, looks: List<ToolSet.Look> = emptyList()): ToolSet {
         val open = obs.activities.orEmpty().filter { it.locked == null }
         val tools = buildList {
             open.groupBy { it.id }.forEach { (id, ways) ->
@@ -57,7 +61,43 @@ object BedroomTools {
                 reply(args, Intent.Wait(minutes * ticksPerMinute))
             })
         }
-        return ToolSet(tools)
+        return ToolSet(tools, looks, MAX_LOOKS)
+    }
+
+    /** Looks he may take before he acts, in one turn. */
+    const val MAX_LOOKS = 3
+
+    /**
+     * `recall` searches his memories and earlier thoughts with [recall]; `ask` asks how his world
+     * works with [ask]. Either is left out when null.
+     */
+    fun looks(recall: (suspend (String) -> String)?, ask: (suspend (String) -> String)?): List<ToolSet.Look> = listOfNotNull(
+        recall?.let { r ->
+            ToolSet.Look(
+                "recall",
+                "Try to remember something: what happened, something you did or found out, a plan you made. It searches your memories and earlier thoughts and gives back the few that fit. It takes no time; then choose what to do.",
+                text("query", "What you're trying to remember, in a few words."),
+            ) { args -> r(string(args, "query")) }
+        },
+        ask?.let { a ->
+            ToolSet.Look(
+                "ask",
+                "Ask how something in your world works, and someone who knows its workings answers: how to get to something you can't do yet, what something is for, what you could do that you haven't tried. It takes no time; then choose what to do.",
+                text("question", "Your question, first person, under 30 words."),
+            ) { args -> a(string(args, "question")) }
+        },
+    )
+
+    private fun text(name: String, description: String) = buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") {
+            putJsonObject(name) {
+                put("type", "string")
+                put("description", description)
+            }
+        }
+        putJsonArray("required") { add(name) }
+        put("additionalProperties", false)
     }
 
     /**
@@ -112,9 +152,9 @@ object BedroomTools {
     private fun parameters(enums: Map<String, List<String>>, minutes: IntRange? = null) = buildJsonObject {
         put("type", "object")
         putJsonObject("properties") {
-            putJsonObject(REASON) {
+            putJsonObject(THOUGHT) {
                 put("type", "string")
-                put("description", "Why you're doing this, in a sentence or two, in your own words.")
+                put("description", "What goes through your head as you choose this, in your own voice: how things stand, what you want, why this now. First person, under $THOUGHT_WORDS words.")
             }
             enums.forEach { (name, values) ->
                 putJsonObject(name) {
@@ -132,7 +172,7 @@ object BedroomTools {
             }
         }
         putJsonArray("required") {
-            add(REASON)
+            add(THOUGHT)
             enums.keys.forEach { add(it) }
             if (minutes != null) add("minutes")
         }
@@ -142,7 +182,7 @@ object BedroomTools {
     private val json = Json { encodeDefaults = true; explicitNulls = true }
 
     private fun reply(args: JsonObject, intent: Intent): JsonObject =
-        json.encodeToJsonElement(AgentReply.serializer(), AgentReply(string(args, REASON, ""), intent)).jsonObject
+        json.encodeToJsonElement(AgentReply.serializer(), AgentReply(string(args, THOUGHT, ""), intent)).jsonObject
 
     private fun string(args: JsonObject, name: String, default: String? = null): String =
         (args[name] as? JsonPrimitive)?.contentOrNull ?: default ?: throw ActionSchema.InvalidReply("missing `$name`")

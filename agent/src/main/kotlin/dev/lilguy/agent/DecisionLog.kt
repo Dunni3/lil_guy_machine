@@ -45,7 +45,12 @@ data class DecisionLogEntry(
     val fallback: Boolean = false,
     /** When the intent was think: the thinker's call. */
     val think: LoggedThink? = null,
+    /** What a model that calls tools looked at first, in order. */
+    val looks: List<LoggedLook> = emptyList(),
 )
+
+@Serializable
+data class LoggedLook(val tool: String, val arguments: JsonObject, val result: String)
 
 @Serializable
 data class LoggedThink(
@@ -67,6 +72,8 @@ data class LoggedRequest(
     val schema: JsonObject?,
     /** For closed-choice models: the state and options they picked from. */
     val choices: LoggedChoices? = null,
+    /** For models that call tools: the tools' names, the ones that act first. */
+    val tools: List<String>? = null,
 )
 
 @Serializable
@@ -242,6 +249,7 @@ class DecisionLog(val file: File, private val run: String, private val model: St
                     req.temperature,
                     r.schema,
                     req.choices?.let { c -> LoggedChoices(c.instructions, c.state, c.options.associate { it.label to it.description }) },
+                    req.tools?.let { t -> t.tools.map { it.name } + t.looks.map { it.name } },
                 )
             },
             attempts = r.attempts.map { LoggedAttempt(it.raw, it.error) },
@@ -256,6 +264,7 @@ class DecisionLog(val file: File, private val run: String, private val model: St
             think = r.thought?.let { t ->
                 LoggedThink(t.thinker, t.text, t.raw, t.latency.inWholeMilliseconds, t.usage.promptTokens, t.usage.completionTokens, t.error)
             },
+            looks = r.looks.map { LoggedLook(it.name, it.arguments, it.result) },
         )
 
         /** The decisions in a log, leaving out art lines (and journal lines from older logs). */

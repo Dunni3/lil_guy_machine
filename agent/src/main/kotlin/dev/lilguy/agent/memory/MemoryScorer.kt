@@ -43,6 +43,18 @@ class MemoryScorer(
             )
         })
 
+    /** How well each of [candidates] answers what he's trying to recall (`state.looking_for`), by [Recollection.key]. */
+    suspend fun search(state: JsonObject, candidates: List<Recollection>): Map<String, Double> =
+        ask(scorer, state, candidates.associate { c ->
+            c.key to ScoreQuestion(
+                buildJsonObject {
+                    put("question", SEARCH_QUESTION)
+                    put("memory", c.render())
+                },
+                SEARCH,
+            )
+        })
+
     /** By event id. */
     suspend fun significance(state: JsonObject, events: List<MemoryEvent>): Map<Long, Double> =
         ask(significant, state, events.associate { e ->
@@ -80,6 +92,17 @@ class MemoryScorer(
             "Bears on what he is doing now or just chose.",
             "Bears on a choice he faces now: what to do, buy or work toward next.",
             "He would likely choose badly without it.",
+        )
+
+        const val SEARCH_QUESTION =
+            "The character in `state` is trying to remember something: `state.looking_for`. How well does `memory` answer it?"
+
+        val SEARCH = listOf(
+            "Nothing to do with it.",
+            "Touches the same things, but doesn't answer it.",
+            "Partly answers it.",
+            "Answers it.",
+            "Exactly what he's looking for.",
         )
 
         const val SIGNIFICANCE_QUESTION =

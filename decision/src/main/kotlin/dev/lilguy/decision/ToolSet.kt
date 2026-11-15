@@ -8,7 +8,23 @@ import kotlinx.serialization.json.JsonObject
  * goes through the schema, so the tools only change how the choice is put, not what's accepted.
  * A backend sends these in place of the schema's own tools when a request carries them.
  */
-class ToolSet(val tools: List<Tool>) {
+class ToolSet(
+    val tools: List<Tool>,
+    /**
+     * Tools that answer rather than act: a call to one is answered and put back, and the model goes
+     * on, up to [maxLooks] calls in a turn; then only [tools] are offered.
+     */
+    val looks: List<Look> = emptyList(),
+    val maxLooks: Int = 3,
+) {
+    class Look(
+        val name: String,
+        val description: String,
+        val parameters: JsonObject,
+        /** The answer, as the tool's result; a thrown exception is answered with its message. */
+        val answer: suspend (JsonObject) -> String,
+    )
+
     class Tool(
         val name: String,
         val description: String,
@@ -27,3 +43,6 @@ class ToolSet(val tools: List<Tool>) {
 
 /** A call the model made: [arguments] as it sent them. [id] pairs it with its result. */
 data class ToolCall(val id: String, val name: String, val arguments: JsonObject)
+
+/** One look a model took before it acted: what it called, with what, and the answer. */
+data class Looked(val name: String, val arguments: JsonObject, val result: String)

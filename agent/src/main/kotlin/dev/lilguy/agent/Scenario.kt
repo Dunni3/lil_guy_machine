@@ -1,6 +1,7 @@
 package dev.lilguy.agent
 
 import dev.lilguy.agent.memory.AgentMemory
+import dev.lilguy.agent.memory.Describe
 import dev.lilguy.decision.DecisionModel
 import dev.lilguy.sim.BedroomContent
 import dev.lilguy.sim.BedroomState
@@ -55,9 +56,13 @@ fun bedroomScenario(
     dropped: (List<String>) -> Unit = {},
     onDecision: (AgentRuntime.DecisionRecord) -> Unit = {},
 ): Pair<BedroomWorld, AgentRuntime> {
+    // A model that calls tools says what it thinks with every choice and can look things up first, so it isn't offered
+    // the reflection verb (think) and isn't made to think every few decisions.
+    val tooling = model.capabilities.let { it.toolCalls && !it.closedChoice }
+    val reflecting = content.reflection?.verb?.takeIf { !tooling }
     // A verb whose result nothing writes (no thinker) isn't offered to models. The sim still has it, and the reply schema
     // still takes it.
-    fun offered(v: VerbSpec): Boolean = longTerm?.offers(v) ?: v.authored.none { it.essential }
+    fun offered(v: VerbSpec): Boolean = (reflecting != null || v.id != content.reflection?.verb) && (longTerm?.offers(v) ?: v.authored.none { it.essential })
     val world = from?.let { BedroomWorld.restore(it, content, ticksPerMinute, granted = granted, seed = seed).also { r -> dropped(r.dropped) }.world }
         ?: BedroomWorld.create(content, ticksPerMinute, granted = granted, seed = seed)
     longTerm?.connect(world)
@@ -81,8 +86,16 @@ fun bedroomScenario(
         view = { BedroomPrompt.deciding(it, shown()) },
         // A model that calls tools calls his verbs.
         toolTurn = PromptBuilder.ToolTurn(
-            system = { BedroomPrompt.system(shown(), ticksPerMinute, self(), tools = true) },
-            tools = { BedroomTools.of(it, ticksPerMinute) },
+            system = { BedroomPrompt.system(shown(), ticksPerMinute, self(), tools = true, looks = setOfNotNull("recall".takeIf { longTerm != null }, "ask".takeIf { longTerm?.canAsk == true })) },
+            tools = { obs ->
+                val looks = longTerm?.let { m ->
+                    BedroomTools.looks(
+                        recall = { q -> m.search(q, obs).ifEmpty { listOf("Nothing comes to mind.") }.joinToString("\n") },
+                        ask = if (!m.canAsk) null else { q -> m.ask(q, obs, Describe.state(obs))?.reply?.let { it.text ?: "No answer came (${it.error})." } ?: "No one can answer that now." },
+                    )
+                }.orEmpty()
+                BedroomTools.of(obs, ticksPerMinute, looks)
+            },
             status = BedroomTools::view,
             call = { BedroomTools.call(it, ticksPerMinute) },
         ),
@@ -92,7 +105,7 @@ fun bedroomScenario(
         schemaFor = { BedroomPrompt.replySchema(BedroomPrompt.deciding(it, shown()), ticksPerMinute) },
         longTerm = longTerm,
         fallback = { Intent.Wait(BedroomPrompt.WAIT_TICKS) },
-        reflection = start.reflection?.takeIf { start.verb(it.verb) != null }?.let { it.verb to it.every },
+        reflection = start.reflection?.takeIf { reflecting != null && start.verb(it.verb) != null }?.let { it.verb to it.every },
         onDecision = onDecision,
     )
     return world to runtime

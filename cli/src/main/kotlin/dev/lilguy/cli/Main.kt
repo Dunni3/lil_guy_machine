@@ -518,7 +518,8 @@ private fun runOnce(
             val note = if (d.error != null) "FALLBACK: ${d.error}" else d.rationale.orEmpty()
             val tries = if (d.attempts.size > 1) " [${d.attempts.size} tries]" else ""
             println("%s  decide  %-52s %5d ms%s  %s".format(stampOf(d.tick), intent, d.latency.inWholeMilliseconds, tries, note))
-            d.thought?.let { println("%s  thought %s".format(stampOf(d.tick), it.text?.let { t -> "\"$t\"" } ?: "FAILED: ${it.error}")) }
+            d.looks.forEach { l -> println("%s  %s %s -> %s".format(stampOf(d.tick), l.name, l.arguments.values.joinToString(" "), l.result.replace('\n', ' ').take(160))) }
+            d.thought?.takeIf { it.text != d.rationale }?.let { println("%s  thought %s".format(stampOf(d.tick), it.text?.let { t -> "\"$t\"" } ?: "FAILED: ${it.error}")) }
         }
     }
     val bedroom = world as? BedroomWorld
