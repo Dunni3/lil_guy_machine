@@ -1139,6 +1139,50 @@
             ],
             "additionalProperties": false
         },
+        "HisLetter": {
+            "title": "HisLetter",
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "to": {
+                    "type": "string"
+                },
+                "body": {
+                    "type": "string"
+                },
+                "written_at": {
+                    "type": "string"
+                },
+                "day": {
+                    "type": "integer"
+                },
+                "time": {
+                    "type": "string"
+                },
+                "in_reply_to": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "id",
+                "to",
+                "body",
+                "written_at",
+                "day",
+                "time",
+                "in_reply_to"
+            ],
+            "additionalProperties": false
+        },
         "IntentView": {
             "title": "IntentView",
             "type": "object",
@@ -1527,6 +1571,12 @@
                         "$ref": "#/$defs/SentLetter"
                     }
                 },
+                "replies": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/HisLetter"
+                    }
+                },
                 "per_day": {
                     "type": "integer"
                 },
@@ -1539,6 +1589,7 @@
             },
             "required": [
                 "letters",
+                "replies",
                 "per_day",
                 "left",
                 "max_length"

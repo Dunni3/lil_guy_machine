@@ -15,6 +15,7 @@ import dev.lilguy.agent.TokenPurpose
 import dev.lilguy.agent.TokenReport
 import dev.lilguy.agent.TokenTotals
 import dev.lilguy.agent.invent.Inventor
+import dev.lilguy.agent.mail.LetterWriter
 import dev.lilguy.agent.shop.Shopper
 import dev.lilguy.agent.shop.Trip
 import dev.lilguy.agent.memory.AgentMemory
@@ -405,6 +406,8 @@ fun main(argv: Array<String>) {
                 },
                 onSearch = { s -> if (!quiet) printSearch(s) },
                 onDraft = { d -> life?.invention(d) },
+                letterWriter = writerModel?.takeIf { scenario == Scenario.Bedroom && !it.capabilities.closedChoice }?.let { LetterWriter(ledger.meter(it, TokenPurpose.Letter, priceOf(writerEndpoint!!))) },
+                onLetter = { l -> life?.letter(l) },
                 onTrip = { t ->
                     log?.write(t)
                     life?.trip(t)

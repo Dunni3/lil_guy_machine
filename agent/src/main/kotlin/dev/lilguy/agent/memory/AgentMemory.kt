@@ -3,6 +3,9 @@ package dev.lilguy.agent.memory
 import dev.lilguy.agent.invent.Drafted
 import dev.lilguy.agent.invent.Inventing
 import dev.lilguy.agent.invent.InventionHandler
+import dev.lilguy.agent.mail.LetterHandler
+import dev.lilguy.agent.mail.LetterWriter
+import dev.lilguy.agent.mail.Written
 import dev.lilguy.agent.shop.Shopper
 import dev.lilguy.agent.shop.ShoppingHandler
 import dev.lilguy.agent.shop.Trip
@@ -91,6 +94,10 @@ class AgentMemory(
     private val searcher: Searcher? = null,
     /** Every web search, found or not; called from the agent coroutine. */
     private val onSearch: (Search) -> Unit = {},
+    /** Writes his letters to people who have written to him; null and he writes none. */
+    private val letterWriter: LetterWriter? = null,
+    /** Every letter as it's written, posted or not. */
+    private val onLetter: (Written) -> Unit = {},
 ) {
     /** What authored ops are written from: who he is, his state in the decision prompt's words, and that prompt's system message. */
     class Brief(val persona: String, val situation: String, val system: String)
@@ -145,6 +152,7 @@ class AgentMemory(
         if (reader != null) handlers += ReadingHandler(reader, store, run)
         if (shopper != null) handlers += ShoppingHandler(shopper, store, run) { t -> tripLog += t; onTrip(t) }
         if (inventor != null) handlers += InventionHandler(inventor, store, run, onDraft)
+        if (letterWriter != null) handlers += LetterHandler(letterWriter, store, run, onLetter)
         return Authors(handlers, scope)
     }
 
@@ -279,6 +287,7 @@ class AgentMemory(
         thinker?.oracle?.connect(world)
         shopper?.connect(world)
         inventor?.connect(world)
+        letterWriter?.connect(world)
         restVerbs = world.content.verbs.filter { v -> v.effects.any { it is SleepOp } }.map { it.id }.toSet()
         about = world.content.personality.core.he
     }

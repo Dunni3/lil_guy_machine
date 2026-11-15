@@ -9,7 +9,8 @@ import kotlinx.serialization.Serializable
  * - `POST /v1/accounts` with [Credentials] makes one; `POST /v1/sessions` with [Credentials] signs in;
  *   both answer [SignedIn], whose token goes on later calls as `Authorization: Bearer <token>`;
  * - `GET /v1/account` is the [Account] signed in; `DELETE /v1/sessions` signs out;
- * - `POST /v1/lives/{life}/letters` with a [LetterDraft] sends one; `GET /v1/lives/{life}/letters` is your [Mailbag].
+ * - `POST /v1/lives/{life}/letters` with a [LetterDraft] sends one; `GET /v1/lives/{life}/letters` is your [Mailbag],
+ *   with the letters he wrote you.
  * A refusal is a [MailError] with a 4xx status.
  */
 
@@ -43,9 +44,34 @@ data class SentLetter(
     @SerialName("opened_at") val openedAt: String?,
 )
 
-/** Your letters to a life, newest first, and how many more you may send today ([perDay] in any 24 hours). */
+/**
+ * A letter he wrote you, once he has opened one of yours: [to] is the name he wrote it to (how you
+ * signed), [writtenAt] when he posted it (ISO), [day] and [time] the game's. [inReplyTo] is your
+ * newest letter he had opened when he wrote it.
+ */
 @Serializable
-data class Mailbag(val letters: List<SentLetter>, @SerialName("per_day") val perDay: Int, val left: Int, @SerialName("max_length") val maxLength: Int)
+data class HisLetter(
+    val id: Long,
+    val to: String,
+    val body: String,
+    @SerialName("written_at") val writtenAt: String,
+    val day: Int,
+    val time: String,
+    @SerialName("in_reply_to") val inReplyTo: Long?,
+)
+
+/**
+ * Your letters to a life and [replies], his to you, each newest first, and how many more you may send
+ * today ([perDay] in any 24 hours).
+ */
+@Serializable
+data class Mailbag(
+    val letters: List<SentLetter>,
+    val replies: List<HisLetter>,
+    @SerialName("per_day") val perDay: Int,
+    val left: Int,
+    @SerialName("max_length") val maxLength: Int,
+)
 
 /** Why an account or letter call was refused. */
 @Serializable

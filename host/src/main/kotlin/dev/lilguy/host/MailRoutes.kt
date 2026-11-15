@@ -45,7 +45,7 @@ internal fun Route.mail(accounts: Accounts, lives: Map<String, Life>) {
     get("/v1/lives/{life}/letters") {
         val who = call.who(accounts) ?: return@get
         val life = call.parameters["life"]!!.takeIf { it in lives } ?: return@get call.error("no such life", HttpStatusCode.NotFound)
-        call.json(Mailbag.serializer(), Mailbag(accounts.letters(who, life), Accounts.PER_DAY, accounts.left(who), Accounts.MAX_LENGTH))
+        call.json(Mailbag.serializer(), accounts.mailbag(who, life))
     }
     post("/v1/lives/{life}/letters") {
         val who = call.who(accounts) ?: return@post
@@ -54,7 +54,7 @@ internal fun Route.mail(accounts: Accounts, lives: Map<String, Life>) {
         call.refusing {
             accounts.send(who, life.id, d.from, d.body)
             life.mailSent()
-            call.json(Mailbag.serializer(), Mailbag(accounts.letters(who, life.id), Accounts.PER_DAY, accounts.left(who), Accounts.MAX_LENGTH), HttpStatusCode.Created)
+            call.json(Mailbag.serializer(), accounts.mailbag(who, life.id), HttpStatusCode.Created)
         }
     }
 }

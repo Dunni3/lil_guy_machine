@@ -30,6 +30,7 @@ sealed interface AuthoredOp {
             "draw" to setOf("pieces", "events"),
             "shopping" to setOf("events"),
             "invention" to setOf("events"),
+            "letter" to setOf("events"),
         )
 
         /** Where results can go: his event stream, short-term memory, and the sim's art pieces. */
@@ -134,4 +135,11 @@ sealed interface AuthoredResult {
      * failed); the build then fails.
      */
     data class Designed(val design: Design?, val failed: String? = null) : AuthoredResult
+
+    /**
+     * A letter he wrote, staged before he sits down to write it ([BedroomWorld.stage]) and put
+     * through the hatch as he finishes ([PostLetterOp]): to the sender [to], saying [body].
+     * [failed]: why there's no letter (the model's call failed); the verb then fails.
+     */
+    data class Composed(val to: Long?, val body: String?, val failed: String? = null) : AuthoredResult
 }
