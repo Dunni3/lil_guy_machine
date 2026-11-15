@@ -1,6 +1,6 @@
 import type { Command, Settings } from "../../../protocol/ts/protocol";
 import { TABS, entries, type Entry, type PageView, type TabId } from "./pages";
-import { adjust, adjustable, confirms, pickReplay, type RunRow } from "./run";
+import { adjust, adjustable, confirms, pickReplay, pickRun, pickedRun, type RunRow } from "./run";
 
 /** What a key means to the menu (`GameMenu.Press`). */
 export type Press = "ok" | "back" | "left" | "right" | "up" | "down";
@@ -11,6 +11,20 @@ export type Act =
   | { type: "configure"; settings: Settings }
   | { type: "signIn" }
   | { type: "signOut" };
+
+/**
+ * What a pointer is over on the card, recorded by `MenuCard` from the layout it draws with: a tab,
+ * a list row (by key, so a click acts on the row drawn even as newer ones arrive), a row's LEFT or
+ * RIGHT arrow, the list or detail pane, the close button, or the card's paper elsewhere.
+ */
+export type Spot =
+  | { kind: "tab"; tab: TabId }
+  | { kind: "entry"; key: string }
+  | { kind: "arrow"; key: string; by: -1 | 1 }
+  | { kind: "list" }
+  | { kind: "detail" }
+  | { kind: "close" }
+  | { kind: "card" };
 
 /** Detail lines a press of UP or DOWN scrolls. */
 const SCROLL_STEP = 4;
@@ -35,6 +49,8 @@ export class Menu {
   confirm = false;
   /** The run Replay would start again (1-based); null for this one. */
   replayPick: number | null = null;
+  /** The saved run Saved runs would go back to, by id; null for the most recently played. */
+  runPick: string | null = null;
   private readonly picked = new Map<TabId, string>();
   /** The menu has opened before on this page: after the first time, a viewer's tab stays where they left it. */
   private opened = false;
@@ -63,6 +79,7 @@ export class Menu {
     this.scroll = 0;
     this.confirm = false;
     this.replayPick = null;
+    this.runPick = null;
   }
 
   /** The picked entry's index in [list]: the one with the picked key, or the first. */
@@ -122,9 +139,91 @@ export class Menu {
     }
   }
 
+  /**
+   * A click or tap on [spot], as the presses it stands for, so a pointer can do nothing the keys
+   * can't: a tab goes to it; a row picks it, and a click on the picked row is OK (read it, or the
+   * Run row's action, so Restart and Replay still ask first); a row's arrow picks it and is
+   * LEFT/RIGHT; the detail is OK when OK would read it; the × closes. Anything else cancels a
+   * confirm, as any other key does.
+   */
+  click(spot: Spot, v: PageView): Act | null {
+    switch (spot.kind) {
+      case "tab":
+        this.confirm = false;
+        this.tab = spot.tab;
+        this.reading = false;
+        this.scroll = 0;
+        return null;
+      case "entry":
+        if (this.pickedKey(v) === spot.key) return this.press("ok", v);
+        this.pick(spot.key, v);
+        return null;
+      case "arrow":
+        this.pick(spot.key, v);
+        return this.press(spot.by < 0 ? "left" : "right", v);
+      case "detail":
+        if (this.tab !== "run" && !this.reading) return this.press("ok", v);
+        this.confirm = false;
+        return null;
+      case "close":
+        this.close();
+        return null;
+      default:
+        this.confirm = false;
+        return null;
+    }
+  }
+
+  /**
+   * A wheel or a drag of [steps] notches (down is positive): over the list, UP/DOWN pick; over the
+   * detail, it scrolls a line a notch, and gives the detail the focus as OK does where OK would.
+   */
+  wheel(spot: Spot, steps: number, v: PageView) {
+    this.confirm = false;
+    if (spot.kind === "detail") {
+      if (this.tab !== "run" && entries(this.tab, v).length) this.reading = true;
+      this.scroll = Math.max(0, this.scroll + steps);
+      return;
+    }
+    if (spot.kind !== "list" && spot.kind !== "entry" && spot.kind !== "arrow") return;
+    this.reading = false;
+    for (let i = 0; i < Math.abs(steps); i++) this.press(steps < 0 ? "up" : "down", v);
+  }
+
+  /** Whether a click on [spot] does anything, for the pointer cursor. */
+  clickable(spot: Spot | null, v: PageView): boolean {
+    switch (spot?.kind) {
+      case "tab": case "entry": case "arrow": case "close": return true;
+      case "detail": return this.tab !== "run" && !this.reading && entries(this.tab, v).length > 0;
+      default: return false;
+    }
+  }
+
+  private pickedKey(v: PageView): string | undefined {
+    const list = entries(this.tab, v);
+    return list[this.index(list)]?.key;
+  }
+
+  /** [key] picked, as UP/DOWN would leave it, with the list back in focus. */
+  private pick(key: string, v: PageView) {
+    const list = entries(this.tab, v);
+    const i = list.findIndex((e) => e.key === key);
+    this.confirm = false;
+    if (i < 0) return;
+    if (this.pickedKey(v) === key && !this.reading) return;
+    if (i === 0) this.picked.delete(this.tab);
+    else this.picked.set(this.tab, key);
+    this.reading = false;
+    this.scroll = 0;
+  }
+
   private adjust(row: RunRow, by: number, v: PageView): Act | null {
     if (row === "replay") {
       this.replayPick = pickReplay(v.life.run, this.replayPick, by);
+      return null;
+    }
+    if (row === "runs") {
+      this.runPick = pickRun(v.runs, this.runPick, by);
       return null;
     }
     const settings = adjust(row, by, v.life.run, v.settings);
@@ -144,12 +243,15 @@ export class Menu {
       case "signout": return { type: "signOut" };
       default:
         if (!confirms(row)) return null;
+        const back = row === "runs" ? pickedRun(v.runs, this.runPick) : null;
+        if (row === "runs" && !back) return null;
         if (!confirmed) {
           this.confirm = true;
           return null;
         }
         {
-          const command: Command = row === "replay" ? { type: "replay", run: this.replayPick ?? v.life.run.run } : { type: "restart" };
+          const command: Command = row === "replay" ? { type: "replay", run: this.replayPick ?? v.life.run.run }
+            : back ? { type: "resume", run: back.run_id } : { type: "restart" };
           this.reset();
           return { type: "command", command };
         }

@@ -1,9 +1,11 @@
 package dev.lilguy.host
 
+import dev.lilguy.agent.invent.CannedInventor
 import dev.lilguy.agent.BedroomPolicy
 import dev.lilguy.agent.live.ModelSetup
 import dev.lilguy.agent.live.RunDatabase
 import dev.lilguy.decision.RandomPicker
+import dev.lilguy.runlog.RunStore
 import dev.lilguy.runlog.SyncTarget
 import dev.lilguy.runlog.SyncWorker
 import dev.lilguy.runlog.jdbc.JdbcSqlDriver
@@ -28,12 +30,15 @@ import kotlin.time.Duration.Companion.seconds
  * - `LILGUY_ENDPOINT` names the deciding endpoint in `LILGUY_CONFIG` (config/endpoints.yaml), with
  *   `LILGUY_MEMORY_ENDPOINT`, `LILGUY_WRITER_ENDPOINT`, `LILGUY_RECALL_ENDPOINT` and `LILGUY_BEAM` as for
  *   the desktop; unset, the scripted policy runs and nothing calls a model;
+ * - `LILGUY_INVENTOR=1` has him invent from a few fixed designs, so he invents with no endpoint;
  * - `LILGUY_PAINTER=<seconds>` draws his art with random picks at that latency, so he paints with no endpoint;
  * - `LILGUY_START_ITEMS` and `LILGUY_SCRIPT`, as for the desktop's screenshots: what he starts with, and verbs the scripted policy does first;
- * - `LILGUY_DAYS` (0 for no end), `LILGUY_AUTOSTART=1` to start the first run at once;
+ * - `LILGUY_DAYS` (0 for no end), `LILGUY_AUTOSTART=1` to start the first run at once (a run carried on that was
+ *   running when the host stopped starts again without it);
  * - `LILGUY_SPEED`: game minutes per real second the life starts at (4, a day in about 6 minutes); a model's cost per
  *   real day goes with it;
- * - `LILGUY_DB` (runs/lilguy.db; "none" for off), `LILGUY_RESUME` (a run id or "latest"), and
+ * - `LILGUY_DB` (runs/lilguy.db; "none" for off), `LILGUY_RESUME`: a run id, or "none" for a fresh run; unset or "latest",
+ *   the host carries on the run it was last on (the host's run played most recently), or starts fresh when there's none; and
  *   `LILGUY_SYNC_URL` / `LILGUY_SYNC_TOKEN` to sync the store to the server, one worker for the process.
  */
 fun main() {
@@ -53,7 +58,8 @@ fun main() {
         recallEndpoint = get("LILGUY_RECALL_ENDPOINT"),
         beam = get("LILGUY_BEAM")?.toIntOrNull(),
         days = days,
-    )).let { s -> get("LILGUY_PAINTER")?.toDoubleOrNull()?.let { secs -> s.copy(painter = { RandomPicker(secs.seconds, seed = System.nanoTime()) }) } ?: s }.let { s ->
+    )).let { s -> get("LILGUY_PAINTER")?.toDoubleOrNull()?.let { secs -> s.copy(painter = { RandomPicker(secs.seconds, seed = System.nanoTime()) }) } ?: s }
+        .let { s -> if (get("LILGUY_INVENTOR").isNullOrEmpty()) s else s.copy(inventor = { CannedInventor() }) }.let { s ->
         val extra = get("LILGUY_START_ITEMS").orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
             .associate { it.substringBefore('=') to (it.substringAfter('=', "1").toIntOrNull() ?: 1) }
         if (extra.isEmpty()) s else s.copy(startItems = extra)
@@ -65,7 +71,7 @@ fun main() {
     val store = (get("LILGUY_DB") ?: "runs/lilguy.db").takeIf { it != "none" }?.let { JdbcSqlDriver.store(File(it)) }
     // One sync worker for the whole process; the sessions record but don't sync.
     val (gitSha, gitDirty) = gitVersion()
-    val db = store?.let { RunDatabase(it, sync = null, platform = "host", host = hostName, gitSha = gitSha, gitDirty = gitDirty, resume = get("LILGUY_RESUME")) }
+    val db = store?.let { RunDatabase(it, sync = null, platform = PLATFORM, host = hostName, gitSha = gitSha, gitDirty = gitDirty, resume = resumeId(it, get("LILGUY_RESUME"))) }
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val sync = store?.let { s -> SyncTarget.fromEnv(env)?.let { SyncWorker(s, it, client = "host@${hostName ?: "?"}") } }
     sync?.start(scope)
@@ -96,6 +102,19 @@ private fun roles(setup: ModelSetup, get: (String) -> String?): String = listOfN
     get("LILGUY_WRITER_ENDPOINT")?.takeIf { setup.writerModel != null }?.let { "writer $it" },
     get("LILGUY_RECALL_ENDPOINT")?.takeIf { setup.recallScorer != null }?.let { "recall $it" },
 ).takeIf { it.isNotEmpty() }?.joinToString(", ", " (", ")").orEmpty()
+
+private const val PLATFORM = "host"
+
+/**
+ * Which run the life starts on: [asked] as given when it's an id; for "latest" or unset, the bedroom run this host
+ * played most recently, so a deploy or restart carries the life on where it was. Null for a fresh run: "none", or when
+ * that run has no save (never an older run instead).
+ */
+private fun resumeId(store: RunStore, asked: String?): String? = when (asked) {
+    "none" -> null
+    null, "latest" -> store.played(50).firstOrNull { it.platform == PLATFORM && it.scenario == "bedroom" }?.id?.takeIf { store.latestSave(it) != null }
+    else -> asked
+}
 
 /**
  * The commit this host was built from and whether that checkout had changes: from git when it runs in a checkout,

@@ -1,5 +1,5 @@
 /* Generated from schema/protocol.schema.json (protocol/.../*.kt) by gen_types.sh. Don't edit; run `make protocol-types`.
- * schema sha256: 594cb6011ff5b151edf4accce44cfc88b316ecec3c84654007e4d2ae620c3648
+ * schema sha256: 872229f6dafc0fe9e319f0803e561ed22efb4c9d917387dcb1bfce5ec56d139e
  */
 
 /**
@@ -26,6 +26,7 @@ export interface Protocol {
   command: Command;
   result: CommandResult;
   viewer: Viewer;
+  runs: RunList;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -340,6 +341,7 @@ export interface CommissionView {
 export interface ShopState {
   catalog: CatalogState[];
   verbs: VerbState[];
+  inventions: Invented[];
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -361,6 +363,41 @@ export interface VerbState {
   locked: string | null;
   gives: string | null;
   taught_by: string | null;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "Invented".
+ */
+export interface Invented {
+  id: string;
+  name: string;
+  group: string;
+  use: string;
+  like: {
+    [k: string]: number;
+  };
+  price: number | null;
+  wall: boolean;
+  cost: number;
+  why: string;
+  look: LookShape[];
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "LookShape".
+ */
+export interface LookShape {
+  shape: string;
+  w: number;
+  h: number;
+  d: number;
+  x: number;
+  y: number;
+  z: number;
+  rot_x: number;
+  rot_y: number;
+  rot_z: number;
+  color: string;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -687,6 +724,32 @@ export interface CommandResult {
  */
 export interface Viewer {
   admin: boolean;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "RunList".
+ */
+export interface RunList {
+  runs: SavedRun[];
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "SavedRun".
+ */
+export interface SavedRun {
+  run_id: string;
+  scenario: string;
+  platform: string;
+  model: string | null;
+  started_at: string;
+  played_at: string;
+  ended_at: string | null;
+  end_reason: string | null;
+  finished: boolean;
+  saved: string | null;
+  reached: string | null;
+  days: number;
+  live: boolean;
 }
 
 /** The protocol version these types are for; send it as ?v= when joining a stream. */

@@ -42,6 +42,8 @@ enum class TokenPurpose {
     @SerialName("significance") Significance,
     /** A shopping trip's picks. */
     @SerialName("shop") Shop,
+    /** The design of something he invents. */
+    @SerialName("invent") Invent,
 }
 
 /** Dollars per million tokens, from an endpoint's `price_in` and `price_out`. */

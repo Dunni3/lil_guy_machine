@@ -22,7 +22,8 @@ make cli         # headless runner (ARGS="--scenario bedroom --days 3 --endpoint
                  # --affinities calm=2,loud=-1 / --curiosity 1.5 for another personality
 make server-up   # local Postgres + the ingest API (token "dev"); make server-test, server-psql
 make host        # the sim host: a life in real time, its state over WebSocket, debug page at
-                 # http://127.0.0.1:8790/ (scripted unless ENDPOINT=; PAINTER=2 paints; commands need LILGUY_ADMIN_PASSWORD, see host/README.md)
+                 # http://127.0.0.1:8790/ (scripted unless ENDPOINT=; PAINTER=2 paints; INVENTOR=1 invents from fixed designs; commands need LILGUY_ADMIN_PASSWORD, see host/README.md;
+                 # it carries on the run it was last on, RESUME=none for a fresh one)
 make protocol-types  # protocol JSON Schema + TypeScript from :protocol (make test fails when stale)
 make web-build   # the web renderer into web/dist, in a Node container; make host does it when stale and serves it at /room/
 make web-dev     # the same with live reload at http://localhost:5173/, against a make host; make web-test for its test
@@ -95,6 +96,13 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   staged in the sim before he goes (`AuthorHandler.staged`, `BedroomWorld.stage`) and its `basket` op buys
   it at the finish; while there's a trip, everything (food too) is bought on trips and models deciding
   see no `shop` (`BedroomPrompt.deciding`).
+- Inventing (`docs/decisions/2026-11-13-he-invents-items-*`): at the workbench the `invent` verb's `invention` write has the
+  writer design one new item (`agent/.../invent/Inventor.kt`: one use, some qualities, a look, with one retry on the sim's
+  reasons; `CannedInventor` for `LILGUY_INVENTOR=1`), staged like a trip's basket, and the `build` op (`Ops.kt`) checks it,
+  prices its materials and adds it to the run's content (`sim/.../Invention.kt`: `Design`, `InventRules` from rules.yaml
+  `invent`, `Invention`; `BedroomContent.plus`). `BedroomWorld.content` grows during a run, so read it when needed. Inventions
+  are saved in `BedroomState.inventions`, go to viewers in the protocol's `shop.inventions`, and the web renderer builds their
+  models from the look (`web/src/room/parts.ts`). Things to look at stand in room.yaml's spare `spots`.
 - Art: `agent/.../art/`: `Painter.kt` (the deciding model draws each piece as a run of closed picks:
   subject, crayon box, then a stroke a call; `CommissionVoice` words each day's commission on a text
   model), `Strokes.kt` (the drawing spec as menus of strokes by stage: background, subject,
@@ -117,7 +125,8 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   `LILGUY_SYNC_URL`, `LILGUY_SYNC_TOKEN`). Drivers: `runlog-jdbc/` (JVM), `android/.../AndroidSqlDriver.kt` (TV).
   `agent/.../LifeRecorder.kt` turns a run into rows (decisions with outcomes, model calls with prompts via
   `TokenLedger.record`, ledger, needs, hourly state, authored ops, art) and takes the morning checkpoint around each
-  tick (`beforeStep`/`afterStep`; `AgentRuntime.hold`); saves are `BedroomWorld.exportState`/`restore`
+  tick (`beforeStep`/`afterStep`; `AgentRuntime.hold`), plus each session's rolling save (one row rewritten at decision
+  points every 10 game minutes, and when the run is left; `docs/decisions/2026-11-15-runs-are-kept-*`); saves are `BedroomWorld.exportState`/`restore`
   (`sim/.../BedroomState.kt`) plus `AgentState`. CLI: `cli/.../RunDb.kt`, `Importer.kt`. App: `RunDatabase.kt`,
   `SimSession`. Server: `server/` (FastAPI ingest and query only, in `app/main.py`; numbered migrations in `sql/migrations/`, compose, `deploy/`
   for its own Lightsail Small box; see `server/README.md`; `server/host/` is the sim host's image, on its own subdomain,
@@ -145,7 +154,7 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   `art.ts` (hung frames, the pieces on the desk and easel, brush, palette and sparkles; `PaintScene.kt`), `easel.ts` (the piece under way played out
   stroke by stroke at the host's pace from `state.easel`). `src/guy/`: `blob.ts` and `face.ts` (`Blob.kt`). `src/ui/`: what's drawn over the room, in the
   same canvas as panels from 2D canvases redrawn only when they change (`layer.ts`; no DOM over the room but the sign-in box): `hud.ts` (needs card, bubble,
-  banner, the catalogue while he buys; `RoomView.kt`), `menu.ts` and `pages.ts` (the menu's keys and its RUN, SHOP, THOUGHTS, MEMORY, SELF and TRIPS tabs;
+  banner, the catalogue while he buys; `RoomView.kt`), `menu.ts` and `pages.ts` (the menu's keys, and clicks and the wheel on the spots `menuCard.ts` records as it draws, and its RUN, SHOP, THOUGHTS, MEMORY, SELF and TRIPS tabs;
   `GameMenu.kt`), `menuCard.ts` (drawing it), `run.ts` (`RunControls.kt`), `keys.ts` (`RemoteInput.kt`'s keys), `admin.ts` (the password sign-in and commands).
 - Part lists: `parts/` (pure Kotlin): `Part.kt` (`Part`, `PartList`), `RoomParts.kt` (furniture, props, the room's constants), `DecorParts.kt`, `PartExport.kt`
   (writes `parts/export/parts.json`, the web renderer's copy, checked by `make test`). `:app` builds meshes from the same lists.

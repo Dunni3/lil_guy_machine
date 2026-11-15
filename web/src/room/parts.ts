@@ -1,6 +1,7 @@
 import type { Texture } from "three";
 import { CrayonModel, setMaxRound, type Part } from "../crayon/model";
 import exported from "../../../parts/export/parts.json";
+import type { Invented } from "../../../protocol/ts/protocol";
 
 /** The export's placeholder for a colour chosen as he lives (`PartExport.COLOR`). */
 const COLOR = "$color";
@@ -33,14 +34,60 @@ function joined(...lists: Part[][]): Part[] {
 
 const shifted = (list: Part[], x: number) => list.map((p) => ({ ...p, x: p.x + x }));
 
+/** How far up a wall the things he invents for it hang, and the most they stand out from it. */
+const INVENTED_WALL_Y = 1.0;
+const INVENTED_WALL_DEPTH = 0.25;
+
+/**
+ * An invention's look as a part list. A design is drawn standing on a floor tile; one for a wall
+ * is lifted up it and flattened against it, its back at z = 0 as the wall items' part lists are.
+ */
+function lookParts(made: Invented): Part[] {
+  return made.look.map((p, i) => ({
+    shape: p.shape,
+    w: p.w,
+    h: p.h,
+    d: made.wall ? Math.min(p.d, INVENTED_WALL_DEPTH) : p.d,
+    x: p.x,
+    y: p.y + (made.wall ? INVENTED_WALL_Y : 0),
+    z: made.wall ? 0.01 + (p.z + 0.5) * INVENTED_WALL_DEPTH : p.z,
+    rotX: p.rot_x,
+    rotY: p.rot_y,
+    rotZ: p.rot_z,
+    color: p.color,
+    texture: null,
+    round: -1,
+    lump: 0.003,
+    seed: i + 1,
+    outline: 0.011,
+    taper: 1,
+  }));
+}
+
 /** The room's models from the exported part lists, each built into meshes once. */
 export class Models {
   private readonly cache = new Map<string, CrayonModel>();
+  private invented = new Map<string, Invented>();
+  private inventedFrom: Invented[] | null = null;
+
+  /** What he has invented: their looks are their models, which the export can't have. */
+  inventions(list: Invented[]) {
+    if (list === this.inventedFrom) return;
+    this.inventedFrom = list;
+    this.invented = new Map(list.map((i) => [i.id, i]));
+  }
+
+  /** True for an invention that hangs in a wall. */
+  onWall(id: string): boolean {
+    return this.invented.get(id)?.wall ?? false;
+  }
 
   constructor(private readonly texture: (name: string) => Texture | null) {}
 
   /** The model for item [id] (of [kind], for the fallback). */
   item(id: string, kind: string): CrayonModel {
+    const made = this.invented.get(id);
+    if (made && made.look.length > 0) return this.cached(`invented/${id}`, () => lookParts(made));
     return this.cached(`${kind}/${id}`, () => parts.items[id] ?? parts.kinds[kind] ?? parts.kinds["*"]);
   }
 

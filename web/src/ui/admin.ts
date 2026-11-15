@@ -1,4 +1,4 @@
-import type { Command, CommandResult } from "../../../protocol/ts/protocol";
+import type { Command, CommandResult, RunList, SavedRun } from "../../../protocol/ts/protocol";
 
 /** The same key as the host's debug page, so signing in on one signs in on the other (same origin). */
 const KEY = "lilguy-admin-password";
@@ -12,6 +12,8 @@ export class Admin {
   admin = false;
   /** How the last command went ("pause: ok", "restart: admin only"), for the RUN tab. */
   result: string | null = null;
+  /** The recorded runs the admin can go back to, most recently played first; null until fetched. */
+  runs: SavedRun[] | null = null;
   private password = "";
 
   constructor(private readonly life: string) {
@@ -21,6 +23,19 @@ export class Admin {
       // Storage blocked: sign in each visit.
     }
     if (this.password) void this.check(this.password);
+    // The list changes as runs are played; a fetch now and then keeps Saved runs close.
+    setInterval(() => document.hidden || void this.loadRuns(), RUNS_EVERY_MS);
+  }
+
+  /** Fetches the run list, for the admin only. */
+  async loadRuns() {
+    if (!this.admin) return;
+    try {
+      const r = await fetch(`/v1/lives/${encodeURIComponent(this.life)}/runs`, { headers: bearer(this.password) });
+      if (r.ok) this.runs = ((await r.json()) as RunList).runs;
+    } catch {
+      // Kept as it was; the next fetch tries again.
+    }
   }
 
   /** Signs in with [password]: true when it's the admin's, and then it's kept. */
@@ -35,6 +50,7 @@ export class Admin {
     this.admin = ok;
     this.password = ok ? password : "";
     remember(this.password);
+    if (ok) void this.loadRuns();
     return ok;
   }
 
@@ -42,6 +58,7 @@ export class Admin {
     this.admin = false;
     this.password = "";
     this.result = null;
+    this.runs = null;
     remember("");
   }
 
@@ -58,11 +75,14 @@ export class Admin {
       this.result = `${command.type}: ${body.ok ? "ok" : body.error ?? r.status}`;
       // The password changed under us: back to watching.
       if (r.status === 401) this.signOut();
+      else void this.loadRuns();
     } catch (e) {
       this.result = `${command.type}: ${e instanceof Error ? e.message : String(e)}`;
     }
   }
 }
+
+const RUNS_EVERY_MS = 15_000;
 
 const bearer = (password: string) => ({ Authorization: `Bearer ${password.trim()}` });
 

@@ -16,13 +16,17 @@
         },
         "viewer": {
             "$ref": "#/$defs/Viewer"
+        },
+        "runs": {
+            "$ref": "#/$defs/RunList"
         }
     },
     "required": [
         "server",
         "command",
         "result",
-        "viewer"
+        "viewer",
+        "runs"
     ],
     "additionalProperties": false,
     "$defs": {
@@ -1066,6 +1070,68 @@
             ],
             "additionalProperties": false
         },
+        "Invented": {
+            "title": "Invented",
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "group": {
+                    "type": "string"
+                },
+                "use": {
+                    "type": "string"
+                },
+                "like": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer"
+                    }
+                },
+                "price": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "wall": {
+                    "type": "boolean"
+                },
+                "cost": {
+                    "type": "integer"
+                },
+                "why": {
+                    "type": "string"
+                },
+                "look": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/LookShape"
+                    }
+                }
+            },
+            "required": [
+                "id",
+                "name",
+                "group",
+                "use",
+                "like",
+                "price",
+                "wall",
+                "cost",
+                "why",
+                "look"
+            ],
+            "additionalProperties": false
+        },
         "LifeState": {
             "title": "LifeState",
             "type": "object",
@@ -1218,6 +1284,59 @@
                 "revisions",
                 "trips",
                 "drawings"
+            ],
+            "additionalProperties": false
+        },
+        "LookShape": {
+            "title": "LookShape",
+            "type": "object",
+            "properties": {
+                "shape": {
+                    "type": "string"
+                },
+                "w": {
+                    "type": "number"
+                },
+                "h": {
+                    "type": "number"
+                },
+                "d": {
+                    "type": "number"
+                },
+                "x": {
+                    "type": "number"
+                },
+                "y": {
+                    "type": "number"
+                },
+                "z": {
+                    "type": "number"
+                },
+                "rot_x": {
+                    "type": "number"
+                },
+                "rot_y": {
+                    "type": "number"
+                },
+                "rot_z": {
+                    "type": "number"
+                },
+                "color": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "shape",
+                "w",
+                "h",
+                "d",
+                "x",
+                "y",
+                "z",
+                "rot_x",
+                "rot_y",
+                "rot_z",
+                "color"
             ],
             "additionalProperties": false
         },
@@ -1752,6 +1871,22 @@
             ],
             "additionalProperties": false
         },
+        "RunList": {
+            "title": "RunList",
+            "type": "object",
+            "properties": {
+                "runs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/SavedRun"
+                    }
+                }
+            },
+            "required": [
+                "runs"
+            ],
+            "additionalProperties": false
+        },
         "RunState": {
             "title": "RunState",
             "type": "string",
@@ -1761,6 +1896,102 @@
                 "paused",
                 "ended"
             ]
+        },
+        "SavedRun": {
+            "title": "SavedRun",
+            "type": "object",
+            "properties": {
+                "run_id": {
+                    "type": "string"
+                },
+                "scenario": {
+                    "type": "string"
+                },
+                "platform": {
+                    "type": "string"
+                },
+                "model": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "played_at": {
+                    "type": "string"
+                },
+                "ended_at": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "end_reason": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "finished": {
+                    "type": "boolean"
+                },
+                "saved": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "reached": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "days": {
+                    "type": "integer"
+                },
+                "live": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "run_id",
+                "scenario",
+                "platform",
+                "model",
+                "started_at",
+                "played_at",
+                "ended_at",
+                "end_reason",
+                "finished",
+                "saved",
+                "reached",
+                "days",
+                "live"
+            ],
+            "additionalProperties": false
         },
         "SelfModelView": {
             "title": "SelfModelView",
@@ -1880,11 +2111,18 @@
                     "items": {
                         "$ref": "#/$defs/VerbState"
                     }
+                },
+                "inventions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/Invented"
+                    }
                 }
             },
             "required": [
                 "catalog",
-                "verbs"
+                "verbs",
+                "inventions"
             ],
             "additionalProperties": false
         },

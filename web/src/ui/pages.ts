@@ -1,6 +1,6 @@
-import type { CatalogItem, CatalogState, Content, LifeState, SelfModelView, Settings, ThoughtView, TripView } from "../../../protocol/ts/protocol";
+import type { CatalogItem, CatalogState, Content, LifeState, SavedRun, SelfModelView, Settings, ThoughtView, TripView } from "../../../protocol/ts/protocol";
 import { COLORS, GROUP_COLORS } from "./paper";
-import { ADMIN_ROWS, LABELS, SIGN_IN, clockNote, help, isAction, plural, stamp, summary, value, type RunRow } from "./run";
+import { ADMIN_ROWS, LABELS, SIGN_IN, clockNote, help, isAction, pickedRun, plural, runLine, runsValue, stamp, summary, value, type RunRow } from "./run";
 
 export type TabId = "run" | "shop" | "thoughts" | "memory" | "self" | "trips";
 export const TABS: { id: TabId; title: string }[] = [
@@ -40,6 +40,9 @@ export interface PageView {
   confirm: boolean;
   /** How the last command went, for the RUN tab. */
   result: string | null;
+  /** The recorded runs, for the admin's Saved runs (null until fetched), and the one picked there by id. */
+  runs?: SavedRun[] | null;
+  runPick?: string | null;
 }
 
 const NOW = "now";
@@ -58,7 +61,8 @@ export function entries(tab: TabId, v: PageView): Entry[] {
           const title = { ready: "Start", running: "Pause", paused: "Resume", ended: "Ended" }[life.run.state];
           return { key: row, title, sub: `run ${life.run.run} · ${life.run.state}` + (life.fast.held ? " · held" : ""), mark: stateColor(life.run.state) };
         }
-        return { key: row, title: LABELS[row], sub: value(row, life, v.settings, v.replayPick), subColor: isAction(row) ? COLORS.muted : COLORS.ink };
+        const sub = row === "runs" ? runsValue(v.runs, v.runPick ?? null) : value(row, life, v.settings, v.replayPick);
+        return { key: row, title: LABELS[row], sub, subColor: isAction(row) ? COLORS.muted : COLORS.ink };
       });
     case "shop":
       return shopItems(life, content).map(({ item, state }) => {
@@ -187,9 +191,25 @@ function runDetail(out: Detail, v: PageView, row: RunRow) {
   const run = life.run;
   out.head(LABELS[row].toUpperCase());
   out.para(help(row, life, v.settings));
-  if (v.confirm) out.para(row === "replay" ? `OK again to replay run ${v.replayPick ?? run.run} · any other key cancels` : "OK again to restart · any other key cancels", SCALE.body, COLORS.accent, 0, 10);
+  const back = pickedRun(v.runs, v.runPick ?? null);
+  if (v.confirm) {
+    const what = row === "replay" ? `replay run ${v.replayPick ?? run.run}` : row === "runs" ? `go back to the run saved at ${back?.saved ?? "?"}` : "start a new run";
+    out.para(`OK again to ${what} · any other key cancels`, SCALE.body, COLORS.accent, 0, 10);
+  }
   if (v.result) out.para(v.result, SCALE.small, v.result.includes(": ok") ? COLORS.muted : COLORS.failed, 0, 8);
   if (row === "signin") return;
+  if (row === "runs") {
+    out.head("RUNS, MOST RECENTLY PLAYED FIRST");
+    if (!v.runs) out.para("loading...", SCALE.small, COLORS.muted);
+    for (const r of v.runs ?? []) {
+      const picked = r.run_id === back?.run_id;
+      out.para(`${picked ? "> " : ""}${r.live ? "this run: " : ""}${runLine(r)}`, SCALE.small, picked || r.live ? COLORS.ink : COLORS.muted, picked ? 0 : 16);
+      if (!picked) continue;
+      out.para(`started ${new Date(r.started_at).toLocaleString()} on ${r.platform} · ${r.run_id.slice(0, 8)}`, SCALE.small, COLORS.muted, 16);
+      if (r.reached !== null && r.reached !== r.saved) out.para(`got to ${r.reached}; going back carries on from ${r.saved}`, SCALE.small, COLORS.muted, 16);
+    }
+    return;
+  }
   const fast = life.fast;
   out.head("CLOCK");
   out.para((fast.clock ? `day ${fast.clock.day} · ${fast.clock.time} · ` : "") + `${v.settings.speed * run.ticks_per_minute} ticks/s` + (fast.fast_forward > 1 ? ` · quiet stretch, ${fast.fast_forward}x` : ""), SCALE.small, COLORS.ink);
@@ -353,7 +373,17 @@ function tripDetail(out: Detail, life: LifeState, t: TripView) {
 /** The shop's items with what he knows of each, known things first. */
 export function shopItems(life: LifeState, content: Content): { item: CatalogItem; state: CatalogState }[] {
   const items = new Map(content.catalog.map((c) => [c.id, c]));
-  const out = life.shop.catalog.flatMap((state) => {
+  // What he invented isn't in the static catalogue. Food the shop restocks has a state of its own;
+  // the rest is listed while he has it, as something he made.
+  const made: CatalogState[] = [];
+  for (const i of life.shop.inventions ?? []) {
+    items.set(i.id, { id: i.id, name: i.name, group: i.group, price: i.price ?? i.cost, pack: 1, stackable: i.price !== null });
+    const has = life.wallet.owns[i.id] ?? 0;
+    if (i.price !== null || has === 0) continue;
+    const like = Object.entries(i.like).map(([q, s]) => `${q} ${s}`).join(", ");
+    made.push({ id: i.id, owned: has, affordable: true, gives: `his own invention${like ? ` (${like})` : ""}${i.why ? `: ${i.why}` : ""}`, taught_by: null });
+  }
+  const out = [...life.shop.catalog, ...made].flatMap((state) => {
     const item = items.get(state.id);
     return item ? [{ item, state }] : [];
   });

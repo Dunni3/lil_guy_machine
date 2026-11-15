@@ -22,7 +22,8 @@
 #
 # Two ops are authored: a model writes their result, and a handler in the agent layer runs it
 # (agent/.../authored/). `write: { with, into, timing, shows_as }` (with: thought; into: events,
-# short_term; timing: before the verb starts, or during it) and `draw: item` (the
+# short_term; timing: before the verb starts, or during it; `with: invention` designs what a
+# `build` op then builds, rules.yaml `invent`) and `draw: item` (the
 # drawing model draws a piece the verb produced). Results are kept only if the verb succeeds. A
 # verb whose `write` has no handler configured isn't offered to models, unless the write is
 # `optional`; the sim still runs it. `with: reading` writes what stuck with him from a chapter.
@@ -38,9 +39,12 @@ verbs:
     minutes: 30
     routine: true
     block: [{ need: fullness, above: 90, reason: "not hungry" }]
+    # What he eats is an argument so a food's qualities pay (`enjoy`); a plain meal has none.
+    args: { what: edible }
     effects:
-      - consume: { edible: 1 }
+      - consume: { what: 1 }
       - need: { fullness: 45 }
+      - enjoy: what
   # The floor under hunger: the oats in the cupboard never run out and cost nothing, so he can't be
   # left starving with no way to eat, and so no way to sleep (hunger wakes him) or work. Offered at
   # rules.yaml's `low` fullness, where hunger starts pulling his mood down, so oats can always lift
@@ -81,6 +85,20 @@ verbs:
       - consume: { canvas: 1 }
       - practice: { art: 0.25 }
       - need: { energy: -2, mood: -3, stimulation: 12 }
+  # Inventing: he designs one new thing (what it's for, what it's like, how it looks), which a
+  # model writes before he starts (agent/.../invent/Inventor.kt), and `build` checks the design
+  # against rules.yaml `invent`, charges its materials and adds it to his world. A design that's
+  # refused fails the verb and tells him why.
+  - id: invent
+    kind: generative
+    phrase: invent something new and build it
+    at: [workbench]
+    minutes: 120
+    block: [{ need: mood, below: 25, reason: "too low to invent anything" }]
+    effects:
+      - write: { with: invention, into: [events], timing: before }
+      - build: {}
+      - need: { energy: -4, stimulation: 12 }
   - id: sell_art
     kind: economic
     phrase: sell your art

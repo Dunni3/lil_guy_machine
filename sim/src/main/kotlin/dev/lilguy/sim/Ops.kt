@@ -160,6 +160,30 @@ data class BasketOp(val most: Int) : Op() {
 }
 
 /**
+ * Builds the thing he designed: checks the design against the invent rules ([InventRules.check]),
+ * charges its materials, adds it to the content of his world and gives him the first one. The
+ * design comes from the verb's `write: { with: invention, timing: before }` (the agent layer
+ * stages it through [BedroomWorld.stage]); a design that's refused fails the verb and says why.
+ */
+data object BuildOp : Op() {
+    override val key get() = "build"
+
+    override fun problems(c: BedroomContent, verb: VerbSpec) = listOfNotNull(
+        if (c.invent == null) "build: the rules have no `invent`" else null,
+        if (verb.minutes == null) "build: the verb needs `minutes`" else null,
+        if (verb.effects.none { it is WriteOp && it.with == "invention" && it.timing == Timing.Before }) "build: the verb needs a `write: { with: invention, timing: before }` to design what's built" else null,
+    )
+
+    override fun lockReason(w: OpWorld, b: Bound) = w.buildLock()
+
+    override fun gone(w: OpWorld, b: Bound) = w.buildFailed(b.verb)
+
+    override fun finish(w: OpWorld, b: Bound) = w.build(b.verb)
+
+    override fun describe(w: OpWorld, b: Bound, forSale: Boolean) = listOf(w.buildText())
+}
+
+/**
  * Puts an item he holds into a [state]. The one state so far is `hung`: his newest held piece
  * answering to [target] goes on the picture rail ([GalleryRules]).
  */
@@ -377,6 +401,18 @@ internal interface OpWorld {
     /** Why [verb]'s trip came to nothing (its picks couldn't be made), or null; the trip then fails. */
     fun tripFailed(verb: String): String?
 
+    /** Why he can't start building now (today's invention is made, or no money for materials), or null. */
+    fun buildLock(): String?
+
+    /** As [verb] finishes: why the staged design can't be built (none came, it's refused, he can't pay), or null. */
+    fun buildFailed(verb: VerbSpec): String?
+
+    /** Builds [verb]'s staged design; returns the event's parts. */
+    fun build(verb: VerbSpec): List<String>
+
+    /** "design and build one new thing: materials from $4". */
+    fun buildText(): String
+
     fun hangLock(tag: String): String?
 
     fun hang(tag: String): String
@@ -450,6 +486,7 @@ internal data class OpEntry(
     val practice: Map<String, Double>? = null,
     val write: Write? = null,
     val draw: String? = null,
+    val build: NoParams? = null,
 ) {
     @Serializable
     @SerialName("write")
@@ -481,7 +518,7 @@ internal data class OpEntry(
             need?.let(::NeedOp), rate?.let(::RateOp), consume?.let(::ConsumeOp), produce?.let(::ProduceOp), sell?.let(::SellOp), basket?.let { BasketOp(it.most) },
             setState?.let { SetStateOp(it.target, it.state) }, background?.let { BackgroundOp(it.name, it.minutes, it.rates) },
             sleep?.let { SleepOp }, enjoy?.let(::EnjoyOp), hear?.let(::HearOp), progress?.let { ProgressOp(it.book) }, practice?.let(::PracticeOp),
-            write?.let { WriteOp(it.with, it.into, it.timing, it.showsAs, it.optional) }, draw?.let(::DrawOp),
+            write?.let { WriteOp(it.with, it.into, it.timing, it.showsAs, it.optional) }, draw?.let(::DrawOp), build?.let { BuildOp },
         )
         require(set.size == 1) { "an effect is one op, such as `- need: { mood: 2 }`; this one has ${if (set.isEmpty()) "none" else set.joinToString { it.key }}" }
         return set.single()
@@ -504,6 +541,7 @@ internal data class OpEntry(
             is PracticeOp -> OpEntry(practice = op.gains)
             is WriteOp -> OpEntry(write = Write(op.with, op.into, op.timing, op.showsAs, op.optional))
             is DrawOp -> OpEntry(draw = op.what)
+            BuildOp -> OpEntry(build = NoParams())
         }
     }
 }

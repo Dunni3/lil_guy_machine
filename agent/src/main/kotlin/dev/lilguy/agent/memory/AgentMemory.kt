@@ -1,5 +1,8 @@
 package dev.lilguy.agent.memory
 
+import dev.lilguy.agent.invent.Drafted
+import dev.lilguy.agent.invent.Inventing
+import dev.lilguy.agent.invent.InventionHandler
 import dev.lilguy.agent.shop.Shopper
 import dev.lilguy.agent.shop.ShoppingHandler
 import dev.lilguy.agent.shop.Trip
@@ -78,6 +81,10 @@ class AgentMemory(
     private val shopper: Shopper? = null,
     /** Every shopping trip, kept or not; called from the agent coroutine. */
     private val onTrip: (Trip) -> Unit = {},
+    /** Designs what he invents at the workbench; without one he isn't offered `invent`. */
+    private val inventor: Inventing? = null,
+    /** Every design, built or not; called from the agent coroutine. */
+    private val onDraft: (Drafted) -> Unit = {},
 ) {
     /** What authored ops are written from: who he is, his state in the decision prompt's words, and that prompt's system message. */
     class Brief(val persona: String, val situation: String, val system: String)
@@ -123,6 +130,7 @@ class AgentMemory(
         if (studio != null) handlers += studio
         if (reader != null) handlers += ReadingHandler(reader, store, run)
         if (shopper != null) handlers += ShoppingHandler(shopper, store, run) { t -> tripLog += t; onTrip(t) }
+        if (inventor != null) handlers += InventionHandler(inventor, store, run, onDraft)
         return Authors(handlers, scope)
     }
 
@@ -238,6 +246,7 @@ class AgentMemory(
         studio?.connect(world)
         thinker?.oracle?.connect(world)
         shopper?.connect(world)
+        inventor?.connect(world)
         restVerbs = world.content.verbs.filter { v -> v.effects.any { it is SleepOp } }.map { it.id }.toSet()
         about = world.content.personality.core.he
     }

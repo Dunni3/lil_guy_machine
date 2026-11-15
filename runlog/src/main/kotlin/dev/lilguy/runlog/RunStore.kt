@@ -87,6 +87,29 @@ class RunStore(private val db: SqlDriver) : AutoCloseable {
     fun runs(limit: Int = 50): List<RunRow> =
         rows(Tables.runs, "1 = 1 ORDER BY started_at DESC LIMIT ?", listOf(limit)).map { RowJson.decodeFromJsonElement(RunRow.serializer(), it) }
 
+    /** Runs on this device, the most recently played first: by their latest session's start (a resumed run counts from then). */
+    @Synchronized
+    fun played(limit: Int = 50): List<RunRow> = rows(
+        Tables.runs, "1 = 1 ORDER BY COALESCE((SELECT MAX(s.started_at) FROM sessions s WHERE s.run_id = runs.id), started_at) DESC LIMIT ?", listOf(limit),
+    ).map { RowJson.decodeFromJsonElement(RunRow.serializer(), it) }
+
+    /** When [run] was last played: its latest session's start, or null with none. */
+    @Synchronized
+    fun lastPlayed(run: String): String? = db.query("SELECT MAX(started_at) AS m FROM sessions WHERE run_id = ?", listOf(run)).first()["m"] as String?
+
+    /** Where [run]'s latest checkpoint is, without its state; null with none. */
+    @Synchronized
+    fun latestSave(run: String): Save? = db.query(
+        "SELECT tick, day, minute_of_day, reason, created_at FROM checkpoints WHERE run_id = ? ORDER BY tick DESC, created_at DESC LIMIT 1", listOf(run),
+    ).firstOrNull()?.let { Save(it["tick"] as Long, (it["day"] as Long).toInt(), (it["minute_of_day"] as Long).toInt(), it["reason"] as String, it["created_at"] as String) }
+
+    /** A checkpoint's stamp: [day] and [minuteOfDay] are the game clock's. */
+    data class Save(val tick: Long, val day: Int, val minuteOfDay: Int, val reason: String, val createdAt: String)
+
+    /** The furthest tick [run] got to that a decision records, or null with none. */
+    @Synchronized
+    fun lastTick(run: String): Long? = db.query("SELECT MAX(tick) AS m FROM decisions WHERE run_id = ?", listOf(run)).first()["m"] as Long?
+
     @Synchronized
     fun session(id: String): SessionRow? = rows(Tables.sessions, "id = ?", listOf(id)).firstOrNull()?.let { RowJson.decodeFromJsonElement(SessionRow.serializer(), it) }
 

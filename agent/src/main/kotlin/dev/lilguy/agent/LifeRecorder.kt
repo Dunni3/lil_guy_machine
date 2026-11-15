@@ -13,7 +13,9 @@ import dev.lilguy.runlog.ArtPieceRow
 import dev.lilguy.runlog.AuthoredRow
 import dev.lilguy.runlog.Blobs
 import dev.lilguy.runlog.CheckpointRow
+import dev.lilguy.agent.invent.Drafted
 import dev.lilguy.runlog.ContentVersionRow
+import dev.lilguy.sim.Design
 import dev.lilguy.runlog.DecisionRow
 import dev.lilguy.runlog.HourlyRow
 import dev.lilguy.runlog.Ids
@@ -62,13 +64,15 @@ data class AgentState(
  * One life's rows, from the moments the run already has: each decision and how it ended, every
  * model call with its prompt and reply, the ledger and need changes and an hourly sample as the sim
  * ticks, thoughts, answers, shopping trips and drawings, and a checkpoint each morning when he
- * wakes. Everything goes through [recorder], which never waits on the disk; the memory rows go
- * through [RunMemoryStore].
+ * wakes. Besides those, each session keeps one rolling save ([saveStart], the autosave, [checkpointNow]):
+ * one row, rewritten at decision points at most every [autosaveMinutes] game minutes, so a run left
+ * mid-day carries on from about where it was left. Everything goes through [recorder], which never
+ * waits on the disk; the memory rows go through [RunMemoryStore].
  *
  * Call [beforeStep] and [afterStep] around every tick, on the sim thread: that's where ledger and
  * need changes are collected and checkpoints are taken. The rest is safe from any thread.
  */
-class LifeRecorder(val recorder: RunRecorder) {
+class LifeRecorder(val recorder: RunRecorder, private val autosaveMinutes: Int = AUTOSAVE_MINUTES) {
     val runId: String get() = recorder.runId
     val sessionId: String get() = recorder.sessionId
 
@@ -94,8 +98,15 @@ class LifeRecorder(val recorder: RunRecorder) {
     private var wantCheckpoint = false
     private var held = false
 
-    /** Checkpoints written this session, newest last. */
+    /** Checkpoints written this session, newest last; not the rolling save, which is [lastSave]. */
     val checkpoints = java.util.concurrent.CopyOnWriteArrayList<CheckpointRow>()
+
+    /** This session's rolling save: one row, the same id each time it's rewritten. */
+    private val autosaveId = Ids.uuid7()
+
+    /** The rolling save as last written, or null. */
+    @Volatile var lastSave: CheckpointRow? = null
+        private set
 
     /** Records the run (new or carried on), this session, and the content it runs on. */
     fun begin(run: RunRow, session: SessionRow, content: ContentVersionRow?) {
@@ -236,6 +247,15 @@ class LifeRecorder(val recorder: RunRecorder) {
         error = t.error,
     )
 
+    fun invention(d: Drafted) = authored(
+        d.tick, "invention", null, kept = d.design != null, writer = d.inventor,
+        result = buildJsonObject {
+            d.design?.let { put("design", RowJson.encodeToJsonElement(Design.serializer(), it)) }
+            putJsonArray("redid") { d.redid.forEach { add(JsonPrimitive(it)) } }
+        },
+        error = d.error,
+    )
+
     /** A finished drawing: an authored row, and the piece itself when it was kept. */
     fun drawing(d: Drawing) {
         val art = d.artwork
@@ -267,20 +287,27 @@ class LifeRecorder(val recorder: RunRecorder) {
 
     // --- the sim thread --------------------------------------------------------------------------
 
-    /** Before a tick: while he sleeps, holds the agent loop at its wait so a wake-up checkpoint can read it with the world. */
+    /**
+     * Before a tick: holds the agent loop at its wait, so that if the tick brings a decision point a
+     * checkpoint can read it with the world (the morning's, or the rolling save). Notes when he sleeps.
+     */
     fun beforeStep() {
         val w = world ?: return
         if (!wantCheckpoint && w.snapshot().life?.doing in restVerbs) wantCheckpoint = true
-        if (wantCheckpoint) held = runtime?.hold() == true
+        held = runtime?.hold() == true
     }
 
-    /** After a tick: new ledger and need changes, the hourly sample, and the morning checkpoint once he's up. */
+    /** After a tick: new ledger and need changes, the hourly sample, the morning checkpoint once he's up, and the rolling save when it's due. */
     fun afterStep() {
         val w = world ?: return
         try {
             collect(w)
-            if (wantCheckpoint && held && w.awaitingDecision(w.agentId) && w.snapshot().life?.doing !in restVerbs) {
-                if (checkpoint(w, "woke") != null) wantCheckpoint = false
+            if (held && w.awaitingDecision(w.agentId)) {
+                if (wantCheckpoint && w.snapshot().life?.doing !in restVerbs) {
+                    if (checkpoint(w, "woke") != null) wantCheckpoint = false
+                } else if (lastSave.let { it == null || w.tick - it.tick >= w.clock.ticks(autosaveMinutes) }) {
+                    checkpoint(w, "autosave", autosaveId)
+                }
             }
         } finally {
             if (held) runtime?.release()
@@ -321,7 +348,7 @@ class LifeRecorder(val recorder: RunRecorder) {
      * [beforeStep], or [hold] for a manual save), the world at rest, and no memory work running.
      * Returns the row, or null when it isn't a moment that can be saved.
      */
-    fun checkpoint(w: BedroomWorld, reason: String): CheckpointRow? {
+    fun checkpoint(w: BedroomWorld, reason: String, id: String = Ids.uuid7()): CheckpointRow? {
         val m = memory
         if (!w.canExport || (m != null && !m.quiet)) return null
         val r = runtime ?: return null
@@ -330,7 +357,7 @@ class LifeRecorder(val recorder: RunRecorder) {
         val (event, mem) = memoryStore?.watermarks() ?: (0L to 0L)
         val tick = w.tick
         val row = CheckpointRow(
-            Ids.uuid7(), runId, sessionId, tick, w.clock.day(tick), w.clock.minuteOfDay(tick), reason,
+            id, runId, sessionId, tick, w.clock.day(tick), w.clock.minuteOfDay(tick), reason,
             contentHash = contentHash ?: "", gitSha = gitSha,
             worldState = RowJson.encodeToJsonElement(BedroomState.serializer(), state),
             agentState = RowJson.encodeToJsonElement(AgentState.serializer(), agent),
@@ -338,17 +365,28 @@ class LifeRecorder(val recorder: RunRecorder) {
             createdAt = Ids.now(),
         )
         recorder.record(row)
-        checkpoints += row
+        if (id == autosaveId) {
+            lastSave = row
+        } else {
+            checkpoints += row
+        }
         return row
     }
 
-    /** A save on request ('manual', 'shutdown'): holds the agent loop for the moment it takes. Sim thread; null when it can't be saved now. */
+    /** A fresh run's first rolling save, at tick 0, so it can be carried on before it has lived a morning. Before the run starts. */
+    fun saveStart(): CheckpointRow? = world?.let { checkpoint(it, "start", autosaveId) }
+
+    /**
+     * The rolling save on request ('left': he's being left): holds the agent loop for the moment it
+     * takes. Sim thread; null when it can't be saved now (he's partway through something, or deciding),
+     * and then the last autosave stands.
+     */
     fun checkpointNow(reason: String): CheckpointRow? {
         val w = world ?: return null
         val r = runtime ?: return null
         if (!w.awaitingDecision(w.agentId) || !r.hold()) return null
         try {
-            return checkpoint(w, reason)
+            return checkpoint(w, reason, autosaveId)
         } finally {
             r.release()
         }
@@ -362,6 +400,9 @@ class LifeRecorder(val recorder: RunRecorder) {
     }
 
     companion object {
+        /** How often, in game minutes, the rolling save is rewritten at most. A save is ~5 KB, rewritten in place. */
+        const val AUTOSAVE_MINUTES = 10
+
         /** 'do:sketch', 'buy:meal', 'wait': what a decision did, for group by. */
         fun label(intent: Intent): String = when (intent) {
             is Intent.Do -> "do:${intent.activity}"
@@ -415,11 +456,14 @@ class Carried(val run: RunRow, val resume: Resume) {
     val personality: Personality? = run.personality?.let { RowJson.decodeFromJsonElement(Personality.serializer(), it) }
 }
 
-/** The run [id], or the newest bedroom run with a checkpoint for "latest". */
-fun carried(store: RunStore, id: String): Carried {
+/**
+ * The run [id], or for "latest" the bedroom run played most recently (resumed counts) that has a
+ * checkpoint, of those started on [platform] when it's given.
+ */
+fun carried(store: RunStore, id: String, platform: String? = null): Carried {
     val run = if (id == "latest") {
-        store.runs(200).firstOrNull { it.scenario == "bedroom" && store.latestCheckpoint(it.id) != null }
-            ?: throw IllegalArgumentException("no bedroom run in the database has a checkpoint yet")
+        store.played(200).firstOrNull { it.scenario == "bedroom" && (platform == null || it.platform == platform) && store.latestSave(it.id) != null }
+            ?: throw IllegalArgumentException("no bedroom run${platform?.let { " from $it" } ?: ""} in the database has a checkpoint yet")
     } else {
         store.run(id) ?: throw IllegalArgumentException("no run '$id' in the database")
     }

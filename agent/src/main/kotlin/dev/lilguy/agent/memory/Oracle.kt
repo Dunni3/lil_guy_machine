@@ -44,6 +44,10 @@ data class DocSection(val id: String, val title: String, val text: String)
  * (resources/docs/bedroom-guide.md) for what lives in code: how art is drawn, what meets a request.
  */
 object WorldDocs {
+    private const val INVENT_RULE = "At a workbench he designs one new thing of his own and builds it: it has one use, up to a few qualities and a look he chooses. " +
+        "He never sets a price: the materials cost a base for its use plus an amount per point of quality strength, taken from his money when he finishes. " +
+        "A design outside these rules isn't built, costs nothing but the time, and frustrates him. A thing to look at takes one of the room's few spare spots."
+
     fun of(content: BedroomContent): List<DocSection> = generated(content) + guide
 
     /** The hand-written sections: each `## id: title` heading starts one. */
@@ -66,6 +70,7 @@ object WorldDocs {
         content.commissions?.let { c -> add(DocSection("rules:commissions", "requests for a piece of art", "A request comes each day at ${c.arrive}: an adjective and a noun. The first piece sold that matches it (the adjective in its title or tags, a shape of the noun drawn in it) earns $${c.reward} on top of its price.")) }
         add(DocSection("rules:gallery", "hanging art", enc(content.gallery)))
         add(DocSection("rules:qualities", "what items are worth to him", enc(content.qualityValue)))
+        content.invent?.let { add(DocSection("rules:invent", "inventing: what he can design and build at a workbench, and what it costs", "$INVENT_RULE ${enc(it)}")) }
         content.verbs.forEach { v -> add(DocSection("verb:${v.id}", "verb ${v.id}: ${v.phrase ?: v.id}", enc(v))) }
         content.items.forEach { i ->
             val users = content.verbs.filter { v -> i.id in v.at || (v.requires + v.args.values + v.effects.flatMap { it.asksFor }).any { it in i.names } }.map { it.id }

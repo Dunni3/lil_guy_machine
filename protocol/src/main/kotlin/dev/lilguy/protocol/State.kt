@@ -274,7 +274,43 @@ data class CommissionView(val id: Int, val wants: String, val request: String?, 
 
 /** What changes about the catalog and the verbs as he lives; the rest of them is in [Content]. */
 @Serializable
-data class ShopState(val catalog: List<CatalogState>, val verbs: List<VerbState>)
+data class ShopState(val catalog: List<CatalogState>, val verbs: List<VerbState>, val inventions: List<Invented> = emptyList())
+
+/**
+ * Something he invented: an item [Content] doesn't have, with how it looks. [use]: the one thing
+ * it's for (viewable, playable, readable, edible, sellable). [like]: its qualities and their
+ * strengths. [price]: what the shop sends more for, null when it doesn't. [wall]: it hangs in a
+ * wall. [cost]: what its materials cost him. [look]: its shapes, as a part list's parts.
+ */
+@Serializable
+data class Invented(
+    val id: String,
+    val name: String,
+    val group: String,
+    val use: String,
+    val like: Map<String, Int>,
+    val price: Int?,
+    val wall: Boolean,
+    val cost: Int,
+    val why: String,
+    val look: List<LookShape>,
+)
+
+/** One shape of an invention: metres, the model's pivot at its bottom centre, ([x], [y], [z]) the shape's bottom centre, rotations in degrees. */
+@Serializable
+data class LookShape(
+    val shape: String,
+    val w: Float,
+    val h: Float,
+    val d: Float,
+    val x: Float,
+    val y: Float,
+    val z: Float,
+    @SerialName("rot_x") val rotX: Float,
+    @SerialName("rot_y") val rotY: Float,
+    @SerialName("rot_z") val rotZ: Float,
+    val color: String,
+)
 
 @Serializable
 data class CatalogState(val id: String, val owned: Int, val affordable: Boolean, val gives: String, @SerialName("taught_by") val taughtBy: String?)
