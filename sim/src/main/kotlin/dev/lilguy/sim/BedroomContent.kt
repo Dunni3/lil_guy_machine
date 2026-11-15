@@ -128,7 +128,8 @@ data class BedroomContent(
         // What comes with a room whose plan is gated is gated with it.
         val withGatedRooms = world?.rooms.orEmpty().filter { r -> byId[r.plan]?.let { !open(it.id, it.tier) } ?: true }.flatMap { it.items }.toSet()
         val items = items.filter { open(it.id, it.tier) && it.id !in withGatedRooms }
-        val verbs = verbs.filter { open(it.id, it.tier) }
+        // A verb whose arguments nothing left could fill goes with them: no lamps, no switching one.
+        val verbs = verbs.filter { v -> open(v.id, v.tier) && v.args.values.all { tag -> items.any { tag in it.names } } }
         val ids = (items.map { it.id } + verbs.map { it.id }).toSet()
         return copy(
             items = items,
@@ -255,6 +256,14 @@ data class BedroomContent(
             }
         }
         items.forEach { item -> item.light?.let { require(it.strength > 0 && it.radius >= 0) { "item ${item.id}: light needs a strength above 0 and a radius not negative" } } }
+        // A lamp can be switched and runs on a timer; anything else with a light always gives it.
+        items.forEach { item ->
+            if (LAMP in item.affords) require(item.light != null) { "item ${item.id} is a lamp, so it needs a `light`" }
+            item.light?.timer?.let { t ->
+                require(LAMP in item.affords) { "item ${item.id} has a light timer but isn't a lamp (affords lamp)" }
+                t.problems("item ${item.id} light.timer").firstOrNull()?.let { throw IllegalArgumentException(it) }
+            }
+        }
         (light?.problems().orEmpty() + comfort?.problems().orEmpty()).firstOrNull()?.let { throw IllegalArgumentException(it) }
         (room.windows + world?.rooms?.flatMap { it.windows }.orEmpty()).forEach { require(it.size == 2) { "a window is [x, y]: $it" } }
         night?.let { GameClock.parseHhmm(it.from); GameClock.parseHhmm(it.to) }
@@ -330,6 +339,9 @@ data class BedroomContent(
 
 /** The affordance of a thing that logs the weather where it stands ([Records], [StationLog]). */
 const val RECORDER = "recorder"
+
+/** The affordance of a light he can switch: on its timer, or on or off until he switches it again ([LampMode]). */
+const val LAMP = "lamp"
 
 @Serializable
 data class RoomContent(

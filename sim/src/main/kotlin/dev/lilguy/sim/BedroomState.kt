@@ -64,6 +64,8 @@ data class BedroomState(
     val explored: List<String> = emptyList(),
     /** Patch to the tick it grows back by, while bare. */
     val bare: Map<String, Long> = emptyMap(),
+    /** Lamps he switched on or off: item id to `on` or `off`; the rest are on their timers. */
+    val lamps: Map<String, String> = emptyMap(),
     /** Rooms built onto the house: room id to site id. */
     val house: Map<String, String> = emptyMap(),
     /** Letters waiting at the mail hatch, oldest first. */

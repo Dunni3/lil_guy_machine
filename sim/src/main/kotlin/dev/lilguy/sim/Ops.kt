@@ -210,6 +210,22 @@ data class SetStateOp(val target: String, val state: String) : Op() {
     }
 }
 
+/** Switches the lamp bound to [target] on or off, where it stays, or back to its timer ([LampMode]). */
+data class SwitchOp(val target: String, val to: LampMode) : Op() {
+    override val key get() = "switch"
+
+    override fun problems(c: BedroomContent, verb: VerbSpec) = listOfNotNull(
+        c.unknownName(verb.args[target] ?: target),
+        c.withName(verb.args[target] ?: target).firstOrNull { LAMP !in it.affords }?.let { "switches ${it.id}, which isn't a lamp (affords lamp)" },
+    )
+
+    override fun lockReason(w: OpWorld, b: Bound) = w.switchLock(b.resolve(target), to)
+
+    override fun finish(w: OpWorld, b: Bound) = listOf(w.switch(b.resolve(target), to))
+
+    override fun describe(w: OpWorld, b: Bound, forSale: Boolean) = if (forSale) emptyList() else listOf(w.switchText(b.resolve(target), to))
+}
+
 /** Starts something that keeps going while he does anything else: the item bound to `what` (a record) [rates] per hour for [minutes]. */
 data class BackgroundOp(val name: String, val minutes: Int, val rates: Map<String, Double>) : Op() {
     override val key get() = "background"
@@ -418,6 +434,15 @@ internal interface OpWorld {
     fun buildText(): String
 
     fun hangLock(tag: String): String?
+
+    /** Why [lamp] can't be switched [to] that now: it already is. Null for an unbound slot. */
+    fun switchLock(lamp: String, to: LampMode): String?
+
+    /** Switches [lamp] [to] that; returns the event text. */
+    fun switch(lamp: String, to: LampMode): String
+
+    /** What switching [lamp] [to] that does, for the option list. */
+    fun switchText(lamp: String, to: LampMode): String
 
     fun hang(tag: String): String
 
@@ -633,7 +658,13 @@ internal data class OpEntry(
     val script: NoParams? = null,
     val define: NoParams? = null,
     @SerialName("read_log") val readLog: String? = null,
+    val switch: Switch? = null,
 ) {
+    /** `switch: { target: on, to: off }`: to is on, off or timer. */
+    @Serializable
+    @SerialName("switch")
+    data class Switch(val target: String, val to: String)
+
     @Serializable
     @SerialName("place_room")
     data class PlaceRoom(val room: String, val site: String)
@@ -670,7 +701,7 @@ internal data class OpEntry(
             sleep?.let { SleepOp }, enjoy?.let(::EnjoyOp), hear?.let(::HearOp), progress?.let { ProgressOp(it.book) }, practice?.let(::PracticeOp),
             write?.let { WriteOp(it.with, it.into, it.timing, it.showsAs, it.optional) }, draw?.let(::DrawOp), build?.let { BuildOp },
             survey?.let(::SurveyOp), gather?.let(::GatherOp), placeRoom?.let { PlaceRoomOp(it.room, it.site) }, openMail?.let { OpenMailOp }, postLetter?.let { PostLetterOp },
-            script?.let { ScriptOp }, define?.let { DefineOp }, readLog?.let(::ReadLogOp),
+            script?.let { ScriptOp }, define?.let { DefineOp }, readLog?.let(::ReadLogOp), switch?.let { SwitchOp(it.target, LampMode.of(it.to)) },
         )
         require(set.size == 1) { "an effect is one op, such as `- need: { mood: 2 }`; this one has ${if (set.isEmpty()) "none" else set.joinToString { it.key }}" }
         return set.single()
@@ -702,6 +733,7 @@ internal data class OpEntry(
             ScriptOp -> OpEntry(script = NoParams())
             DefineOp -> OpEntry(define = NoParams())
             is ReadLogOp -> OpEntry(readLog = op.what)
+            is SwitchOp -> OpEntry(switch = Switch(op.target, op.to.id))
         }
     }
 }

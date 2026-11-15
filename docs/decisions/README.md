@@ -103,3 +103,4 @@ these hold the outcome. Skim this index before related changes.
 - 2026-11-15 [His machines show their state, reach what's in their own place, and react to more than the hour; events can belong to a place](2026-11-15-his-machines-show-their-state-reach-their-place-and-react-to-more-than-the-hour.md)
 - 2026-11-15 [Light is an effect with reach the sim computes on tiles; what he sees, what he can do where, and the web's lamps all read it](2026-11-15-light-is-an-effect-with-reach-the-sim-computes-on-tiles.md)
 - 2026-11-15 [Comfort is what he can see lit from where he stands; the house no longer holds a fixed amount](2026-11-15-comfort-is-what-he-can-see-lit-from-where-he-stands.md)
+- 2026-11-15 [Lamps run on timers he switches in the world: a `lamp` affordance, three modes, and a `switch` op](2026-11-15-lamps-run-on-timers-he-switches.md)
