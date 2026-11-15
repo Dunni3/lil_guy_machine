@@ -66,6 +66,12 @@
         "stimulation_per_hour": {
           "type": "number"
         },
+        "stimulation_drain_at": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
         "bored": {
           "type": "number"
         },

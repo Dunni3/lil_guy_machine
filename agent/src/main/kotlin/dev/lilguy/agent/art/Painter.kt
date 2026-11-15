@@ -122,6 +122,8 @@ class Painter(
      * Draws one piece of [item] on [canvas]. [persona] is who he is; [situation] is his state in
      * the words of the decision prompt, which is what the subject is chosen from. [drawn] are the
      * titles of pieces he has already made, which aren't offered as subjects of his own again.
+     * [nounsDrawn] are the nouns he has drawn before: the others are marked new to him, since a
+     * new subject lifts his stimulation, and some are always among those offered.
      * Never throws for a model failure: the drawing says what went wrong. [onProgress] hears the
      * piece once its crayons are picked and again after every stroke, on the drawing's coroutine.
      */
@@ -136,6 +138,7 @@ class Painter(
         day: Int?,
         time: String?,
         drawn: Collection<String> = emptyList(),
+        nounsDrawn: Set<String> = emptySet(),
         onProgress: (Underway) -> Unit = {},
     ): Drawing {
         val started = TimeSource.Monotonic.markNow()
@@ -156,7 +159,7 @@ class Painter(
         return try {
             withTimeout(timeout) {
                 val random = Random(tick)
-                val subject = pickSubject(pick, persona, situation, item, commission, subjects, drawn.toSet(), random)
+                val subject = pickSubject(pick, persona, situation, item, commission, subjects, drawn.toSet(), nounsDrawn, random)
                 val palette = pickPalette(pick, item, subject, canvas, random)
                 // The subject stage's shapes are drawn in front of everything else, whenever they were made.
                 val back = mutableListOf<DrawOp>()
@@ -244,19 +247,24 @@ class Painter(
         commission: CommissionView?,
         subjects: Subjects,
         drawn: Set<String>,
+        nounsDrawn: Set<String>,
         random: Random,
     ): Subject {
         // The request first (he's offered it plainly), then a handful of his own, seeded by the piece,
-        // leaving out what he has drawn before.
+        // leaving out what he has drawn before. Half of his own have nouns new to him while there are any.
         val all = subjects.adjectives.flatMap { a -> subjects.nouns.map { n -> a to n } }
-        val own = all.filter { (a, n) -> titleOf(a, n) !in drawn }.ifEmpty { all }.shuffled(random).take(OWN_SUBJECTS).map { (a, n) -> Subject(a, n, forRequest = false) }
+        val pool = all.filter { (a, n) -> titleOf(a, n) !in drawn }.ifEmpty { all }.shuffled(random)
+        val fresh = pool.filter { it.second !in nounsDrawn }.distinctBy { it.second }.take(OWN_SUBJECTS / 2)
+        val own = (fresh + (pool - fresh.toSet()).take(OWN_SUBJECTS - fresh.size)).shuffled(random).map { (a, n) -> Subject(a, n, forRequest = false) }
+        fun mark(noun: String) = if (noun in nounsDrawn) "" else " He has never drawn ${article(noun)} $noun: something new to him."
+
         val request = commission?.let { c ->
             val words = c.wants.split(' ').filter { it !in setOf("a", "an", "the") }
             if (words.size >= 2) Subject(words.dropLast(1).joinToString(" "), words.last(), forRequest = true) else null
         }
         val options = buildList {
-            request?.let { add(Menu.Option("request", "What the customer asked for: \"${commission!!.request ?: "I'd like ${commission.wants}."}\" It pays $${commission.reward} more if the piece is what they asked for, until ${commission.until}.")) }
-            own.forEachIndexed { i, s -> add(Menu.Option("own:$i", "A subject of his own: ${s.wants}.")) }
+            request?.let { add(Menu.Option("request", "What the customer asked for: \"${commission!!.request ?: "I'd like ${commission.wants}."}\" It pays $${commission.reward} more if the piece is what they asked for, until ${commission.until}.${mark(it.noun)}")) }
+            own.forEachIndexed { i, s -> add(Menu.Option("own:$i", "A subject of his own: ${s.wants}.${mark(s.noun)}")) }
         }
         val state = buildJsonObject {
             put("making", "a $item: a small picture he draws himself")
@@ -290,7 +298,8 @@ class Painter(
 
         val SUBJECT_INSTRUCTIONS = "The character in `state.who` is sitting down to make `state.making`. `state.situation` is his life right now: what he sees, " +
             "what he remembers, the thoughts he had and what he planned the last time he stopped to think. Which subject should the picture be? " +
-            "The customer's request earns him money he may need; a subject of his own should fit what's on his mind."
+            "The customer's request earns him money he may need; a subject of his own should fit what's on his mind. Drawing something he has never drawn " +
+            "lifts his stimulation, which matters most when he's bored."
 
         val PALETTE_INSTRUCTIONS = "The character is about to draw `state.subject`. Which box of crayons suits it best?"
 

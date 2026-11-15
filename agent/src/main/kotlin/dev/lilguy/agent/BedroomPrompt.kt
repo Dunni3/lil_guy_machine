@@ -99,7 +99,9 @@ object BedroomPrompt {
         val r = content.needs
         if (r.stimulationPerHour >= 0) return ""
         val drag = if (r.bored > 0 && r.boredMood > 0) " Below ${r.bored.toInt()} you're bored, and it drags the mood you settle to down, up to ${(r.bored * r.boredMood).toInt()} lower at 0." else ""
-        return " Stimulation falls ${num(-r.stimulationPerHour)} an hour while you're awake; hobbies, making things and anything new bring it back.$drag"
+        val falls = r.stimulationDrainAt?.let { at -> "falls while you're awake, faster the more you have (${num(-r.stimulationPerHour)} an hour at ${at.toInt()})" }
+            ?: "falls ${num(-r.stimulationPerHour)} an hour while you're awake"
+        return " Stimulation $falls; hobbies, making things and anything new bring it back.$drag"
     }
 
     /** " Frustration rises 10 when something you try fails ...", or empty without frustration. */
