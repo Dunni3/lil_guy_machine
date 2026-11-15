@@ -8,7 +8,7 @@ import { Admin, SignIn } from "./ui/admin";
 import { Hud } from "./ui/hud";
 import { pressOf } from "./ui/keys";
 import { Layer } from "./ui/layer";
-import { Menu, type Act } from "./ui/menu";
+import { Menu, type Act, type Spot } from "./ui/menu";
 import { MenuCard } from "./ui/menuCard";
 import type { PageView } from "./ui/pages";
 import { frameFor } from "./ui/paper";
@@ -120,15 +120,118 @@ window.addEventListener("keydown", (e) => {
   else if (view && (press === "up" || press === "down")) view.camera.mode = press === "up" ? "room" : "follow";
 });
 
-/** A click on the room opens the menu, as OK does, for a mouse that reaches for a button; inside it the keys do the rest. */
-canvas.addEventListener("click", () => {
+/**
+ * The mouse and touch, for everything the keys do, and nothing more: on the room a click opens the
+ * menu, as OK does; on the card a click goes through `Menu.click` and the wheel (or a drag) through
+ * `Menu.wheel`, on the [Spot] `MenuCard` drew there; a click off the card closes it. Broadcast has none.
+ */
+const pointer = {
+  /** A press on the card, for dragging the list or detail: where it was, and the last y. */
+  down: null as { spot: Spot; y: number; from: number } | null,
+  dragged: false,
+  /** Wheel or drag pixels not yet a whole notch, and what they were over. */
+  acc: 0,
+  over: "",
+  /** The rest of a multi-click that opened or closed the menu, sent a command or asked to confirm is ignored: confirming takes a click of its own. */
+  guard: false,
+};
+
+function pointerView(): PageView | null {
   const life = stream.state.life;
-  if (settings.broadcast || signIn.open || menu.open || !life) return;
-  const v = pageView(life);
-  if (!v) return;
+  return life && !signIn.open ? pageView(life) : null;
+}
+
+function spotAt(e: MouseEvent): Spot | null {
+  const r = canvas.getBoundingClientRect();
+  return card.hit(e.clientX - r.left, e.clientY - r.top);
+}
+
+/** The highlight and the pointer cursor, on what a click there would do something to. */
+function setHover(spot: Spot | null, v: PageView | null) {
+  const s = spot && v && menu.open && menu.clickable(spot, v) ? spot : null;
+  canvas.style.cursor = s ? "pointer" : "";
+  if (JSON.stringify(s) === JSON.stringify(card.hover)) return;
+  card.hover = s;
   pressed = true;
-  menu.show(v);
-});
+}
+
+/** [px] of wheel or drag over [spot], a notch at a time (a row over the list, a line over the detail). */
+function scroll(spot: Spot, px: number, v: PageView) {
+  const over = spot.kind === "detail" ? "detail" : "list";
+  if (over !== pointer.over) {
+    pointer.over = over;
+    pointer.acc = 0;
+  }
+  pointer.acc += px;
+  const notch = card.notch(spot);
+  const steps = Math.trunc(pointer.acc / notch);
+  if (!steps) return;
+  pointer.acc -= steps * notch;
+  menu.wheel(spot, steps, v);
+  pressed = true;
+}
+
+if (!settings.broadcast) {
+  canvas.addEventListener("click", (e) => {
+    const v = pointerView();
+    if (!v) return;
+    if (pointer.dragged) {
+      pointer.dragged = false;
+      return;
+    }
+    if (e.detail <= 1) pointer.guard = false;
+    if (pointer.guard) return;
+    pressed = true;
+    card.mouse = true;
+    if (!menu.open) {
+      menu.show(v);
+      pointer.guard = true;
+      return;
+    }
+    const spot = spotAt(e);
+    const a = spot ? menu.click(spot, v) : (menu.close(), null);
+    if (a) act(a);
+    // A ‹ or › may be clicked quickly over and over; anything else that did something takes a click of its own to do more.
+    pointer.guard = menu.confirm || !menu.open || (a !== null && a.type !== "configure");
+    setHover(menu.open ? spot : null, v);
+  });
+
+  canvas.addEventListener("pointerdown", (e) => {
+    const spot = menu.open ? spotAt(e) : null;
+    pointer.down = spot ? { spot, y: e.clientY, from: e.clientY } : null;
+    pointer.dragged = false;
+  });
+
+  canvas.addEventListener("pointermove", (e) => {
+    if (e.pointerType === "mouse" && !card.mouse) {
+      card.mouse = true;
+      pressed = true;
+    }
+    const v = pointerView();
+    const down = pointer.down;
+    if (down && e.buttons && v && menu.open) {
+      // A drag moves what's under it with the finger: dragging up scrolls on down.
+      if (Math.abs(e.clientY - down.from) > 8) pointer.dragged = true;
+      if (pointer.dragged) scroll(down.spot, down.y - e.clientY, v);
+      down.y = e.clientY;
+    }
+    setHover(menu.open ? spotAt(e) : null, v);
+  });
+
+  canvas.addEventListener("pointerup", (e) => {
+    pointer.down = null;
+    if (e.pointerType !== "mouse") setHover(null, null);
+  });
+  canvas.addEventListener("pointerleave", () => setHover(null, null));
+
+  canvas.addEventListener("wheel", (e) => {
+    const v = pointerView();
+    const spot = v && menu.open ? spotAt(e) : null;
+    if (!v || !spot) return;
+    e.preventDefault();
+    scroll(spot, e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? canvas.clientHeight : 1), v);
+  }, { passive: false });
+}
 
 let view: RoomView | null = null;
 let last = seconds();
@@ -166,6 +269,7 @@ function frame() {
     hud.update({
       life, content, speech: view.speech, making: view.making, banner: banner(life, open), hint: hint(open), menuOpen: open,
     }, renderer.camera, f, delta);
+    if (!open && card.hover) setHover(null, null);
     card.update(menu, v, f, pressed, delta);
     pressed = false;
     renderer.overlay(layer.scene, layer.camera);
@@ -209,7 +313,7 @@ function describe(): string {
 }
 
 // What a person or a headless browser checking the page can read from the console.
-(window as unknown as { lilguy: unknown }).lilguy = { stream, track, renderer, stats, menu, admin, hud, settings, get view() { return view; } };
+(window as unknown as { lilguy: unknown }).lilguy = { stream, track, renderer, stats, menu, card, admin, hud, settings, get view() { return view; } };
 
 stream.start();
 requestAnimationFrame(frame);
