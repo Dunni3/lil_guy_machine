@@ -101,7 +101,8 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   memories are level 1 stretches, level 2 days, level 3 the self-model; `InMemoryStore`), `AgentMemory.kt`
   (what `AgentRuntime` talks to: records outcomes, scores and ranks in the background, writes the day and the
   self-model at bedtime), `Describe.kt` (event text), `Summarizer.kt` (level-1 memories by significance,
-  day memories), `SelfModeler.kt` (the nightly self-model), `MemoryScorer.kt` (Jev Score questions for recall
+  day memories), `SelfModeler.kt` (the nightly self-model), `Reflector.kt` (he steps back every so often: what the stretch since adds up to, level 4, the latest two in every prompt;
+  `docs/decisions/2026-11-15-he-steps-back-*`), `MemoryScorer.kt` (Jev Score questions for recall
   relevance and event significance, through `decision/.../Scorer.kt`), `Recall.kt` (candidates and the
   keyword or ranked rule), `Keywords.kt` (keyword scoring), `Thinker.kt` (the `think` verb: a short turn that may ask `Oracle.kt` how the world works, from `WorldDocs`, before the thought),
   `Handlers.kt` (the `thought` and `reading` handlers), `Reader.kt` (what stuck from a chapter). The fixed

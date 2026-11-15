@@ -113,9 +113,9 @@ class SelfModeler(
 
     /**
      * Revises the self-model from [day], the day memory just written. [thoughts] are his thoughts
-     * from that day. Never throws for a model failure: the revision says what went wrong.
+     * from that day, and [reflections] what he concluded stepping back ([Reflector]). Never throws for a model failure: the revision says what went wrong.
      */
-    suspend fun revise(day: StoredMemory, thoughts: List<String>): SelfRevision {
+    suspend fun revise(day: StoredMemory, thoughts: List<String>, reflections: List<String> = emptyList()): SelfRevision {
         val before = current()
         val past = store.memories(run, 2).filter { it.id < day.id }.takeLast(pastDays)
         val user = buildString {
@@ -133,6 +133,11 @@ class SelfModeler(
                 appendLine()
                 appendLine("What you thought today, oldest first:")
                 thoughts.forEach { appendLine("- \"$it\"") }
+            }
+            if (reflections.isNotEmpty()) {
+                appendLine()
+                appendLine("What you concluded today when you stepped back, oldest first:")
+                reflections.forEach { appendLine("- \"$it\"") }
             }
             appendLine()
             append("Revise your self-model if today gives you reason to.")

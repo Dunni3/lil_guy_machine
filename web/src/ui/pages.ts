@@ -80,13 +80,13 @@ export function entries(tab: TabId, v: PageView): Entry[] {
     case "thoughts": {
       const plan = life.mind.plan?.seq;
       return [...life.logs.thoughts].reverse().map((t) => {
-        const searched = searchedAt(life, t.tick).length;
+        const searched = t.reflection ? 0 : searchedAt(life, t.tick).length;
         return {
         key: String(t.seq),
-        title: at(t.day, t.time, t.tick, life) + (t.seq === plan ? " · his plan" : "") + (t.asked.length ? ` · asked ${t.asked.length}` : "") + (searched ? ` · searched ${searched}` : ""),
+        title: at(t.day, t.time, t.tick, life) + (t.reflection ? " · stepping back" : "") + (t.seq === plan ? " · his plan" : "") + (t.asked.length ? ` · asked ${t.asked.length}` : "") + (searched ? ` · searched ${searched}` : ""),
         sub: t.text ?? `no thought: ${t.error ?? "?"}`,
         subColor: t.text === null ? COLORS.failed : COLORS.muted,
-        mark: t.seq === plan ? COLORS.accent : null,
+        mark: t.seq === plan ? COLORS.accent : t.reflection ? COLORS.code : null,
         };
       });
     }
@@ -290,6 +290,7 @@ function shopDetail(out: Detail, v: PageView, id: string) {
 function thoughtDetail(out: Detail, life: LifeState, t: ThoughtView) {
   out.head(`${at(t.day, t.time, t.tick, life).toUpperCase()} · ${t.thinker}`);
   if (t.seq === life.mind.plan?.seq) out.para("His latest kept thought: shown as his plan in every prompt until the next.", SCALE.small, COLORS.accent);
+  if (t.reflection) out.para("Stepping back: what he made of the stretch since the last time. His latest two show in every prompt; the night's self-model reads the day's.", SCALE.small, COLORS.code);
   out.para(t.text ?? `No thought: ${t.error ?? "?"}`, SCALE.body, t.text === null ? COLORS.failed : COLORS.ink, 0, 6);
   t.asked.forEach((a, i) => {
     out.head(`HE ASKED${t.asked.length > 1 ? ` (${i + 1} of ${t.asked.length})` : ""}`);
@@ -297,7 +298,7 @@ function thoughtDetail(out: Detail, life: LifeState, t: ThoughtView) {
     if (a.opened.length) out.para(`the oracle opened: ${a.opened.join(", ")}`, SCALE.small, COLORS.muted);
     out.para(a.answer ?? "no answer", SCALE.body, a.answer === null ? COLORS.failed : COLORS.code, 24);
   });
-  const searched = searchedAt(life, t.tick);
+  const searched = t.reflection ? [] : searchedAt(life, t.tick);
   searched.forEach((s, i) => {
     out.head(`HE SEARCHED THE WEB FIRST${searched.length > 1 ? ` (${i + 1} of ${searched.length})` : ""} · more under WEB`);
     out.para(`"${s.query}"`, SCALE.body, COLORS.ink);

@@ -82,6 +82,7 @@ class PromptBuilder(
      * are what long-term memory recalled for this decision (memories and earlier thoughts);
      * [thought] is his latest thought ("stamp: text"), shown until the next one replaces it.
      * [found] is what he found out by asking how his world works, his latest answers ("stamp: I asked ...: ...").
+     * [reflections] are what he concluded the latest times he stepped back ("stamp: text"), oldest first.
      */
     fun build(
         observed: Observation,
@@ -92,10 +93,11 @@ class PromptBuilder(
         memories: List<String> = emptyList(),
         thought: String? = null,
         found: List<String> = emptyList(),
+        reflections: List<String> = emptyList(),
     ): DecisionRequest {
         val obs = view(observed)
         // His latest thought is the last call's in the history, so it isn't shown again.
-        if (tools && toolTurn != null) return toolRequest(toolTurn, obs, recent, memories, null, found)
+        if (tools && toolTurn != null) return toolRequest(toolTurn, obs, recent, memories, null, found, reflections)
         val history = recent.joinToString("\n") { e ->
             "${stamp(e.tick)}: ${json.encodeToString(Intent.serializer(), e.intent)} -> ${e.result?.let(::describe) ?: "running"}" +
                 (e.thought?.let { "; you thought: \"$it\"" } ?: "")
@@ -103,7 +105,7 @@ class PromptBuilder(
         val user = buildString {
             appendLine(OBSERVATION_HEADER)
             appendLine(json.encodeToString(Observation.serializer(), obs))
-            recall(memories, thought, found)
+            recall(memories, thought, found, reflections)
             if (history.isNotEmpty()) {
                 appendLine("Your recent actions, oldest first:")
                 appendLine(history)
@@ -114,7 +116,7 @@ class PromptBuilder(
             system = system,
             messages = listOf(Message(Message.Role.User, user)),
             timeout = timeout,
-            choices = if (closedChoice) choices(obs, recent)?.let { withRecall(it, memories, thought, self(), found) } else null,
+            choices = if (closedChoice) choices(obs, recent)?.let { withRecall(it, memories, thought, self(), found, reflections) } else null,
         )
     }
 
@@ -122,7 +124,7 @@ class PromptBuilder(
      * His recent actions as calls he made, each answered by how it ended, then one message with how
      * things stand (the observation as [ToolTurn.status] shows it, and what he recalls).
      */
-    private fun toolRequest(turn: ToolTurn, obs: Observation, recent: List<Memory.Entry>, memories: List<String>, thought: String?, found: List<String>): DecisionRequest {
+    private fun toolRequest(turn: ToolTurn, obs: Observation, recent: List<Memory.Entry>, memories: List<String>, thought: String?, found: List<String>, reflections: List<String>): DecisionRequest {
         val messages = mutableListOf<Message>()
         if (recent.isNotEmpty()) {
             messages += Message(Message.Role.User, HISTORY_HEADER)
@@ -140,7 +142,7 @@ class PromptBuilder(
         val user = buildString {
             appendLine(STATUS_HEADER)
             appendLine(statusJson.encodeToString(Observation.serializer(), turn.status(obs)))
-            recall(memories, thought, found)
+            recall(memories, thought, found, reflections)
             turn.note(obs)?.let { appendLine(it) }
             append(
                 when {
@@ -155,10 +157,14 @@ class PromptBuilder(
         return DecisionRequest(system = turn.system(), messages = messages, timeout = timeout, tools = tools)
     }
 
-    private fun StringBuilder.recall(memories: List<String>, thought: String?, found: List<String>) {
+    private fun StringBuilder.recall(memories: List<String>, thought: String?, found: List<String>, reflections: List<String>) {
         if (memories.isNotEmpty()) {
             appendLine(MEMORY_HEADER)
             memories.forEach { appendLine("- $it") }
+        }
+        if (reflections.isNotEmpty()) {
+            appendLine(REFLECTION_HEADER)
+            reflections.forEach { appendLine("- $it") }
         }
         if (thought != null) {
             appendLine(THOUGHT_HEADER)
@@ -171,7 +177,7 @@ class PromptBuilder(
     }
 
     /** Adds how he sees himself, what he remembers and his latest thought to the state a picking model judges the options against. */
-    private fun withRecall(set: ChoiceSet, memories: List<String>, thought: String?, self: String?, found: List<String>): ChoiceSet {
+    private fun withRecall(set: ChoiceSet, memories: List<String>, thought: String?, self: String?, found: List<String>, reflections: List<String>): ChoiceSet {
         var state = set.state
         var instructions = set.instructions
         if (self != null) {
@@ -181,6 +187,10 @@ class PromptBuilder(
         if (memories.isNotEmpty()) {
             state = JsonObject(state + ("memories" to JsonArray(memories.map(::JsonPrimitive))))
             instructions += " `state.memories` is what he remembers from earlier and thoughts he had, oldest first."
+        }
+        if (reflections.isNotEmpty()) {
+            state = JsonObject(state + ("reflections" to JsonArray(reflections.map(::JsonPrimitive))))
+            instructions += " `state.reflections` is what he concluded the latest times he stepped back from his days, oldest first: the patterns and lessons he has drawn. Choose in their light."
         }
         if (thought != null) {
             state = JsonObject(state + ("latest_thought" to JsonPrimitive(thought)))
@@ -196,6 +206,7 @@ class PromptBuilder(
     companion object {
         private const val OBSERVATION_HEADER = "Observation:"
         const val MEMORY_HEADER = "What you remember from earlier (memories, and thoughts you had), oldest first:"
+        const val REFLECTION_HEADER = "What you concluded the latest times you stepped back from your days (patterns and lessons you've drawn), oldest first:"
         const val THOUGHT_HEADER = "What you decided the last time you stopped to think (your plan for now):"
         const val FOUND_HEADER = "What you found out lately, by asking how your world works or looking things up online, oldest first:"
         private const val ASK = "Choose your next action."

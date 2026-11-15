@@ -134,6 +134,32 @@ class MemoryTest {
     }
 
     @Test
+    fun `he steps back every so often, building on what he concluded before, and later prompts show it`() {
+        val store = InMemoryStore()
+        val seen = mutableListOf<String>()
+        val model = object : DecisionModel {
+            override val id = "fake-reflector"
+            override val capabilities = Capabilities()
+            override suspend fun <A> decide(request: DecisionRequest, schema: ActionSchema<A>): Decision<A> {
+                seen += request.messages.last().content
+                val raw = """{"reflection":"I keep sketching to keep busy. (reflection ${seen.size})"}"""
+                return Decision(schema.decode(raw), null, Usage(), Duration.ZERO, raw)
+            }
+        }
+        val memory = AgentMemory(store, "r", reflector = Reflector(model, store, "r", "You are him.", minEvents = 12, every = 15))
+        val prompts = mutableListOf<String>()
+        val (world, runtime) = bedroomScenario(BedroomPolicy(), longTerm = memory) { d -> prompts += d.request!!.messages.last().content }
+        runBlocking { runLockstep(world, runtime, maxTicks = 7200) }
+        val stored = store.memories("r", Reflector.LEVEL)
+        assertTrue(stored.size >= 2, "reflections: ${stored.size}")
+        assertEquals(stored.first().toId + 1, stored[1].fromId, "each starts where the last stopped")
+        // The second reads the first, to build on it; the decisions after it show it.
+        assertTrue("What you concluded the last times you stepped back" in seen[1] && "(reflection 1)" in seen[1], seen[1])
+        assertTrue(prompts.any { dev.lilguy.agent.PromptBuilder.REFLECTION_HEADER in it && "(reflection 1)" in it })
+        assertTrue(memory.thoughts().count { it.reflection } == stored.size)
+    }
+
+    @Test
     fun `memories reach a picking model through the choice set state`() {
         val (world, _) = bedroomScenario(BedroomPolicy())
         val obs = world.observe(world.agentId)

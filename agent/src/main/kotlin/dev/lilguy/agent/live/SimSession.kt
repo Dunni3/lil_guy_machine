@@ -29,6 +29,7 @@ import dev.lilguy.agent.art.CommissionVoice
 import dev.lilguy.agent.art.Painter
 import dev.lilguy.agent.art.Underway
 import dev.lilguy.agent.memory.Oracle
+import dev.lilguy.agent.memory.Reflector
 import dev.lilguy.agent.web.Searcher
 import dev.lilguy.agent.memory.AgentMemory
 import dev.lilguy.agent.memory.InMemoryStore
@@ -425,6 +426,14 @@ class SimSession(
                 searchClient = web
                 Searcher(ledger.meter(web, setup.prices.search), setup.searchesPerDay)
             },
+            // Every so often the writer steps back with him over what has happened: what it adds up to.
+            reflector = if (personality == null) null else jw?.takeIf { !it.capabilities.closedChoice }?.let {
+                Reflector(
+                    ledger.meter(it, TokenPurpose.Reflect, setup.prices.writer), store, runId, personality.core.you,
+                    threshold = if (setup.recallScorer != null) Reflector.THRESHOLD else null,
+                )
+            },
+            onReflection = { t -> if (run == thisRun && t.error != null) writerError = "reflection: ${t.error}" },
         )
         val (gw, r) = setup.scenario.create(
             m, setup.timeout, settings.ticksPerMinute, longTerm = memory, startItems = setup.startItems,

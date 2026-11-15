@@ -36,7 +36,11 @@ class MemoryScorer(
         ask(scorer, state, candidates.associate { c ->
             c.key to ScoreQuestion(
                 buildJsonObject {
-                    put("question", RELEVANCE_QUESTION + if (c.kind == Recollection.Kind.Thought) " It is something he thought earlier, in his words." else " It is something he remembers.")
+                    put("question", RELEVANCE_QUESTION + when (c.kind) {
+                        Recollection.Kind.Thought -> " It is something he thought earlier, in his words."
+                        Recollection.Kind.Reflection -> " It is what he concluded earlier, stepping back from his days, in his words."
+                        else -> " It is something he remembers."
+                    })
                     put("memory", c.render())
                 },
                 RELEVANCE,

@@ -212,7 +212,7 @@ object BedroomTools {
         putJsonObject("properties") {
             putJsonObject(THOUGHT) {
                 put("type", "string")
-                put("description", "Only if you haven't said it: what goes through your head as you choose this, in your own voice. First person, under $THOUGHT_WORDS words.")
+                put("description", "Only if you haven't said it: what goes through your head as you choose this, in your own voice (what you notice, feel, want or wonder, not your numbers). First person, under $THOUGHT_WORDS words.")
             }
             enums.forEach { (name, values) ->
                 putJsonObject(name) {

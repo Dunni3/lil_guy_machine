@@ -38,6 +38,8 @@ data class Thought(
     val error: String? = null,
     /** What he asked the oracle while thinking, in order, failed answers included. */
     val asked: List<Answer> = emptyList(),
+    /** True for a reflection ([Reflector]): stepping back over a stretch, not a thought of the moment. */
+    val reflection: Boolean = false,
 )
 
 /**

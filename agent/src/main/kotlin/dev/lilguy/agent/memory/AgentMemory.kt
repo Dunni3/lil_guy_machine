@@ -50,6 +50,10 @@ import java.util.concurrent.CopyOnWriteArrayList
  *    he goes to sleep, the rest of the day, then one day memory (level 2).
  * 3. **Self-model.** After the day memory, a [SelfModeler] revises how he sees himself (level 3);
  *    [selfModel] is what the prompts show.
+ * 3a. **Reflections.** A [Reflector], if there is one, steps back every so often over the events
+ *    since the last time and writes what they add up to (level [Reflector.LEVEL]); the prompts show
+ *    the latest few ([reflections]), older ones are recall candidates, and the night's self-model
+ *    revision reads the day's.
  * 4. **Recall.** [recall] picks the memories and earlier thoughts to show at a decision. With a
  *    [scorer], Jev rates every candidate against his situation in the background after each
  *    choice, so the ranking is ready by the next decision (the previous one is used if not);
@@ -102,6 +106,10 @@ class AgentMemory(
     private val letterWriter: LetterWriter? = null,
     /** Every letter as it's written, posted or not. */
     private val onLetter: (Written) -> Unit = {},
+    /** Steps back every so often over what has happened ([Reflector]); null and he doesn't. */
+    private val reflector: Reflector? = null,
+    /** Every reflection, failed ones included; called from whichever coroutine wrote it. */
+    private val onReflection: (Thought) -> Unit = {},
 ) {
     /** What authored ops are written from: who he is, his state in the decision prompt's words, and that prompt's system message. */
     class Brief(val persona: String, val situation: String, val system: String)
@@ -119,6 +127,7 @@ class AgentMemory(
 
     @Volatile private var summaryJob: Job? = null
     @Volatile private var scoringJob: Job? = null
+    @Volatile private var reflectJob: Job? = null
     private val summaries = Mutex()
     /** The highest event id already sent for significance. */
     @Volatile private var scoredThrough = 0L
@@ -244,7 +253,7 @@ class AgentMemory(
     data class SavedAnswer(val question: String, val opened: List<String>, val reply: SavedThought)
 
     /** True when nothing runs in the background (scoring, a summary, an authored call): its [state] is whole. */
-    val quiet: Boolean get() = summaryJob?.isActive != true && scoringJob?.isActive != true && authors.quiet
+    val quiet: Boolean get() = summaryJob?.isActive != true && scoringJob?.isActive != true && reflectJob?.isActive != true && authors.quiet
 
     /** Only when [quiet], and while the agent loop is held ([dev.lilguy.agent.AgentRuntime.hold]). */
     fun state() = State(
@@ -272,7 +281,8 @@ class AgentMemory(
         thoughtPlaces.clear()
         s.thoughts.forEach { keptThoughts += it.event to it.thought() }
         thoughtLog.clear()
-        thoughtLog.addAll(keptThoughts.map { it.second })
+        val stored = reflector?.reflections().orEmpty().map { m -> Thought(0, m.span.toDay, m.span.toTime, m.source, m.text, null, dev.lilguy.decision.Usage(), kotlin.time.Duration.ZERO, reflection = true) }
+        thoughtLog.addAll((keptThoughts.map { it.second } + stored).sortedBy { orderOf(it.day, it.time) ?: it.tick })
         keptAnswers.clear()
         s.answers.forEach { keptAnswers += Answer(it.question, it.opened, it.reply.thought()) }
         plan = s.plan?.thought()
@@ -362,6 +372,9 @@ class AgentMemory(
     /** How he sees himself, as the prompts show it: the current self-model, or the seed before the first; null when nothing revises it. */
     fun selfText(): String? = selfModeler?.let { m -> m.current()?.self?.render() ?: m.seed }
 
+    /** His latest [n] reflections, oldest first: what the prompts show of what he concluded stepping back. */
+    fun reflections(n: Int = SHOWN_REFLECTIONS): List<StoredMemory> = reflector?.reflections().orEmpty().takeLast(n)
+
     fun eventCount(): Int = store.countEventsAfter(run, 0)
 
     /** Events not yet covered by a memory. */
@@ -418,6 +431,12 @@ class AgentMemory(
             if (scope == null) score(scorer, obs, intent)
             else if (scoringJob?.isActive != true) scoringJob = scope.launch { score(scorer, obs, intent) }
         }
+        reflector?.let { r ->
+            val reflecting = reflectJob?.isActive == true
+            if (!reflecting && r.ready()) {
+                if (scope == null) reflect(r, obs.tick) else reflectJob = scope.launch { reflect(r, obs.tick) }
+            }
+        }
         val s = summarizer ?: return
         val bedtime = (intent as? Intent.Do)?.activity in restVerbs
         if (!bedtime && !s.ready()) return
@@ -454,7 +473,8 @@ class AgentMemory(
     suspend fun search(query: String, obs: Observation, n: Int = SEARCH_RESULTS): List<String> {
         val all = (store.memories(run, 2).map { Recollection(Recollection.Kind.Day, it.id, "Day ${it.span.toDay ?: ""}".trimEnd(), it.text, it.importance, orderOf(it.span.toDay, it.span.toTime) ?: it.toId) } +
             store.memories(run, 1).map { Recollection(Recollection.Kind.Memory, it.id, it.span.label, it.text, it.importance, orderOf(it.span.toDay, it.span.toTime) ?: it.toId) } +
-            keptThoughts.map { (id, t) -> Recollection(Recollection.Kind.Thought, id, Span(t.day, t.time, t.day, t.time).label, t.text.orEmpty(), null, orderOf(t.day, t.time) ?: id) })
+            keptThoughts.map { (id, t) -> Recollection(Recollection.Kind.Thought, id, Span(t.day, t.time, t.day, t.time).label, t.text.orEmpty(), null, orderOf(t.day, t.time) ?: id) } +
+            reflector?.reflections().orEmpty().map(::reflection))
             .sortedBy { it.order }.takeLast(SEARCHED)
         if (all.isEmpty()) return emptyList()
         val scores = scorer?.search(buildJsonObject {
@@ -486,6 +506,13 @@ class AgentMemory(
         return answer
     }
 
+    /** He steps back: a reflection over the events since the last one. */
+    private suspend fun reflect(r: Reflector, tick: Long) {
+        val t = r.reflect(selfText(), tick) ?: return
+        thoughtLog += t
+        onReflection(t)
+    }
+
     /** He's going to sleep on [day]: the rest of the day becomes memories, then a day memory, then his self-model is revised. */
     private suspend fun night(s: Summarizer, day: Int?) {
         s.flush()
@@ -495,7 +522,8 @@ class AgentMemory(
         val from = covered.minOfOrNull { it.fromId } ?: return
         val to = covered.maxOf { it.toId }
         val thoughts = store.eventsAfter(run, from - 1, (to - from + 1).toInt()).filter { it.kind == EventKind.Thought }.map { it.text }
-        val revision = m.revise(memory, thoughts)
+        val reflections = reflector?.reflections().orEmpty().filter { it.toId in from..to }.map { it.text }
+        val revision = m.revise(memory, thoughts, reflections)
         lastRevision = revision
         revisionLog += revision
         onSelf(revision)
@@ -549,12 +577,17 @@ class AgentMemory(
         val current = plan
         // Thoughts of today and yesterday; older ones live on in the day memories, as the memories do.
         val thoughts = keptThoughts.filter { (_, t) -> !(current != null && t.tick == current.tick && t.text == current.text) && (today == null || (t.day ?: today) >= today - 1) }
-        return days.map { Recollection(Recollection.Kind.Day, it.id, "Day ${it.span.toDay ?: ""}".trimEnd(), it.text, it.importance, orderOf(it.span.toDay, it.span.toTime) ?: it.toId) } +
+        // Reflections but the latest few, which every prompt shows anyway; all of them, since they're what his days came to.
+        val reflections = reflector?.reflections().orEmpty().dropLast(SHOWN_REFLECTIONS).map(::reflection)
+        return reflections + days.map { Recollection(Recollection.Kind.Day, it.id, "Day ${it.span.toDay ?: ""}".trimEnd(), it.text, it.importance, orderOf(it.span.toDay, it.span.toTime) ?: it.toId) } +
             memories.map { Recollection(Recollection.Kind.Memory, it.id, it.span.label, it.text, it.importance, orderOf(it.span.toDay, it.span.toTime) ?: it.toId, it.places) } +
             thoughts.map { (id, t) ->
                 Recollection(Recollection.Kind.Thought, id, Span(t.day, t.time, t.day, t.time).label, t.text.orEmpty(), null, orderOf(t.day, t.time) ?: id, listOfNotNull(thoughtPlaces[id]))
             }
     }
+
+    private fun reflection(m: StoredMemory) =
+        Recollection(Recollection.Kind.Reflection, m.id, Span(m.span.toDay, m.span.toTime, m.span.toDay, m.span.toTime).label, m.text, m.importance, orderOf(m.span.toDay, m.span.toTime) ?: m.toId, m.places)
 
     /** Game minutes since the start of day 1, or null without a clock. */
     private fun orderOf(day: Int?, time: String?): Long? =
@@ -585,6 +618,7 @@ class AgentMemory(
     /** Waits for background scoring, summaries and authored results being kept, then summarizes whatever is left. Call at the end of a run. */
     suspend fun flush() {
         scoringJob?.join()
+        reflectJob?.join()
         summaryJob?.join()
         authors.flush()
         summaries.withLock { summarizer?.flush() }
@@ -593,6 +627,9 @@ class AgentMemory(
     private companion object {
         /** Most events scored for significance in one request. */
         const val SCORE_BATCH = 200
+
+        /** How many of his latest reflections each prompt shows. */
+        const val SHOWN_REFLECTIONS = 2
 
         /** How many of his latest answers (and, apart, searches) each prompt shows. */
         const val SHOWN_ANSWERS = 2

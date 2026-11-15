@@ -141,8 +141,10 @@ class AgentRuntime(
             val found = (longTerm?.answers().orEmpty().map { a -> a.tick to "I asked \"${a.question}\": ${a.reply.text}" } +
                 longTerm?.lookedUp().orEmpty().mapNotNull { s -> s.remembered()?.let { s.tick to it } })
                 .sortedBy { it.first }.map { (tick, text) -> "${prompts.stampOf(tick)}: $text" }
+            // What he concluded the latest times he stepped back.
+            val reflections = longTerm?.reflections().orEmpty().map { m -> "${m.span.toDay?.let { d -> "Day $d ${m.span.toTime}" } ?: "Earlier"}: ${m.text}" }
             val caps = model.capabilities
-            val request = prompts.build(obs, memory.recent(), closedChoice = caps.closedChoice, tools = caps.toolCalls && !caps.closedChoice, memories = recalled, thought = plan, found = found)
+            val request = prompts.build(obs, memory.recent(), closedChoice = caps.closedChoice, tools = caps.toolCalls && !caps.closedChoice, memories = recalled, thought = plan, found = found, reflections = reflections)
             val schema = schemaFor(obs)
             val started = TimeSource.Monotonic.markNow()
             decidingSince = started
