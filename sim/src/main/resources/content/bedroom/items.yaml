@@ -50,6 +50,16 @@ items:
   - { id: violet_beetle, name: violet beetle, group: sample, affords: { specimen: { price: 9 } }, qualities: { strange: 2, pretty: 1 }, stackable: true }
   - { id: pond_water, name: jar of pond water, group: sample, affords: { specimen: { price: 2 } }, qualities: { natural: 1, calm: 1 }, stackable: true }
   - { id: amber_seed_pod, name: amber seed pod, group: sample, affords: { specimen: { price: 5 } }, qualities: { warm: 2, natural: 1 }, stackable: true }
+  # Rooms: a plan is bought, then built on a site (world.yaml `rooms`, `sites`; verbs.yaml build_room).
+  # Sites are where a room can stand; what comes with each room stands in its slots.
+  - { id: lab_plan, name: plans for a lab, group: room, affords: { buildable: {} }, price: 60 }
+  - { id: sunroom_plan, name: plans for a sunroom, group: room, affords: { buildable: {} }, price: 90, tier: 1 }
+  - { id: site_east, name: the site east of your bedroom, group: fixture, affords: { site: {} } }
+  - { id: site_far_east, name: the site further east, group: fixture, affords: { site: {} } }
+  - { id: lab_bench, name: lab bench, group: fixture, slot: lab_bench, blocks: true }
+  - { id: lab_shelf, name: tall lab shelf, group: fixture, slot: lab_shelf, blocks: true }
+  - { id: armchair, name: armchair, group: fixture, slot: armchair, qualities: { cozy: 2, soft: 1 } }
+  - { id: floor_lamp, name: floor lamp, group: fixture, slot: floor_lamp, blocks: true, qualities: { warm: 1 } }
   # Where samples are studied (verbs.yaml `study_sample`).
   - { id: microscope, name: microscope, group: furniture, slot: microscope, blocks: true, price: 35, tier: 1 }
   # Taught by music_book.

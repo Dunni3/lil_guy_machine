@@ -36,4 +36,5 @@ start:
   needs: { energy: 80, fullness: 70, mood: 60, stimulation: 60 }
   items: { mail_hatch: 1, picture_rail: 1, bed: 1, desk: 1, chair: 1, sketchbook: 1, meal: 2, oats: 1,
            garden_bench: 1, forest_trail: 1, clearing_log: 1, pond_edge: 1,
-           glowcap_patch: 1, moss_patch: 1, fern_patch: 1, beetle_log: 1, pond_patch: 1, seedpod_bush: 1 }
+           glowcap_patch: 1, moss_patch: 1, fern_patch: 1, beetle_log: 1, pond_patch: 1, seedpod_bush: 1,
+           site_east: 1, site_far_east: 1 }

@@ -8,7 +8,7 @@ import type { Place } from "../stream/track";
 import { ArtLayer } from "./art";
 import { CameraRig, type CameraMode } from "./camera";
 import { Models, SAMPLE_COLORS, constants, wallItem } from "./parts";
-import { BEDROOM } from "./room";
+import { ADDED_ROOM, BEDROOM } from "./room";
 import { groundTexture, landParts, treeParts } from "./land";
 import { Terrain, paneParts, shellParts } from "./shell";
 
@@ -224,7 +224,14 @@ export class RoomView {
 
     if (this.shell) this.r.remove(this.shell);
     const doors = world.doors.filter((d) => d.y === at.y1 && d.x > at.x0 && d.x < at.x1).map((d) => d.x);
-    this.shell = this.r.add(new ClayModel(shellParts(at, room, doors)));
+    // Rooms he built onto the house, each beside the room it joins: low on that side, so it shows.
+    const added = rooms.slice(1).flatMap((p) => {
+      const b = p.bounds;
+      const front = world.doors.filter((d) => d.y === b.y1 && d.x > b.x0 && d.x < b.x1).map((d) => d.x);
+      const joined = rooms.some((o) => o !== p && o.bounds.x1 === b.x0);
+      return shellParts(b, ADDED_ROOM, front, joined);
+    });
+    this.shell = this.r.add(new ClayModel([...shellParts(at, room, doors), ...added]));
     this.shell.set(this.at.identity());
     if (this.glass) this.r.removeMesh(this.glass);
     const pane = new ClayModel(paneParts(at, room)).batches[0].geometry;

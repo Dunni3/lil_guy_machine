@@ -39,14 +39,23 @@ import kotlin.random.Random
  * successes ease it ([FrustrationRules]).
  */
 class BedroomWorld private constructor(
-    /** The house on its land: the map, the places on it, where each slot is. */
-    val layout: Layout,
+    startLayout: Layout,
     guy: Character,
     startContent: BedroomContent,
     val clock: GameClock,
     /** Picks the commissions. */
     private val seed: Long,
-) : GridWorld(layout.map, guy) {
+) : GridWorld(startLayout.map, guy) {
+    /** The house on its land: the map, the places on it, where each slot is. Replaced when a room is built or moved. */
+    @Volatile var layout: Layout = startLayout
+        private set
+
+    /** Rooms built onto the house: room id to the site it stands on. */
+    private val house = linkedMapOf<String, String>()
+
+    /** Rooms built onto the house, room id to site id. */
+    fun houseRooms(): Map<String, String> = LinkedHashMap(house)
+
     /** Everything he can own and do. It grows when he invents something ([inventions]); swapped only on the sim thread. */
     @Volatile var content: BedroomContent = startContent
         private set
@@ -269,6 +278,10 @@ class BedroomWorld private constructor(
             return listOf("+1 ${item(find.yields).name}", "the ${item(patch).name} will grow back by ${stamp(bareUntil.getValue(patch))}")
         }
 
+        override fun roomLock(plan: String, site: String) = this@BedroomWorld.roomLock(plan, site)
+
+        override fun placeRoom(plan: String, site: String) = this@BedroomWorld.placeRoom(plan, site)
+
         override fun build(verb: VerbSpec): List<String> {
             val design = designs.remove(verb.id)!!.design!!
             val made = (content.invent!!.check(design, content, verb.minutes!!) as InventRules.Checked.Ok).invention.copy(tick = ticks)
@@ -386,7 +399,7 @@ class BedroomWorld private constructor(
     /** Owned items that sit in a slot, with their tiles. */
     private fun placed(): List<Pair<ItemSpec, Cell>> = owned.keys.mapNotNull { id ->
         val spec = item(id)
-        spec.slot?.let { spec to layout.slotCells.getValue(it) }
+        spec.slot?.let { layout.slotCells[it] }?.let { spec to it }
     }
 
     /** What [spec] adds to comfort while it sits in its slot: its value to him, in view. Items without a slot are out of sight. */
@@ -401,7 +414,49 @@ class BedroomWorld private constructor(
         }
     }
 
-    private fun comfort(): Int = placed().sumOf { (spec, _) -> comfortOf(spec) } + hung().size * content.gallery.comfortEach + collectionComfort()
+    private fun comfort(): Int = placed().sumOf { (spec, _) -> comfortOf(spec) } + hung().size * content.gallery.comfortEach + collectionComfort() + roomsComfort()
+
+    /** What the rooms he has built are like to him: their qualities, by his affinities, as decor's are. */
+    private fun roomsComfort(): Int = house.keys.sumOf { id ->
+        val r = content.world?.room(id) ?: return@sumOf 0
+        (r.qualities.entries.sumOf { (q, s) -> s * content.personality.affinity(q) } * content.qualityValue.inView).roundToInt()
+    }
+
+    /** Why [plan]'s room can't go on [site] now, or null. */
+    private fun roomLock(plan: String, site: String): String? {
+        val world = content.world ?: return "there's no land to build on"
+        // Unbound (asked before he has a plan), the arguments' own locks say what's missing.
+        val spec = content.item(plan) ?: return null
+        val room = world.roomFor(plan) ?: return "the ${spec.name} isn't for a room"
+        val s = world.site(site) ?: return null
+        if (house[room.id] == site) return "${room.name} stands there already"
+        house.entries.firstOrNull { it.value == site }?.let { (other, _) -> return "${world.room(other)?.name ?: other} stands there" }
+        if (s.nextTo != null && s.nextTo !in house.values) return "it needs a room ${world.site(s.nextTo)?.name ?: s.nextTo} first"
+        val leaning = world.sites.filter { it.nextTo == house[room.id] && it.id in house.values }
+        if (leaning.isNotEmpty() && house[room.id] != null) return "another room is built onto ${room.name}"
+        return null
+    }
+
+    /** Builds [plan]'s room on [site], or moves it there if it stands elsewhere: the map, places and doors change with it. */
+    private fun placeRoom(plan: String, site: String): List<String> {
+        val world = content.world ?: return emptyList()
+        val room = world.roomFor(plan) ?: return emptyList()
+        val moved = house.containsKey(room.id)
+        val old = layout.place(room.id)
+        house[room.id] = site
+        layout = Layout.of(content, house)
+        map = layout.map
+        room.items.forEach { if (count(it) == 0) add(it, 1) }
+        version++
+        mapCache = null
+        placesCache = null
+        // Standing where the room was, he steps out to his bedroom.
+        if (old != null && guy.cell in old.bounds && layout.placeOf(guy.cell)?.id != room.id) {
+            layout.spot(layout.places.first())?.let { guy.x = it.x + 0.5f; guy.y = it.y + 0.5f }
+        }
+        val where = world.site(site)!!.name
+        return listOf(if (moved) "moved ${room.name} to $where" else "built ${room.name} $where")
+    }
 
     /** Each kind of sample he keeps adds comfort, up to the rule's most kinds. */
     private fun collectionComfort(): Int = content.collection?.let { c ->
@@ -1110,6 +1165,7 @@ class BedroomWorld private constructor(
             authoredCount = authoredCount,
             inventions = inventions,
             explored = explored.toList(),
+            house = LinkedHashMap(house),
             bare = bareUntil.filterValues { it > ticks },
         )
     }
@@ -1128,6 +1184,12 @@ class BedroomWorld private constructor(
         s.owned.forEach { (id, n) -> if (has(id, "item")) owned[id] = n }
         // A fixture he starts with is always there, though an older checkpoint may not have it (the land's lookouts and patches).
         content.start.items.forEach { (id, n) -> if (item(id).group == "fixture" && id !in owned) owned[id] = n }
+        house.clear()
+        s.house.forEach { (room, site) -> if (content.world?.room(room) != null && content.world?.site(site) != null) house[room] = site else dropped += "room '$room' on '$site' is no longer in the content" }
+        if (house.isNotEmpty()) {
+            layout = Layout.of(content, house)
+            map = layout.map
+        }
         explored.clear(); explored.addAll(s.explored.filter { layout.place(it) != null })
         bareUntil.clear(); s.bare.forEach { (id, t) -> if (content.item(id) != null) bareUntil[id] = t }
         s.pieces.forEach { p ->

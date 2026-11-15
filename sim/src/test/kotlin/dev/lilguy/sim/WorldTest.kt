@@ -77,6 +77,26 @@ class WorldTest {
         assertEquals(0, w.count("glowcap"))
     }
 
+    @Test
+    fun `he builds the lab onto the house, walks into it, and it stays through a checkpoint`() {
+        val shipped = BedroomContent.default()
+        val content = shipped.copy(start = shipped.start.copy(items = shipped.start.items + ("lab_plan" to 1)))
+        val w = BedroomWorld.create(content)
+        assertTrue("it needs a room east of your bedroom first" in failure(w.run(Intent.Do("build_room", what = "lab_plan", on = "site_far_east"))))
+        val mood = w.snapshot().life!!.moodTarget
+        assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("build_room", what = "lab_plan", on = "site_east")).status)
+        assertTrue(w.observe(w.agentId).recentEvents.any { "built the lab east of your bedroom" in it })
+        val lab = w.layout.place("lab")!!
+        assertTrue(w.layout.doors.any { it.inside == "lab" && it.outside == "bedroom" })
+        assertTrue(w.snapshot().entities.any { it.id.value == "lab_bench" && it.place == "lab" }, "what comes with the room stands in it")
+        assertTrue(w.snapshot().life!!.moodTarget >= mood, "a room he likes is comfort")
+        assertIs<IntentStatus.Succeeded>(w.run(Intent.MoveTo(Target.Place("lab"))).status)
+        assertEquals("lab", w.guyPlace())
+        assertTrue("stands there already" in failure(w.run(Intent.Do("build_room", what = "lab_plan", on = "site_east"))))
+        val back = BedroomWorld.restore(w.exportState(), content, strict = true).world
+        assertEquals(lab.bounds, back.layout.place("lab")?.bounds)
+    }
+
     private fun failure(h: IntentHandle) = assertIs<IntentStatus.Failed>(h.status).reason
 
     @Test

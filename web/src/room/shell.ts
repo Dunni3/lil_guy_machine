@@ -55,8 +55,9 @@ const span = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: nu
  * in the front wall (the x of its tile in [doors]) is a gap in the sill. The window's frame is here;
  * its glass is [paneParts], drawn apart so its colour follows the sky.
  */
-export function shellParts(at: RectView, room: RoomDef, doors: number[] = []): Part[] {
-  const x0 = at.x0 + room.backWall;
+export function shellParts(at: RectView, room: RoomDef, doors: number[] = [], leftLow = false): Part[] {
+  // Joined on the west, its floor runs up to the sill of the room it joins, which is the wall they share.
+  const x0 = at.x0 + (leftLow ? WALL : room.backWall);
   const x1 = at.x1;
   const z0 = at.y0 + room.backWall;
   const z1 = at.y1;
@@ -70,11 +71,12 @@ export function shellParts(at: RectView, room: RoomDef, doors: number[] = []): P
   out.push(part("panel", (x0 + x1) / 2, 0.005, z1, x1 - x0, z1 - z0, 0, "#ffffff", 0, { rotX: -90, texture: "floor" }));
   // The back and left walls, full height.
   out.push(span(x0 - WALL, 0, z0 - WALL, x1, wh, z0, CREAM));
-  out.push(span(x0 - WALL, 0, z0, x0, wh, z1, CREAM));
+  // A room built onto another's east side shares that wall, cut down to a sill so the room behind it shows.
+  if (!leftLow) out.push(span(x0 - WALL, 0, z0, x0, wh, z1, CREAM));
   out.push(span(x0, 0, z0, x1, wh - 0.04, z0 + 0.03, INSIDE, 0.004));
-  out.push(span(x0, 0, z0, x0 + 0.03, wh - 0.04, z1, INSIDE, 0.004));
+  if (!leftLow) out.push(span(x0, 0, z0, x0 + 0.03, wh - 0.04, z1, INSIDE, 0.004));
   out.push(span(x0, 0, z0 + 0.03, x1, 0.16, z0 + 0.08, TRIM, 0.01));
-  out.push(span(x0 + 0.03, 0, z0, x0 + 0.08, 0.16, z1, TRIM, 0.01));
+  if (!leftLow) out.push(span(x0 + 0.03, 0, z0, x0 + 0.08, 0.16, z1, TRIM, 0.01));
   // The right and front walls, cut down to a sill; the front one stops at each doorway, with a step out of it.
   out.push(span(x1, 0, z0 - WALL, x1 + WALL, room.lip, z1 + WALL, CREAM));
   out.push(span(x1 - 0.02, room.lip - 0.03, z0 - WALL, x1 + WALL + 0.04, room.lip + 0.03, z1 + WALL + 0.04, SILL, 0.03));
@@ -88,6 +90,7 @@ export function shellParts(at: RectView, room: RoomDef, doors: number[] = []): P
   out.push(span(from, 0, z1, x1, room.lip, z1 + WALL, CREAM));
   out.push(span(from - 0.02, room.lip - 0.03, z1 - 0.02, x1, room.lip + 0.03, z1 + WALL + 0.04, SILL, 0.03));
   // The window's white frame, cross bars and sill; its glass is apart ([paneParts]).
+  if (!room.window) return out;
   const win = { ...room.window, x: at.x0 + room.window.x };
   const ww = win.width;
   const wy = win.bottom;
@@ -103,5 +106,6 @@ export function shellParts(at: RectView, room: RoomDef, doors: number[] = []): P
 /** The window's glass, in the room at [at]: one box, in a material the view keeps the colour of the sky. */
 export function paneParts(at: RectView, room: RoomDef): Part[] {
   const win = room.window;
+  if (!win) return [];
   return [part("box", at.x0 + win.x, win.bottom, at.y0 + room.backWall + 0.03 + 0.05, win.width, win.top - win.bottom, 0.04, "#ffffff", 0.01)];
 }

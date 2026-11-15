@@ -239,3 +239,14 @@ verbs:
     minutes: 1
     effects:
       - sell: what
+  # The house. A room's plan, bought on a trip, is built on a site; building one that stands
+  # already moves it there (the `place_room` op).
+  - id: build_room
+    kind: transformative
+    phrase: build a room onto the house, or move one
+    args: { what: buildable, on: site }
+    at: [here]
+    minutes: 240
+    effects:
+      - place_room: { room: what, site: on }
+      - need: { energy: -12, mood: 4, stimulation: 10 }

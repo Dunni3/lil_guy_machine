@@ -109,7 +109,9 @@ data class BedroomContent(
         val unknown = granted - gated
         require(unknown.isEmpty()) { "can't grant $unknown: only gated ids (tier above 0) can be granted" }
         fun open(id: String, tier: Int) = tier == 0 || id in granted
-        val items = items.filter { open(it.id, it.tier) }
+        // What comes with a room whose plan is gated is gated with it.
+        val withGatedRooms = world?.rooms.orEmpty().filter { r -> byId[r.plan]?.let { !open(it.id, it.tier) } ?: true }.flatMap { it.items }.toSet()
+        val items = items.filter { open(it.id, it.tier) && it.id !in withGatedRooms }
         val verbs = verbs.filter { open(it.id, it.tier) }
         val ids = (items.map { it.id } + verbs.map { it.id }).toSet()
         return copy(
@@ -117,6 +119,8 @@ data class BedroomContent(
             verbs = verbs,
             books = books.filter { it.id in ids }.map { b -> b.copy(teaches = b.teaches.filter { it in ids }) },
             menu = menu.map { n -> n.copy(verbs = n.verbs.filter { it in ids }) },
+            // A room whose plan is gated isn't there until the plan is.
+            world = world?.copy(rooms = world.rooms.filter { it.plan in ids }),
         ).also { it.validate() }
     }
 
@@ -169,7 +173,12 @@ data class BedroomContent(
         val ids = items.map { it.id }
         require(ids.size == ids.toSet().size) { "item ids must be unique: ${ids.groupBy { it }.filterValues { it.size > 1 }.keys}" }
         val tags = items.flatMap { it.names }.toSet()
-        val slots = room.slots.values.toSet() + world?.slots?.keys.orEmpty()
+        val slots = room.slots.values.toSet() + world?.slots?.keys.orEmpty() + world?.rooms?.flatMap { it.slots.values }.orEmpty()
+        world?.rooms?.forEach { r ->
+            require(byId[r.plan] != null) { "room ${r.id}: its plan '${r.plan}' isn't an item" }
+            r.items.forEach { require(byId[it]?.slot in r.slots.values) { "room ${r.id}: '$it' must be an item standing in one of its slots" } }
+            r.qualities.keys.forEach { require(it in vocabulary.qualities) { "room ${r.id} is '$it', which isn't in vocabulary.qualities" } }
+        }
         world?.finds?.forEach { f ->
             require(byId[f.patch]?.slot in world.slots.keys) { "find ${f.patch}: the patch must be an item on a world slot" }
             require(byId[f.yields] != null) { "find ${f.patch} yields '${f.yields}', which isn't an item" }

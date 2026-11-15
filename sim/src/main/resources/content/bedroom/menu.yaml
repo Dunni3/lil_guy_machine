@@ -29,8 +29,9 @@ menu:
     verbs: [read]
     buys: [book]
   - id: room
-    says: make his room nicer - buy decor or furniture to look at
-    buys: [decor, furniture]
+    says: make his home nicer - buy decor or furniture to look at, or build a new room onto the house or move one
+    verbs: [build_room]
+    buys: [decor, furniture, room]
   - id: workshop
     says: invent something new of his own design at the workbench and build it - a thing for his room, a record, a book, food or something to sell
     verbs: [invent]
