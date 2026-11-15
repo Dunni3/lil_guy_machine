@@ -63,27 +63,24 @@ data class ComfortRules(val near: Double = 2.0, val far: Double = 6.0, val lit: 
 
 /**
  * The light over the world for [BedroomWorld]: daylight on the land by game hour (dimmed by
- * [daylightScale], the hook weather sets), some of it inside through the rooms' windows, and every
+ * the sky: what the weather lets through), some of it inside through the rooms' windows, and every
  * placed thing with a `light`. Kept in an [Effects] field, recomputed only when the daylight's level
  * (to a tenth), the layout or the lights change.
  */
 class Lighting(private val effects: Effects = Effects()) {
-    /** How much of the daylight gets through: 1 on a clear day; weather lowers it. */
-    var daylightScale: Double = 1.0
-
     /** How many times the field has been worked out. */
     val computed: Int get() = effects.computed
 
-    /** The daylight outdoors at [minuteOfDay], to a tenth, after [daylightScale]. */
-    fun daylight(rules: LightRules, minuteOfDay: Int): Double = (rules.daylightAt(minuteOfDay) * daylightScale * 10).roundToInt() / 10.0
+    /** The daylight outdoors at [minuteOfDay], to a tenth, with [sky] of it getting through (1 clear; cloud and rain less). */
+    fun daylight(rules: LightRules, minuteOfDay: Int, sky: Double = 1.0): Double = (rules.daylightAt(minuteOfDay) * sky * 10).roundToInt() / 10.0
 
     /**
      * The light field now. [lights]: what's lit and where; [house]: room id to the site it's built on,
-     * for its windows.
+     * for its windows; [sky]: how much of the sun the weather lets through.
      */
-    fun field(content: BedroomContent, layout: Layout, house: Map<String, String>, minuteOfDay: Int, lights: List<Emitter>): Field {
+    fun field(content: BedroomContent, layout: Layout, house: Map<String, String>, minuteOfDay: Int, lights: List<Emitter>, sky: Double = 1.0): Field {
         val rules = content.light ?: return Effects.spread(EffectKind.Light, layout, emptyList()) { _, _ -> FULL }
-        val day = daylight(rules, minuteOfDay)
+        val day = daylight(rules, minuteOfDay, sky)
         val windows = windows(content, layout, house).map { (id, cell) -> Emitter(id, "the window", EffectKind.Light, cell, day * rules.window.share, rules.window.radius) }
         return effects.field(EffectKind.Light, layout, windows + lights, day) { _, place ->
             if (place?.kind == PlaceKind.Room) day * rules.indoors else day

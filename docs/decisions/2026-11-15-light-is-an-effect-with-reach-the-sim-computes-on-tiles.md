@@ -25,7 +25,8 @@ an effect with reach, that perception, verb conditions and needs read. Light is 
   Outdoors it is the daylight by time of day (a curve of `HH:MM` keys that matches the web's `day.ts`).
   In a room it is `indoors` (0.4) of the daylight, plus each window (room.yaml and world.yaml room
   `windows`), which lets in 0.8 of the daylight over 8 tiles. At night the moon gives 0.5.
-  `Lighting.daylightScale` is the hook weather uses to dim the daylight. Items give light with
+  The weather's `daylight()` (1 clear, less under cloud, rain or fog) scales it, and a weather
+  station logs this light at its own tile (0 to 10), so a lamp beside it shows in its log. Items give light with
   `light: { strength, radius }`: the floor, lava, mushroom and invented lamps, the string lights and
   cloud light, and the glowcaps (a faint 1.2, out while the patch is picked bare). He carries a faint
   lantern (`light.lantern`, 1.5 over 1.5 tiles): enough to make out what's beside him, not to work by.

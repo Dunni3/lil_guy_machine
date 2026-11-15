@@ -54,7 +54,7 @@ class BedroomWorld private constructor(
     /** Rooms built onto the house: room id to the site it stands on. */
     private val house = linkedMapOf<String, String>()
 
-    /** Daylight, windows and lamps ([Lighting]); weather sets [Lighting.daylightScale]. */
+    /** Daylight (dimmed by the weather's [daylight]), windows and lamps ([Lighting]). */
     val lighting = Lighting()
 
     /** Rooms built onto the house, room id to site id. */
@@ -615,7 +615,7 @@ class BedroomWorld private constructor(
     } + listOfNotNull(content.light?.lantern?.let { Emitter(LANTERN, "your lantern", EffectKind.Light, guy.cell, it.strength, it.radius) })
 
     /** The light on every tile now, worked out again only when the daylight, the layout or the lamps change. */
-    fun lightField(): Field = lighting.field(content, layout, house, clock.minuteOfDay(ticks), lamps())
+    fun lightField(): Field = lighting.field(content, layout, house, clock.minuteOfDay(ticks), lamps(), daylight())
 
     /** The things [a] is done at with [args] that are lit enough for it, of [ids]; all of them when it needs no light. */
     private fun litEnough(a: VerbSpec, ids: List<String>): List<String> {
@@ -814,14 +814,14 @@ class BedroomWorld private constructor(
             records.record(id, StationLog.TEMPERATURE, ticks, Weather.round1(c.temperature))
             records.record(id, StationLog.RAIN, ticks, Weather.round1(c.rain))
             records.record(id, StationLog.PRESSURE, ticks, Weather.round1(c.pressure))
-            records.record(id, StationLog.LIGHT, ticks, Weather.round1(c.light))
+            records.record(id, StationLog.LIGHT, ticks, Weather.round1(lightField()[cellOf(id)]))
         }
     }
 
     private fun outdoors(cell: Cell): Boolean = layout.placeOf(cell)?.kind == PlaceKind.Outdoor
 
     /** The weather at [cell] now; null without weather. */
-    fun conditionsAt(cell: Cell): Conditions? = weather?.at(clock.minutes(ticks), outdoors(cell))
+    fun conditionsAt(cell: Cell): Conditions? = weather?.at(clock.minutes(ticks), outdoors(cell))?.let { c -> if (content.light != null) c.copy(light = lightField()[cell]) else c }
 
     /** How much of the sun gets through the sky now, 0 to 1: what a light engine multiplies daylight by. 1 without weather. */
     fun daylight(): Double = weather?.daylight(clock.minutes(ticks) / 60) ?: 1.0
