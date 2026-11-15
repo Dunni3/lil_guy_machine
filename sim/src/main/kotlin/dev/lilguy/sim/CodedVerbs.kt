@@ -72,6 +72,9 @@ data class CodedVerb(val verb: VerbSpec, val why: String = "", val tick: Long = 
 /** What he wrote that the sim checks: the limits on a verb or a behavior of his own. */
 object CodeRules {
     const val MAX_MINUTES = 8 * 60
+
+    /** The names of what a tool model can do besides verbs (agent's `BedroomTools`), which a verb of his can't take. */
+    val BUILT_IN = setOf("buy", "wait", "go", "place", "recall", "ask", "search")
     const val MAX_SOURCE = 12_000
 
     /** [design] as a verb of [c], or why it can't be one. [sandbox] checks the code parses and has a `finish`. */
@@ -81,6 +84,7 @@ object CodeRules {
         if (name.length !in 2..30) problems += "called must be 2 to 30 letters or digits, like \"water the plant\""
         val existing = c.verbs.firstOrNull { it.id == name }
         if (existing != null && existing.code == null) problems += "'$name' is one of the world's own verbs; call yours something else"
+        if (name in BUILT_IN) problems += "'$name' is already something you can do; call yours something else"
         if (name in c.items.map { it.id } || name in c.vocabulary.affords) problems += "'$name' is already the name of a thing or a use; call it something else"
         if (design.phrase.isBlank() || design.phrase.length > 80) problems += "phrase must be a short line, like \"water the plant\""
         if (design.says.isBlank() || design.says.length > 200) problems += "says must say in a line what it does"

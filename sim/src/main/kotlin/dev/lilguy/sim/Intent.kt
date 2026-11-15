@@ -38,6 +38,14 @@ sealed interface Intent {
     data class Buy(val item: String) : Intent
 
     /**
+     * Put a thing he owns that stands somewhere ([item]) at another [spot], indoors or out: he walks
+     * to it, lifts it, carries it there and sets it down. A spot holding another of his things swaps
+     * the two. Tool models call it as `place`.
+     */
+    @Serializable @SerialName("put")
+    data class Put(val item: String, val spot: String) : Intent
+
+    /**
      * Stop where he is and think. The sim only spends the time; the agent loop has a text model
      * write the thought (what he wants to do next and to achieve) into his memory.
      */

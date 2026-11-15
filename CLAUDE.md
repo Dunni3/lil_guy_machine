@@ -54,7 +54,8 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   and says which place a tile is in. Content without `world.yaml` is the bedroom alone. What he perceives of it
   (`Observation.place`, `places`, an activity's `where` and `walk`) is the sim's; his map in the system prompt is
   `agent/.../WorldMap.kt`; `move_to` a `Target.Place` (the `go` tool) walks him to a place.
-- The bedroom: `sim/.../BedroomWorld.kt` (engine), `BedroomContent.kt` (schema of the content files),
+- The bedroom: `sim/.../BedroomWorld.kt` (engine), `Spots.kt` (where things stand and can be put: the `put` intent,
+  the `place` tool, free spots indoors and on the land), `BedroomContent.kt` (schema of the content files),
   `GameClock.kt` (clock scale knob), `Ledger.kt` (money ledger and needs). Content, which is where
   numbers and new jobs, items and hobbies go: `sim/src/main/resources/content/bedroom/*.yaml`
   (`BedroomContent.FILES` says which keys each file holds). Anything with `tier` above 0 is gated

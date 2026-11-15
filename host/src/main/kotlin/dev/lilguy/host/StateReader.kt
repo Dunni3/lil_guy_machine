@@ -351,6 +351,7 @@ class StateReader(private val dbEvery: Duration = 1.seconds) {
                 is Intent.Wait -> "wait"
                 is Intent.Do -> "do"
                 is Intent.Buy -> "buy"
+                is Intent.Put -> "put"
                 Intent.Think -> "think"
             },
             text = Describe.action(i),
@@ -360,6 +361,7 @@ class StateReader(private val dbEvery: Duration = 1.seconds) {
                 is Intent.Use -> i.itemId
                 is Intent.PickUp -> i.itemId
                 is Intent.Do -> i.what
+                is Intent.Put -> i.item
                 else -> null
             },
         )

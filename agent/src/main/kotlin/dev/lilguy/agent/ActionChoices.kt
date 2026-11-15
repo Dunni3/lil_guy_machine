@@ -98,6 +98,7 @@ private fun label(intent: Intent): String = when (intent) {
     is Intent.Wait -> "wait:${intent.ticks}"
     is Intent.Do -> (listOf("do", intent.activity) + listOfNotNull(intent.what, intent.on)).joinToString(":")
     is Intent.Buy -> "buy:${intent.item}"
+    is Intent.Put -> "put:${intent.item}:${intent.spot}"
     Intent.Think -> "think"
 }
 

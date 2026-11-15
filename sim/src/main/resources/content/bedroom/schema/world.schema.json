@@ -196,6 +196,18 @@
                 ],
                 "additionalProperties": false
               }
+            },
+            "carry": {
+              "type": "object",
+              "properties": {
+                "lift": {
+                  "type": "integer"
+                },
+                "set_down": {
+                  "type": "integer"
+                }
+              },
+              "additionalProperties": false
             }
           },
           "required": [

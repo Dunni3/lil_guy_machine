@@ -437,6 +437,7 @@ class LifeRecorder(val recorder: RunRecorder, private val autosaveMinutes: Int =
         fun label(intent: Intent): String = when (intent) {
             is Intent.Do -> "do:${intent.activity}"
             is Intent.Buy -> "buy:${intent.item}"
+            is Intent.Put -> "put:${intent.item}"
             is Intent.Use -> "use:${intent.itemId}"
             is Intent.PickUp -> "pick_up:${intent.itemId}"
             is Intent.MoveTo -> "move_to"

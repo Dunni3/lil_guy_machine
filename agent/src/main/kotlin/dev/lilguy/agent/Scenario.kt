@@ -139,10 +139,10 @@ enum class Scenario(val id: String) {
     KeyDoor("key-door"),
     Bedroom("bedroom");
 
-    /** The scripted policy for this room, with [thinkTime] of fake latency. */
-    fun scriptedPolicy(thinkTime: Duration = Duration.ZERO): DecisionModel = when (this) {
+    /** The scripted policy for this room, with [thinkTime] of fake latency; the bedroom's does [script] first (`BedroomPolicy`). */
+    fun scriptedPolicy(thinkTime: Duration = Duration.ZERO, script: List<String> = emptyList()): DecisionModel = when (this) {
         KeyDoor -> KeyDoorPolicy(thinkTime)
-        Bedroom -> BedroomPolicy(thinkTime)
+        Bedroom -> BedroomPolicy(thinkTime, script = script)
     }
 
     fun create(

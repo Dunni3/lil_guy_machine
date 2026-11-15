@@ -98,3 +98,4 @@ these hold the outcome. Skim this index before related changes.
 - 2026-11-15 [He writes letters back, and on his own, to whoever has written to him](2026-11-15-he-writes-letters-back-and-on-his-own.md)
 - 2026-11-15 [The house holds only so much comfort, rooms hold more; the sunroom and microscope are open; he sees what he's been doing lately](2026-11-15-the-house-holds-only-so-much-comfort-and-he-sees-his-rut.md)
 - 2026-11-15 [He writes his own verbs, and what his things do, as JavaScript against a world API; nothing caps it](2026-11-15-he-writes-his-verbs-and-what-his-things-do-as-code.md)
+- 2026-11-15 [He puts his things down at free spots, outdoors included (`put`, the `place` tool)](2026-11-15-he-puts-his-things-down-at-free-spots-outdoors-included.md)

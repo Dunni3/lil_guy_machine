@@ -724,6 +724,31 @@ class BedroomWorld private constructor(
         version++
     }
 
+    /** Where his things stand and could go, by the current content and map. */
+    private fun spots() = Spots(content, layout) { count(it) > 0 }
+
+    /** [Spots.options] for the observation, kept while nothing he owns or the content changes. */
+    private var putCache: Pair<Int, PutOptions?>? = null
+
+    private fun putOptions(): PutOptions? {
+        putCache?.let { (v, o) -> if (v == version) return o }
+        return spots().options().also { putCache = version to it }
+    }
+
+    /**
+     * Stands [id] at [spot], and what of his stood there where [id] was, which it returns. The caller
+     * has checked [Spots.lock]. The move is kept with his customizations, so a restore puts it back.
+     */
+    private fun relocate(id: String, spot: String): ItemSpec? {
+        val from = item(id).slot!!
+        val other = content.items.firstOrNull { it.slot == spot }
+        content = content.mapItems { when (it.id) { id -> it.copy(slot = spot); other?.id -> it.copy(slot = from); else -> it } }
+        custom[id] = (custom[id] ?: BedroomState.Custom()).copy(slot = spot)
+        other?.let { custom[it.id] = (custom[it.id] ?: BedroomState.Custom()).copy(slot = from) }
+        contentChanged()
+        return other
+    }
+
     /** A thing he owns and can change with code (not a fixture of the house or the land, not a piece of art), or why not. */
     private fun ownThing(id: String): ItemSpec {
         val spec = content.item(id) ?: throw ScriptProblem("there's no thing '$id'; world.owns() lists yours")
@@ -907,19 +932,11 @@ class BedroomWorld private constructor(
 
         override fun move(id: String, spot: String): String {
             val s = ownThing(id)
-            val from = s.slot ?: throw ScriptProblem("the ${s.name} doesn't stand anywhere; only things in a spot can move")
-            if (spot == from) return spot
-            if (spot !in layout.slotCells) throw ScriptProblem("there's no spot '$spot' in your house; world.spots() lists them")
-            if (isWall(spot) != isWall(from)) throw ScriptProblem("the ${s.name} goes ${if (isWall(from)) "on a wall" else "on the floor"}, and $spot is ${if (isWall(spot)) "on a wall" else "on the floor"}")
-            val other = content.items.firstOrNull { it.slot == spot }
-            if (other != null && (count(other.id) == 0 || other.group == "fixture")) throw ScriptProblem("$spot is kept for the ${other.name}")
-            val cell = layout.slotCells.getValue(spot)
-            if (s.blocks && guy.cell == cell) throw ScriptProblem("you're standing on $spot")
-            content = content.mapItems { when (it.id) { id -> it.copy(slot = spot); other?.id -> it.copy(slot = from); else -> it } }
-            custom[id] = (custom[id] ?: BedroomState.Custom()).copy(slot = spot)
-            other?.let { custom[it.id] = (custom[it.id] ?: BedroomState.Custom()).copy(slot = from) }
-            contentChanged()
-            did += "moved the ${s.name} to $spot" + (other?.let { ", and the ${it.name} to $from" } ?: "")
+            if (spot == s.slot) return spot
+            this@BedroomWorld.spots().lock(id, spot)?.let { throw ScriptProblem(if (spot in layout.slotCells) it else "$it; world.spots() lists them") }
+            if (s.blocks && guy.cell == layout.slotCells.getValue(spot)) throw ScriptProblem("you're standing on $spot")
+            val from = s.slot
+            did += "moved the ${s.name} to $spot" + (relocate(id, spot)?.let { ", and the ${it.name} to $from" } ?: "")
             return spot
         }
 
@@ -1195,6 +1212,7 @@ class BedroomWorld private constructor(
         is Intent.Wait -> waitFor(intent)
         is Intent.Do -> planDo(intent)
         is Intent.Buy -> planBuy(intent.item)
+        is Intent.Put -> planPut(intent)
         Intent.Think -> reject("think is for other rooms; here it's an activity, do(think)")
     }
 
@@ -1221,6 +1239,57 @@ class BedroomWorld private constructor(
         val walk = walkTo(spot, place.name)
         val minutes = walkMinutes(walk.path.size.toFloat())
         return Work.Steps(walk, Work.Until(start = {}, done = { true }, finish = { outcome("went to ${place.name} (${GameClock.duration(minutes.coerceAtLeast(1))} walk)"); null }))
+    }
+
+    /** What he's carrying to put down somewhere ([planPut]): hidden from the map until it's set down. */
+    private var carrying: String? = null
+
+    /**
+     * Puts a thing at a spot ([Intent.Put]): he walks beside it, lifts it, carries it beside the spot
+     * and sets it down there, in the game minutes `world.carry` says besides the walks. The rules are
+     * [Spots]', checked again as he sets it down in case something changed on the way.
+     */
+    private fun planPut(intent: Intent.Put): Work {
+        spots().lock(intent.item, intent.spot)?.let { reject("can't put ${intent.item} at ${intent.spot}: $it") }
+        val spec = item(intent.item)
+        val from = layout.slotCells.getValue(spec.slot!!)
+        val to = layout.slotCells.getValue(intent.spot)
+        val fetch = pathToward(from) ?: reject("there's no way to reach the ${spec.name}")
+        val lifted = fetch.cells.lastOrNull() ?: guy.cell
+        // Beside the spot, round what blocks; the thing he carries no longer stands in the way.
+        val clear = { x: Int, y: Int -> (x == from.x && y == from.y && map.isFloor(x, y)) || passable(x, y) }
+        val carry = NEXT_TO.map { (dx, dy) -> Cell(to.x + dx, to.y + dy) }
+            .filter { clear(it.x, it.y) }
+            .mapNotNull { Pathfinder.find(map.width, map.height, lifted, it, clear) }
+            .minByOrNull { it.cost } ?: reject("there's no way to carry the ${spec.name} to ${intent.spot}")
+        val minutes = content.world?.carry ?: CarrySpec()
+        val place = layout.placeOf(to)?.name
+        val walked = walkMinutes(fetch.cost + carry.cost)
+        fun step(minutes: Int, face: Cell, then: () -> String?): Work {
+            var until = 0L
+            return Work.Until(
+                start = {
+                    if (face != guy.cell) guy.facing = Direction.of(face.x + 0.5f - guy.x, face.y + 0.5f - guy.y)
+                    until = ticks + clock.ticks(minutes)
+                },
+                done = { ticks >= until },
+                finish = then,
+            )
+        }
+        return Work.Steps(
+            Work.Walk(ArrayDeque(fetch.cells)),
+            step(minutes.lift, from) { carrying = spec.id; version++; null },
+            Work.Walk(ArrayDeque(carry.cells)),
+            step(minutes.setDown, to) {
+                carrying = null
+                version++
+                spots().lock(intent.item, intent.spot)?.let { return@step "couldn't put the ${spec.name} down at ${intent.spot}: $it" }
+                val swapped = relocate(intent.item, intent.spot)
+                outcome("put the ${spec.name} at ${intent.spot}" + (place?.let { ", in $it" }.orEmpty()) + (swapped?.let { ", and the ${it.name} where it was" }.orEmpty()) +
+                    " (${GameClock.duration((walked + minutes.lift + minutes.setDown).coerceAtLeast(1))} with the walks)")
+                null
+            },
+        )
     }
 
     /** Game minutes to walk [tiles]. */
@@ -1327,6 +1396,10 @@ class BedroomWorld private constructor(
 
     override fun workEnded(handle: Handle) {
         doing = null
+        if (carrying != null) {
+            carrying = null
+            version++
+        }
     }
 
     private fun complete(a: VerbSpec, args: Map<String, String>): String? {
@@ -1950,7 +2023,7 @@ class BedroomWorld private constructor(
                     (bareUntil[spec.id] ?: 0) > ticks -> "bare"
                     else -> null
                 }
-                add(EntitySnapshot(EntityId(spec.id), spec.group, cell.x + 0.5f, cell.y + 0.5f, if (spec.blocks) 1f else 0.2f, 0f, state, place = layout.placeOf(cell)?.id, color = custom[spec.id]?.color))
+                add(EntitySnapshot(EntityId(spec.id), spec.group, cell.x + 0.5f, cell.y + 0.5f, if (spec.blocks) 1f else 0.2f, 0f, state, carriedBy = guy.id.takeIf { spec.id == carrying }, place = layout.placeOf(cell)?.id, color = custom[spec.id]?.color))
             }
         }
         val d = doing
@@ -1999,6 +2072,7 @@ class BedroomWorld private constructor(
         return Observation(
             place = whereText(),
             places = placeOptions(),
+            put = putOptions(),
             tick = ticks,
             self = SelfState(guy.id, round(guy.x, 2), round(guy.y, 2), guy.facing, guy.inventory.toList()),
             nearby = nearby,
@@ -2163,6 +2237,9 @@ class BedroomWorld private constructor(
         private const val ESTIMATE_MINUTES = 10
         /** How far back [lately] looks, in game days. */
         private const val LATELY_DAYS = 2
+
+        /** The eight tiles round one, straight sides first: where he stands to set a thing down. */
+        private val NEXT_TO = listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1, 1 to 1, 1 to -1, -1 to 1, -1 to -1)
 
         /** What his code may store state on besides his things: himself. */
         const val SELF = "self"

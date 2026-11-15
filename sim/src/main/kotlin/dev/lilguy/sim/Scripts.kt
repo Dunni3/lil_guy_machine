@@ -82,7 +82,7 @@ object ScriptApi {
         Fn("owns", "world.owns()", "everything you own, id to count", false) { w, _ -> w.owns() },
         Fn("thing", "world.thing(id)", "one thing: { id, name, group, uses, qualities, spot, color, state, count }, or null", false) { w, a -> w.thing(a.str(0, "id")) },
         Fn("catalog", "world.catalog()", "every kind of thing in your world, id to name (owned or not)", false) { w, _ -> w.catalog() },
-        Fn("spots", "world.spots()", "{ free: { floor: [spot, ...], wall: [spot, ...] }, taken: { spot: id } }: where your things stand and the empty spots", false) { w, _ -> w.spots() },
+        Fn("spots", "world.spots()", "{ free: { floor: [spot, ...], wall: [spot, ...] }, taken: { spot: id } }: where your things stand and the empty spots, indoors and out on the land", false) { w, _ -> w.spots() },
         Fn("here", "world.here()", "the name of the place you're in", false) { w, _ -> w.here() },
         Fn("state", "world.state(id)", "what's stored on a thing you own, or on yourself with \"self\": an object of keys", false) { w, a -> w.state(a.str(0, "id")) },
         Fn("need", "world.need(name, delta)", "changes a need by delta (it stays 0 to 100); returns its new level", true) { w, a -> w.need(a.str(0, "name"), a.num(1, "delta")) },

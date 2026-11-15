@@ -27,6 +27,8 @@ data class Observation(
     @EncodeDefault(EncodeDefault.Mode.NEVER) val place: String? = null,
     /** The other places he could walk to, nearest first, with the walk from here; null in rooms without places. */
     @EncodeDefault(EncodeDefault.Mode.NEVER) val places: List<PlaceOption>? = null,
+    /** What of his he could put somewhere else, and the free spots by place ([Intent.Put]); null when there's nothing to move or nowhere to put it. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val put: PutOptions? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val clock: ClockReading? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val money: Int? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val needs: NeedLevels? = null,

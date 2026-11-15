@@ -627,6 +627,8 @@ data class MenuNode(
     val buys: List<String> = emptyList(),
     /** Going to a place (a `move_to` a place) sits in this node. */
     val go: Boolean = false,
+    /** Putting a thing somewhere else (`put`) sits in this node, one node under it per thing. */
+    val put: Boolean = false,
 )
 
 @Serializable

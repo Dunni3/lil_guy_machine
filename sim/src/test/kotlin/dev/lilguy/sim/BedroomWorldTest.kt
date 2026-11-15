@@ -511,4 +511,22 @@ class BedroomWorldTest {
         assertEquals(sent, back.lettersSent.single())
         assertEquals("you've written to Sam today", back.activity("write_letter").locked)
     }
+
+    @Test
+    fun `he carries a lamp out to a free spot by the pond, which takes game minutes, and put says why it can't`() {
+        val w = world(items = content.start.items + ("amber_floor_lamp" to 1))
+        val put = w.obs().put!!
+        assertTrue("amber_floor_lamp" in put.things)
+        assertTrue(put.spots.any { it.place == "the pond" && "pond_shore" in it.floor }, put.toString())
+        val before = w.tick
+        assertIs<IntentStatus.Succeeded>(w.run(Intent.Put("amber_floor_lamp", "pond_shore")).status)
+        assertEquals("pond_shore", w.content.item("amber_floor_lamp")!!.slot)
+        assertEquals("pond", w.snapshot().entities.single { it.id.value == "amber_floor_lamp" }.place)
+        assertTrue(w.tick - before >= w.clock.ticks(5), "lifting and setting down take 5 game minutes besides the walks")
+        assertTrue(w.obs().put!!.spots.none { "pond_shore" in it.floor })
+
+        assertTrue("kept for the garden bench" in failure(w.run(Intent.Put("chair", "garden_bench"))))
+        assertTrue("part of the house or the land" in failure(w.run(Intent.Put("garden_bench", "trailside"))))
+        assertTrue("goes on the ground, and wall_1 is in a wall" in failure(w.run(Intent.Put("chair", "wall_1"))))
+    }
 }
