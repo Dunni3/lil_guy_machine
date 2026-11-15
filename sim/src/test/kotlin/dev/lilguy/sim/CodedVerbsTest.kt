@@ -147,4 +147,32 @@ class CodedVerbsTest {
         write("escape", "function finish(world) { return java.lang.System.getProperty('user.home'); }")
         assertIs<IntentStatus.Failed>(w.finish(Intent.Do("escape")))
     }
+
+    @Test
+    fun `a verb that breaks partway is undone, a look in words makes a plain thing, and fixing broken code doesn't wear thin`() {
+        val w = BedroomWorld.create(content)
+        fun write(called: String, code: String): String {
+            w.stage("devise", AuthoredResult.Coded(CodeDesign(verbs = listOf(VerbDesign(called, called, "tries something", 5, code = code)))))
+            assertIs<IntentStatus.Succeeded>(w.finish(Intent.Do("devise")))
+            return w.events()
+        }
+        val money = w.observe(w.agentId).money!!
+        write("craft", "function finish(world) { world.spend(25, 'materials'); world.need('mood', 5); world.setState('self', 'crafted', true); world.need('joy', 1); }")
+        val broke = assertIs<IntentStatus.Failed>(w.finish(Intent.Do("craft"))).reason
+        assertTrue("what it did before that is undone (-\$25 (materials)" in broke, broke)
+        assertEquals(money, w.observe(w.agentId).money!!)
+        assertEquals(emptyMap(), w.exportState().thingState)
+
+        // Rewrite, still broken, rewrite again: fixing it never pays less.
+        repeat(3) {
+            assertTrue("done a lot lately" !in write("craft", "function finish(world) { world.need('joy', 1); }").lines().last())
+            assertIs<IntentStatus.Failed>(w.finish(Intent.Do("craft")))
+        }
+
+        write("craft", "function finish(world) { world.spend(25, 'materials'); return world.make({ name: 'music box', use: 'playable', look: 'a wooden box of brass gears' }); }")
+        assertIs<IntentStatus.Succeeded>(w.finish(Intent.Do("craft")))
+        assertTrue("made a music box (plain to look at" in w.events(), w.events())
+        assertEquals(1, w.count("music_box"))
+        assertEquals(money - 25, w.observe(w.agentId).money!!)
+    }
 }

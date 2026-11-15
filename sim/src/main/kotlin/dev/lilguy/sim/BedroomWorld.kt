@@ -199,6 +199,9 @@ class BedroomWorld private constructor(
     /** What a verb's code did as it last finished, by verb id, until [ScriptOp.finish] reports it. */
     private val scriptRuns = mutableMapOf<String, List<String>>()
 
+    /** His verbs whose code broke the last time he did them, until they run clean or he rewrites them; while any is, writing code doesn't wear thin. */
+    private val brokenVerbs = mutableSetOf<String>()
+
     /** What his things do by themselves, item id to its `hourly` code; replaced rather than changed. */
     @Volatile var behaviors: Map<String, ThingCode> = emptyMap()
         private set
@@ -393,8 +396,11 @@ class BedroomWorld private constructor(
             val did = view.did + run.says.map { "you said \"$it\"" }
             if (run.error != null) {
                 scriptRuns.remove(b.verb.id)
-                return "your code broke: ${run.error}" + if (did.isEmpty()) "" else "; before it did, it had: " + did.joinToString(", ")
+                brokenVerbs += b.verb.id
+                val undone = view.undo()
+                return "your code broke: ${run.error}" + if (undone.isEmpty()) "" else "; what it did before that is undone (${undone.joinToString(", ")})"
             }
+            brokenVerbs -= b.verb.id
             scriptRuns[b.verb.id] = did + listOfNotNull(run.result?.takeIf { it.isNotBlank() })
             return null
         }
@@ -665,6 +671,7 @@ class BedroomWorld private constructor(
                 is CodeRules.Checked.Refused -> parts += "verb '${v.called}' didn't go in: " + r.problems.joinToString("; ")
                 is CodeRules.Checked.Ok -> runCatching { putVerb(CodedVerb(r.verb, d.why.trim(), ticks)) }
                     .onSuccess {
+                        brokenVerbs -= r.verb.id
                         val code = r.verb.code!!
                         parts += (if (r.rewrote) "rewrote your verb ${r.verb.id} (version ${code.version})" else "a new verb of your own, ${r.verb.id}") + ": ${code.says}" +
                             " (${GameClock.duration(r.verb.minutes!!)}" + (r.verb.args["what"]?.let { ", with ${article(noun(it))}" } ?: "") + ")"
@@ -694,7 +701,11 @@ class BedroomWorld private constructor(
                 val failures = code.failures + 1
                 val stop = failures >= BROKEN_HOURS
                 behaviors = if (stop) behaviors - id else behaviors + (id to code.copy(failures = failures))
-                event("your ${spec.name}'s code broke: ${run.error}" + if (stop) "; after $BROKEN_HOURS hours of that it stopped, until you write it again" else "")
+                val undone = view.undo()
+                event(
+                    "your ${spec.name}'s code broke: ${run.error}" + (if (undone.isEmpty()) "" else "; what it did before that is undone (${undone.joinToString(", ")})") +
+                        if (stop) "; after $BROKEN_HOURS hours of that it stopped, until you write it again" else "",
+                )
                 return@forEach
             }
             if (code.failures > 0) behaviors = behaviors + (id to code.copy(failures = 0))
@@ -730,6 +741,41 @@ class BedroomWorld private constructor(
      */
     private inner class ScriptView(private val reason: String, private val paid: (String, Double) -> Double = { _, d -> d }, private val minutes: Int = 60) : ScriptWorld {
         val did = mutableListOf<String>()
+
+        // What the world was before his code ran, for [undo]: everything the API below can change.
+        private val wasContent = content
+        private val wasInventions = inventions
+        private val wasOwned = LinkedHashMap(owned)
+        private val wasPieces = pieces.size
+        private val wasSkills = LinkedHashMap(skills)
+        private val wasState = thingState.mapValues { LinkedHashMap(it.value) }
+        private val wasCustom = LinkedHashMap(custom)
+        private val wasMoney = ledger.balance
+        private val wasNeeds = Need.entries.associateWith { needs[it] }
+
+        /**
+         * Puts back everything his code changed, when it broke partway: a verb either does all of what
+         * it says or none of it. Money and needs go back through the ledger and the needs, so the
+         * record shows the refund. Returns what it had done, now undone ([did]).
+         */
+        fun undo(): List<String> {
+            val why = "undone: $reason broke"
+            (ledger.balance - wasMoney).let { if (it > 0) ledger.debit(ticks, it, why) else if (it < 0) ledger.credit(ticks, -it, why) }
+            wasNeeds.forEach { (n, level) -> (level - needs[n]).takeIf { it != 0.0 }?.let { needs.change(ticks, n, it, why) } }
+            owned.clear(); owned.putAll(wasOwned)
+            while (pieces.size > wasPieces) pieces.removeAt(pieces.size - 1)
+            syncHolding()
+            skills.clear(); skills.putAll(wasSkills)
+            thingState.clear(); thingState.putAll(wasState)
+            custom.clear(); custom.putAll(wasCustom)
+            if (content !== wasContent || inventions !== wasInventions) {
+                content = wasContent
+                inventions = wasInventions
+                contentChanged()
+            }
+            version++
+            return did.toList()
+        }
 
         override fun time(): Map<String, Any?> {
             val m = clock.minuteOfDay(ticks)
@@ -821,8 +867,14 @@ class BedroomWorld private constructor(
 
         override fun make(design: Map<String, Any?>): String {
             val rules = content.invent ?: throw ScriptProblem("this world has no rules for making things")
-            val d = runCatching { DESIGN_JSON.decodeFromJsonElement(Design.serializer(), toJson(design)) }
-                .getOrElse { throw ScriptProblem("the design needs at least name and use: ${it.message?.lineSequence()?.firstOrNull()}") }
+            val missing = listOf("name", "use").filter { (design[it] as? String).isNullOrBlank() }
+            if (missing.isNotEmpty()) throw ScriptProblem("the design needs ${missing.joinToString(" and ")} as text")
+            // A look in words can't be built; the thing is made plain rather than not at all, and he's told what a look is.
+            val look = design["look"]
+            val worded = look != null && (look !is List<*> || look.any { it !is Map<*, *> })
+            val given = if (worded) design - "look" else design
+            val d = runCatching { DESIGN_JSON.decodeFromJsonElement(Design.serializer(), toJson(given)) }
+                .getOrElse { throw ScriptProblem("the design didn't make sense: ${it.message?.lineSequence()?.firstOrNull()}") }
             val made = when (val checked = rules.check(d, content, minutes)) {
                 is InventRules.Checked.Refused -> throw ScriptProblem("the ${d.name} can't be made: " + checked.problems.joinToString("; "))
                 is InventRules.Checked.Ok -> checked.invention.copy(cost = 0, tick = ticks)
@@ -831,7 +883,8 @@ class BedroomWorld private constructor(
             inventions = inventions + made
             contentChanged()
             add(made.item.id, 1)
-            did += "made ${article(made.item.name)}"
+            did += "made ${article(made.item.name)}" +
+                if (worded) " (plain to look at: a look is a list of shapes like { shape: \"box\", w: 0.3, h: 0.2, d: 0.3, color: \"#8a5a3c\" }, not words)" else ""
             return made.item.id
         }
 
@@ -984,11 +1037,15 @@ class BedroomWorld private constructor(
     /** 1 when fresh, down to 0 when worn out; always 1 for routine verbs or without habituation. */
     private fun freshness(a: VerbSpec, args: Map<String, String> = emptyMap()): Double {
         val h = content.habituation ?: return 1.0
-        if (a.isRoutine) return 1.0
+        if (a.isRoutine || fixing(a)) return 1.0
         val (level, since) = wear[wearKey(a, args)] ?: return 1.0
         val hours = (ticks - since).toDouble() / clock.ticks(60)
         return 1.0 - (level - h.recoverPerHour * hours).coerceIn(0.0, 1.0)
     }
+
+    /** Whether [a] writes code while some of his code is broken: fixing it is work, not a habit, so it doesn't wear. */
+    private fun fixing(a: VerbSpec): Boolean =
+        a.effects.any { it is DefineOp } && (brokenVerbs.isNotEmpty() || behaviors.values.any { it.failures > 0 })
 
     private fun isNew(a: VerbSpec, args: Map<String, String> = emptyMap()): Boolean = content.novelty != null && !a.isRoutine && habit(a, args) !in tried
 
@@ -1047,9 +1104,9 @@ class BedroomWorld private constructor(
     private fun paid(need: Need, d: Double, fresh: Double): Double = if (d > 0 && (need == Need.Mood || need == Need.Stimulation)) d * fresh else d
 
     /** Wears the habit, charges stimulation if it was already worn, and pays the novelty bonus the first time. */
-    private fun habituate(a: VerbSpec, args: Map<String, String>, fresh: Double, parts: MutableList<String>) {
+    private fun habituate(a: VerbSpec, args: Map<String, String>, fresh: Double, parts: MutableList<String>, wears: Boolean = true) {
         val key = habit(a, args)
-        content.habituation?.takeIf { !a.isRoutine }?.let { h ->
+        content.habituation?.takeIf { !a.isRoutine && wears }?.let { h ->
             val worn = 1.0 - fresh
             if (worn > 0) {
                 val stale = if (h.staleStimulation < 0) ", stimulation ${signed(needs.change(ticks, Need.Stimulation, h.staleStimulation * worn, "${a.id} again"))}" else ""
@@ -1276,9 +1333,10 @@ class BedroomWorld private constructor(
         val b = bound(a, args)
         a.effects.firstNotNullOfOrNull { it.gone(ops, b) }?.let { return it }
         val fresh = b.fresh
+        val fix = fixing(a)
         val parts = a.effects.flatMapTo(mutableListOf()) { it.finish(ops, b) }
         a.stopBelow.forEach { (need, level) -> if (needs[needOf(need)] < level) parts += "stopped early: $need ${needs.level(needOf(need))}" }
-        habituate(a, args, fresh, parts)
+        habituate(a, args, fresh, parts, wears = !fix)
         content.frustration?.takeIf { !a.isRoutine }?.let { f ->
             val eased = needs.change(ticks, Need.Frustration, f.perSuccess, "did ${a.id}")
             if (eased != 0.0) parts += "frustration ${signed(eased.roundToInt().toDouble())}"
