@@ -176,11 +176,9 @@ export class Mail {
   }
 
   private max = 1000;
-  private left = 0;
 
   private fill(bag: Mailbag) {
     this.max = bag.max_length;
-    this.left = bag.left;
     this.body.maxLength = bag.max_length;
     this.count();
     const both = [...bag.letters.map((l) => ({ at: l.sent_at, li: row(l) })), ...bag.replies.map((l) => ({ at: l.written_at, li: his(l) }))];
@@ -195,8 +193,7 @@ export class Mail {
 
   private count() {
     const n = this.body.value.length;
-    el("mail-count").textContent = `${n}/${this.max} · ${this.left} more today`;
-    (el("mail-send") as HTMLButtonElement).disabled = this.left <= 0;
+    el("mail-count").textContent = `${n}/${this.max}`;
   }
 }
 

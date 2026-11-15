@@ -22,7 +22,7 @@ import javax.crypto.spec.PBEKeySpec
  * a login name. Passwords are kept as PBKDF2-SHA256 with a salt each; a session is a random token, of
  * which only the SHA-256 is kept. A login that fails [MAX_FAILURES] times in a row locks that email
  * for [LOCKOUT_MS], so nobody can guess a password at speed. Letters are at most [MAX_LENGTH]
- * characters, [PER_DAY] an account in any 24 hours. The letters he writes back are kept here too, each
+ * characters, as many as anyone likes. The letters he writes back are kept here too, each
  * for the account whose letters he was answering, which only that account can read.
  *
  * One connection, so every call is synchronized. [now] is epoch milliseconds, for tests.
@@ -116,16 +116,8 @@ class Accounts(private val db: SqlDriver, private val now: () -> Long = System::
         if (signed.length > MAX_NAME) throw Refused("the name can be at most $MAX_NAME characters")
         if (text.isEmpty()) throw Refused("the letter is empty")
         if (text.length > MAX_LENGTH) throw Refused("a letter can be at most $MAX_LENGTH characters")
-        if (left(who) <= 0) throw Refused("you've sent $PER_DAY letters in the last day: write again tomorrow")
         db.execute("INSERT INTO letters (account, life, signed, body, sent_at) VALUES (?, ?, ?, ?, ?)", listOf(who.id, life, signed, text, now()))
         return db.query("SELECT last_insert_rowid() AS id").single()["id"] as Long
-    }
-
-    /** How many more letters [who] may send now. */
-    @Synchronized
-    fun left(who: Who): Int {
-        val n = db.query("SELECT COUNT(*) AS n FROM letters WHERE account = ? AND sent_at > ?", listOf(who.id, now() - DAY_MS)).single()["n"] as Long
-        return (PER_DAY - n.toInt()).coerceAtLeast(0)
     }
 
     /** [who]'s letters to [life], newest first. */
@@ -174,7 +166,7 @@ class Accounts(private val db: SqlDriver, private val now: () -> Long = System::
         }
 
     /** [who]'s mailbag for [life]: their letters and his. */
-    fun mailbag(who: Who, life: String) = Mailbag(letters(who, life), replies(who, life), PER_DAY, left(who), MAX_LENGTH)
+    fun mailbag(who: Who, life: String) = Mailbag(letters(who, life), replies(who, life), MAX_LENGTH)
 
     /** Marks [ids] as put through the hatch of [run]. */
     @Synchronized
@@ -201,11 +193,9 @@ class Accounts(private val db: SqlDriver, private val now: () -> Long = System::
         const val MAX_PASSWORD = 200
         const val MAX_NAME = 40
         const val MAX_LENGTH = 1000
-        const val PER_DAY = 5
         const val MAX_FAILURES = 5
         const val LOCKOUT_MS = 15 * 60_000L
         const val SESSION_MS = 30 * 24 * 3600_000L
-        private const val DAY_MS = 24 * 3600_000L
         private const val ITERATIONS = 210_000
         private val EMAIL = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
         private val WHITESPACE = Regex("\\s+")

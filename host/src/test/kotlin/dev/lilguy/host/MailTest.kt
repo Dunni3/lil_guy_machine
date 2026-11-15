@@ -57,7 +57,6 @@ class MailTest {
         assertEquals(HttpStatusCode.Created, client.post("/v1/lives/main/letters") { header(HttpHeaders.Authorization, "Bearer $token"); setBody(draft) }.status)
         suspend fun mine() = Wire.decode(Mailbag.serializer(), client.get("/v1/lives/main/letters") { header(HttpHeaders.Authorization, "Bearer $token") }.bodyAsText())
         assertEquals("waiting", mine().letters.single().status, "no run is going")
-        assertEquals(Accounts.PER_DAY - 1, mine().left)
 
         assertTrue(life.command(Command.Configure(StateReader.settings(RunSettings()).copy(speed = 60, days = null))).ok)
         assertTrue(life.command(Command.Start).ok)
