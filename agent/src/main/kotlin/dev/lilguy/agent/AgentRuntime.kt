@@ -75,6 +75,10 @@ class AgentRuntime(
         val thought: Thought? = null,
         /** What a model that calls tools looked at before it chose ([dev.lilguy.decision.ToolSet.looks]). */
         val looks: List<Looked> = emptyList(),
+        /** What it wrote along the way without acting, in order. */
+        val musings: List<String> = emptyList(),
+        /** The turn ran out of steps with no action, so he sat and thought ([dev.lilguy.decision.ToolSet.ponder]). */
+        val pondered: Boolean = false,
     ) {
         val fellBack: Boolean get() = error != null
     }
@@ -147,14 +151,19 @@ class AgentRuntime(
                 base.copy(intent = Intent.Do(forced.first), rationale = "Time to ${forced.first} (every ${forced.second} decisions).")
             } else try {
                 val decision = withTimeout(request.timeout) { model.decide(request, schema) }
+                // A turn that ended in thought is its verb (think), or a wait when that can't be done now (he just did).
+                val thinks = (decision.value.intent as? Intent.Do)?.takeIf { decision.pondered }
+                val intent = if (thinks != null && obs.activities.orEmpty().none { it.id == thinks.activity && it.locked == null }) fallback(IllegalStateException("can't ${thinks.activity} now")) else decision.value.intent
                 base.copy(
-                    intent = decision.value.intent,
+                    intent = intent,
                     rationale = decision.rationale,
                     raw = decision.raw,
                     latency = decision.latency,
                     usage = decision.usage,
                     attempts = decision.attempts,
                     looks = decision.looks,
+                    musings = decision.musings,
+                    pondered = decision.pondered,
                 )
             } catch (e: TimeoutCancellationException) {
                 base.copy(intent = fallback(e), latency = started.elapsedNow(), error = "timed out after ${request.timeout}")
@@ -169,6 +178,7 @@ class AgentRuntime(
                     usage = e.usage,
                     attempts = e.attempts,
                     looks = e.looked,
+                    musings = e.musings,
                 )
             } catch (e: Exception) {
                 base.copy(intent = fallback(e), latency = started.elapsedNow(), error = e.message ?: e.toString())
@@ -179,7 +189,8 @@ class AgentRuntime(
             val spoken = if (request.tools != null && record.error == null && forced == null) record.rationale?.let { longTerm?.thought(obs, it, model.id) } else null
             val brief = prompts.persona?.let { AgentMemory.Brief(it(), PromptBuilder.situationOf(request), request.system) }
             // A verb's `before` authored ops (a thought) are more model calls before the sim starts it; he stands still meanwhile, as he does while deciding.
-            val thought = if (longTerm != null && brief != null) {
+            // A turn that ended in thought has its thought already: what he wrote.
+            val thought = if (longTerm != null && brief != null && !record.pondered) {
                 decidingSince = TimeSource.Monotonic.markNow()
                 try {
                     longTerm.before(obs, record.intent, brief).filterIsInstance<Thought>().firstOrNull()

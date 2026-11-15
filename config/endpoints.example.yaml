@@ -10,9 +10,10 @@
 #   max_tokens, reasoning_effort   passed through when set
 #   timeout_s          per HTTP call   [30]
 #   max_retries        invalid replies sent back with the error   [2]
-#   tool_choice        for structured_output: tools   [required]
+#   tool_choice        for structured_output: tools   [required]; the bedroom's own tools are always auto (calling is optional)
 #   beam               typesafe: paths kept when walking a grouped choice set; 0 for one flat list   [3]
 #   price_in, price_out   dollars per million input / output tokens; the CLI's token report then shows cost
+#   price_cached       dollars per million input tokens read from the server's prompt cache   [price_in]
 endpoints:
   # TypeSafe System One (docs.typesafe.ai): Jev picks from a closed set of options rather
   # than writing JSON, so only kind, base_url, model, api_key_env and timeout_s apply.
@@ -47,6 +48,33 @@ endpoints:
     max_tokens: 4096       # counts the thinking too, so it caps a runaway at about a cent
     price_in: 0.3
     price_out: 2.5
+  # DeepSeek V4.1 Flash, open weights, on DeepSeek's own API (hosted in China). It thinks unless told not to
+  # (reasoning_effort low, high or max), and reads repeated prompt prefixes from its cache at about 2% of the
+  # input price, which price_cached counts. It doesn't document strict tool schemas, so strict is off. Prices
+  # are the weekday peak ones (01-04 and 06-10 UTC); the rest of the week costs half (Nov 2026).
+  deepseek:
+    kind: openai_compat
+    base_url: https://api.deepseek.com
+    api_key_env: DEEPSEEK_API_KEY
+    model: deepseek-flash
+    strict: false
+    reasoning_effort: low
+    timeout_s: 60
+    price_in: 0.3
+    price_cached: 0.006
+    price_out: 1.2
+  # The same model on DeepInfra (US-hosted, no peak hours). DeepInfra's list prices (Nov 2026).
+  deepseek-deepinfra:
+    kind: openai_compat
+    base_url: https://api.deepinfra.com/v1/openai
+    api_key_env: DEEPINFRA_API_KEY
+    model: deepseek-ai/DeepSeek-V4.1-Flash
+    strict: false
+    reasoning_effort: low
+    timeout_s: 60
+    price_in: 0.14
+    price_cached: 0.0042
+    price_out: 0.42
   hosted:
     kind: openai_compat
     base_url: https://api.provider.example/v1

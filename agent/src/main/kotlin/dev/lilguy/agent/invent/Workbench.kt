@@ -87,7 +87,7 @@ class Workbench(
             "Build the thing with the shapes on the bench, once they're all there: what it's called, what it's for, what it's like and why you made it. Call it on its own, not beside other tools.",
             JsonSchemaGenerator.generate(BuildArgs.serializer().descriptor, buildHints(rules, content)),
         ) { args -> build(args) }
-        return ToolSet(listOf(build), looks, maxLooks = rules.lookParts * 3)
+        return ToolSet(listOf(build), looks, maxSteps = rules.lookParts * 3)
     }
 
     private fun add(p: LookPart): String {
