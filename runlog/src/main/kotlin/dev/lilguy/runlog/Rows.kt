@@ -205,6 +205,8 @@ data class MemoryEventRow(
     val kind: String,
     val text: String,
     val significance: Double? = null,
+    /** Where he was, by name; null where there are no places. */
+    val place: String? = null,
 ) : Row
 
 @Serializable @SerialName("memories") @Key("run_id, id")
@@ -227,6 +229,8 @@ data class MemoryRow(
     val text: String,
     val source: String,
     val importance: Double? = null,
+    /** The places what it covers happened in, most of it first, joined with "; "; null where there are no places. */
+    val places: String? = null,
 ) : Row
 
 @Serializable @SerialName("authored") @Key("id")

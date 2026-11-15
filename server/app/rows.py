@@ -206,6 +206,7 @@ class MemoryEventRow(BaseModel):
     kind: str
     text: str
     significance: float | None = None
+    place: str | None = None
     field_rev: conint(ge=1) = Field(..., alias='_rev')
 
 
@@ -231,6 +232,7 @@ class MemoryRow(BaseModel):
     text: str
     source: str
     importance: float | None = None
+    places: str | None = None
     field_rev: conint(ge=1) = Field(..., alias='_rev')
 
 

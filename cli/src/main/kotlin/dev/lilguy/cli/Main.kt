@@ -20,6 +20,7 @@ import dev.lilguy.agent.shop.Trip
 import dev.lilguy.agent.memory.AgentMemory
 import dev.lilguy.agent.memory.Answer
 import dev.lilguy.agent.memory.InMemoryStore
+import dev.lilguy.agent.memory.PlacedStore
 import dev.lilguy.agent.memory.Oracle
 import dev.lilguy.agent.art.ArtStudio
 import dev.lilguy.agent.art.CommissionVoice
@@ -347,7 +348,7 @@ fun main(argv: Array<String>) {
         val painterModel = painterEndpoint?.let { Endpoints.create(config, it) } ?: decisionModel
         // Memory lives in the run database, so every run has it; without one, only when something needs it.
         val memoryStore = recorder?.let { RunMemoryStore(runDb!!, it, RunMemoryStore.lineage(runDb, carried?.resume?.checkpoint?.id)) }
-        val store: MemoryStore? = memoryStore ?: if (writerModel != null || painting || rawScorer != null) InMemoryStore() else null
+        val store: MemoryStore? = (memoryStore ?: if (writerModel != null || painting || rawScorer != null) InMemoryStore() else null)?.let(::PlacedStore)
         val revisions = mutableListOf<SelfRevision>()
         val core = (personality ?: BedroomContent.default().personality)
         val memory = store?.let { st ->

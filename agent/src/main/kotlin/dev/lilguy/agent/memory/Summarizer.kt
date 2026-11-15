@@ -96,15 +96,22 @@ class Summarizer(
         val text = write(SYSTEM, buildString {
             previous?.let { appendLine("Your memory of just before this, for continuity (don't repeat it):\n${it.text}\n") }
             appendLine("Log:")
-            events.forEach { appendLine("[${it.stamp}] ${verb(it.kind)}: ${it.text}") }
+            // Where it happened, when it's known and changes, so the memory can say where he was.
+            var at: String? = null
+            events.forEach { e ->
+                val where = e.place?.takeIf { it != at }?.let { " (in $it)" }.orEmpty()
+                at = e.place ?: at
+                appendLine("[${e.stamp}]$where ${verb(e.kind)}: ${e.text}")
+            }
             append("\nWrite the memory.")
         }) ?: return null
         val first = events.first()
         val last = events.last()
         val span = Span(first.day, first.time, last.day, last.time)
         val importance = events.mapNotNull { it.significance }.maxOrNull()
-        val id = store.addMemory(run, 1, first.id, last.id, span, text, model.id, importance)
-        return StoredMemory(id, run, 1, first.id, last.id, span, text, model.id, importance)
+        val places = mostFirst(events.mapNotNull { it.place })
+        val id = store.addMemory(run, 1, first.id, last.id, span, text, model.id, importance, places)
+        return StoredMemory(id, run, 1, first.id, last.id, span, text, model.id, importance, places)
     }
 
     /** Writes up stretches while they're ready, until one isn't or a job fails. */
@@ -135,8 +142,9 @@ class Summarizer(
         }) ?: return null
         val span = Span(memories.first().span.fromDay, memories.first().span.fromTime, memories.last().span.toDay, memories.last().span.toTime)
         val importance = memories.mapNotNull { it.importance }.maxOrNull()
-        val id = store.addMemory(run, 2, memories.first().id, memories.last().id, span, text, model.id, importance)
-        return StoredMemory(id, run, 2, memories.first().id, memories.last().id, span, text, model.id, importance)
+        val places = mostFirst(memories.flatMap { it.places })
+        val id = store.addMemory(run, 2, memories.first().id, memories.last().id, span, text, model.id, importance, places)
+        return StoredMemory(id, run, 2, memories.first().id, memories.last().id, span, text, model.id, importance, places)
     }
 
     private suspend fun write(system: String, user: String): String? {
@@ -190,4 +198,7 @@ class Summarizer(
             |Reply with a JSON object {"memory": ...}.
         """.trimMargin()
     }
+
+    /** [places] without repeats, the most frequent first (ties in the order they came). */
+    private fun mostFirst(places: List<String>): List<String> = places.groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.map { it.key }
 }
