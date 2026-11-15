@@ -40,7 +40,7 @@ import kotlin.random.Random
 class BedroomWorld private constructor(
     map: TileMap,
     guy: Character,
-    content: BedroomContent,
+    startContent: BedroomContent,
     val clock: GameClock,
     /** Slot name to its tile. */
     private val slotCells: Map<String, Cell>,
@@ -48,7 +48,7 @@ class BedroomWorld private constructor(
     private val seed: Long,
 ) : GridWorld(map, guy) {
     /** Everything he can own and do. It grows when he invents something ([inventions]); swapped only on the sim thread. */
-    @Volatile var content: BedroomContent = content
+    @Volatile var content: BedroomContent = startContent
         private set
 
     /** What he has invented, oldest first; replaced rather than changed, so any thread can read it. */
