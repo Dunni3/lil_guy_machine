@@ -143,6 +143,9 @@
                     },
                     "worn": {
                       "type": "number"
+                    },
+                    "keep": {
+                      "type": "integer"
                     }
                   },
                   "required": [
@@ -205,6 +208,31 @@
           },
           "required": [
             "effects"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "familiarity": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "half_life_days": {
+              "type": "number"
+            },
+            "weights": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number"
+              }
+            }
+          },
+          "required": [
+            "half_life_days"
           ],
           "additionalProperties": false
         },
@@ -481,6 +509,29 @@
             },
             "lit": {
               "type": "number"
+            },
+            "adapt": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "days": {
+                      "type": "number"
+                    },
+                    "floor": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "days",
+                    "floor"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "additionalProperties": false

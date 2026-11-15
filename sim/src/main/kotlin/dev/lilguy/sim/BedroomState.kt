@@ -88,6 +88,10 @@ data class BedroomState(
     val records: Map<String, Map<String, List<Reading>>> = emptyMap(),
     /** How his things look by their code, their timers, and what they did where he wasn't ([Machines]). */
     val machines: MachineState = MachineState(),
+    /** How familiar each feature of what he does is ([Familiarity]): its level and the tick it was set. */
+    val familiar: Map<String, Wear> = emptyMap(),
+    /** Item id to the tick he first had it, for getting used to it (comfort `adapt`); null in older saves, where he has had all of it long enough. */
+    @SerialName("owned_since") val ownedSince: Map<String, Long>? = null,
 ) {
     /** One thing as his code left it: its [slot], [name] and [color], each null when unchanged. */
     @Serializable

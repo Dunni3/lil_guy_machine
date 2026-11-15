@@ -6,6 +6,10 @@ status: active
 
 # Boredom locks what he has worn thin, and new things feed him
 
+Amended by `2026-11-15-fun-comes-from-what-is-unfamiliar.md`: with `familiarity`, the lock reads
+freshness by what a verb is like (30% or less), lasts about a day, and work stays open until he could
+buy something new and still keep a day of meals (`bored_lock.keep`).
+
 Amends `2026-10-31-stimulation-habituation-and-novelty-mood-is-the-summary.md`. In the TV run
 `app-bedroom-20261101-141758` (Jev deciding), stimulation sat at 0 to 8 for two days and he bought
 no decor. Painting kept winning even with "gains at 10%, and stimulation -5", because wear cut its

@@ -98,11 +98,18 @@ data class LightRules(
  * Comfort from what he can see (rules.yaml `comfort`): a thing counts in full within [near] tiles of
  * him, less and less out to [far], where it stops; and in full at [lit] light or more, less in dimmer
  * light, none below what he can see by ([LightRules.see]). Asleep, he counts what's round him in the
- * room he sleeps in, lit or not.
+ * room he sleeps in, lit or not. [adapt]: he gets used to what he has.
  */
 @Serializable
-data class ComfortRules(val near: Double = 2.0, val far: Double = 6.0, val lit: Double = 4.0) {
-    fun problems(): List<String> = if (near < 0 || far <= near || lit <= 0) listOf("comfort: near not negative, far above near, lit positive") else emptyList()
+data class ComfortRules(val near: Double = 2.0, val far: Double = 6.0, val lit: Double = 4.0, val adapt: Adapt? = null) {
+    fun problems(): List<String> = (if (near < 0 || far <= near || lit <= 0) listOf("comfort: near not negative, far above near, lit positive") else emptyList()) +
+        (if (adapt != null && (adapt.days <= 0 || adapt.floor !in 0.0..1.0)) listOf("comfort: adapt needs positive days and a floor from 0 to 1") else emptyList())
+
+    /** A thing's comfort falls from full when he gets it to [floor] of it over [days], and stays there. */
+    @Serializable
+    data class Adapt(val days: Double, val floor: Double) {
+        fun share(ageDays: Double): Double = (1 - (1 - floor) * ageDays / days).coerceIn(floor, 1.0)
+    }
 }
 
 /**
