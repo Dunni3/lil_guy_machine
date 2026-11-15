@@ -2264,7 +2264,7 @@ class BedroomWorld private constructor(
             SeenEntity(e.id.value, e.kind, cell.x, cell.y, Direction.of(dx, dy), round(hypot(dx, dy), 1), e.state.takeIf { field[cell] >= see }, chebyshev(guy.cell, cell) <= REACH, remembered = field[cell] < see)
         }.sortedBy { it.distance }
         val light = content.light?.let { rules ->
-            val things = around.map { Landmark(item(it.id.value).name, Cell(it.x.toInt(), it.y.toInt()), knownThere(it)) }
+            val things = around.map { Landmark(item(it.id.value).name, Cell(it.x.toInt(), it.y.toInt()), knownThere(it), key = item(it.id.value).group in KEY_GROUPS) }
             Lighting.describe(field, rules, guy.cell, layout.placeOf(guy.cell)?.kind == PlaceKind.Outdoor, things, content.verbs.maxOfOrNull { it.needs[EffectKind.Light.id] ?: 0.0 } ?: 0.0)
         }
         return Observation(
@@ -2451,6 +2451,9 @@ class BedroomWorld private constructor(
         /** Hours in a row a thing's code may break before it stops. */
         /** What a thing's code wears by, before its id. */
         private const val THING_WEAR = "thing:"
+
+        /** What the light phrases name first: the things he does things at, before the decor. */
+        private val KEY_GROUPS = setOf("furniture", "fixture", "tool")
         private val HEX = Regex("#[0-9a-fA-F]{6}")
         private val NAME = Regex("[\\p{L}\\p{N} '\\-]+")
         private val LOG_KEY = Regex("[A-Za-z0-9_]{1,24}")

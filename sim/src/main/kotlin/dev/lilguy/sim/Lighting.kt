@@ -54,7 +54,7 @@ data class LightRules(
  * room he sleeps in, lit or not.
  */
 @Serializable
-data class ComfortRules(val near: Double = 3.0, val far: Double = 8.0, val lit: Double = 4.0) {
+data class ComfortRules(val near: Double = 2.0, val far: Double = 6.0, val lit: Double = 4.0) {
     fun problems(): List<String> = if (near < 0 || far <= near || lit <= 0) listOf("comfort: near not negative, far above near, lit positive") else emptyList()
 }
 
@@ -139,16 +139,20 @@ class Lighting(private val effects: Effects = Effects()) {
             fun from(c: Cell): String = field.source(c)?.name ?: "daylight"
             return buildList {
                 add("where you stand: " + if (here < rules.see) "dark (light ${level(here)})" else "light ${level(here)}, from ${from(at)}")
-                lit.groupBy { from(it.cell) }.entries.sortedByDescending { (_, ts) -> ts.maxOf { field[it.cell] } }.take(2).forEach { (src, ts) ->
+                // A lamp lights itself; it's said as what lights the rest, or else as glowing.
+                val glowing = lit.filter { field.source(it.cell)?.cell == it.cell }
+                val groups = (lit - glowing.toSet()).sortedWith(compareByDescending<Landmark> { it.key }.thenByDescending { field[it.cell] }).groupBy { from(it.cell) }.entries.sortedByDescending { (_, ts) -> ts.maxOf { field[it.cell] } }.take(2)
+                groups.forEach { (src, ts) ->
                     val levels = ts.map { field[it.cell] }
                     val range = level(levels.min()).let { lo -> level(levels.max()).let { hi -> if (lo == hi) lo else "$lo to $hi" } }
-                    add("lit by $src (light $range): " + names(ts.take(4)))
+                    add("lit by $src (light $range): " + names(ts.take(3)))
                 }
+                if (groups.isEmpty() && glowing.isNotEmpty()) add("glowing: " + names(glowing.take(3)))
                 if (dark.isNotEmpty()) {
                     val known = dark.filter { it.known }
                     add(
-                        "too dark to see " + (if (lit.isEmpty()) "anything " else "the rest ") + (if (outdoors) "here" else "of the room") +
-                            if (known.isEmpty()) "" else "; you know ${names(known.take(4))} ${if (known.size == 1) "is" else "are"} there",
+                        "too dark to see " + (if (lit.isEmpty()) "anything " + (if (outdoors) "here" else "in the room") else "the rest " + (if (outdoors) "here" else "of the room")) +
+                            if (known.isEmpty()) "" else "; you know ${names(known.sortedByDescending { it.key }.take(3))} ${if (known.size == 1) "is" else "are"} there",
                     )
                 }
             }
@@ -161,5 +165,9 @@ class Lighting(private val effects: Effects = Effects()) {
     }
 }
 
-/** A thing in his place for [Lighting.describe]: what it's called, where, and whether he knows it's there without seeing it. */
-data class Landmark(val name: String, val cell: Cell, val known: Boolean)
+/**
+ * A thing in his place for [Lighting.describe]: what it's called, where, whether he knows it's there
+ * without seeing it, and whether it's a [key] landmark (furniture and fixtures, where things are done),
+ * said before the decor.
+ */
+data class Landmark(val name: String, val cell: Cell, val known: Boolean, val key: Boolean = false)

@@ -129,8 +129,8 @@ gallery:
 # while he's in it. Asleep, he counts what's round him in the room he sleeps in, lit or not. A new thing
 # feels new (novelty.things) by the same measure: while he can see it.
 comfort:
-  near: 3
-  far: 8
+  near: 2
+  far: 6
   lit: 4
 
 # Light, from 0 (black) to about 10 (noon outdoors). It's daylight on the land by the time of day,

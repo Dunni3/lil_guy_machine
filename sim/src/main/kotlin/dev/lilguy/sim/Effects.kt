@@ -20,6 +20,11 @@ enum class EffectKind(val id: String) {
     Light("light"),
     ;
 
+    /** The most it can be on a tile, however many emitters add to it: light is never brighter than noon. */
+    val most: Double get() = when (this) {
+        Light -> 10.0
+    }
+
     /** Whether a tile drawn as [letter] on the [Layout]'s rows stops this effect. */
     fun blocks(letter: Char): Boolean = when (this) {
         Light -> letter == '#' || letter == 'T'
@@ -106,7 +111,10 @@ class Effects {
                 }
             }
             // Where the baseline gives more than any one emitter, the baseline is what lights it.
-            for (i in levels.indices) if (best[i] < base[i]) strongest[i] = -1
+            for (i in levels.indices) {
+                if (best[i] < base[i]) strongest[i] = -1
+                levels[i] = levels[i].coerceAtMost(kind.most)
+            }
             return Field(kind, w, h, levels, strongest, emitters)
         }
 

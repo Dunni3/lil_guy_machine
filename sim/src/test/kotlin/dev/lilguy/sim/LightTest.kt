@@ -54,7 +54,7 @@ class LightTest {
         assertTrue(!glow.remembered, "the glowcaps glow, so he sees them")
         assertTrue(obs.nearby.first { it.id == "moss_patch" }.remembered, "the moss is dark, but he found it there")
         val light = assertNotNull(obs.light)
-        assertTrue(light.any { it.startsWith("lit by the glowcaps under the log") } && light.any { it.startsWith("too dark to see the rest here; you know") }, light.toString())
+        assertTrue(light.any { it == "glowing: the glowcaps under the log" } && light.any { it.startsWith("too dark to see the rest here; you know") }, light.toString())
         assertTrue(w.locked("explore")!!.startsWith("too dark to explore"), w.locked("explore"))
         // Somewhere he has never been, in the dark, he sees nothing at all.
         assertIs<IntentStatus.Succeeded>(w.run(Intent.MoveTo(Target.Place("pond"))).status)
@@ -74,7 +74,7 @@ class LightTest {
         val noon = target("12:00")
         val night = target("23:00")
         val lamps = target("23:00", "sunroom_lamp", "string_lights", "amber_floor_lamp")
-        assertTrue(noon > 50 + 25, "a room of decor by day counts past the old cap of 25: $noon")
+        assertTrue(noon > 60, "by day he sees the decor round him: $noon")
         assertEquals(50.0, night, "in the dark he sees none of it")
         assertTrue(lamps in 51.0..noon, "lamps bring back what they light: $lamps")
         val poster = world("12:00").observe(world("12:00").agentId).shop!!.first { it.id == "poster" }.gives
