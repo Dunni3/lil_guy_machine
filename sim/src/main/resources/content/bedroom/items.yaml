@@ -53,7 +53,7 @@ items:
   # Rooms: a plan is bought, then built on a site (world.yaml `rooms`, `sites`; verbs.yaml build_room).
   # Sites are where a room can stand; what comes with each room stands in its slots.
   - { id: lab_plan, name: plans for a lab, group: room, affords: { buildable: {} }, price: 60 }
-  - { id: sunroom_plan, name: plans for a sunroom, group: room, affords: { buildable: {} }, price: 90, tier: 1 }
+  - { id: sunroom_plan, name: plans for a sunroom, group: room, affords: { buildable: {} }, price: 150 }
   - { id: site_east, name: the site east of your bedroom, group: fixture, affords: { site: {} } }
   - { id: site_far_east, name: the site further east, group: fixture, affords: { site: {} } }
   - { id: lab_bench, name: lab bench, group: fixture, slot: lab_bench, blocks: true }
@@ -61,7 +61,7 @@ items:
   - { id: armchair, name: armchair, group: fixture, slot: armchair, qualities: { cozy: 2, soft: 1 } }
   - { id: floor_lamp, name: floor lamp, group: fixture, slot: floor_lamp, blocks: true, qualities: { warm: 1 } }
   # Where samples are studied (verbs.yaml `study_sample`).
-  - { id: microscope, name: microscope, group: furniture, slot: microscope, blocks: true, price: 35, tier: 1 }
+  - { id: microscope, name: microscope, group: furniture, slot: microscope, blocks: true, price: 35 }
   # Taught by music_book.
   - { id: guitar, name: guitar, group: instrument, price: 45 }
   # Decor: in view, its qualities raise comfort.

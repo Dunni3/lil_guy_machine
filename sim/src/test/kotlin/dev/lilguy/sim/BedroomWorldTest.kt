@@ -13,7 +13,7 @@ class BedroomWorldTest {
         "workbench", "invent",
         "canvas", "easel", "record_player", "jazz_record", "ambient_record", "folk_record", "novel", "poetry_book",
         "field_guide", "painting", "paint", "read", "listen", "play_record",
-        "drawing_book", "music_book", "guitar", "play_guitar", "build_room",
+        "drawing_book", "music_book", "guitar", "play_guitar", "build_room", "microscope", "study_sample",
     ) + BedroomContent.default().items.filter { it.group == "decor" || it.group == "room" }.map { it.id }
     /** Books here teach nothing, so painting and the guitar are there from the start; [shipped] is the file as it is. */
     private val content = BedroomContent.default().let { c ->
@@ -363,7 +363,7 @@ class BedroomWorldTest {
         val since = w.tick
         while (w.activity("sketch").locked != null) {
             w.step()
-            assertTrue(w.tick - since < w.clock.ticks(6 * 60), "still locked 6h later: ${w.activity("sketch").locked}")
+            assertTrue(w.tick - since < w.clock.ticks(9 * 60), "still locked 9h later: ${w.activity("sketch").locked}")
         }
 
         // Broke, work stays open however bored he is: it's his way to the money for something new.
@@ -423,7 +423,8 @@ class BedroomWorldTest {
 
     @Test
     fun `a book is read a chapter a session, each new chapter raises its skill, and finishing it teaches what it hid`() {
-        val w = BedroomWorld.create(shipped.copy(start = shipped.start.copy(money = 500)))
+        // Not bored, so five chapters in a row stay open.
+        val w = BedroomWorld.create(shipped.copy(start = shipped.start.copy(money = 500, needs = shipped.start.needs.copy(stimulation = 90))))
         assertTrue(w.obs().activities!!.none { it.id == "paint" } && w.obs().shop!!.none { it.id == "easel" }, "painting is unknown until learned")
         assertTrue("isn't for sale" in failure(w.run(Intent.Buy("easel"))))
         assertEquals(10, w.obs().needs!!.frustration, "a failure frustrates him")

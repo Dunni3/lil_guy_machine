@@ -44,7 +44,7 @@ night:
 # open), nor does anything without mood or stimulation gains.
 habituation:
   per_repeat: 0.25
-  recover_per_hour: 0.04
+  recover_per_hour: 0.03
   stale_stimulation: -6
   bored_lock: { below: 40, worn: 0.5 }
 
@@ -121,6 +121,15 @@ commissions:
 gallery:
   max: 3
   comfort_each: 3
+
+# The house holds only so much comfort: `holds` for the bedroom, and `per_room` more for each room built
+# onto it. Past that, more decor, hung art or samples add none, and a thing bought for a full house doesn't
+# feel new (novelty.things; what he invents still does). Without it 25 pieces of decor pinned his mood at
+# 100 and their newness kept his stimulation near 100, so nothing was worth changing and the money piled
+# up (docs/decisions/2026-11-15-the-house-holds-only-so-much-comfort-*).
+comfort:
+  holds: 25
+  per_room: 10
 
 # Samples he keeps are his collection, on a shelf in his room: each kind he has adds comfort, up to `max` kinds.
 collection:

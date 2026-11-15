@@ -62,6 +62,8 @@ data class BedroomContent(
     val world: WorldContent? = null,
     /** Samples he keeps add comfort, one kind at a time; null and they add none. */
     val collection: CollectionRules? = null,
+    /** How much comfort the house holds, more with each room he builds; null and there's no limit. */
+    val comfort: ComfortRules? = null,
 ) {
     @Transient private val byId = items.associateBy { it.id }
 
@@ -130,7 +132,7 @@ data class BedroomContent(
         /** The content's files, each with the top-level keys it holds. */
         val FILES: Map<String, List<String>> = linkedMapOf(
             "room" to listOf("room", "start"),
-            "rules" to listOf("needs", "night", "habituation", "novelty", "frustration", "skills", "shop", "reflection", "commissions", "gallery", "quality_value", "invent", "collection"),
+            "rules" to listOf("needs", "night", "habituation", "novelty", "frustration", "skills", "shop", "reflection", "commissions", "gallery", "quality_value", "invent", "collection", "comfort"),
             "vocabulary" to listOf("vocabulary"),
             "personality" to listOf("personality"),
             "items" to listOf("items"),
@@ -523,6 +525,13 @@ data class CommissionRules(
 /** Hung art: at most [max] pieces on the wall, each adding [comfortEach] to the room's comfort. */
 @Serializable
 data class CollectionRules(val max: Int = 6, @SerialName("comfort_each") val comfortEach: Int = 2)
+
+/**
+ * The house holds [holds] comfort, and [perRoom] more for each room built onto it. Past that, more things add
+ * none, and a thing bought for a full house doesn't feel new (novelty.things), so what the money is for is a room.
+ */
+@Serializable
+data class ComfortRules(val holds: Int, @SerialName("per_room") val perRoom: Int)
 
 @Serializable
 data class GalleryRules(val max: Int = 3, @SerialName("comfort_each") val comfortEach: Int = 3)
