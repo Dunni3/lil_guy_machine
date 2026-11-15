@@ -132,7 +132,12 @@ class StateReader(private val dbEvery: Duration = 1.seconds) {
                         Invented(
                             made.item.id, made.item.name, made.item.group, made.item.affords.keys.first(), made.item.qualities.mapValues { it.value.toInt() },
                             made.item.price, v.wall, made.cost, made.why,
-                            made.look.map { p -> LookShape(p.shape, p.w.toFloat(), p.h.toFloat(), p.d.toFloat(), p.x.toFloat(), p.y.toFloat(), p.z.toFloat(), p.rotX.toFloat(), p.rotY.toFloat(), p.rotZ.toFloat(), p.color) },
+                            made.look.map { p ->
+                                LookShape(
+                                    p.shape, p.w.toFloat(), p.h.toFloat(), p.d.toFloat(), p.x.toFloat(), p.y.toFloat(), p.z.toFloat(), p.rotX.toFloat(), p.rotY.toFloat(), p.rotZ.toFloat(), p.color,
+                                    p.part, p.taper.toFloat(), p.cut.toFloat(), p.hole.toFloat(), p.arc.toFloat(), p.glow.toFloat(), p.opacity.toFloat(),
+                                )
+                            },
                         )
                     },
                 )

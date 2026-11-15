@@ -1323,6 +1323,27 @@
                 },
                 "color": {
                     "type": "string"
+                },
+                "part": {
+                    "type": "string"
+                },
+                "taper": {
+                    "type": "number"
+                },
+                "cut": {
+                    "type": "number"
+                },
+                "hole": {
+                    "type": "number"
+                },
+                "arc": {
+                    "type": "number"
+                },
+                "glow": {
+                    "type": "number"
+                },
+                "opacity": {
+                    "type": "number"
                 }
             },
             "required": [
@@ -1336,7 +1357,14 @@
                 "rot_x",
                 "rot_y",
                 "rot_z",
-                "color"
+                "color",
+                "part",
+                "taper",
+                "cut",
+                "hole",
+                "arc",
+                "glow",
+                "opacity"
             ],
             "additionalProperties": false
         },

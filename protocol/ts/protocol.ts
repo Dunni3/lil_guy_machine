@@ -1,5 +1,5 @@
 /* Generated from schema/protocol.schema.json (protocol/.../*.kt) by gen_types.sh. Don't edit; run `make protocol-types`.
- * schema sha256: 872229f6dafc0fe9e319f0803e561ed22efb4c9d917387dcb1bfce5ec56d139e
+ * schema sha256: 788c62e716ace6d64d7d7ba16e746cc64c58e1296140890f6f3ec425f6cec7db
  */
 
 /**
@@ -398,6 +398,13 @@ export interface LookShape {
   rot_y: number;
   rot_z: number;
   color: string;
+  part: string;
+  taper: number;
+  cut: number;
+  hole: number;
+  arc: number;
+  glow: number;
+  opacity: number;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
