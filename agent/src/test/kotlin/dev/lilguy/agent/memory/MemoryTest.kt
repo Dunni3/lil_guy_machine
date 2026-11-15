@@ -100,6 +100,22 @@ class MemoryTest {
     }
 
     @Test
+    fun `events carry the place he was in, and being there brings up what happened there`() {
+        val store = PlacedStore(InMemoryStore())
+        val (world, runtime) = bedroomScenario(BedroomPolicy(), longTerm = AgentMemory(store, "r1"))
+        world.submit(world.agentId, dev.lilguy.sim.Intent.MoveTo(dev.lilguy.sim.Target.Place("garden")))
+        runBlocking { runLockstep(world, runtime, maxTicks = 600) }
+        val places = store.eventsAfter("r1", 0, 1000).mapNotNull { it.place }.toSet()
+        assertTrue("your bedroom" in places || "the garden" in places, places.toString())
+        // Two memories alike in all but where they happened: the one of where he is comes first.
+        fun m(id: Long, at: String) = Recollection(Recollection.Kind.Memory, id, "Day 1 08:00-09:00", "I looked round.", null, 50, listOf(at))
+        val all = listOf(m(1, "the forest clearing"), m(2, "the garden"), m(3, "your bedroom"))
+        assertEquals(listOf(3L, 1L), Recall(pick = 2).selectRanked(all, emptyMap(), now = 60, here = "the forest clearing").map { it.id })
+        assertEquals(listOf(3L, 2L), Recall(pick = 2).selectRanked(all, emptyMap(), now = 60, here = "the garden").map { it.id })
+        assertEquals("Day 1 08:00-09:00 in the garden: I looked round.", all[1].render())
+    }
+
+    @Test
     fun `memories made during a run reach later prompts`() {
         val store = InMemoryStore()
         val writer = FakeWriter()

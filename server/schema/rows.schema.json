@@ -1169,6 +1169,14 @@
                     "x-pg-type": "double precision",
                     "x-not-null": false
                 },
+                "place": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
                 "_rev": {
                     "type": "integer",
                     "minimum": 1,
@@ -1189,6 +1197,7 @@
                 "kind",
                 "text",
                 "significance",
+                "place",
                 "_rev"
             ],
             "additionalProperties": false
@@ -1312,6 +1321,14 @@
                     "x-pg-type": "double precision",
                     "x-not-null": false
                 },
+                "places": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-pg-type": "text",
+                    "x-not-null": false
+                },
                 "_rev": {
                     "type": "integer",
                     "minimum": 1,
@@ -1338,6 +1355,7 @@
                 "text",
                 "source",
                 "importance",
+                "places",
                 "_rev"
             ],
             "additionalProperties": false

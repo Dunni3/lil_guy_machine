@@ -46,12 +46,12 @@ class RunMemoryStore(
 
     private fun check(r: String) = require(r == run) { "this store holds run $run, not $r" }
 
-    override fun appendEvent(run: String, tick: Long, day: Int?, time: String?, kind: EventKind, text: String): Long {
+    override fun appendEvent(run: String, tick: Long, day: Int?, time: String?, kind: EventKind, text: String, place: String?): Long {
         check(run)
         val id = nextEvent.incrementAndGet()
         lastTick = tick
         markEvent = id
-        store.write(MemoryEventRow(run, session, recorder.next(), tick, day, time?.let(GameClock::parseHhmm), id, time, kind.id, text))
+        store.write(MemoryEventRow(run, session, recorder.next(), tick, day, time?.let(GameClock::parseHhmm), id, time, kind.id, text, place = place))
         return id
     }
 
@@ -59,10 +59,10 @@ class RunMemoryStore(
         check(run)
         val (where, args) = visible { it.maxEvent }
         return store.query(
-            "SELECT id, tick, day, time, kind, text, significance FROM memory_events WHERE run_id = ? AND id > ? AND $where ORDER BY id LIMIT ?",
+            "SELECT id, tick, day, time, kind, text, significance, place FROM memory_events WHERE run_id = ? AND id > ? AND $where ORDER BY id LIMIT ?",
             listOf(run, afterId) + args + limit,
         ).map { r ->
-            MemoryEvent(r["id"] as Long, run, r["tick"] as Long, (r["day"] as Long?)?.toInt(), r["time"] as String?, EventKind.of(r["kind"] as String), r["text"] as String, (r["significance"] as Number?)?.toDouble())
+            MemoryEvent(r["id"] as Long, run, r["tick"] as Long, (r["day"] as Long?)?.toInt(), r["time"] as String?, EventKind.of(r["kind"] as String), r["text"] as String, (r["significance"] as Number?)?.toDouble(), r["place"] as String?)
         }
     }
 
@@ -77,7 +77,7 @@ class RunMemoryStore(
         store.execute("UPDATE memory_events SET significance = ?, _rev = _rev + 1, _dirty = 1 WHERE run_id = ? AND id = ?", listOf(significance, run, id))
     }
 
-    override fun addMemory(run: String, level: Int, fromId: Long, toId: Long, span: Span, text: String, source: String, importance: Double?): Long {
+    override fun addMemory(run: String, level: Int, fromId: Long, toId: Long, span: Span, text: String, source: String, importance: Double?, places: List<String>): Long {
         check(run)
         val id = nextMemory.incrementAndGet()
         markMemory = id
@@ -85,6 +85,7 @@ class RunMemoryStore(
             MemoryRow(
                 run, session, recorder.next(), lastTick, span.toDay, span.toTime?.let(GameClock::parseHhmm),
                 id, level, fromId, toId, span.fromDay, span.fromTime, span.toDay, span.toTime, text, source, importance,
+                places = places.joinToString("; ").ifEmpty { null },
             ),
         )
         return id
@@ -94,13 +95,14 @@ class RunMemoryStore(
         check(run)
         val (where, args) = visible { it.maxMemory }
         return store.query(
-            "SELECT id, level, from_id, to_id, from_day, from_minute, to_day, to_minute, text, source, importance FROM memories WHERE run_id = ? AND level = ? AND $where ORDER BY id",
+            "SELECT id, level, from_id, to_id, from_day, from_minute, to_day, to_minute, text, source, importance, places FROM memories WHERE run_id = ? AND level = ? AND $where ORDER BY id",
             listOf(run, level) + args,
         ).map { r ->
             StoredMemory(
                 r["id"] as Long, run, (r["level"] as Long).toInt(), r["from_id"] as Long, r["to_id"] as Long,
                 Span((r["from_day"] as Long?)?.toInt(), r["from_minute"] as String?, (r["to_day"] as Long?)?.toInt(), r["to_minute"] as String?),
                 r["text"] as String, r["source"] as String, (r["importance"] as Number?)?.toDouble(),
+                (r["places"] as String?)?.split("; ")?.filter { it.isNotEmpty() }.orEmpty(),
             )
         }
     }

@@ -92,3 +92,4 @@ these hold the outcome. Skim this index before related changes.
 - 2026-11-15 [He searches the real web as a look, read-only, through Gemini grounded on Google Search](2026-11-15-he-searches-the-real-web-as-a-look.md)
 - 2026-11-15 [Going somewhere is implied by the verb, plus `go`; he perceives his place, the other places and the walk to each](2026-11-15-going-somewhere-is-implied-by-the-verb-plus-go.md)
 - 2026-11-15 [The land is explored from lookouts, samples are collected from patches that regrow, and kept, studied or sold](2026-11-15-the-land-is-explored-and-samples-are-collected.md)
+- 2026-11-15 [Memories carry places, and recall favours memories of where he is](2026-11-15-memories-carry-places-and-recall-favours-where-he-is.md)

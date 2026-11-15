@@ -14,6 +14,8 @@ data class Recollection(
     val text: String,
     val importance: Double?,
     val order: Long,
+    /** Where it happened, most of it first; empty where there are no places. */
+    val places: List<String> = emptyList(),
 ) {
     enum class Kind { Memory, Day, Thought }
 
@@ -22,10 +24,13 @@ data class Recollection(
 
     /** "Day 2 08:00-14:30: I sketched ...", "Day 2 (the whole day): ...", "Day 3 10:00, you thought: "..."". */
     fun render(): String = when (kind) {
-        Kind.Memory -> if (label.isEmpty()) text else "$label: $text"
+        Kind.Memory -> if (label.isEmpty()) text else "$label$at: $text"
         Kind.Day -> if (label.isEmpty()) text else "$label (the whole day): $text"
-        Kind.Thought -> (if (label.isEmpty()) "You thought" else "$label, you thought") + ": \"$text\""
+        Kind.Thought -> (if (label.isEmpty()) "You thought" else "$label$at, you thought") + ": \"$text\""
     }
+
+    /** " in the forest clearing", for a stretch or a thought that happened in one or two places. */
+    private val at: String get() = places.takeIf { it.isNotEmpty() && it.size <= 2 }?.let { " in " + it.joinToString(" and ") }.orEmpty()
 }
 
 /**
@@ -45,6 +50,8 @@ class Recall(
     private val relevanceWeight: Double = 1.0,
     private val importanceWeight: Double = 0.5,
     private val recencyWeight: Double = 0.5,
+    /** Added for a recollection of the place he's in: being somewhere brings up what happened there. */
+    private val placeWeight: Double = 0.5,
     /** Game hours for recency to halve. */
     private val halfLifeHours: Double = 24.0,
 ) {
@@ -60,14 +67,15 @@ class Recall(
      * By [relevance] (0 to 1, by [Recollection.key]; an unscored one counts 0.5), importance and
      * recency at [now] (same units as [Recollection.order]; null ranks recency by position).
      */
-    fun selectRanked(candidates: List<Recollection>, relevance: Map<String, Double>, now: Long?): List<Recollection> {
+    fun selectRanked(candidates: List<Recollection>, relevance: Map<String, Double>, now: Long?, here: String? = null): List<Recollection> {
         if (candidates.isEmpty()) return emptyList()
         val sorted = candidates.sortedBy { it.order }
         val newest = sorted.lastOrNull { it.kind != Recollection.Kind.Thought }
         fun recency(r: Recollection, index: Int): Double =
             if (now != null) 0.5.pow((now - r.order).coerceAtLeast(0) / 60.0 / halfLifeHours) else 0.5.pow((sorted.size - 1 - index) / 5.0)
         val ranked = sorted.mapIndexed { i, r ->
-            r to relevanceWeight * (relevance[r.key] ?: 0.5) + importanceWeight * (r.importance ?: 0.25) + recencyWeight * recency(r, i)
+            r to relevanceWeight * (relevance[r.key] ?: 0.5) + importanceWeight * (r.importance ?: 0.25) + recencyWeight * recency(r, i) +
+                if (here != null && here in r.places) placeWeight else 0.0
         }.sortedByDescending { it.second }.map { it.first }
         return withinBudget(listOfNotNull(newest) + (ranked - setOfNotNull(newest)).take(pick - 1))
     }

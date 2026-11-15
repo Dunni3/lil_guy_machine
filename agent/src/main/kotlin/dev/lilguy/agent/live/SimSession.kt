@@ -29,6 +29,7 @@ import dev.lilguy.agent.memory.Oracle
 import dev.lilguy.agent.web.Searcher
 import dev.lilguy.agent.memory.AgentMemory
 import dev.lilguy.agent.memory.InMemoryStore
+import dev.lilguy.agent.memory.PlacedStore
 import dev.lilguy.agent.memory.MemoryScorer
 import dev.lilguy.agent.memory.SelfModeler
 import dev.lilguy.agent.memory.Reader
@@ -347,7 +348,7 @@ class SimSession(
         val runLog = setup.logFor(run, m.id)
         val runInbox = ConcurrentLinkedQueue<AgentRuntime.DecisionRecord>()
         val rs = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job]))
-        val store: MemoryStore = memStore ?: InMemoryStore()
+        val store: MemoryStore = PlacedStore(memStore ?: InMemoryStore())
         val w = setup.memoryModel?.invoke()
         val summarizer = w?.let {
             Summarizer(

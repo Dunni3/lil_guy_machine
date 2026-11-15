@@ -118,6 +118,9 @@ class AgentMemory(
     /** Kept thoughts, with their event ids: recall candidates. */
     private val keptThoughts = CopyOnWriteArrayList<Pair<Long, Thought>>()
 
+    /** Where he was when he had a kept thought, by its event id (not kept across a checkpoint). */
+    private val thoughtPlaces = java.util.concurrent.ConcurrentHashMap<Long, String>()
+
     /** Answers to what he asked while thinking, from kept thinks, oldest first. */
     private val keptAnswers = CopyOnWriteArrayList<Answer>()
 
@@ -134,7 +137,10 @@ class AgentMemory(
 
     private fun authors(): Authors {
         val handlers = mutableListOf<AuthorHandler<*>>()
-        if (thinker != null) handlers += ThoughtHandler(thinker, store, run, onThought = { t -> thoughtLog += t; t.asked.forEach(onAnswer) }, onPlan = { t -> plan = t }, onStored = { id, t -> keptThoughts += id to t }) { a -> keptAnswers += a }
+        if (thinker != null) handlers += ThoughtHandler(thinker, store, run, onThought = { t -> thoughtLog += t; t.asked.forEach(onAnswer) }, onPlan = { t -> plan = t }, onStored = { id, t ->
+            keptThoughts += id to t
+            (store as? PlacedStore)?.where?.invoke()?.let { thoughtPlaces[id] = it }
+        }) { a -> keptAnswers += a }
         if (studio != null) handlers += studio
         if (reader != null) handlers += ReadingHandler(reader, store, run)
         if (shopper != null) handlers += ShoppingHandler(shopper, store, run) { t -> tripLog += t; onTrip(t) }
@@ -249,6 +255,7 @@ class AgentMemory(
         scoredThrough = s.scoredThrough
         relevance = s.relevance
         keptThoughts.clear()
+        thoughtPlaces.clear()
         s.thoughts.forEach { keptThoughts += it.event to it.thought() }
         thoughtLog.clear()
         thoughtLog.addAll(keptThoughts.map { it.second })
@@ -262,6 +269,11 @@ class AgentMemory(
 
     /** Runs authored ops for [world]. Call before the run starts. */
     fun connect(world: BedroomWorld) {
+        // Every event is stamped with the place he's in as the sim last published it.
+        (store as? PlacedStore)?.where = {
+            val layout = world.layout
+            if (!layout.outdoors) null else world.snapshot().entities.firstOrNull { it.id == world.agentId }?.place?.let { layout.place(it)?.name }
+        }
         authors.connect(world)
         studio?.connect(world)
         thinker?.oracle?.connect(world)
@@ -502,6 +514,7 @@ class AgentMemory(
         obs.holding?.takeIf { it.isNotEmpty() }?.let { h -> putJsonArray("holding") { h.forEach { add(it) } } }
         obs.owns?.let { o -> putJsonObject("owns") { o.forEach { (id, n) -> put(id, n) } } }
         put("just_chose", Describe.action(intent))
+        placeName(obs)?.let { put("where", it) }
         plan?.text?.let { put("latest_thought", it) }
         if (obs.recentEvents.isNotEmpty()) putJsonArray("recent_events") { obs.recentEvents.forEach { add(it) } }
     }
@@ -520,9 +533,9 @@ class AgentMemory(
         // Thoughts of today and yesterday; older ones live on in the day memories, as the memories do.
         val thoughts = keptThoughts.filter { (_, t) -> !(current != null && t.tick == current.tick && t.text == current.text) && (today == null || (t.day ?: today) >= today - 1) }
         return days.map { Recollection(Recollection.Kind.Day, it.id, "Day ${it.span.toDay ?: ""}".trimEnd(), it.text, it.importance, orderOf(it.span.toDay, it.span.toTime) ?: it.toId) } +
-            memories.map { Recollection(Recollection.Kind.Memory, it.id, it.span.label, it.text, it.importance, orderOf(it.span.toDay, it.span.toTime) ?: it.toId) } +
+            memories.map { Recollection(Recollection.Kind.Memory, it.id, it.span.label, it.text, it.importance, orderOf(it.span.toDay, it.span.toTime) ?: it.toId, it.places) } +
             thoughts.map { (id, t) ->
-                Recollection(Recollection.Kind.Thought, id, Span(t.day, t.time, t.day, t.time).label, t.text.orEmpty(), null, orderOf(t.day, t.time) ?: id)
+                Recollection(Recollection.Kind.Thought, id, Span(t.day, t.time, t.day, t.time).label, t.text.orEmpty(), null, orderOf(t.day, t.time) ?: id, listOfNotNull(thoughtPlaces[id]))
             }
     }
 
@@ -534,14 +547,18 @@ class AgentMemory(
     fun recall(obs: Observation): List<String> {
         val candidates = candidates(obs)
         val ranked = relevance
-        val picked = if (scorer != null && ranked.isNotEmpty()) rule.selectRanked(candidates, ranked, orderOf(obs.clock?.day, obs.clock?.time))
+        val picked = if (scorer != null && ranked.isNotEmpty()) rule.selectRanked(candidates, ranked, orderOf(obs.clock?.day, obs.clock?.time), placeName(obs))
         else rule.select(candidates, context(obs))
         lastRecalled = picked.filter { it.kind != Recollection.Kind.Thought }.map { it.id }.toSet()
         lastRecalledThoughts = picked.filter { it.kind == Recollection.Kind.Thought }.map { it.id }.toSet()
         return picked.map(rule::render)
     }
 
+    /** The place he's in, by name, without where in it ("the forest clearing"). */
+    private fun placeName(obs: Observation): String? = obs.place?.substringBefore(", by ")
+
     private fun context(obs: Observation): String = buildList {
+        placeName(obs)?.let { add(it) }
         add(Describe.state(obs))
         obs.activities.orEmpty().filter { it.locked == null }.forEach { add(it.id) }
         obs.shop.orEmpty().forEach { add(it.id) }
