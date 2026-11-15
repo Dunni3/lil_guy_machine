@@ -60,16 +60,11 @@ data class HisLetter(
     @SerialName("in_reply_to") val inReplyTo: Long?,
 )
 
-/**
- * Your letters to a life and [replies], his to you, each newest first, and how many more you may send
- * today ([perDay] in any 24 hours).
- */
+/** Your letters to a life and [replies], his to you, each newest first. */
 @Serializable
 data class Mailbag(
     val letters: List<SentLetter>,
     val replies: List<HisLetter>,
-    @SerialName("per_day") val perDay: Int,
-    val left: Int,
     @SerialName("max_length") val maxLength: Int,
 )
 

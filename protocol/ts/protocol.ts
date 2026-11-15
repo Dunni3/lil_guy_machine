@@ -1,5 +1,5 @@
 /* Generated from schema/protocol.schema.json (protocol/.../*.kt) by gen_types.sh. Don't edit; run `make protocol-types`.
- * schema sha256: 81635626fe866579d6ed675ec1f9de98fb7286e87ab2945ebc6f5fd11e8a8a75
+ * schema sha256: 6aa55d083ff7f898acbda6d83594192b6dcc9dc1f9e1bedb73d7d5dc8d66bd33
  */
 
 /**
@@ -871,8 +871,6 @@ export interface LetterDraft {
 export interface Mailbag {
   letters: SentLetter[];
   replies: HisLetter[];
-  per_day: number;
-  left: number;
   max_length: number;
 }
 /**
