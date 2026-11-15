@@ -1,8 +1,10 @@
 package dev.lilguy.agent.live
 
 import dev.lilguy.agent.KeyDoorPolicy
+import dev.lilguy.agent.LifeRecorder
 import dev.lilguy.agent.Scenario
 import dev.lilguy.agent.live.SimSession.RunState
+import dev.lilguy.runlog.jdbc.JdbcSqlDriver
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -109,5 +111,41 @@ class SimSessionTest {
         assertEquals(RunState.Ended, s.state)
         assertEquals(2L * 24 * 60, s.current.tick)
         assertEquals("lived 2 days", s.endedBecause)
+    }
+
+    @Test
+    fun `a run left mid-day is there to go back to, and a host restart carries it on`() {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val store = JdbcSqlDriver.store(null)
+        val setup = ModelSetup({ Scenario.Bedroom.scriptedPolicy() }, Scenario.Bedroom, ticksPerMinute = 1, days = 3)
+        val s = SimSession(scope, setup, RunDatabase(store, sync = null, platform = "test", host = null))
+        val first = s.runId
+        s.start()
+        s.pause()
+        // A few decisions in, all on day 1 (no morning checkpoint yet).
+        s.stepUntil { s.history.size >= 8 }
+        val left = s.current.tick
+        assertTrue(left in 1 until 16L * 60, "still day 1: $left")
+
+        s.restart()
+        assertTrue(s.runId != first)
+        assertTrue(s.resume(first), s.resumeError ?: "")
+        assertEquals(first, s.runId)
+        val back = s.current.tick
+        // From the rolling save: at most its gap plus the thing he was partway through.
+        assertTrue(back > 0 && left - back < 3 * LifeRecorder.AUTOSAVE_MINUTES + 60, "carried on near where it was left ($left), not from the start: $back")
+
+        // The host goes down with it running; the next one carries it on and starts it again.
+        s.start()
+        s.dispose()
+        val again = SimSession(scope, setup, RunDatabase(store, sync = null, platform = "test", host = null, resume = "latest"))
+        try {
+            assertEquals(first, again.runId, "latest is the run played most recently, not the newest one")
+            assertTrue(again.wasRunning)
+        } finally {
+            again.dispose()
+            scope.cancel()
+            store.close()
+        }
     }
 }

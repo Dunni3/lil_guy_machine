@@ -69,7 +69,7 @@ function pageView(life: LifeState): PageView | null {
   if (requested && JSON.stringify(requested) === JSON.stringify(life.run.settings)) requested = null;
   return {
     life, content, admin: admin.admin, settings: requested ?? life.run.settings,
-    replayPick: menu.replayPick, confirm: menu.confirm, result: admin.result,
+    replayPick: menu.replayPick, confirm: menu.confirm, result: admin.result, runs: admin.runs, runPick: menu.runPick,
   };
 }
 

@@ -1,5 +1,5 @@
 /* Generated from schema/protocol.schema.json (protocol/.../*.kt) by gen_types.sh. Don't edit; run `make protocol-types`.
- * schema sha256: 594cb6011ff5b151edf4accce44cfc88b316ecec3c84654007e4d2ae620c3648
+ * schema sha256: 1083425239a864ad75c3feed9b0adaff32ee7c0ce0c335b33bf30e3e6254d750
  */
 
 /**
@@ -26,6 +26,7 @@ export interface Protocol {
   command: Command;
   result: CommandResult;
   viewer: Viewer;
+  runs: RunList;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -687,6 +688,32 @@ export interface CommandResult {
  */
 export interface Viewer {
   admin: boolean;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "RunList".
+ */
+export interface RunList {
+  runs: SavedRun[];
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "SavedRun".
+ */
+export interface SavedRun {
+  run_id: string;
+  scenario: string;
+  platform: string;
+  model: string | null;
+  started_at: string;
+  played_at: string;
+  ended_at: string | null;
+  end_reason: string | null;
+  finished: boolean;
+  saved: string | null;
+  reached: string | null;
+  days: number;
+  live: boolean;
 }
 
 /** The protocol version these types are for; send it as ?v= when joining a stream. */

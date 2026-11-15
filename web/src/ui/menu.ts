@@ -1,6 +1,6 @@
 import type { Command, Settings } from "../../../protocol/ts/protocol";
 import { TABS, entries, type Entry, type PageView, type TabId } from "./pages";
-import { adjust, adjustable, confirms, pickReplay, type RunRow } from "./run";
+import { adjust, adjustable, confirms, pickReplay, pickRun, pickedRun, type RunRow } from "./run";
 
 /** What a key means to the menu (`GameMenu.Press`). */
 export type Press = "ok" | "back" | "left" | "right" | "up" | "down";
@@ -49,6 +49,8 @@ export class Menu {
   confirm = false;
   /** The run Replay would start again (1-based); null for this one. */
   replayPick: number | null = null;
+  /** The saved run Saved runs would go back to, by id; null for the most recently played. */
+  runPick: string | null = null;
   private readonly picked = new Map<TabId, string>();
   /** The menu has opened before on this page: after the first time, a viewer's tab stays where they left it. */
   private opened = false;
@@ -77,6 +79,7 @@ export class Menu {
     this.scroll = 0;
     this.confirm = false;
     this.replayPick = null;
+    this.runPick = null;
   }
 
   /** The picked entry's index in [list]: the one with the picked key, or the first. */
@@ -219,6 +222,10 @@ export class Menu {
       this.replayPick = pickReplay(v.life.run, this.replayPick, by);
       return null;
     }
+    if (row === "runs") {
+      this.runPick = pickRun(v.runs, this.runPick, by);
+      return null;
+    }
     const settings = adjust(row, by, v.life.run, v.settings);
     return settings ? { type: "configure", settings } : null;
   }
@@ -236,12 +243,15 @@ export class Menu {
       case "signout": return { type: "signOut" };
       default:
         if (!confirms(row)) return null;
+        const back = row === "runs" ? pickedRun(v.runs, this.runPick) : null;
+        if (row === "runs" && !back) return null;
         if (!confirmed) {
           this.confirm = true;
           return null;
         }
         {
-          const command: Command = row === "replay" ? { type: "replay", run: this.replayPick ?? v.life.run.run } : { type: "restart" };
+          const command: Command = row === "replay" ? { type: "replay", run: this.replayPick ?? v.life.run.run }
+            : back ? { type: "resume", run: back.run_id } : { type: "restart" };
           this.reset();
           return { type: "command", command };
         }

@@ -56,7 +56,10 @@ import kotlin.time.Duration
  * key-and-door room solved, or the bedroom's [RunSettings.days] lived) and then stays ended,
  * unless [configure] gives it more days. [restart] throws the run away and sets up a blank one
  * with the current [settings], which again waits for [start]; [replay] does the same with the
- * settings an earlier run started with.
+ * settings an earlier run started with; [resume] carries a recorded run on instead. A run that's
+ * thrown away is only left: with a run database it's kept, saved as it was when it was left if
+ * that's a moment that can be saved, else at its last decision point ([LifeRecorder.checkpointNow]),
+ * and [resume] goes back to it.
  *
  * Ticks from whichever thread calls [update] (the render thread in the app, a life's actor on the
  * sim host), as fast as [settings] say, holding the clock while a slow decision is out
@@ -203,6 +206,13 @@ class SimSession(
     var resumeError: String? = null
         private set
 
+    /** The run row as it was before this run carried it on (how it was left), or null for a fresh run. */
+    var carriedFrom: RunRow? = null
+        private set
+
+    /** This run was carried on from one that was running when its process shut down ([dispose]). */
+    val wasRunning: Boolean get() = carriedFrom?.endReason == SHUT_DOWN_RUNNING
+
     init {
         sync?.start(scope)
         val carried = db?.let { d -> d.resume?.let { id -> runCatching { carried(d.store, id) }.onFailure { resumeError = it.message }.getOrNull() } }
@@ -215,9 +225,11 @@ class SimSession(
      */
     fun resume(id: String): Boolean {
         val d = db ?: run { resumeError = "no run database to resume from"; return false }
+        // Saved first, so going back to this very run (or "latest") carries on from now.
+        runCatching { life?.checkpointNow(LEFT) }
         val carried = runCatching { carried(d.store, id) }.onFailure { resumeError = it.message ?: it.toString() }.getOrNull() ?: return false
         resumeError = null
-        tearDown()
+        tearDown(LEFT)
         setUp(carried)
         return true
     }
@@ -244,7 +256,7 @@ class SimSession(
 
     /** Throws this run away and sets up a fresh one with [settings], which waits for [start]. */
     fun restart() {
-        tearDown()
+        tearDown(LEFT)
         setUp()
     }
 
@@ -307,11 +319,18 @@ class SimSession(
         }
     }
 
-    fun dispose() = tearDown()
+    /** The process is going: the run is left, and says whether it was running so a resume can start it again ([wasRunning]). */
+    fun dispose() = tearDown(if (state == RunState.Running) SHUT_DOWN_RUNNING else SHUT_DOWN)
 
     private fun setUp(carried: Carried? = null) {
         run++
-        if (carried != null) settings = settings.copy(ticksPerMinute = carried.run.ticksPerMinute)
+        if (carried != null) {
+            settings = settings.copy(ticksPerMinute = carried.run.ticksPerMinute)
+            // A run carried on from past its days gets the day it's in.
+            val day = (carried.resume.checkpoint.tick / (GameClock.MINUTES_PER_DAY.toLong() * carried.run.ticksPerMinute)).toInt() + 1
+            settings.days?.let { if (it < day) settings = settings.copy(days = day) }
+        }
+        carriedFrom = carried?.run
         starts += settings
         val thisRun = run
         val ledger = TokenLedger()
@@ -403,7 +422,12 @@ class SimSession(
             )
             l.begin(runRow, SessionRow(l.sessionId, runId, carried?.resume?.checkpoint?.id, d.gitSha, d.gitDirty, content?.hash, d.platform, d.host, Ids.now()), content)
             ledger.record(l)
-            if (gw is BedroomWorld) l.attach(gw, r, memory, memStore) else l.attachClock(null)
+            if (gw is BedroomWorld) {
+                l.attach(gw, r, memory, memStore)
+                if (carried == null) l.saveStart()
+            } else {
+                l.attachClock(null)
+            }
         }
         life = lr
         recorder = rec
@@ -430,10 +454,10 @@ class SimSession(
         waitTicks = 0
     }
 
-    private fun tearDown() {
+    private fun tearDown(reason: String) {
         life?.let { l ->
-            runCatching { l.checkpointNow("shutdown") }
-            l.end(endedBecause ?: "stopped")
+            if (state != RunState.Ended) runCatching { l.checkpointNow(LEFT) }
+            l.end(endedBecause ?: reason)
         }
         recorder?.let { r ->
             runCatching { runBlocking { withTimeoutOrNull(2.seconds) { r.flush() } } }
@@ -517,11 +541,21 @@ class SimSession(
         }
     }
 
-    private companion object {
+    companion object {
+        /** A run's end reason when it was left for another (restart, replay, resume). */
+        const val LEFT = "left"
+        /** ... when its process shut down with it paused or not yet started, */
+        const val SHUT_DOWN = "shut down"
+        /** ... and with it running. */
+        const val SHUT_DOWN_RUNNING = "shut down while running"
+
+        /** [reason] is one a run was left with, not one it ended on by itself (its days lived, the room solved). */
+        fun left(reason: String?): Boolean = reason == null || reason in setOf(LEFT, SHUT_DOWN, SHUT_DOWN_RUNNING, "stopped", "restarted")
+
         /** Don't try to catch up more than this after a stall (a GC, the app in the background). */
-        const val MAX_FRAME = 0.25f
+        private const val MAX_FRAME = 0.25f
         /** Ticks at decision points: more than a slow decision spans at a fast speed with the clock running. */
-        const val MAX_RECENT = 5000
-        const val MAX_MOMENTS = 5000
+        private const val MAX_RECENT = 5000
+        private const val MAX_MOMENTS = 5000
     }
 }

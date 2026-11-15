@@ -49,7 +49,7 @@ test: ## Run all JVM unit tests
 NODE_IMAGE := node:22-alpine
 
 .PHONY: host
-host: web-if-possible ## Run the sim host, the web renderer at /room/ (ENDPOINT=<name>, else the scripted policy; PAINTER=<s> paints with random picks; START=0 waits for a start command; PORT=8790; DAYS=<n>; RESUME=<run id|latest>)
+host: web-if-possible ## Run the sim host, the web renderer at /room/ (ENDPOINT=<name>, else the scripted policy; PAINTER=<s> paints with random picks; START=0 waits for a start command; PORT=8790; DAYS=<n>; RESUME=<run id|none>, unset carries on the run it was last on)
 	LILGUY_ENDPOINT=$(ENDPOINT) LILGUY_MEMORY_ENDPOINT=$(MEMORY_ENDPOINT) LILGUY_WRITER_ENDPOINT=$(WRITER_ENDPOINT) LILGUY_RECALL_ENDPOINT=$(RECALL_ENDPOINT) LILGUY_PAINTER=$(PAINTER) LILGUY_AUTOSTART=$(or $(START),1) LILGUY_HOST_PORT=$(PORT) LILGUY_DAYS=$(DAYS) LILGUY_RESUME=$(RESUME) $(GRADLE) -q :host:run
 
 .PHONY: protocol-types

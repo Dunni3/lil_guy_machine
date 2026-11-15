@@ -22,7 +22,8 @@ make cli         # headless runner (ARGS="--scenario bedroom --days 3 --endpoint
                  # --affinities calm=2,loud=-1 / --curiosity 1.5 for another personality
 make server-up   # local Postgres + the ingest API (token "dev"); make server-test, server-psql
 make host        # the sim host: a life in real time, its state over WebSocket, debug page at
-                 # http://127.0.0.1:8790/ (scripted unless ENDPOINT=; PAINTER=2 paints; commands need LILGUY_ADMIN_PASSWORD, see host/README.md)
+                 # http://127.0.0.1:8790/ (scripted unless ENDPOINT=; PAINTER=2 paints; commands need LILGUY_ADMIN_PASSWORD, see host/README.md;
+                 # it carries on the run it was last on, RESUME=none for a fresh one)
 make protocol-types  # protocol JSON Schema + TypeScript from :protocol (make test fails when stale)
 make web-build   # the web renderer into web/dist, in a Node container; make host does it when stale and serves it at /room/
 make web-dev     # the same with live reload at http://localhost:5173/, against a make host; make web-test for its test
@@ -117,7 +118,8 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   `LILGUY_SYNC_URL`, `LILGUY_SYNC_TOKEN`). Drivers: `runlog-jdbc/` (JVM), `android/.../AndroidSqlDriver.kt` (TV).
   `agent/.../LifeRecorder.kt` turns a run into rows (decisions with outcomes, model calls with prompts via
   `TokenLedger.record`, ledger, needs, hourly state, authored ops, art) and takes the morning checkpoint around each
-  tick (`beforeStep`/`afterStep`; `AgentRuntime.hold`); saves are `BedroomWorld.exportState`/`restore`
+  tick (`beforeStep`/`afterStep`; `AgentRuntime.hold`), plus each session's rolling save (one row rewritten at decision
+  points every 10 game minutes, and when the run is left; `docs/decisions/2026-11-15-runs-are-kept-*`); saves are `BedroomWorld.exportState`/`restore`
   (`sim/.../BedroomState.kt`) plus `AgentState`. CLI: `cli/.../RunDb.kt`, `Importer.kt`. App: `RunDatabase.kt`,
   `SimSession`. Server: `server/` (FastAPI ingest and query only, in `app/main.py`; numbered migrations in `sql/migrations/`, compose, `deploy/`
   for its own Lightsail Small box; see `server/README.md`; `server/host/` is the sim host's image, on its own subdomain,

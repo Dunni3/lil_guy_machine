@@ -4,6 +4,7 @@ import dev.lilguy.agent.BedroomPolicy
 import dev.lilguy.agent.live.ModelSetup
 import dev.lilguy.agent.live.RunDatabase
 import dev.lilguy.decision.RandomPicker
+import dev.lilguy.runlog.RunStore
 import dev.lilguy.runlog.SyncTarget
 import dev.lilguy.runlog.SyncWorker
 import dev.lilguy.runlog.jdbc.JdbcSqlDriver
@@ -30,8 +31,10 @@ import kotlin.time.Duration.Companion.seconds
  *   the desktop; unset, the scripted policy runs and nothing calls a model;
  * - `LILGUY_PAINTER=<seconds>` draws his art with random picks at that latency, so he paints with no endpoint;
  * - `LILGUY_START_ITEMS` and `LILGUY_SCRIPT`, as for the desktop's screenshots: what he starts with, and verbs the scripted policy does first;
- * - `LILGUY_DAYS` (0 for no end), `LILGUY_AUTOSTART=1` to start the first run at once;
- * - `LILGUY_DB` (runs/lilguy.db; "none" for off), `LILGUY_RESUME` (a run id or "latest"), and
+ * - `LILGUY_DAYS` (0 for no end), `LILGUY_AUTOSTART=1` to start the first run at once (a run carried on that was
+ *   running when the host stopped starts again without it);
+ * - `LILGUY_DB` (runs/lilguy.db; "none" for off), `LILGUY_RESUME`: a run id, or "none" for a fresh run; unset or "latest",
+ *   the host carries on the run it was last on (the host's run played most recently), or starts fresh when there's none; and
  *   `LILGUY_SYNC_URL` / `LILGUY_SYNC_TOKEN` to sync the store to the server, one worker for the process.
  */
 fun main() {
@@ -63,7 +66,7 @@ fun main() {
     val store = (get("LILGUY_DB") ?: "runs/lilguy.db").takeIf { it != "none" }?.let { JdbcSqlDriver.store(File(it)) }
     // One sync worker for the whole process; the sessions record but don't sync.
     val (gitSha, gitDirty) = gitVersion()
-    val db = store?.let { RunDatabase(it, sync = null, platform = "host", host = hostName, gitSha = gitSha, gitDirty = gitDirty, resume = get("LILGUY_RESUME")) }
+    val db = store?.let { RunDatabase(it, sync = null, platform = PLATFORM, host = hostName, gitSha = gitSha, gitDirty = gitDirty, resume = resumeId(it, get("LILGUY_RESUME"))) }
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val sync = store?.let { s -> SyncTarget.fromEnv(env)?.let { SyncWorker(s, it, client = "host@${hostName ?: "?"}") } }
     sync?.start(scope)
@@ -86,6 +89,19 @@ fun main() {
         if (sync != null) runBlocking { withTimeoutOrNull(10.seconds) { sync.syncAll() } }
     })
     embeddedServer(CIO, port = port, host = bind) { host(mapOf(life.id to life), auth) }.start(wait = true)
+}
+
+private const val PLATFORM = "host"
+
+/**
+ * Which run the life starts on: [asked] as given when it's an id; for "latest" or unset, the bedroom run this host
+ * played most recently, so a deploy or restart carries the life on where it was. Null for a fresh run: "none", or when
+ * that run has no save (never an older run instead).
+ */
+private fun resumeId(store: RunStore, asked: String?): String? = when (asked) {
+    "none" -> null
+    null, "latest" -> store.played(50).firstOrNull { it.platform == PLATFORM && it.scenario == "bedroom" }?.id?.takeIf { store.latestSave(it) != null }
+    else -> asked
 }
 
 /**

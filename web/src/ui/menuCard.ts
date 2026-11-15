@@ -367,7 +367,7 @@ function hintFor(menu: Menu, v: PageView, mouse: boolean): string {
   if (menu.tab === "run") {
     const row = menu.runRow(v);
     if (row === "play") return `OK ${value(row, v.life, v.settings, menu.replayPick).split(":")[0]} · UP/DOWN pick · LEFT/RIGHT tabs · BACK closes`;
-    if (adjustable(row) && isAction(row)) return "LEFT/RIGHT pick the run · OK replays · UP/DOWN pick · BACK closes";
+    if (adjustable(row) && isAction(row)) return `LEFT/RIGHT pick the run · OK ${row === "runs" ? "goes back to it" : "replays"} · UP/DOWN pick · BACK closes`;
     if (isAction(row)) return `OK ${row === "signin" ? "(Enter) signs in" : row === "signout" ? "signs out" : row} · UP/DOWN pick · LEFT/RIGHT tabs · BACK closes`;
     return "LEFT/RIGHT change it · UP/DOWN pick · BACK closes (Run row: LEFT/RIGHT tabs)";
   }
