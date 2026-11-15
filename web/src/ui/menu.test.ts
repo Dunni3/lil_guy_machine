@@ -21,7 +21,7 @@ test("viewers get the pages and a sign-in but no run controls; the admin's keys 
   const self = { who: "a small painter", cares: "colour", believes: "", working_toward: "a record player", learned: "" };
   const logs = {
     ...host.logs,
-    thoughts: [{ seq: 1, tick: 9, day: 1, time: "09:00", thinker: "w", text: "Blue again?", error: null, asked: [{ question: "Q", opened: ["paint"], answer: null }] }],
+    thoughts: [{ seq: 1, tick: 9, day: 1, time: "09:00", thinker: "w", text: "Blue again?", error: null, asked: [{ question: "Q", opened: ["paint"], answer: null }], reflection: false }],
     memories: [{ seq: 1, level: 2, span: "day 1", from_day: 1, to_day: 1, text: "A day.", importance: 0.5 }],
     revisions: [{ seq: 1, day: 1, changed: true, note: "more blue", self, error: null }, { seq: 2, day: 2, changed: false, note: null, self: null, error: "timeout" }],
     trips: [{ seq: 1, tick: 9, day: 1, time: "09:00", shopper: "w", catalog: ["- easel (Easel), $17, paints"], buy: [{ item: "easel", why: "to paint" }], save_for: null, chose_saving: true, note: null, error: null, fell_back: null }],
