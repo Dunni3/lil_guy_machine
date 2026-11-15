@@ -46,6 +46,7 @@ export class StreamState {
       run: d.run ?? s.run,
       fast: d.fast ?? s.fast,
       things: d.things ?? s.things,
+      world: d.world ?? s.world,
       easel: d.easel ?? s.easel,
       wallet: d.wallet ?? s.wallet,
       growth: d.growth ?? s.growth,
