@@ -35,10 +35,10 @@ export class CameraRig {
     this.up.copy(ISO).cross(this.right).normalize();
   }
 
-  /** The room spans [x0, x1] by [z0, z1] on the floor, its walls [height] tall. */
-  frame(x0: number, z0: number, x1: number, z1: number, height: number) {
+  /** What's framed spans [x0, x1] by [z0, z1] on the ground, [height] tall; with [ease], the camera moves over to it rather than jumping. */
+  frame(x0: number, z0: number, x1: number, z1: number, height: number, ease = false) {
     this.box = [x0, z0, x1, z1, height];
-    this.placed = false;
+    if (!ease) this.placed = false;
   }
 
   /** Moves [camera] on by [delta] seconds toward its mode's framing, with him at ([x], [z]), for a screen [aspect] wide. */

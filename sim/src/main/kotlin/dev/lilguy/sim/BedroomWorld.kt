@@ -38,15 +38,14 @@ import kotlin.random.Random
  * successes ease it ([FrustrationRules]).
  */
 class BedroomWorld private constructor(
-    map: TileMap,
+    /** The house on its land: the map, the places on it, where each slot is. */
+    val layout: Layout,
     guy: Character,
     startContent: BedroomContent,
     val clock: GameClock,
-    /** Slot name to its tile. */
-    private val slotCells: Map<String, Cell>,
     /** Picks the commissions. */
     private val seed: Long,
-) : GridWorld(map, guy) {
+) : GridWorld(layout.map, guy) {
     /** Everything he can own and do. It grows when he invents something ([inventions]); swapped only on the sim thread. */
     @Volatile var content: BedroomContent = startContent
         private set
@@ -342,7 +341,7 @@ class BedroomWorld private constructor(
     /** Owned items that sit in a slot, with their tiles. */
     private fun placed(): List<Pair<ItemSpec, Cell>> = owned.keys.mapNotNull { id ->
         val spec = item(id)
-        spec.slot?.let { spec to slotCells.getValue(it) }
+        spec.slot?.let { spec to layout.slotCells.getValue(it) }
     }
 
     /** What [spec] adds to comfort while it sits in its slot: its value to him, in view. Items without a slot are out of sight. */
@@ -620,8 +619,9 @@ class BedroomWorld private constructor(
     private fun goalOf(target: Target): Cell = when (target) {
         is Target.Tile -> {
             val cell = Cell(target.x, target.y)
-            if (!map.inBounds(cell.x, cell.y)) reject("(${cell.x}, ${cell.y}) is outside the room")
-            if (!passable(cell.x, cell.y)) reject("(${cell.x}, ${cell.y}) is a wall or furniture")
+            if (!map.inBounds(cell.x, cell.y)) reject("(${cell.x}, ${cell.y}) is off the map")
+            if (map[cell.x, cell.y] == Terrain.Void) reject("(${cell.x}, ${cell.y}) is off the land")
+            if (!passable(cell.x, cell.y)) reject("(${cell.x}, ${cell.y}) is a wall, water, a tree or furniture")
             cell
         }
         is Target.Entity -> {
@@ -1071,7 +1071,8 @@ class BedroomWorld private constructor(
         version++
         options = null
         syncHolding()
-        restoreGrid(s.grid)
+        // Before version 2 the bedroom was the whole map: his position moves with the room onto the lot.
+        restoreGrid(if (s.version >= 2) s.grid else s.grid.copy(x = s.grid.x + layout.roomOrigin.x, y = s.grid.y + layout.roomOrigin.y))
         return dropped
     }
 
@@ -1201,10 +1202,10 @@ class BedroomWorld private constructor(
 
     override fun publish(): Published {
         val entities = buildList {
-            add(EntitySnapshot(guy.id, "guy", guy.x, guy.y, 1f, guy.facing.degrees))
+            add(EntitySnapshot(guy.id, "guy", guy.x, guy.y, 1f, guy.facing.degrees, place = layout.placeOf(guy.x, guy.y)?.id))
             placed().forEach { (spec, cell) ->
                 val state = if (spec.id == music?.on) "playing ${music!!.itemId}" else null
-                add(EntitySnapshot(EntityId(spec.id), spec.group, cell.x + 0.5f, cell.y + 0.5f, if (spec.blocks) 1f else 0.2f, 0f, state))
+                add(EntitySnapshot(EntityId(spec.id), spec.group, cell.x + 0.5f, cell.y + 0.5f, if (spec.blocks) 1f else 0.2f, 0f, state, place = layout.placeOf(cell)?.id))
             }
         }
         val d = doing
@@ -1233,7 +1234,7 @@ class BedroomWorld private constructor(
             verbs = current.verbs,
             done = done,
         )
-        val snapshot = WorldSnapshot(ticks, map, entities, listOf(agentSnapshot()), eventLog(), life = life)
+        val snapshot = WorldSnapshot(ticks, map, entities, listOf(agentSnapshot()), eventLog(), life = life, layout = layout)
         return Published(snapshot, observe(entities))
     }
 
@@ -1248,7 +1249,8 @@ class BedroomWorld private constructor(
             tick = ticks,
             self = SelfState(guy.id, round(guy.x, 2), round(guy.y, 2), guy.facing, guy.inventory.toList()),
             nearby = nearby,
-            localMap = roomMap(),
+            localMap = roomMap().second,
+            localMapAt = roomMap().first.takeIf { layout.outdoors }?.let { Cell(it.x0, it.y0) },
             lastIntent = last?.intent,
             lastResult = last?.status,
             recentEvents = recentEvents(),
@@ -1326,26 +1328,38 @@ class BedroomWorld private constructor(
         }
     }
 
-    /** The whole room, one string per row, with owned furniture as its slot letter; legend in [mapLegend]. */
-    private var mapCache: Pair<Pair<Int, Cell>, List<String>>? = null
+    /**
+     * The map around him, one string per row, with owned furniture as its slot letter (legend in
+     * [mapLegend]): the whole room he's in, or outdoors a window of the land around him. Its top-left
+     * tile is [mapRect]'s.
+     */
+    private var mapCache: Pair<Pair<Int, Cell>, Pair<Rect, List<String>>>? = null
 
-    private fun roomMap(): List<String> {
+    private fun roomMap(): Pair<Rect, List<String>> {
         val key = version to guy.cell
         mapCache?.let { if (it.first == key) return it.second }
         return drawRoomMap().also { mapCache = key to it }
     }
 
-    private fun drawRoomMap(): List<String> {
+    private fun mapRect(): Rect {
+        val here = layout.placeOf(guy.cell)
+        if (here?.kind == PlaceKind.Room) return here.bounds
+        val c = guy.cell
+        return Rect(maxOf(0, c.x - OUTDOOR_MAP / 2), maxOf(0, c.y - OUTDOOR_MAP / 3), minOf(map.width - 1, c.x + OUTDOOR_MAP / 2), minOf(map.height - 1, c.y + OUTDOOR_MAP / 3))
+    }
+
+    private fun drawRoomMap(): Pair<Rect, List<String>> {
+        val rect = mapRect()
         val letters = placed().associate { (spec, cell) -> cell to letterOf(spec.slot!!) }
-        return (0 until map.height).map { y ->
+        return rect to (rect.y0..rect.y1).map { y ->
             buildString {
-                for (x in 0 until map.width) {
+                for (x in rect.x0..rect.x1) {
                     val cell = Cell(x, y)
                     append(
                         when {
                             cell == guy.cell -> '@'
                             cell in letters -> letters.getValue(cell)
-                            else -> when (map[x, y]) { Terrain.Floor -> '.'; Terrain.Wall -> '#'; Terrain.Void -> ' ' }
+                            else -> layout.rows[y][x]
                         },
                     )
                 }
@@ -1357,13 +1371,15 @@ class BedroomWorld private constructor(
 
     /** "@ you, # wall, . floor, b bed, ..." */
     val mapLegend: String
-        get() = "@ you, # wall, . floor, " + content.room.slots.entries.mapNotNull { (letter, slot) ->
+        get() = "@ you, # wall, . floor, " + (if (layout.outdoors) "+ doorway, , grass, = path, : bare ground, * flowers, ~ water, T tree, " else "") + content.room.slots.entries.mapNotNull { (letter, slot) ->
             val spec = content.items.firstOrNull { it.slot == slot }
             // A spare spot is nothing until something he invented stands in it.
             if (spec == null && slot in content.room.spots.let { it.floor + it.wall }) null else "$letter ${spec?.name ?: slot}"
         }.joinToString() + " (furniture shows only once you own it)"
 
     companion object {
+        /** How many tiles across the map of the land round him is, outdoors. */
+        private const val OUTDOOR_MAP = 16
         /** The prefix of a drawn subject in [tried]. */
         private const val SUBJECT = "subject:"
         private const val SNAPSHOT_TRANSACTIONS = 8
@@ -1404,7 +1420,7 @@ class BedroomWorld private constructor(
             seed: Long = 0,
             strict: Boolean = false,
         ): Restored {
-            require(state.version == BedroomState.VERSION) { "checkpoint is version ${state.version}; this build reads ${BedroomState.VERSION}" }
+            require(state.version in 1..BedroomState.VERSION) { "checkpoint is version ${state.version}; this build reads 1 to ${BedroomState.VERSION}" }
             val world = create(content, ticksPerMinute, characterId, granted, seed)
             val dropped = world.load(state)
             require(!strict || dropped.isEmpty()) { "checkpoint doesn't match the content: ${dropped.joinToString("; ")}" }
@@ -1412,32 +1428,10 @@ class BedroomWorld private constructor(
         }
 
         private fun build(content: BedroomContent, ticksPerMinute: Int, characterId: String, seed: Long): BedroomWorld {
-            val rows = content.room.rows
-            require(rows.isNotEmpty() && rows.all { it.length == rows[0].length }) { "room rows must all be the same length" }
-            val height = rows.size
-            val width = rows[0].length
-            var guy: Character? = null
-            val slotCells = mutableMapOf<String, Cell>()
-            val terrain = Array(width * height) { i ->
-                val x = i % width
-                val y = i / width
-                when (val c = rows[y][x]) {
-                    '#' -> Terrain.Wall
-                    ' ' -> Terrain.Void
-                    '.' -> Terrain.Floor
-                    '@' -> Terrain.Floor.also { guy = Character(EntityId(characterId), x + 0.5f, y + 0.5f) }
-                    else -> {
-                        val slot = content.room.slots[c.toString()] ?: error("unknown room tile '$c' at ($x, $y)")
-                        require(slot !in slotCells) { "slot '$slot' appears twice in the room" }
-                        slotCells[slot] = Cell(x, y)
-                        if (slot in content.room.wallSlots) Terrain.Wall else Terrain.Floor
-                    }
-                }
-            }
-            val missing = content.room.slots.values.toSet() - slotCells.keys
-            require(missing.isEmpty()) { "slots $missing aren't in the room" }
+            val layout = Layout.of(content)
+            val guy = Character(EntityId(characterId), layout.start.x + 0.5f, layout.start.y + 0.5f)
             val clock = GameClock(ticksPerMinute, GameClock.parseHhmm(content.start.time))
-            return BedroomWorld(TileMap(width, height, terrain), guy ?: error("room has no '@'"), content, clock, slotCells, seed)
+            return BedroomWorld(layout, guy, content, clock, seed)
         }
     }
 }

@@ -96,6 +96,7 @@ data class BedroomState(
     )
 
     companion object {
-        const val VERSION = 1
+        /** 2: positions are on the whole map (the lot), no longer the bedroom's own rows. */
+        const val VERSION = 2
     }
 }

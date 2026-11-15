@@ -9,7 +9,7 @@ import kotlinx.serialization.json.Json
  * which version it speaks when it joins (`?v=`); the host refuses a different one ([Refused])
  * rather than send it deltas it can't apply.
  */
-const val PROTOCOL_VERSION = 2
+const val PROTOCOL_VERSION = 3
 
 /**
  * The JSON every message travels as. Every property is always written, nulls and defaults
@@ -66,16 +66,12 @@ data class Refused(val version: Int, val reason: String) : ServerMessage
 data class Content(
     val hash: String,
     val scenario: String,
-    val map: MapView,
     /** Everything the shop could sell, in file order; what changes (owned, affordable) is in [ShopState]. */
     val catalog: List<CatalogItem>,
     /** Every verb in the content, in file order. */
     val verbs: List<VerbInfo>,
 ) : ServerMessage
 
-/** The room's terrain, one string per row: `#` wall, `.` floor, space for outside. Tile (x, y) spans [x, x+1) by [y, y+1). */
-@Serializable
-data class MapView(val width: Int, val height: Int, val rows: List<String>)
 
 @Serializable
 data class CatalogItem(val id: String, val name: String, val group: String, val price: Int, val pack: Int, val stackable: Boolean)
@@ -102,6 +98,7 @@ data class Delta(
     val run: RunInfo? = null,
     val fast: FastState? = null,
     val things: Things? = null,
+    val world: WorldView? = null,
     val easel: Easel? = null,
     val wallet: Wallet? = null,
     val growth: Growth? = null,

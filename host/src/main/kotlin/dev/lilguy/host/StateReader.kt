@@ -33,7 +33,10 @@ import dev.lilguy.protocol.Growth
 import dev.lilguy.protocol.IntentView
 import dev.lilguy.protocol.LifeState
 import dev.lilguy.protocol.Logs
-import dev.lilguy.protocol.MapView
+import dev.lilguy.protocol.DoorView
+import dev.lilguy.protocol.PlaceView
+import dev.lilguy.protocol.RectView
+import dev.lilguy.protocol.WorldView
 import dev.lilguy.protocol.MemoryView
 import dev.lilguy.protocol.Mind
 import dev.lilguy.protocol.Models
@@ -63,6 +66,7 @@ import dev.lilguy.protocol.Wire
 import dev.lilguy.sim.EntitySnapshot
 import dev.lilguy.sim.Intent
 import dev.lilguy.sim.IntentStatus
+import dev.lilguy.sim.Rect
 import dev.lilguy.sim.Terrain
 import dev.lilguy.sim.WorldSnapshot
 import java.security.MessageDigest
@@ -93,7 +97,6 @@ class StateReader(private val dbEvery: Duration = 1.seconds) {
         val partial = Content(
             hash = "",
             scenario = s.setup.scenario.id,
-            map = map(now),
             catalog = life?.catalog.orEmpty().map { CatalogItem(it.id, it.name, it.group, it.price, it.pack, it.stackable) },
             verbs = life?.verbs.orEmpty().map { VerbInfo(it.id, it.phrase) },
         )
@@ -112,6 +115,7 @@ class StateReader(private val dbEvery: Duration = 1.seconds) {
             run = run(s),
             fast = fast(s, now),
             things = Things(now.entities.filter { !it.isCharacter }.map(::entity)),
+            world = world(now),
             easel = easel(s),
             wallet = now.life?.let { Wallet(it.money, it.holding, it.owns) } ?: Wallet(0, emptyList(), emptyMap()),
             growth = now.life?.let { l ->
@@ -202,7 +206,23 @@ class StateReader(private val dbEvery: Duration = 1.seconds) {
 
     private val EntitySnapshot.isCharacter get() = kind == "guy"
 
-    private fun entity(e: EntitySnapshot) = Entity(e.id.value, e.kind, e.x, e.y, e.height, e.facingDegrees, e.state, e.carriedBy?.value)
+    private fun entity(e: EntitySnapshot) = Entity(e.id.value, e.kind, e.x, e.y, e.height, e.facingDegrees, e.state, e.carriedBy?.value, e.place)
+
+    /** The map and its places: the layout's, kept while it's the same one; key-and-door's terrain alone. */
+    private var worldFrom: Pair<Any, WorldView>? = null
+
+    private fun world(now: WorldSnapshot): WorldView {
+        val key: Any = now.layout ?: now.map
+        worldFrom?.let { if (it.first === key) return it.second }
+        val l = now.layout
+        val view = if (l == null) map(now) else WorldView(
+            l.map.width, l.map.height, l.rows,
+            l.places.map { p -> PlaceView(p.id, p.name, p.kind.name.lowercase(), p.rects.map(::rect), rect(p.bounds)) },
+            l.doors.map { DoorView(it.id, it.cell.x, it.cell.y, it.inside, it.outside) },
+        )
+        worldFrom = key to view
+        return view
+    }
 
     private fun easel(s: SimSession): Easel {
         val show = s.show
@@ -330,7 +350,9 @@ class StateReader(private val dbEvery: Duration = 1.seconds) {
 
         private fun totals(t: dev.lilguy.agent.TokenTotals) = TokenTotals(t.decides, t.calls, t.promptTokens, t.completionTokens, t.latencyMs, t.costUsd)
 
-        private fun map(now: WorldSnapshot): MapView {
+        private fun rect(r: Rect) = RectView(r.x0, r.y0, r.x1, r.y1)
+
+        private fun map(now: WorldSnapshot): WorldView {
             val m = now.map
             val rows = (0 until m.height).map { y ->
                 String(CharArray(m.width) { x ->
@@ -341,7 +363,7 @@ class StateReader(private val dbEvery: Duration = 1.seconds) {
                     }
                 })
             }
-            return MapView(m.width, m.height, rows)
+            return WorldView(m.width, m.height, rows, emptyList(), emptyList())
         }
 
         private fun sha256(text: String) = MessageDigest.getInstance("SHA-256").digest(text.toByteArray()).joinToString("") { "%02x".format(it) }

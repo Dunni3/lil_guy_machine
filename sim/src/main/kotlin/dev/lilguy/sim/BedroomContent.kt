@@ -58,6 +58,8 @@ data class BedroomContent(
     val menu: List<MenuNode> = emptyList(),
     /** What he may invent at the workbench and what it costs; null and he can't. */
     val invent: InventRules? = null,
+    /** The land around the house and its places; null and the bedroom is the whole map. */
+    val world: WorldContent? = null,
 ) {
     @Transient private val byId = items.associateBy { it.id }
 
@@ -128,6 +130,7 @@ data class BedroomContent(
             "verbs" to listOf("verbs"),
             "library" to listOf("books"),
             "menu" to listOf("menu"),
+            "world" to listOf("world"),
         )
 
         /** Content from [files], file name (no extension) to its text. Each file may hold only its own keys ([FILES]). */
@@ -144,8 +147,8 @@ data class BedroomContent(
             return yaml.decodeFromYamlNode(serializer(), YamlMap(entries, YamlPath.root)).also { it.validate() }
         }
 
-        /** Content from a directory of the [FILES]. */
-        fun load(dir: File): BedroomContent = parse(FILES.keys.associateWith { File(dir, "$it.yaml").readText() })
+        /** Content from a directory of the [FILES]; `world.yaml` may be left out, for a bedroom with no land around it. */
+        fun load(dir: File): BedroomContent = parse(FILES.keys.filter { it != "world" || File(dir, "$it.yaml").exists() }.associateWith { File(dir, "$it.yaml").readText() })
 
         /** The content shipped with the sim. */
         fun default(): BedroomContent = parse(defaultFiles())
@@ -159,6 +162,7 @@ data class BedroomContent(
     }
 
     private fun validate() {
+        world?.problems(room)?.firstOrNull()?.let { throw IllegalArgumentException(it) }
         val ids = items.map { it.id }
         require(ids.size == ids.toSet().size) { "item ids must be unique: ${ids.groupBy { it }.filterValues { it.size > 1 }.keys}" }
         val tags = items.flatMap { it.names }.toSet()

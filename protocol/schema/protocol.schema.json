@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "title": "Protocol",
     "description": "The lil guy machine sim host's wire format. Generated from protocol/.../*.kt; don't edit.",
-    "x-protocol-version": 2,
+    "x-protocol-version": 3,
     "type": "object",
     "properties": {
         "server": {
@@ -414,9 +414,6 @@
                 "scenario": {
                     "type": "string"
                 },
-                "map": {
-                    "$ref": "#/$defs/MapView"
-                },
                 "catalog": {
                     "type": "array",
                     "items": {
@@ -434,7 +431,6 @@
                 "type",
                 "hash",
                 "scenario",
-                "map",
                 "catalog",
                 "verbs"
             ],
@@ -531,6 +527,16 @@
                         }
                     ]
                 },
+                "world": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/WorldView"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
                 "easel": {
                     "anyOf": [
                         {
@@ -619,6 +625,7 @@
                 "run",
                 "fast",
                 "things",
+                "world",
                 "easel",
                 "wallet",
                 "growth",
@@ -627,6 +634,42 @@
                 "mind",
                 "tokens",
                 "logs"
+            ],
+            "additionalProperties": false
+        },
+        "DoorView": {
+            "title": "DoorView",
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "x": {
+                    "type": "integer"
+                },
+                "y": {
+                    "type": "integer"
+                },
+                "inside": {
+                    "type": "string"
+                },
+                "outside": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "id",
+                "x",
+                "y",
+                "inside",
+                "outside"
             ],
             "additionalProperties": false
         },
@@ -819,6 +862,16 @@
                             "type": "null"
                         }
                     ]
+                },
+                "place": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
                 }
             },
             "required": [
@@ -829,7 +882,8 @@
                 "height",
                 "facing_degrees",
                 "state",
-                "carried_by"
+                "carried_by",
+                "place"
             ],
             "additionalProperties": false
         },
@@ -1154,6 +1208,9 @@
                 "things": {
                     "$ref": "#/$defs/Things"
                 },
+                "world": {
+                    "$ref": "#/$defs/WorldView"
+                },
                 "easel": {
                     "$ref": "#/$defs/Easel"
                 },
@@ -1186,6 +1243,7 @@
                 "run",
                 "fast",
                 "things",
+                "world",
                 "easel",
                 "wallet",
                 "growth",
@@ -1337,30 +1395,6 @@
                 "rot_y",
                 "rot_z",
                 "color"
-            ],
-            "additionalProperties": false
-        },
-        "MapView": {
-            "title": "MapView",
-            "type": "object",
-            "properties": {
-                "width": {
-                    "type": "integer"
-                },
-                "height": {
-                    "type": "integer"
-                },
-                "rows": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                }
-            },
-            "required": [
-                "width",
-                "height",
-                "rows"
             ],
             "additionalProperties": false
         },
@@ -1658,6 +1692,63 @@
                 "hung",
                 "sells_for",
                 "commission"
+            ],
+            "additionalProperties": false
+        },
+        "PlaceView": {
+            "title": "PlaceView",
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "rects": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/RectView"
+                    }
+                },
+                "bounds": {
+                    "$ref": "#/$defs/RectView"
+                }
+            },
+            "required": [
+                "id",
+                "name",
+                "kind",
+                "rects",
+                "bounds"
+            ],
+            "additionalProperties": false
+        },
+        "RectView": {
+            "title": "RectView",
+            "type": "object",
+            "properties": {
+                "x0": {
+                    "type": "integer"
+                },
+                "y0": {
+                    "type": "integer"
+                },
+                "x1": {
+                    "type": "integer"
+                },
+                "y1": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "x0",
+                "y0",
+                "x1",
+                "y1"
             ],
             "additionalProperties": false
         },
@@ -2750,6 +2841,44 @@
                 "version",
                 "lives",
                 "caps"
+            ],
+            "additionalProperties": false
+        },
+        "WorldView": {
+            "title": "WorldView",
+            "type": "object",
+            "properties": {
+                "width": {
+                    "type": "integer"
+                },
+                "height": {
+                    "type": "integer"
+                },
+                "rows": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "places": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/PlaceView"
+                    }
+                },
+                "doors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/DoorView"
+                    }
+                }
+            },
+            "required": [
+                "width",
+                "height",
+                "rows",
+                "places",
+                "doors"
             ],
             "additionalProperties": false
         }

@@ -461,7 +461,8 @@ class BedroomWorldTest {
         assertIs<IntentStatus.Succeeded>(w.run(Intent.MoveTo(Target.Entity("bed"))).status)
         assertTrue(w.obs().nearby.first { it.id == "bed" }.distance < 0.1f)
         assertIs<IntentStatus.Succeeded>(w.run(Intent.Say("morning")).status)
-        assertTrue("wall or furniture" in failure(w.run(Intent.MoveTo(Target.Tile(0, 0)))))
+        assertTrue("off the land" in failure(w.run(Intent.MoveTo(Target.Tile(0, 0)))))
+        assertTrue("is a wall" in failure(w.run(Intent.MoveTo(Target.Tile(7, 5)))), "the bedroom's corner, on the lot")
     }
 
     @Test

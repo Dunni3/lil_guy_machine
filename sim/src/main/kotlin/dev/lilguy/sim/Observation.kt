@@ -18,7 +18,7 @@ data class Observation(
     val tick: Long,
     val self: SelfState,
     val nearby: List<SeenEntity>,
-    /** Small local map, one string per row, centered on the character (the bedroom shows all of it). */
+    /** Small local map, one string per row, centered on the character (in the bedroom, the room he's in). */
     val localMap: List<String>,
     val lastIntent: Intent?,
     val lastResult: IntentStatus?,
@@ -57,6 +57,8 @@ data class Observation(
     @Transient val outcome: String? = null,
     /** [recentEvents] without the outcomes: deliveries, requests, the day changing. For memory. */
     @Transient val news: List<String> = emptyList(),
+    /** The tile at [localMap]'s top-left, where the map is part of a bigger world; null when it's all of it. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val localMapAt: Cell? = null,
 )
 
 /**
@@ -209,6 +211,8 @@ data class WorldSnapshot(
     val completed: Boolean = false,
     /** The bedroom's clock, money and needs; null in rooms without them. */
     val life: LifeSnapshot? = null,
+    /** The places on [map] and how they join; null in rooms without places. */
+    val layout: Layout? = null,
 )
 
 /** Clock, money and needs for HUDs, at full precision. */
@@ -262,6 +266,8 @@ data class EntitySnapshot(
     val state: String? = null,
     /** Set while the entity is in someone's inventory; such entities aren't on the map. */
     val carriedBy: EntityId? = null,
+    /** The place it's in ([Layout.places]), or null in rooms without places. */
+    val place: String? = null,
 )
 
 /** What a character's controller is doing, for HUDs and debug views. */

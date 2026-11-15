@@ -106,7 +106,7 @@
 </div>
 <script>
 "use strict";
-const VERSION = 2;
+const VERSION = 3;
 const LIFE = new URLSearchParams(location.search).get("life") || "main";
 const SECTIONS = ["run", "fast", "things", "easel", "wallet", "growth", "gallery", "shop", "mind", "tokens"];
 const $ = (id) => document.getElementById(id);
@@ -238,7 +238,7 @@ function fillForm(run) {
   $("s-quiet").value = s.quiet; $("s-qverbs").value = s.quiet_verbs.join(", "); $("s-tpm").value = s.ticks_per_minute; $("s-hold").checked = s.hold_for_art;
 }
 function drawMap() {
-  const c = $("map"), m = content?.map, f = state.fast;
+  const c = $("map"), m = state.world, f = state.fast;
   if (!m) return;
   const px = Math.max(8, Math.min(28, Math.floor(420 / m.width)));
   if (c.width !== m.width * px) { c.width = m.width * px; c.height = m.height * px; }
@@ -246,7 +246,8 @@ function drawMap() {
   const css = getComputedStyle(document.documentElement);
   g.clearRect(0, 0, c.width, c.height);
   m.rows.forEach((row, y) => [...row].forEach((t, x) => {
-    g.fillStyle = t === "#" ? css.getPropertyValue("--fg") : t === "." ? css.getPropertyValue("--card") : css.getPropertyValue("--bg");
+    const land = { ",": "#b4d69c", "=": "#e9d8b8", ":": "#ded9a8", "*": "#f3bccb", "~": "#9fd0d6", "T": "#6fa58f", "+": "#e0b58a" }[t];
+    g.fillStyle = land ?? (t === "#" ? css.getPropertyValue("--fg") : t === "." ? css.getPropertyValue("--card") : css.getPropertyValue("--bg"));
     g.fillRect(x * px, y * px, px, px);
   }));
   const agent = f.agents[0];
