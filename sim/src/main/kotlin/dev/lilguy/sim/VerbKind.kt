@@ -32,12 +32,12 @@ enum class VerbKind(
         affordance = true,
     ),
 
-    /** Making a new item: sketch, paint. */
+    /** Making a new item: sketch, paint, or one of his own design (invent). */
     @SerialName("generative")
     Generative(
         "generative", "turns time (and maybe items it uses up) into a new item",
-        allowed = setOf("need", "rate", "consume", "produce", "draw", "practice"),
-        required = listOf(setOf("produce")),
+        allowed = setOf("need", "rate", "consume", "produce", "draw", "practice", "build", "write"),
+        required = listOf(setOf("produce", "build")),
     ),
 
     /** Working through a book or practising: raises a skill, and may teach him things. */

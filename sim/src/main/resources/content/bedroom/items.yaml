@@ -11,6 +11,8 @@ items:
   - { id: desk, name: desk, group: furniture, slot: desk, blocks: true }
   - { id: chair, name: chair, group: furniture, slot: chair }
   - { id: sketchbook, name: sketchbook, group: tool }
+  # Where he invents: designs a thing of his own and builds it (verbs.yaml `invent`, rules.yaml `invent`).
+  - { id: workbench, name: workbench, group: furniture, slot: workbench, blocks: true, price: 30 }
   - { id: meal, name: meal, group: food, affords: { edible: {} }, price: 24, pack: 3, stackable: true }
   # Never sold or used up: what eat_oats eats when there's nothing else (verbs.yaml).
   - { id: oats, name: oats, group: food, affords: { staple: {} } }

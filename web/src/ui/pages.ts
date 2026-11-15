@@ -373,7 +373,17 @@ function tripDetail(out: Detail, life: LifeState, t: TripView) {
 /** The shop's items with what he knows of each, known things first. */
 export function shopItems(life: LifeState, content: Content): { item: CatalogItem; state: CatalogState }[] {
   const items = new Map(content.catalog.map((c) => [c.id, c]));
-  const out = life.shop.catalog.flatMap((state) => {
+  // What he invented isn't in the static catalogue. Food the shop restocks has a state of its own;
+  // the rest is listed while he has it, as something he made.
+  const made: CatalogState[] = [];
+  for (const i of life.shop.inventions ?? []) {
+    items.set(i.id, { id: i.id, name: i.name, group: i.group, price: i.price ?? i.cost, pack: 1, stackable: i.price !== null });
+    const has = life.wallet.owns[i.id] ?? 0;
+    if (i.price !== null || has === 0) continue;
+    const like = Object.entries(i.like).map(([q, s]) => `${q} ${s}`).join(", ");
+    made.push({ id: i.id, owned: has, affordable: true, gives: `his own invention${like ? ` (${like})` : ""}${i.why ? `: ${i.why}` : ""}`, taught_by: null });
+  }
+  const out = [...life.shop.catalog, ...made].flatMap((state) => {
     const item = items.get(state.id);
     return item ? [{ item, state }] : [];
   });

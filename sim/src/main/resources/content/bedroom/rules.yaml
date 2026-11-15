@@ -75,6 +75,27 @@ shop:
   at: mail_hatch
   minutes: 10
 
+# Inventing (the `build` op): one invention is one new item with one use and some qualities. He
+# never names a price: materials cost `base` plus `per_strength` a point of quality strength, so
+# what he builds lands near what the shop charges for the same thing (decor about $5 a point, a
+# record $20, a meal $8). `uses`: the affordances open to him and the group their things join;
+# the others stay closed (sim/.../Invention.kt, InventRules.OPEN). A thing to look at takes a spare
+# spot (room.yaml `spots`). Food he invents can be reordered from the shop at its materials cost.
+# A thing made to sell sells once, for its materials plus `wage_per_hour` an hour of the build,
+# which is less than sketching pays. A book he writes raises one skill `skill_gain` a chapter.
+invent:
+  per_day: 1
+  qualities: { most: 3, total: 6 }
+  uses:
+    viewable: { group: decor, base: 4, per_strength: 5 }
+    playable: { group: record, base: 5, per_strength: 5 }
+    readable: { group: book, base: 3, per_strength: 3 }
+    edible: { group: food, base: 8, per_strength: 2 }
+    sellable: { group: ware, base: 6, per_strength: 2 }
+  book: { min_chapters: 3, max_chapters: 5, skill_gain: 0.25 }
+  wage_per_hour: 4
+  look_parts: 12
+
 # A decision-loop policy: after `every` decisions without `verb`, he's made to do it (the decision
 # model isn't asked), when something writes its result. Remove it to leave thinking to the model.
 reflection:

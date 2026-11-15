@@ -213,6 +213,7 @@ export class RoomView {
    * standing on the floor get a hatched shadow the size of their footprint. Runs when [state]'s things change.
    */
   private syncThings(state: LifeState) {
+    this.models.inventions(state.shop.inventions ?? []);
     if (state.things === this.thingsFrom) return;
     this.thingsFrom = state.things;
     const seen = new Set<string>();
@@ -243,7 +244,7 @@ export class RoomView {
     const tx = Math.trunc(e.x);
     const ty = Math.trunc(e.y);
     let shadow: Mesh | null = null;
-    if (map.at(tx, ty) === "#" && wallItem(e.id, e.kind)) {
+    if (map.at(tx, ty) === "#" && (wallItem(e.id, e.kind) || this.models.onWall(e.id))) {
       const [dx, dy] = INWARD.find(([ix, iy]) => map.at(tx + ix, ty + iy) === ".") ?? [0, 1];
       const yaw = dx === 1 ? 90 : dx === -1 ? -90 : dy === -1 ? 180 : 0;
       rotate(at.makeTranslation(tx + 0.5 + dx * 0.5, 0, ty + 0.5 + dy * 0.5), Y_AXIS, yaw);
@@ -266,7 +267,10 @@ export class RoomView {
     if (state.shop === this.shelfFrom) return;
     this.shelfFrom = state.shop;
     const group = new Map(content.catalog.map((c) => [c.id, c.group]));
-    const owned = state.shop.catalog.filter((c) => c.owned > 0);
+    // What he invented isn't in the catalogue unless the shop restocks it; what he has of it is in his wallet.
+    const made = (state.shop.inventions ?? []).filter((i) => (state.wallet.owns[i.id] ?? 0) > 0 && !state.shop.catalog.some((c) => c.id === i.id));
+    for (const i of made) group.set(i.id, i.group);
+    const owned = [...state.shop.catalog.filter((c) => c.owned > 0), ...made];
     const books = owned.filter((c) => group.get(c.id) === "book").map((c) => c.id);
     const records = owned.filter((c) => group.get(c.id) === "record").map((c) => c.id);
     const key = `${books.join(",")}/${records.join(",")}`;

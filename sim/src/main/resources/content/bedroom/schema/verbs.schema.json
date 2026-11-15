@@ -364,7 +364,7 @@
                         "into"
                       ],
                       "additionalProperties": false,
-                      "description": "Authored: a model writes it (handler `thought`, `reading` for what stuck from a chapter, or `shopping` for a trip's picks) into the named destinations, kept only if the verb succeeds. `shows_as: plan` makes a short-term result his plan in later prompts. Without a handler the verb isn't offered, unless the write is `optional: true`. (before or during; kept at the finish)"
+                      "description": "Authored: a model writes it (handler `thought`, `reading` for what stuck from a chapter, `shopping` for a trip's picks, or `invention` for the design a `build` builds) into the named destinations, kept only if the verb succeeds. `shows_as: plan` makes a short-term result his plan in later prompts. Without a handler the verb isn't offered, unless the write is `optional: true`. (before or during; kept at the finish)"
                     },
                     {
                       "type": "null"
@@ -377,6 +377,19 @@
                     "null"
                   ],
                   "description": "Authored: the drawing model draws a drawable item the verb produced (listed after its produce); the piece gets its title, tags and the noun it drew a shape for, which a commission is matched on. Without an artist the piece is made undrawn. (during; kept at the finish)"
+                },
+                "build": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": false,
+                      "description": "Builds the thing he designed in the verb's `write: { with: invention, timing: before }`: the design (one use, some qualities, a look) is checked against rules.yaml `invent`, its materials are charged, and the new item joins his world for the rest of the run. A design that's refused fails the verb with the reasons. (at the finish)"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 }
               },
               "minProperties": 1,

@@ -1,5 +1,6 @@
 package dev.lilguy.host
 
+import dev.lilguy.agent.invent.CannedInventor
 import dev.lilguy.agent.BedroomPolicy
 import dev.lilguy.agent.live.ModelSetup
 import dev.lilguy.agent.live.RunDatabase
@@ -29,6 +30,7 @@ import kotlin.time.Duration.Companion.seconds
  * - `LILGUY_ENDPOINT` names the deciding endpoint in `LILGUY_CONFIG` (config/endpoints.yaml), with
  *   `LILGUY_MEMORY_ENDPOINT`, `LILGUY_WRITER_ENDPOINT`, `LILGUY_RECALL_ENDPOINT` and `LILGUY_BEAM` as for
  *   the desktop; unset, the scripted policy runs and nothing calls a model;
+ * - `LILGUY_INVENTOR=1` has him invent from a few fixed designs, so he invents with no endpoint;
  * - `LILGUY_PAINTER=<seconds>` draws his art with random picks at that latency, so he paints with no endpoint;
  * - `LILGUY_START_ITEMS` and `LILGUY_SCRIPT`, as for the desktop's screenshots: what he starts with, and verbs the scripted policy does first;
  * - `LILGUY_DAYS` (0 for no end), `LILGUY_AUTOSTART=1` to start the first run at once (a run carried on that was
@@ -54,7 +56,8 @@ fun main() {
         recallEndpoint = get("LILGUY_RECALL_ENDPOINT"),
         beam = get("LILGUY_BEAM")?.toIntOrNull(),
         days = days,
-    )).let { s -> get("LILGUY_PAINTER")?.toDoubleOrNull()?.let { secs -> s.copy(painter = { RandomPicker(secs.seconds, seed = System.nanoTime()) }) } ?: s }.let { s ->
+    )).let { s -> get("LILGUY_PAINTER")?.toDoubleOrNull()?.let { secs -> s.copy(painter = { RandomPicker(secs.seconds, seed = System.nanoTime()) }) } ?: s }
+        .let { s -> if (get("LILGUY_INVENTOR").isNullOrEmpty()) s else s.copy(inventor = { CannedInventor() }) }.let { s ->
         val extra = get("LILGUY_START_ITEMS").orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
             .associate { it.substringBefore('=') to (it.substringAfter('=', "1").toIntOrNull() ?: 1) }
         if (extra.isEmpty()) s else s.copy(startItems = extra)

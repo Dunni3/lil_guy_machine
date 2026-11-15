@@ -22,7 +22,7 @@ make cli         # headless runner (ARGS="--scenario bedroom --days 3 --endpoint
                  # --affinities calm=2,loud=-1 / --curiosity 1.5 for another personality
 make server-up   # local Postgres + the ingest API (token "dev"); make server-test, server-psql
 make host        # the sim host: a life in real time, its state over WebSocket, debug page at
-                 # http://127.0.0.1:8790/ (scripted unless ENDPOINT=; PAINTER=2 paints; commands need LILGUY_ADMIN_PASSWORD, see host/README.md;
+                 # http://127.0.0.1:8790/ (scripted unless ENDPOINT=; PAINTER=2 paints; INVENTOR=1 invents from fixed designs; commands need LILGUY_ADMIN_PASSWORD, see host/README.md;
                  # it carries on the run it was last on, RESUME=none for a fresh one)
 make protocol-types  # protocol JSON Schema + TypeScript from :protocol (make test fails when stale)
 make web-build   # the web renderer into web/dist, in a Node container; make host does it when stale and serves it at /room/
@@ -96,6 +96,13 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   staged in the sim before he goes (`AuthorHandler.staged`, `BedroomWorld.stage`) and its `basket` op buys
   it at the finish; while there's a trip, everything (food too) is bought on trips and models deciding
   see no `shop` (`BedroomPrompt.deciding`).
+- Inventing (`docs/decisions/2026-11-13-he-invents-items-*`): at the workbench the `invent` verb's `invention` write has the
+  writer design one new item (`agent/.../invent/Inventor.kt`: one use, some qualities, a look, with one retry on the sim's
+  reasons; `CannedInventor` for `LILGUY_INVENTOR=1`), staged like a trip's basket, and the `build` op (`Ops.kt`) checks it,
+  prices its materials and adds it to the run's content (`sim/.../Invention.kt`: `Design`, `InventRules` from rules.yaml
+  `invent`, `Invention`; `BedroomContent.plus`). `BedroomWorld.content` grows during a run, so read it when needed. Inventions
+  are saved in `BedroomState.inventions`, go to viewers in the protocol's `shop.inventions`, and the web renderer builds their
+  models from the look (`web/src/room/parts.ts`). Things to look at stand in room.yaml's spare `spots`.
 - Art: `agent/.../art/`: `Painter.kt` (the deciding model draws each piece as a run of closed picks:
   subject, crayon box, then a stroke a call; `CommissionVoice` words each day's commission on a text
   model), `Strokes.kt` (the drawing spec as menus of strokes by stage: background, subject,

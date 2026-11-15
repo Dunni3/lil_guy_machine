@@ -29,6 +29,7 @@ sealed interface AuthoredOp {
             "reading" to setOf("events"),
             "draw" to setOf("pieces", "events"),
             "shopping" to setOf("events"),
+            "invention" to setOf("events"),
         )
 
         /** Where results can go: his event stream, short-term memory, and the sim's art pieces. */
@@ -126,4 +127,11 @@ sealed interface AuthoredResult {
      * nothing could be picked (the model's call failed); the trip then fails rather than buying nothing.
      */
     data class Basket(val items: List<String>, val savingFor: String? = null, val choseSaving: Boolean = true, val failed: String? = null) : AuthoredResult
+
+    /**
+     * What he designed at the workbench, staged before he starts building ([BedroomWorld.stage]) and
+     * checked and built as he finishes ([BuildOp]). [failed]: why there's no design (the model's call
+     * failed); the build then fails.
+     */
+    data class Designed(val design: Design?, val failed: String? = null) : AuthoredResult
 }
