@@ -1435,7 +1435,11 @@ class BedroomWorld private constructor(
     }
 
     private fun planIntent(intent: Intent): Work = when (intent) {
-        is Intent.MoveTo -> (intent.target as? Target.Place)?.let(::goTo) ?: walkTo(goalOf(intent.target), describe(intent.target))
+        is Intent.MoveTo -> when (val t = intent.target) {
+            is Target.Place -> goTo(t)
+            is Target.Entity -> approach(t)
+            is Target.Tile -> walkTo(tile(t), describe(t))
+        }
         is Intent.PickUp -> reject("there's nothing to pick up here: what you own is already yours, and do and buy fetch it for you")
         is Intent.Use -> reject("use is for other rooms; here an item is used through a verb, do(verb, what, on)" + (content.verbs.firstOrNull { "on" in it.args && "what" in it.args }?.let { "; ${it.id} puts a ${noun(it.args.getValue("what"))} on the ${noun(it.args.getValue("on"))}" } ?: ""))
         is Intent.Say -> say(intent)
@@ -1446,19 +1450,29 @@ class BedroomWorld private constructor(
         Intent.Think -> reject("think is for other rooms; here it's an activity, do(think)")
     }
 
-    private fun goalOf(target: Target): Cell = when (target) {
-        is Target.Tile -> {
-            val cell = Cell(target.x, target.y)
-            if (!map.inBounds(cell.x, cell.y)) reject("(${cell.x}, ${cell.y}) is off the map")
-            if (map[cell.x, cell.y] == Terrain.Void) reject("(${cell.x}, ${cell.y}) is off the land")
-            if (!passable(cell.x, cell.y)) reject("(${cell.x}, ${cell.y}) is a wall, water, a tree or furniture")
-            cell
-        }
-        is Target.Entity -> {
-            if (target.id == guy.id.value) reject("you can't move to yourself")
-            placed().firstOrNull { it.first.id == target.id }?.second ?: reject("there is nothing called '${target.id}' in the room")
-        }
-        is Target.Place -> error("planned by goTo")
+    private fun tile(target: Target.Tile): Cell {
+        val cell = Cell(target.x, target.y)
+        if (!map.inBounds(cell.x, cell.y)) reject("(${cell.x}, ${cell.y}) is off the map")
+        if (map[cell.x, cell.y] == Terrain.Void) reject("(${cell.x}, ${cell.y}) is off the land")
+        if (!passable(cell.x, cell.y)) reject("(${cell.x}, ${cell.y}) is a wall, water, a tree or furniture")
+        return cell
+    }
+
+    /**
+     * A walk to stand beside one of the things he knows of, anywhere on the land, which says where he
+     * went and how long it took. Already there, he stays put and is told so.
+     */
+    private fun approach(target: Target.Entity): Work {
+        if (target.id == guy.id.value) reject("you can't walk to yourself")
+        val (spec, cell) = placed().firstOrNull { it.first.id == target.id && isKnown(it.first.id) }
+            ?: reject("there's nothing called '${target.id}' that you know of")
+        if (spec.id == carrying) reject("you're carrying the ${spec.name}")
+        val walk = walkTo(cell, "the ${spec.name}")
+        if (walk.path.isEmpty()) return Work.Until(start = {}, done = { true }, finish = { outcome("you're already by the ${spec.name}"); null })
+        val there = layout.placeOf(cell)
+        val to = "the ${spec.name}" + (if (layout.outdoors && there != null && there != layout.placeOf(guy.cell)) " in ${there.name}" else "")
+        val minutes = walkMinutes(walk.path.size.toFloat())
+        return Work.Steps(walk, Work.Until(start = {}, done = { true }, finish = { outcome("walked over to $to (${GameClock.duration(minutes.coerceAtLeast(1))} walk)"); null }))
     }
 
     /** A walk to the middle of a place, which says where he went and how long it took. */

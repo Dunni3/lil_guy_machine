@@ -362,7 +362,7 @@ ${lookText(looks)}
         |- clock: day and time. money: dollars. needs: ${needNames(content).let { it.dropLast(1).joinToString(", ") + " and " + it.last() }}, 0 to 100.
         |- holding: art you're carrying, to sell. owns: everything else you own, id to count.$music${if (content.vocabulary.skills.isNotEmpty()) "\n        |- skills: your skills, name to level." else ""}${if (content.books.isNotEmpty()) "\n        |- books: the books you own, how many chapters you've read of how many, what studying one raises, and what finishing it would teach you." else ""}
         |- art: the pieces you have made and still have, held to sell or hung on your wall, with their titles. commission: today's request for a piece, if one is open.
-        |- place: where you are.${if (content.light != null) " light: how lit it is round you, when anything near you is too dark for something." else ""}
+        |- place: where you are. here: the things round you in this place, nearest first, which way and how far${if (content.light != null) " (too dark to see: you know it's there but can't make it out)" else ""}; walk_to takes you over to one, and look_around tells you more.${if (content.light != null) " light: how lit it is round you, when anything near you is too dark for something." else ""}
         |- activities: what you can't do right now, and why.${if (trips(content)) "" else " shop: what the shop will sell you now: its price, whether you can afford it, and what it's for."}
         |- recentEvents: the last few things that happened besides what you did, stamped with day and time.
         |- lately: what you've done most in the last 2 days, what you could do now but haven't for 2 days or more, and what you could do and never have.
@@ -370,9 +370,10 @@ ${lookText(looks)}
         |After that you may see what you remember from earlier (memories, and thoughts you had), what you concluded the latest times you stepped back from your days, and what you decided the last time you stopped to think. Those are your own words: let the lessons and plans in them shape what you do with your hours.
     """.trimMargin()
 
-    /** The system prompt's paragraph on [looks] ("recall", "ask", "search"), with its blank line before; empty for none. */
+    /** The system prompt's paragraph on [looks] ("look_around", "recall", "ask", "search"), with its blank line before; empty for none. */
     private fun lookText(looks: Set<String>): String {
         val what = listOfNotNull(
+            "`look_around` tells you where you are, what's round you and what you could do with it, and where else you could go".takeIf { BedroomTools.LOOK_AROUND in looks },
             "`recall` searches your memories and earlier thoughts for something you're trying to remember".takeIf { "recall" in looks },
             "`ask` asks how something in your world works".takeIf { "ask" in looks },
             "`search` searches the real internet, outside your room, for anything you're curious about".takeIf { "search" in looks },

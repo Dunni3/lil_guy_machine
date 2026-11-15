@@ -33,6 +33,8 @@ import kotlinx.serialization.json.putJsonObject
 object BedroomTools {
     const val THOUGHT = "thought"
 
+    const val LOOK_AROUND = "look_around"
+
     /** Tools that aren't verbs, whose names a verb can't take. */
     private val BUILT_IN = dev.lilguy.sim.CodeRules.BUILT_IN
 
@@ -58,6 +60,14 @@ object BedroomTools {
                         places.joinToString("\n") { "- ${it.id}: ${it.name}, ${it.says}; ${it.walk} min walk." },
                     parameters = parameters(mapOf("place" to places.map { it.id })),
                 ) { args -> reply(args, Intent.MoveTo(Target.Place(string(args, "place")))) })
+            }
+            obs.nearby.takeIf { it.isNotEmpty() }?.let { seen ->
+                add(ToolSet.Tool(
+                    name = "walk_to",
+                    description = "Walk over to something round you (`here` in how things stand) and stand beside it: to see it up close, or just to be by it. " +
+                        "The activities walk you to what they use on their own. It takes only the walk.",
+                    parameters = parameters(mapOf("to" to seen.map { it.id })),
+                ) { args -> reply(args, Intent.MoveTo(Target.Entity(string(args, "to")))) })
             }
             obs.put?.let { add(place(it)) }
             obs.shop.orEmpty().filter { it.affordable }.takeIf { it.isNotEmpty() }?.let { forSale ->
@@ -93,14 +103,33 @@ object BedroomTools {
     const val MAX_STEPS = 5
 
     /**
-     * `recall` searches his memories and earlier thoughts with [recall]; `ask` asks how his world
-     * works with [ask]; `search` searches the real web with [search]. Any is left out when null.
+     * `look_around` says where he is and what's round him with [look]; `recall` searches his memories
+     * and earlier thoughts with [recall]; `ask` asks how his world works with [ask]; `search` searches
+     * the real web with [search]. Any is left out when null.
      */
     fun looks(
         recall: (suspend (String) -> String)?,
         ask: (suspend (String) -> String)?,
         search: (suspend (String) -> String)? = null,
+        look: (() -> String)? = null,
     ): List<ToolSet.Look> = listOfNotNull(
+        look?.let { l ->
+            ToolSet.Look(
+                LOOK_AROUND,
+                "Look around you: where you are, each thing round you here (which way, how far, whether it's within reach, what you could do with it, what's too dark to make out), " +
+                    "the light and the weather, and the other places you could walk to and how far. It takes no time; then choose what to do.",
+                buildJsonObject {
+                    put("type", "object")
+                    putJsonObject("properties") {
+                        putJsonObject("for") {
+                            put("type", "string")
+                            put("description", "Only if you're looking for something: what, in a few words.")
+                        }
+                    }
+                    put("additionalProperties", false)
+                },
+            ) { _ -> l() }
+        },
         recall?.let { r ->
             ToolSet.Look(
                 "recall",
@@ -139,12 +168,13 @@ object BedroomTools {
     }
 
     /**
-     * [obs] as the turn's status message shows it: no map, coordinates or furniture (the verbs walk
-     * him there), only the locked activities (the open ones are the tools), and no last intent,
+     * [obs] as the turn's status message shows it: no map or coordinates, what's round him only briefly
+     * (`here`: which way and how far; `look_around` says more), only the locked activities (the open ones are the tools), and no last intent,
      * result or outcomes among the recent events (his earlier calls and their results say those).
      */
     fun view(obs: Observation): Observation =
         obs.copy(
+            here = Surroundings.brief(obs),
             nearby = emptyList(),
             localMap = emptyList(),
             localMapAt = null,
@@ -259,8 +289,11 @@ object BedroomTools {
             put("spot", intent.spot)
         }
         is Intent.Wait -> "wait" to buildJsonObject { put("minutes", maxOf(1, intent.ticks / ticksPerMinute)) }
-        is Intent.MoveTo -> (intent.target as? Target.Place)?.let { "go" to buildJsonObject { put("place", it.id) } }
-            ?: (PromptBuilder.tag(intent) to json.encodeToJsonElement(Intent.serializer(), intent).jsonObject.let { JsonObject(it - "type") })
+        is Intent.MoveTo -> when (val t = intent.target) {
+            is Target.Place -> "go" to buildJsonObject { put("place", t.id) }
+            is Target.Entity -> "walk_to" to buildJsonObject { put("to", t.id) }
+            else -> PromptBuilder.tag(intent) to json.encodeToJsonElement(Intent.serializer(), intent).jsonObject.let { JsonObject(it - "type") }
+        }
         else -> PromptBuilder.tag(intent) to json.encodeToJsonElement(Intent.serializer(), intent).jsonObject.let { JsonObject(it - "type") }
     }
 }

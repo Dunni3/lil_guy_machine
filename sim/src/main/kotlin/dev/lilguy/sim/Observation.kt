@@ -30,6 +30,11 @@ data class Observation(
      * the chair"; "too dark to see the rest here"); null when everything near him is lit enough for anything.
      */
     @EncodeDefault(EncodeDefault.Mode.NEVER) val light: List<String>? = null,
+    /**
+     * What's round him in this place, nearest first, in a few words each ("bench: 2 tiles north-west, within reach"):
+     * [nearby] said briefly, for a model that calls tools; it sees no [nearby]. Null for every other model.
+     */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val here: List<String>? = null,
     /** The other places he could walk to, nearest first, with the walk from here; null in rooms without places. */
     @EncodeDefault(EncodeDefault.Mode.NEVER) val places: List<PlaceOption>? = null,
     /** What of his he could put somewhere else, and the free spots by place ([Intent.Put]); null when there's nothing to move or nowhere to put it. */
