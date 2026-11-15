@@ -44,7 +44,7 @@ class MachinesTest {
         w.stage("invent", AuthoredResult.Designed(CannedInventor.SPRINKLER, code = CannedInventor.SPRINKLER_CODE))
         w.ok(Intent.Do("invent"))
         assertEquals(30, w.behaviors["garden_sprinkler"]?.every, w.observe(w.agentId).recentEvents.joinToString("\n"))
-        // It goes out to world.yaml's free spot by the garden bench.
+        // It goes out to world.yaml's free spot by the seed-pod bush.
         w.ok(Intent.Do("set_out_the_sprinkler", what = "garden_sprinkler"))
         w.ok(Intent.Do("explore", on = "garden_bench"))
         w.ok(Intent.Do("collect", on = "seedpod_bush"))

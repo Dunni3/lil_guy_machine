@@ -435,16 +435,16 @@ class CannedInventor(private val designs: List<Design> = DESIGNS, private val co
         val SPRINKLER_CODE = CodeDesign(
             verbs = listOf(
                 VerbDesign(
-                    called = "set out the sprinkler", phrase = "set the sprinkler out in the garden", says = "carries it out to the garden bench, where it can water what grows there", minutes = 10,
+                    called = "set out the sprinkler", phrase = "set the sprinkler out in the garden", says = "carries it out beside the seed-pod bush, where it can water what grows in the garden", minutes = 10,
                     what = CodeDesign.THIS, at = "what",
                     code = """
                         function canDo(world) {
                           if (world.place(world.args.what) === "garden") return "it's out in the garden already";
-                          if (!world.spots().free.floor.includes("by_garden_bench")) return "there's nowhere free in the garden to set it";
+                          if (!world.spots().free.floor.includes("by_seedpod_bush")) return "there's nowhere free in the garden to set it";
                         }
                         function finish(world) {
-                          world.move(world.args.what, "by_garden_bench");
-                          return "set it out by the garden bench";
+                          world.move(world.args.what, "by_seedpod_bush");
+                          return "set it out by the seed-pod bush";
                         }
                     """.trimIndent(),
                 ),
