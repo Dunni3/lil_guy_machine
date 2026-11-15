@@ -139,7 +139,7 @@ comfort:
 # light round them; walls and trees block light, and a light in a room lights only that room. He can make
 # out a thing with `see` light on it; at night what's darker isn't in what he sees, and a verb that
 # `needs` light (verbs.yaml) is locked where it would be done until there's that much. `lantern`: the
-# small light that goes with him, enough to make out what's beside him but not to read or forage by.
+# small light that goes with him, enough to make out what's beside him; a verb's `needs` don't count it.
 light:
   see: 1
   lantern: { strength: 1.5, radius: 1.5 }

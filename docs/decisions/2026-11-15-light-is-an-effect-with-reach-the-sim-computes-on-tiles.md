@@ -29,7 +29,8 @@ an effect with reach, that perception, verb conditions and needs read. Light is 
   station logs this light at its own tile (0 to 10), so a lamp beside it shows in its log. Items give light with
   `light: { strength, radius }`: the floor, lava, mushroom and invented lamps, the string lights and
   cloud light, and the glowcaps (a faint 1.2, out while the patch is picked bare). He carries a faint
-  lantern (`light.lantern`, 1.5 over 1.5 tiles): enough to make out what's beside him, not to work by.
+  lantern (`light.lantern`, 1.5 over 1.5 tiles): enough to make out what's beside him, not to work by,
+  so a verb's `needs` don't count it.
 - **What he perceives.** He sees a thing with `see` (1) light on its tile. At night `nearby` holds only
   what's lit. What he knows is there without seeing it shows as `remembered`: his house's things, and
   the things in a place he has explored. Anything else isn't listed at all. `Observation.light` gives a

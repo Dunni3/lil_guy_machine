@@ -1,6 +1,7 @@
 package dev.lilguy.sim
 
 import kotlinx.serialization.Serializable
+import kotlin.math.floor
 import kotlin.math.roundToInt
 
 /** What an item gives off as light (items.yaml `light`): [strength] on its own tile, fading to nothing a tile past [radius]. */
@@ -101,8 +102,8 @@ class Lighting(private val effects: Effects = Effects()) {
             }
         }
 
-        /** "4", "0.5": a light level as the prompt says it. */
-        fun level(v: Double): String = ((v * 10).roundToInt() / 10.0).let { if (it == it.toInt().toDouble()) it.toInt().toString() else it.toString() }
+        /** "4", "0.5": a light level as the prompt says it; [down] rounds down, so a level short of a need never reads as the need. */
+        fun level(v: Double, down: Boolean = false): String = ((if (down) floor(v * 10) else (v * 10).roundToInt().toDouble()) / 10.0).let { if (it == it.toInt().toDouble()) it.toInt().toString() else it.toString() }
 
         /**
          * How much a thing at [at] counts toward what he sees from [from] ([ComfortRules]): its
@@ -128,30 +129,33 @@ class Lighting(private val effects: Effects = Effects()) {
         /**
          * A few landmark phrases for how the light is where he stands, or null when it limits nothing:
          * no verb is [limited] (locked as too dark), nothing in his place is too dark to see, and he
-         * isn't standing in the dark. By day that's most of the time. [things]: the things in his place
-         * by name, with their tiles and whether he knows of them without seeing them ([Landmark.known]).
+         * isn't standing in the dark. By day that's most of the time. Levels are [work]'s, the light to
+         * work by; what only his lantern shows ([sight] has it) is "by your lantern". [things]: the things
+         * in his place by name, with their tiles and whether he knows of them without seeing them.
          */
-        fun describe(field: Field, rules: LightRules, at: Cell, outdoors: Boolean, things: List<Landmark>, limited: Boolean): List<String>? {
-            val here = field[at]
-            val lit = things.filter { field[it.cell] >= rules.see }
-            val dark = things - lit.toSet()
-            if (!limited && dark.isEmpty() && here >= rules.see) return null
-            fun from(c: Cell): String = field.source(c)?.name ?: "daylight"
+        fun describe(work: Field, sight: Field, rules: LightRules, at: Cell, outdoors: Boolean, things: List<Landmark>, limited: Boolean): List<String>? {
+            val here = work[at]
+            val lit = things.filter { work[it.cell] >= rules.see }
+            val lantern = things.filter { work[it.cell] < rules.see && sight[it.cell] >= rules.see }
+            val dark = things - lit.toSet() - lantern.toSet()
+            if (!limited && dark.isEmpty() && lantern.isEmpty() && here >= rules.see) return null
+            fun from(c: Cell): String = work.source(c)?.name ?: "daylight"
             return buildList {
-                add("where you stand: " + if (here < rules.see) "dark (light ${level(here)})" else "light ${level(here)}, from ${from(at)}")
+                add("where you stand: " + if (here < rules.see) "dark (light ${level(here, down = true)})" else "light ${level(here, down = true)}, from ${from(at)}")
                 // A lamp lights itself; it's said as what lights the rest, or else as glowing.
-                val glowing = lit.filter { field.source(it.cell)?.name == "the ${it.name}" }
-                val groups = (lit - glowing.toSet()).sortedWith(compareByDescending<Landmark> { it.key }.thenByDescending { field[it.cell] }).groupBy { from(it.cell) }.entries.sortedByDescending { (_, ts) -> ts.maxOf { field[it.cell] } }.take(2)
+                val glowing = lit.filter { work.source(it.cell)?.name == "the ${it.name}" }
+                val groups = (lit - glowing.toSet()).sortedWith(compareByDescending<Landmark> { it.key }.thenByDescending { work[it.cell] }).groupBy { from(it.cell) }.entries.sortedByDescending { (_, ts) -> ts.maxOf { work[it.cell] } }.take(2)
                 groups.forEach { (src, ts) ->
-                    val levels = ts.map { field[it.cell] }
-                    val range = level(levels.min()).let { lo -> level(levels.max()).let { hi -> if (lo == hi) lo else "$lo to $hi" } }
+                    val levels = ts.map { work[it.cell] }
+                    val range = level(levels.min(), down = true).let { lo -> level(levels.max(), down = true).let { hi -> if (lo == hi) lo else "$lo to $hi" } }
                     add("lit by $src (light $range): " + names(ts.take(3)))
                 }
                 if (groups.size < 2) glowing.filter { g -> groups.none { it.key == "the ${g.name}" } }.takeIf { it.isNotEmpty() }?.let { add("glowing: " + names(it.take(2))) }
+                if (lantern.isNotEmpty()) add("by your lantern: " + names(lantern.take(2)))
                 if (dark.isNotEmpty()) {
                     val known = dark.filter { it.known }
                     add(
-                        "too dark to see " + (if (lit.isEmpty()) "anything " + (if (outdoors) "here" else "in the room") else "the rest " + (if (outdoors) "here" else "of the room")) +
+                        "too dark to see " + (if (lit.isEmpty() && lantern.isEmpty()) "anything " + (if (outdoors) "here" else "in the room") else "the rest " + (if (outdoors) "here" else "of the room")) +
                             if (known.isEmpty()) "" else "; you remember ${names(known.sortedByDescending { it.key }.take(3))} there",
                     )
                 }

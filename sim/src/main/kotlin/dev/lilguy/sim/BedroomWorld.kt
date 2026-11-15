@@ -609,25 +609,29 @@ class BedroomWorld private constructor(
 
     // --- light -----------------------------------------------------------------------------------
 
-    /** What gives off light now: each placed thing with a `light` (one he's carrying, where he is), but a patch that's been picked bare, and his lantern. */
-    private fun lamps(): List<Emitter> = placed().mapNotNull { (spec, cell) ->
+    /** What gives off light now: each placed thing with a `light` (one he's carrying, where he is), but a patch that's been picked bare, and his [lantern]. */
+    private fun lamps(lantern: Boolean = true): List<Emitter> = placed().mapNotNull { (spec, cell) ->
         spec.light?.takeIf { (bareUntil[spec.id] ?: 0) <= ticks }?.let { Emitter(spec.id, "the ${spec.name}", EffectKind.Light, if (spec.id == carrying) guy.cell else cell, it.strength, it.radius) }
-    } + listOfNotNull(content.light?.lantern?.let { Emitter(LANTERN, "your lantern", EffectKind.Light, guy.cell, it.strength, it.radius) })
+    } + listOfNotNull(content.light?.lantern?.takeIf { lantern }?.let { Emitter(LANTERN, "your lantern", EffectKind.Light, guy.cell, it.strength, it.radius) })
 
-    /** The light on every tile now, worked out again only when the daylight, the layout or the lamps change. */
-    fun lightField(): Field = lighting.field(content, layout, house, clock.minuteOfDay(ticks), lamps(), daylight())
+    /**
+     * The light on every tile now, worked out again only when the daylight, the layout or the lamps change.
+     * Without his [lantern] it's the light to work by: a verb's `needs` don't count the lantern, which is
+     * for seeing by, and goes wherever he does.
+     */
+    fun lightField(lantern: Boolean = true): Field = lighting.field(content, layout, house, clock.minuteOfDay(ticks), lamps(lantern), daylight())
 
     /** The things [a] is done at with [args] that are lit enough for it, of [ids]; all of them when it needs no light. */
     private fun litEnough(a: VerbSpec, ids: List<String>): List<String> {
         val need = a.needs[EffectKind.Light.id] ?: return ids
-        val f = lightField()
+        val f = lightField(lantern = false)
         return placed().filter { (spec, cell) -> spec.id in ids && f[cell] >= need }.map { it.first.id }.ifEmpty { ids }
     }
 
     /** "too dark to read at the bed or the chair (light 0.4; it needs 3)": where [a] would be done is too dark; null when one is lit enough, or arguments still to bind decide. */
     private fun darkLock(a: VerbSpec, args: Map<String, String>?): String? {
         val need = a.needs[EffectKind.Light.id] ?: return null
-        val f = lightField()
+        val f = lightField(lantern = false)
         val at: List<Pair<String?, Cell>> = if (VerbSpec.HERE in a.at) {
             listOf(null to guy.cell)
         } else {
@@ -639,7 +643,7 @@ class BedroomWorld private constructor(
         val best = at.maxOf { f[it.second] }
         if (best >= need) return null
         val where = if (at.first().first == null) "here" else "at " + at.joinToString(" or ") { "the ${it.first}" }
-        return "$DARK${a.id} $where (light ${Lighting.level(best)}; it needs ${Lighting.level(need)})"
+        return "$DARK${a.id} $where (light ${Lighting.level(best, down = true)}; it needs ${Lighting.level(need)})"
     }
 
     /** Whether he knows [e] is there without seeing it: his house's things, and what's in a place he has explored. */
@@ -2265,7 +2269,7 @@ class BedroomWorld private constructor(
         }.sortedBy { it.distance }
         val light = content.light?.let { rules ->
             val things = around.map { Landmark(item(it.id.value).name, Cell(it.x.toInt(), it.y.toInt()), knownThere(it), key = item(it.id.value).group in KEY_GROUPS) }
-            Lighting.describe(field, rules, guy.cell, layout.placeOf(guy.cell)?.kind == PlaceKind.Outdoor, things, current.activities.any { it.locked?.startsWith(DARK) == true })
+            Lighting.describe(lightField(lantern = false), field, rules, guy.cell, layout.placeOf(guy.cell)?.kind == PlaceKind.Outdoor, things, current.activities.any { it.locked?.startsWith(DARK) == true })
         }
         return Observation(
             place = whereText(),

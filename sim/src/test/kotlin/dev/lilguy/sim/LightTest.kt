@@ -60,7 +60,7 @@ class LightTest {
         assertIs<IntentStatus.Succeeded>(w.run(Intent.MoveTo(Target.Place("pond"))).status)
         val pond = w.observe(w.agentId)
         assertTrue(pond.nearby.all { it.distance <= 2 && !it.remembered }, pond.nearby.toString())
-        assertTrue(pond.light!!.any { it.startsWith("where you stand: light 2, from your lantern") }, pond.light.toString())
+        assertTrue(pond.light!!.any { it.startsWith("where you stand: dark") } && pond.light!!.any { it.startsWith("by your lantern: the") }, pond.light.toString())
     }
 
     @Test

@@ -56,7 +56,10 @@ class Field(val kind: EffectKind, val width: Int, val height: Int, private val l
  * field depends on; asked again with equal inputs, it returns the same field without recomputing.
  */
 class Effects {
-    private val kept = mutableMapOf<EffectKind, Pair<Any, Field>>()
+    /** The last few fields by their inputs: a kind can be asked for in more than one way (light with his lantern, and without). */
+    private val kept = object : LinkedHashMap<Any, Field>(8, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Any, Field>?) = size > KEPT
+    }
 
     /** How many times a field has been worked out: for tests and for watching the cost. */
     var computed = 0
@@ -68,15 +71,17 @@ class Effects {
      * layout, the emitters or [key] differ from last time.
      */
     fun field(kind: EffectKind, layout: Layout, emitters: List<Emitter>, key: Any, baseline: (Cell, Place?) -> Double): Field {
-        val inputs = Triple(System.identityHashCode(layout), emitters, key)
-        kept[kind]?.let { (k, f) -> if (k == inputs) return f }
+        val inputs = listOf(kind, System.identityHashCode(layout), emitters, key)
+        kept[inputs]?.let { return it }
         return spread(kind, layout, emitters, baseline).also {
             computed++
-            kept[kind] = inputs to it
+            kept[inputs] = it
         }
     }
 
     companion object {
+        private const val KEPT = 4
+
         /** Works out one field: see [Effects]. */
         fun spread(kind: EffectKind, layout: Layout, emitters: List<Emitter>, baseline: (Cell, Place?) -> Double): Field {
             val w = layout.map.width
