@@ -1,17 +1,17 @@
-import type { FastState, LifeState, RunInfo, Settings } from "../../../protocol/ts/protocol";
+import type { FastState, LifeState, RunInfo, SavedRun, Settings } from "../../../protocol/ts/protocol";
 
 /**
  * The run's settings and actions as rows of the menu's RUN tab, ported from `RunControls.kt`.
  * Admins get [ADMIN_ROWS]; viewers only [SIGN_IN]. The lists are `RunSettings`'s.
  */
-export type RunRow = "play" | "days" | "speed" | "quiet" | "cap" | "resolution" | "restart" | "replay" | "signout" | "signin";
+export type RunRow = "play" | "days" | "speed" | "quiet" | "cap" | "resolution" | "restart" | "runs" | "replay" | "signout" | "signin";
 
-export const ADMIN_ROWS: RunRow[] = ["play", "days", "speed", "quiet", "cap", "resolution", "restart", "replay", "signout"];
+export const ADMIN_ROWS: RunRow[] = ["play", "days", "speed", "quiet", "cap", "resolution", "restart", "runs", "replay", "signout"];
 export const SIGN_IN: RunRow[] = ["signin"];
 
 export const LABELS: Record<RunRow, string> = {
   play: "Run", days: "Length", speed: "Speed", quiet: "Quiet stretches", cap: "While he decides", resolution: "Clock resolution",
-  restart: "Restart", replay: "Replay", signout: "Sign out", signin: "Sign in",
+  restart: "New run", runs: "Saved runs", replay: "Replay", signout: "Sign out", signin: "Sign in",
 };
 
 const SPEEDS = [1, 2, 4, 8, 15, 30, 60];
@@ -21,12 +21,54 @@ const QUIETS = [1, 2, 4, 8];
 const MAX_DAYS = 30;
 const MINUTES_PER_DAY = 1440;
 
-/** OK does something (asking first for Restart and Replay); LEFT/RIGHT change the others. */
-export const isAction = (row: RunRow) => row === "play" || row === "restart" || row === "replay" || row === "signout" || row === "signin";
-/** LEFT/RIGHT change its value (for Replay, which run). */
-export const adjustable = (row: RunRow) => !isAction(row) || row === "replay";
+/** OK does something (asking first for New run, Saved runs and Replay); LEFT/RIGHT change the others. */
+export const isAction = (row: RunRow) => row === "play" || row === "restart" || row === "runs" || row === "replay" || row === "signout" || row === "signin";
+/** LEFT/RIGHT change its value (for Saved runs and Replay, which run). */
+export const adjustable = (row: RunRow) => !isAction(row) || row === "replay" || row === "runs";
 /** OK asks first, and a second OK does it. */
-export const confirms = (row: RunRow) => row === "restart" || row === "replay";
+export const confirms = (row: RunRow) => row === "restart" || row === "runs" || row === "replay";
+
+/** The runs Saved runs can go back to: every recorded one but the live one, that has a save. */
+export const resumable = (runs: SavedRun[] | null | undefined): SavedRun[] => (runs ?? []).filter((r) => !r.live && r.saved !== null);
+
+/** The run Saved runs has picked: the one with id [pick], else the most recently played. */
+export function pickedRun(runs: SavedRun[] | null | undefined, pick: string | null): SavedRun | null {
+  const list = resumable(runs);
+  return list.find((r) => r.run_id === pick) ?? list[0] ?? null;
+}
+
+/** The run Saved runs picks after LEFT (-1, more recent) or RIGHT (+1, older), by id. */
+export function pickRun(runs: SavedRun[] | null | undefined, pick: string | null, by: number): string | null {
+  const list = resumable(runs);
+  if (!list.length) return null;
+  const i = Math.max(list.findIndex((r) => r.run_id === pickedRun(runs, pick)?.run_id), 0);
+  return list[Math.min(Math.max(i + by, 0), list.length - 1)].run_id;
+}
+
+/** One saved run in a line: where it carries on from, how long it lived, what drove it and when it was last played. */
+export function runLine(r: SavedRun, now = Date.now()): string {
+  if (r.live) return ["on now", plural(r.days, "day"), r.model ?? r.platform, `started ${ago(r.started_at, now)}`].join(" · ");
+  const how = r.finished ? `${r.end_reason ?? "ended"}` : r.end_reason === null ? "not left cleanly" : "left";
+  return [r.saved ?? "no save", plural(r.days, "day"), r.model ?? r.platform, `${how} ${ago(r.ended_at ?? r.played_at, now)}`].join(" · ");
+}
+
+/** "just now", "5 min ago", "3 h ago", "2 days ago". */
+export function ago(iso: string, now = Date.now()): string {
+  const s = Math.max(0, (now - Date.parse(iso)) / 1000);
+  if (!Number.isFinite(s) || s < 60) return "just now";
+  if (s < 3600) return `${Math.trunc(s / 60)} min ago`;
+  if (s < 86400) return `${Math.trunc(s / 3600)} h ago`;
+  return `${plural(Math.trunc(s / 86400), "day")} ago`;
+}
+
+/** The Saved runs row's line, for the runs the admin has fetched. */
+export function runsValue(runs: SavedRun[] | null | undefined, pick: string | null): string {
+  if (!runs) return "loading the run list";
+  const list = resumable(runs);
+  const r = pickedRun(runs, pick);
+  if (!r) return "no other run to go back to yet";
+  return `${runLine(r)}` + (list.length > 1 ? ` · ${list.indexOf(r) + 1} of ${list.length}, LEFT/RIGHT picks` : "");
+}
 
 /** The value [by] steps on from [current] in [list], stopping at either end. */
 function step<T>(list: T[], current: T, by: number): T {
@@ -70,7 +112,8 @@ export function value(row: RunRow, life: LifeState, s: Settings, replayPick: num
     case "cap": return capText(s.decide_cap);
     case "resolution":
       return `${s.ticks_per_minute} ticks/game min` + (s.ticks_per_minute !== run.ticks_per_minute ? ` · next run (now ${run.ticks_per_minute})` : "");
-    case "restart": return "a fresh run with these settings";
+    case "restart": return "a fresh run with these settings; this one is saved";
+    case "runs": return "";
     case "replay": return `run ${replayPick ?? run.run} as it started` + (run.run > 1 ? " · LEFT/RIGHT picks the run" : "");
     case "signout": return "forget the password on this browser";
     case "signin": return "for the run's controls";
@@ -94,7 +137,10 @@ export function help(row: RunRow, life: LifeState, s: Settings): string {
         "then holds until it comes back. Waits: thinking costs no game time (lockstep). Runs: it costs whatever the latency is at this speed." +
         (s.decide_cap ? ` Now: ${seconds((s.decide_cap * 60) / s.speed)} s of model time.` : "");
     case "resolution": return "Ticks per game minute: how finely walking and timing are cut. Walking is in tiles per tick, so fewer ticks make walks cheaper in game time. His prompt states it, so it applies from the next run.";
-    case "restart": return "Throws this run away for a fresh one with the settings above. OK, then OK again.";
+    case "restart": return "Leaves this run for a fresh one with the settings above. This run is kept: saved as it is, or at his last decision point while he's partway through something, and it's under Saved runs to go back to. OK, then OK again.";
+    case "runs":
+      return "Every run the host has recorded, the most recently played first. LEFT/RIGHT picks one; OK, then OK again leaves this run (it's saved) and carries the picked one on from its save, waiting for Start. " +
+        "A run is saved every few game minutes when he's between things, so going back replays at most the last few minutes and what he was partway through.";
     case "replay": return "A fresh run set up as the picked run started (length, speed, wait, resolution), to watch the same start play out again. A model may not decide the same way twice. OK, then OK again.";
     case "signout": return "Forgets the admin password on this browser (the host's debug page shares it). The run carries on; this page goes back to watching.";
     case "signin": return "The run's controls are for its admin. OK asks for the password; this browser keeps it until you sign out.";

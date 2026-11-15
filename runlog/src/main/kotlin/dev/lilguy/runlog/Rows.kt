@@ -278,7 +278,7 @@ data class CheckpointRow(
     val tick: Long,
     val day: Int,
     @SerialName("minute_of_day") val minuteOfDay: Int,
-    /** 'woke', 'manual', 'shutdown'. */
+    /** 'woke' (each morning); the session's rolling save, one row rewritten: 'start', 'autosave', 'left'; older rows 'shutdown'. */
     val reason: String,
     @SerialName("content_hash") val contentHash: String,
     @SerialName("git_sha") val gitSha: String?,

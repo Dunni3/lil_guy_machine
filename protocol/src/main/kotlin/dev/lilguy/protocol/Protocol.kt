@@ -31,6 +31,8 @@ object Wire {
     fun encode(r: CommandResult): String = json.encodeToString(CommandResult.serializer(), r)
     fun result(text: String): CommandResult = json.decodeFromString(CommandResult.serializer(), text)
     fun encode(v: Viewer): String = json.encodeToString(Viewer.serializer(), v)
+    fun encode(r: RunList): String = json.encodeToString(RunList.serializer(), r)
+    fun runs(text: String): RunList = json.decodeFromString(RunList.serializer(), text)
 }
 
 /**
@@ -130,7 +132,10 @@ sealed interface Command {
     /** New settings: days, speed, the decision cap and presentation timing take hold now, the resolution from the next run. */
     @Serializable @SerialName("configure") data class Configure(val settings: Settings) : Command
 
-    /** Throws the run away and carries run [run] (an id, or "latest") on from its latest checkpoint; it waits for start. */
+    /**
+     * Leaves the run (saved as it is, if it can be) and carries run [run] (an id from [RunList], or "latest") on from
+     * its latest save; it waits for start.
+     */
     @Serializable @SerialName("resume") data class Resume(val run: String) : Command
 
     /** Runs [ticks] ticks by hand, only while paused. */
@@ -140,6 +145,41 @@ sealed interface Command {
 /** [error] says why a command was refused or failed; [state] is the run's state after it. */
 @Serializable
 data class CommandResult(val ok: Boolean, val error: String? = null, val seq: Long? = null, val state: RunState? = null)
+
+/**
+ * `GET /v1/lives/{life}/runs`, for admins only: the runs in the host's database that [Command.Resume] can go back to,
+ * the most recently played first, the life's own run among them.
+ */
+@Serializable
+data class RunList(val runs: List<SavedRun>)
+
+/** One recorded run. Game times are "d3 14:20": day 3 (the first is 1), at 14:20. */
+@Serializable
+data class SavedRun(
+    @SerialName("run_id") val runId: String,
+    val scenario: String,
+    /** Where it was started: "host", "desktop", "tv", "cli". */
+    val platform: String,
+    /** The deciding model's id ("scripted:bedroom" for the scripted policy). */
+    val model: String?,
+    @SerialName("started_at") val startedAt: String,
+    /** When it was last carried on (or started), ISO 8601 like [startedAt]. */
+    @SerialName("played_at") val playedAt: String,
+    /** When it was last left or ended; null while it's on (or its process died with it). */
+    @SerialName("ended_at") val endedAt: String?,
+    /** Why: "left", "shut down", "shut down while running", or how it ended by itself ("lived 3 days"). */
+    @SerialName("end_reason") val endReason: String?,
+    /** It ended by itself (its days lived, the room solved) rather than being left. */
+    val finished: Boolean,
+    /** Where a resume carries it on from, or null when it has no save and can't be resumed. */
+    val saved: String?,
+    /** The furthest it got, by its last decision; past [saved] by what's lost going back. */
+    val reached: String?,
+    /** Game days it has lived, counting the one it got to. */
+    val days: Int,
+    /** The life is on this run now. */
+    val live: Boolean,
+)
 
 /** Who is asking, from `GET /auth/me`: whether the caller's credentials may send commands. */
 @Serializable

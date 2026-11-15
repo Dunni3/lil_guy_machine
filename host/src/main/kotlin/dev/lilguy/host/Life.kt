@@ -8,6 +8,8 @@ import dev.lilguy.protocol.CommandResult
 import dev.lilguy.protocol.Content
 import dev.lilguy.protocol.LifeState
 import dev.lilguy.protocol.LifeSummary
+import dev.lilguy.protocol.RunList
+import dev.lilguy.protocol.SavedRun
 import dev.lilguy.protocol.ServerMessage
 import dev.lilguy.protocol.Snapshot
 import kotlinx.coroutines.CompletableDeferred
@@ -26,6 +28,9 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import java.util.concurrent.Executors
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -70,14 +75,42 @@ class Life(
 
     val summary: LifeSummary? get() = latest?.let { LifeSummary(id, it.content.scenario, it.state.run.runId, it.state.run.state) }
 
-    /** Sets the life up on its thread and runs it until [stop]; [autostart] starts the first run at once. */
+    /**
+     * Sets the life up on its thread and runs it until [stop]; [autostart] starts the first run at once, as does a run
+     * carried on that was running when the host last stopped.
+     */
     suspend fun start(scope: CoroutineScope, autostart: Boolean = false) {
         withContext(thread) {
             session = SimSession(agents, setup, db)
-            if (autostart) session.start()
+            if (autostart || session.wasRunning) session.start()
             publish()
         }
         job = scope.launch(thread) { loop() }
+    }
+
+    /**
+     * The runs this life can go back to, from the run database (empty without one), the most recently played first: its
+     * own scenario's, leaving out those that never got to a decision unless it's on one now. Reads the store from any thread.
+     */
+    fun runs(limit: Int = MAX_RUNS): RunList {
+        val store = db?.store ?: return RunList(emptyList())
+        val live = latest?.state?.run?.runId
+        val out = store.played(limit * 4).asSequence().filter { it.scenario == setup.scenario.id }.mapNotNull { r ->
+            val last = store.lastTick(r.id)
+            if (last == null && r.id != live) return@mapNotNull null
+            val save = store.latestSave(r.id)
+            val savedAt = save?.let { (it.day - 1) * MINUTES_PER_DAY + it.minuteOfDay }
+            val reachedAt = if (save == null || last == null) savedAt else savedAt!! + ((last - save.tick).coerceAtLeast(0) / r.ticksPerMinute).toInt()
+            SavedRun(
+                runId = r.id, scenario = r.scenario, platform = r.platform,
+                model = (r.models["decision"] as? JsonObject)?.get("id")?.jsonPrimitive?.contentOrNull,
+                startedAt = r.startedAt, playedAt = store.lastPlayed(r.id) ?: r.startedAt, endedAt = r.endedAt, endReason = r.endReason,
+                finished = r.endedAt != null && !SimSession.left(r.endReason),
+                saved = savedAt?.let(::gameTime), reached = reachedAt?.let(::gameTime), days = reachedAt?.let { it / MINUTES_PER_DAY + 1 } ?: 0,
+                live = r.id == live,
+            )
+        }.take(limit).toList()
+        return RunList(out)
     }
 
     /** Runs [command] on the life's thread between ticks. */
@@ -161,6 +194,13 @@ class Life(
     }
 
     private companion object {
+        const val MINUTES_PER_DAY = 1440
+        /** Runs [runs] lists at most. */
+        const val MAX_RUNS = 20
+
+        /** "d3 14:20" for [minutes] since day 1 00:00. */
+        fun gameTime(minutes: Int) = "d${minutes / MINUTES_PER_DAY + 1} %02d:%02d".format(minutes % MINUTES_PER_DAY / 60, minutes % 60)
+
         /** Messages kept for a viewer that's behind before it has to resync from a snapshot. */
         const val BUFFER = 256
         const val MAX_STEP = 10_000

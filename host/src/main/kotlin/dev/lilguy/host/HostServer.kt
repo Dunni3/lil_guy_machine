@@ -43,6 +43,7 @@ import kotlinx.serialization.builtins.ListSerializer
  * - `WS /v1/lives/{life}/stream?v=<version>&have=<content hash>`: the state stream, open to
  *   anyone, read-only (anything a client sends is ignored);
  * - `POST /v1/lives/{life}/commands`: one [dev.lilguy.protocol.Command], for admins only ([auth]);
+ * - `GET /v1/lives/{life}/runs`: the recorded runs it can resume, as a [dev.lilguy.protocol.RunList], for admins only;
  * - `GET /auth/me`: whether the caller's `Authorization` header is an admin's, as a [Viewer].
  */
 fun Application.host(lives: Map<String, Life>, auth: AdminAuth) {
@@ -66,6 +67,14 @@ fun Application.host(lives: Map<String, Life>, auth: AdminAuth) {
             call.respondText(Wire.encode(Snapshot(p.state)), ContentType.Application.Json)
         }
         webSocket("/v1/lives/{life}/stream") { stream(lives) }
+        get("/v1/lives/{life}/runs") {
+            if (!auth.admits(call.request.headers[HttpHeaders.Authorization])) {
+                call.response.header(HttpHeaders.WWWAuthenticate, "Bearer")
+                return@get call.respondText("admin only", status = HttpStatusCode.Unauthorized)
+            }
+            val life = lives[call.parameters["life"]] ?: return@get call.respondText("no such life", status = HttpStatusCode.NotFound)
+            call.respondText(Wire.encode(life.runs()), ContentType.Application.Json)
+        }
         post("/v1/lives/{life}/commands") {
             if (!auth.admits(call.request.headers[HttpHeaders.Authorization])) {
                 call.response.header(HttpHeaders.WWWAuthenticate, "Bearer")

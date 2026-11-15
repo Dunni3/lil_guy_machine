@@ -16,13 +16,17 @@
         },
         "viewer": {
             "$ref": "#/$defs/Viewer"
+        },
+        "runs": {
+            "$ref": "#/$defs/RunList"
         }
     },
     "required": [
         "server",
         "command",
         "result",
-        "viewer"
+        "viewer",
+        "runs"
     ],
     "additionalProperties": false,
     "$defs": {
@@ -1752,6 +1756,22 @@
             ],
             "additionalProperties": false
         },
+        "RunList": {
+            "title": "RunList",
+            "type": "object",
+            "properties": {
+                "runs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/SavedRun"
+                    }
+                }
+            },
+            "required": [
+                "runs"
+            ],
+            "additionalProperties": false
+        },
         "RunState": {
             "title": "RunState",
             "type": "string",
@@ -1761,6 +1781,102 @@
                 "paused",
                 "ended"
             ]
+        },
+        "SavedRun": {
+            "title": "SavedRun",
+            "type": "object",
+            "properties": {
+                "run_id": {
+                    "type": "string"
+                },
+                "scenario": {
+                    "type": "string"
+                },
+                "platform": {
+                    "type": "string"
+                },
+                "model": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "played_at": {
+                    "type": "string"
+                },
+                "ended_at": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "end_reason": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "finished": {
+                    "type": "boolean"
+                },
+                "saved": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "reached": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "days": {
+                    "type": "integer"
+                },
+                "live": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "run_id",
+                "scenario",
+                "platform",
+                "model",
+                "started_at",
+                "played_at",
+                "ended_at",
+                "end_reason",
+                "finished",
+                "saved",
+                "reached",
+                "days",
+                "live"
+            ],
+            "additionalProperties": false
         },
         "SelfModelView": {
             "title": "SelfModelView",

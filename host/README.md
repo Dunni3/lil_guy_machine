@@ -38,6 +38,18 @@ curl -X POST 127.0.0.1:8790/v1/lives/main/commands -H "Authorization: Bearer $LI
 
 If it leaks, change it and restart the host. The old one stops working at once.
 
+## Runs are kept
+
+Every run is recorded in the run database and saved as it goes: each morning, and in one rolling save per session,
+rewritten at his decision points every 10 game minutes and when the run is left. So nothing throws a run away. On
+`/room/`, the admin's RUN tab has **New run** (leave this one for a fresh one) and **Saved runs** (LEFT/RIGHT picks a
+recorded run, OK twice goes back to it, from its save, waiting for Start). The list is `GET /v1/lives/main/runs`, with
+the admin's bearer header.
+
+When the host starts, it carries on the run it was last on (`LILGUY_RESUME` unset or `latest`), and starts it again if
+it was running when the host stopped. `LILGUY_RESUME=none` starts fresh; a run id carries that run on. Going back
+replays whatever came after the save: at most the last 10 game minutes, plus what he was partway through when left.
+
 ## On a server
 
 The host runs in the server's Docker stack, on its own https address. Its settings are in
