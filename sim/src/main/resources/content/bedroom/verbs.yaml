@@ -120,6 +120,18 @@ verbs:
     effects:
       - write: { with: shopping, into: [events], timing: before }
       - basket: { most: 3 }
+  # Letters from people outside his world, sent through the sim host's web page (host/.../Accounts.kt):
+  # one is opened at a time, and what it says goes into the event, so he remembers it. Offered only
+  # while one is waiting. Routine, so a stream of letters never wears thin.
+  - id: read_mail
+    kind: social
+    phrase: open a letter waiting at the mail hatch
+    at: [mail_hatch]
+    minutes: 10
+    routine: true
+    effects:
+      - open_mail: {}
+      - need: { mood: 4, stimulation: 8 }
   - id: hang_art
     kind: transformative
     phrase: hang your art on the wall

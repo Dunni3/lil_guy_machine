@@ -66,6 +66,10 @@ data class BedroomState(
     val bare: Map<String, Long> = emptyMap(),
     /** Rooms built onto the house: room id to site id. */
     val house: Map<String, String> = emptyMap(),
+    /** Letters waiting at the mail hatch, oldest first. */
+    val mail: List<Letter> = emptyList(),
+    /** The ids of the letters he has opened. */
+    val opened: List<Long> = emptyList(),
 ) {
     @Serializable
     data class PendingNeed(val need: String, val reason: String, val delta: Double)

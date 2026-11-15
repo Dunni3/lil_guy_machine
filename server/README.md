@@ -96,3 +96,9 @@ where each branch starts. Filter on `session_id` to see one branch.
 14 days. With `BACKUP_BUCKET` set in `.env` (and the AWS CLI configured with a write-only key),
 each dump is also copied to Lightsail object storage or S3. Lightsail instance snapshots are the
 other option.
+
+The sim host's `accounts.db` (viewers' accounts and their letters, which never reach Postgres) is backed up
+the same night, as `accounts-<stamp>.db.gz` beside the dump: the compose service `sqlite-backup` (profile
+`backup`, so it never runs on its own) mounts the host's volume and copies it with SQLite's online backup API
+(`deploy/backup_sqlite.py`). To restore, stop the host, `gunzip` a copy into the `host-data` volume as
+`accounts.db` (owned by uid 10001, with no `accounts.db-wal` or `-shm` beside it), and start it again.
