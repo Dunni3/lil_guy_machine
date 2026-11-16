@@ -2,6 +2,7 @@ import { Raycaster, Vector2 } from "three";
 import type { LifeState, Settings } from "../../protocol/ts/protocol";
 import { ClayRenderer } from "./clay/renderer";
 import { ClayTextures } from "./clay/textures";
+import { GRADES, gradeNow, watchContext } from "./clay/grade";
 import { RoomView } from "./room/view";
 import { readSettings } from "./settings";
 import { StreamClient } from "./stream/client";
@@ -42,14 +43,21 @@ stream.onChange = (snapshot) => {
 const textures = new ClayTextures();
 let view: RoomView | null = null;
 let renderer: ClayRenderer;
+const grade = gradeNow();
+/** Set when the GPU has given out for good: the line under the canvas says so instead of a blank page. */
+let gaveOut: string | null = null;
 try {
-  renderer = new ClayRenderer(canvas, (name) => textures.texture(name));
+  renderer = new ClayRenderer(canvas, (name) => textures.texture(name), GRADES[grade]);
 } catch (e) {
   status.textContent = "this browser can't draw the room: WebGL isn't available";
   throw e;
 }
+watchContext(canvas, grade, () => {
+  gaveOut = "this device's graphics gave out drawing the room; try reloading the page";
+  canvas.style.display = "none";
+});
 // A fraction of the window's pixels, scaled up by CSS, for a slow GPU (`?scale=`).
-renderer.webgl.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2) * settings.scale);
+renderer.webgl.setPixelRatio(Math.min(window.devicePixelRatio || 1, GRADES[grade].ratio) * settings.scale);
 const layer = new Layer();
 const resize = () => {
   const w = canvas.clientWidth || window.innerWidth;
@@ -444,6 +452,7 @@ function hint(menuOpen: boolean): string | null {
 
 /** The line under the canvas, for before there's a room to draw a HUD on, or when there's no room at all. */
 function describe(): string {
+  if (gaveOut) return gaveOut;
   const { life, refused } = stream.state;
   switch (stream.connection) {
     case "connecting": return "connecting";
@@ -454,7 +463,7 @@ function describe(): string {
 }
 
 // What a person or a headless browser checking the page can read from the console.
-(window as unknown as { lilguy: unknown }).lilguy = { stream, track, renderer, stats, menu, card, admin, hud, label, settings, draw, get view() { return view; } };
+(window as unknown as { lilguy: unknown }).lilguy = { grade, stream, track, renderer, stats, menu, card, admin, hud, label, settings, draw, get view() { return view; } };
 
 stream.start();
 requestAnimationFrame(frame);

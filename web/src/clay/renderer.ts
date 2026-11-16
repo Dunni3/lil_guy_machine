@@ -5,6 +5,7 @@ import {
 } from "three";
 import { merged, partGeometry, placement, type Part } from "./geometry";
 import { dayAt, type Day } from "./day";
+import type { Grade } from "./grade";
 
 /**
  * How many lamps light the scene at once (a fixed number, so the shaders never recompile), how bright one
@@ -15,7 +16,6 @@ const LAMPS = 4;
 const LAMP_INTENSITY = 5;
 const LAMP_RANGE = 9;
 const LAMP_PAST = 1.5;
-const SHADOW_MAP = 2048;
 /** The sun has to move this far (metres, at its distance) before the shadow map is drawn again. */
 const SUN_MOVES = 0.25;
 
@@ -147,19 +147,19 @@ export class ClayRenderer {
   private readonly blobGeometry = new CircleGeometry(0.5, 24).rotateX(-Math.PI / 2);
   private readonly blobMaterial = new MeshBasicMaterial({ color: "#3a2c40", transparent: true, opacity: 0.16, depthWrite: false });
 
-  constructor(canvas: HTMLCanvasElement, private readonly texture: (name: string) => Texture | null) {
-    this.webgl = new WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: "high-performance" });
-    this.webgl.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  constructor(canvas: HTMLCanvasElement, private readonly texture: (name: string) => Texture | null, grade: Grade) {
+    this.webgl = new WebGLRenderer({ canvas, antialias: grade.antialias, alpha: false, powerPreference: "high-performance" });
+    this.webgl.setPixelRatio(Math.min(window.devicePixelRatio || 1, grade.ratio));
     this.webgl.outputColorSpace = SRGBColorSpace;
     this.webgl.toneMapping = NoToneMapping;
-    this.webgl.shadowMap.enabled = true;
+    this.webgl.shadowMap.enabled = grade.shadowMap > 0;
     this.webgl.shadowMap.type = PCFSoftShadowMap;
     this.webgl.shadowMap.autoUpdate = false;
 
     this.solid = new MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0 });
     const sun = this.sun;
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(SHADOW_MAP, SHADOW_MAP);
+    sun.castShadow = grade.shadowMap > 0;
+    sun.shadow.mapSize.set(grade.shadowMap || 1, grade.shadowMap || 1);
     sun.shadow.bias = -0.0004;
     sun.shadow.normalBias = 0.03;
     Object.assign(sun.shadow.camera, { left: -11, right: 11, top: 11, bottom: -11, near: 1, far: 140 });
