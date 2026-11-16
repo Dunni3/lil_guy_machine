@@ -559,7 +559,8 @@ class BedroomWorld private constructor(
 
         override fun buildText(): String {
             val r = content.invent ?: return "design and build a new thing"
-            val stock = r.materials.keys.filter { count(it) > 0 }.joinToString { quantity(it, count(it)) }.ifEmpty { "no materials" }
+            // With none, where they come from: a model deciding doesn't otherwise connect the workbench to the shop.
+            val stock = r.materials.keys.filter { count(it) > 0 }.joinToString { quantity(it, count(it)) }.ifEmpty { "none yet: " + materialsSold(r.materials.keys) }
             val dollars = r.cheapest?.let { "; food or a book from $$it" }.orEmpty()
             val sp = spots()
             val free = sp.free()
