@@ -21,7 +21,7 @@ import kotlin.test.assertTrue
 /** The sprinkler of the machines plan: a thing he invents that acts on its own place, shows it, and is remembered there. */
 class MachinesTest {
     private val content = BedroomContent.default().let { c ->
-        c.copy(start = c.start.copy(money = 100, items = c.start.items + ("workbench" to 1)))
+        c.copy(start = c.start.copy(money = 100, items = c.start.items + mapOf("workbench" to 1, "metal" to 15, "copper_wire" to 10, "glass" to 10)))
     }
 
     private fun BedroomWorld.finish(intent: Intent): IntentStatus {

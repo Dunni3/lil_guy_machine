@@ -121,7 +121,7 @@ class Workbench(
                 "glow ${num(p.glow)}".takeIf { p.glow != 0.0 }, "opacity ${num(p.opacity)}".takeIf { p.opacity != 1.0 },
                 "turned ${num(p.rotX)}, ${num(p.rotY)}, ${num(p.rotZ)}".takeIf { p.rotX != 0.0 || p.rotY != 0.0 || p.rotZ != 0.0 },
             )
-            "${i + 1}.${label(p).removePrefix(" (").removeSuffix(")").let { if (it.isEmpty()) "" else " $it:" }} ${p.shape} ${num(p.w)} x ${num(p.h)} x ${num(p.d)} at (${num(p.x)}, ${num(p.y)}, ${num(p.z)}), ${p.color}" +
+            "${i + 1}.${label(p).removePrefix(" (").removeSuffix(")").let { if (it.isEmpty()) "" else " $it:" }} ${if (p.material.isBlank()) "" else "${p.material} "}${p.shape} ${num(p.w)} x ${num(p.h)} x ${num(p.d)} at (${num(p.x)}, ${num(p.y)}, ${num(p.z)}), ${p.color}" +
                 if (shaped.isEmpty()) "" else ", " + shaped.joinToString()
         }
         return lines.joinToString("\n") + "\n" + Inventor.lookNotes(parts, null)
@@ -187,8 +187,9 @@ class Workbench(
                 "look_part.arc" to "Cylinders: the degrees of the ring there are, ${LookPart.MIN_ARC.toInt()} to 360, centred on the front; 360 for whole.",
                 "look_part.glow" to "How it lights the room at night, 0 to 1.",
                 "look_part.opacity" to "${LookPart.MIN_OPACITY} to 1; 1 for solid, less for glass.",
+                "look_part.material" to "What it's made of: " + rules.materials.entries.joinToString("; ") { (m, mat) -> "$m for ${mat.what.substringBefore(':')}" } + ".",
             ),
-            enums = mapOf("look_part.shape" to LookPart.SHAPES),
+            enums = mapOf("look_part.shape" to LookPart.SHAPES) + (if (rules.materials.isEmpty()) emptyMap() else mapOf("look_part.material" to rules.materials.keys.toList())),
         )
 
         /** What a variant's fields mean. */

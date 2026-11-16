@@ -92,9 +92,9 @@ enum class VerbKind(
     /** Looking after a machine: filling it, emptying it, mending it ([Works]). */
     @SerialName("upkeep")
     Upkeep(
-        "upkeep", "he looks after a machine: fills it, empties it or mends it",
-        allowed = setOf("need", "rate", "tend", "repair", "consume", "practice"),
-        required = listOf(setOf("tend", "repair")),
+        "upkeep", "he looks after a machine: fills it, empties it or mends it, or takes a thing of his apart",
+        allowed = setOf("need", "rate", "tend", "repair", "dismantle", "consume", "practice"),
+        required = listOf(setOf("tend", "repair", "dismantle")),
     ),
 
     /** A verb he wrote: what it does is its code ([ScriptOp]), so the contract is only that it has some. */

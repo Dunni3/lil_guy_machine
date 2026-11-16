@@ -30,6 +30,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.math.ceil
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlin.time.Duration
@@ -147,20 +148,25 @@ class Inventor(private val model: DecisionModel, private val timeout: Duration =
                     "quality_pick.quality" to content.vocabulary.qualities,
                     "look_part.shape" to LookPart.SHAPES,
                     "book_design.skill" to content.vocabulary.skills,
-                ),
+                ) + Workbench.partHints(rules).enums,
                 ranges = mapOf("quality_pick.strength" to 1..3),
             ),
         ) { null }
-        val messages = mutableListOf(Message(Message.Role.User, call.situation.trimEnd() + "\n\n" + brief(content, rules, obs, call.verb.minutes ?: 0)))
+        val w = world
+        val spots: (String) -> List<String> = { place -> w?.inventSpots(place) ?: rules.freeSpots(content, place) }
+        val messages = mutableListOf(Message(Message.Role.User, call.situation.trimEnd() + "\n\n" + brief(content, rules, obs, call.verb.minutes ?: 0, spots)))
         val system = call.system.trimEnd() + "\n\n" + INSTRUCTIONS
-        fun problems(design: Design) = when (val checked = rules.check(design, content, call.verb.minutes ?: 0)) {
-            is InventRules.Checked.Ok -> listOfNotNull(unaffordable(checked.invention.cost, obs.money ?: 0))
+        fun problems(design: Design) = when (val checked = rules.check(design, content, call.verb.minutes ?: 0) { spots(it).firstOrNull() }) {
+            is InventRules.Checked.Ok -> listOfNotNull(
+                if (checked.invention.bill.isNotEmpty()) short(checked.invention.bill, obs.owns.orEmpty(), content)
+                else unaffordable(checked.invention.cost, obs.money ?: 0),
+            )
             is InventRules.Checked.Refused -> checked.problems
         }
         if (model.capabilities.toolCalls) {
             // A writer that calls tools puts the thing together at the workbench a shape at a time.
             val bench = Workbench(rules, content, ::problems)
-            val ask = call.situation.trimEnd() + "\n\n" + brief(content, rules, obs, call.verb.minutes ?: 0) + "\n\n" + AT_THE_BENCH
+            val ask = call.situation.trimEnd() + "\n\n" + brief(content, rules, obs, call.verb.minutes ?: 0, spots) + "\n\n" + AT_THE_BENCH
             val limit = timeout * BENCH_TIME
             return try {
                 withTimeout(limit) {
@@ -237,7 +243,20 @@ class Inventor(private val model: DecisionModel, private val timeout: Duration =
 
         /** Why materials at [cost] can't be paid from [money], or null when they can: the sim refuses the build then, so the design is redone first. */
         fun unaffordable(cost: Int, money: Int): String? =
-            if (cost <= money) null else "its materials cost $$cost and you have $$money; make it simpler, with fewer or weaker qualities, or a use whose materials cost less"
+            if (cost <= money) null else "it costs $$cost and you have $$money; make it simpler, with fewer or weaker qualities, or a use that costs less"
+
+        /** Why a thing whose materials are [bill] can't be built from what he [owns], or null when it can: it's redone smaller or of what he has first. */
+        fun short(bill: Map<String, Int>, owns: Map<String, Int>, content: BedroomContent): String? {
+            val short = bill.filter { (m, n) -> (owns[m] ?: 0) < n }
+            if (short.isEmpty()) return null
+            fun named(m: String, n: Int) = "$n " + plural(content.item(m)?.name ?: m, n)
+            return "it takes " + bill.entries.joinToString(" and ") { (m, n) -> named(m, n) } + ", and you have " +
+                short.keys.joinToString(" and ") { m -> named(m, owns[m] ?: 0) } +
+                "; make it smaller or of fewer parts, or out of the materials you have more of (you can buy more on a shopping trip, but not now)"
+        }
+
+        /** [name] for [n] of it, as the sim counts things ("1 wood plank", "3 glass panes"). */
+        internal fun plural(name: String, n: Int) = if (n == 1) name else if (name.endsWith("s") || name.endsWith("sh") || name.endsWith("ch")) "${name}es" else "${name}s"
 
         const val TEMPERATURE = 0.9
         private const val TRIES = 2
@@ -245,7 +264,7 @@ class Inventor(private val model: DecisionModel, private val timeout: Duration =
         val INSTRUCTIONS = """
             |Right now you are not choosing an action: you are at your workbench, inventing. Design one new thing of your own that you'd like to have, and that isn't like what you already own. Make it yours: what you like, how you feel, what your room or your days are missing.
             |
-            |For this reply only, ignore the reply format above: reply with a JSON object {"name": ..., "use": ..., "qualities": [{"quality": ..., "strength": ...}], "place": ..., "look": [{"shape": ..., "w": ..., "h": ..., "d": ..., "x": ..., "y": ..., "z": ..., "rot_x": ..., "rot_y": ..., "rot_z": ..., "color": ..., "part": ..., "taper": ..., "cut": ..., "hole": ..., "arc": ..., "glow": ..., "opacity": ...}], "book": ..., "why": ..., "variants": [{"name": ..., "changes": [{"part": ..., ...}]}], "runs": [...]} and nothing else.
+            |For this reply only, ignore the reply format above: reply with a JSON object {"name": ..., "use": ..., "qualities": [{"quality": ..., "strength": ...}], "place": ..., "look": [{"shape": ..., "w": ..., "h": ..., "d": ..., "x": ..., "y": ..., "z": ..., "rot_x": ..., "rot_y": ..., "rot_z": ..., "color": ..., "part": ..., "taper": ..., "cut": ..., "hole": ..., "arc": ..., "glow": ..., "opacity": ..., "material": ...}], "book": ..., "why": ..., "variants": [{"name": ..., "changes": [{"part": ..., ...}]}], "runs": [...]} and nothing else.
         """.trimMargin()
 
         /** What `runs` is, with the world's recipes: for the design's schema and the workbench's `build`. */
@@ -296,12 +315,12 @@ class Inventor(private val model: DecisionModel, private val timeout: Duration =
 
         /** The worked example in [look]: a lantern, which uses every way a shape can be shaped. */
         private val EXAMPLE = listOf(
-            LookPart("cylinder", 0.3, 0.04, 0.3, color = "#4a3f38", part = "base"),
-            LookPart("cylinder", 0.24, 0.3, 0.24, y = 0.04, color = "#e6efec", part = "glass", opacity = 0.4),
-            LookPart("cylinder", 0.07, 0.12, 0.07, y = 0.04, color = "#f3ead6", part = "candle"),
-            LookPart("sphere", 0.05, 0.08, 0.05, y = 0.16, color = "#ffcf5a", part = "flame", glow = 1.0),
-            LookPart("cylinder", 0.32, 0.1, 0.32, y = 0.34, color = "#4a3f38", part = "roof", taper = 0.2),
-            LookPart("cylinder", 0.16, 0.03, 0.16, y = 0.44, rotX = -90.0, color = "#4a3f38", part = "handle", hole = 0.75, arc = 180.0),
+            LookPart("cylinder", 0.3, 0.04, 0.3, color = "#4a3f38", part = "base", material = "metal"),
+            LookPart("cylinder", 0.24, 0.3, 0.24, y = 0.04, color = "#e6efec", part = "glass", opacity = 0.4, material = "glass"),
+            LookPart("cylinder", 0.07, 0.12, 0.07, y = 0.04, color = "#f3ead6", part = "candle", material = "wood"),
+            LookPart("sphere", 0.05, 0.08, 0.05, y = 0.16, color = "#ffcf5a", part = "flame", glow = 1.0, material = "glass"),
+            LookPart("cylinder", 0.32, 0.1, 0.32, y = 0.34, color = "#4a3f38", part = "roof", taper = 0.2, material = "metal"),
+            LookPart("cylinder", 0.16, 0.03, 0.16, y = 0.44, rotX = -90.0, color = "#4a3f38", part = "handle", hole = 0.75, arc = 180.0, material = "copper_wire"),
         )
 
         private val EXAMPLE_JSON = kotlinx.serialization.json.Json { encodeDefaults = true }
@@ -343,17 +362,20 @@ class Inventor(private val model: DecisionModel, private val timeout: Duration =
         /** How close two shapes' boxes can be and still count as touching, in metres. */
         private const val TOUCH = 0.02
 
-        /** What he can make, what it costs and what he has, as the user message's second half. */
-        internal fun brief(content: BedroomContent, rules: InventRules, obs: Observation, minutes: Int): String {
+        /**
+         * What he can make, what it costs and what he has, as the user message's second half. [spots]:
+         * the free spots a thing of a place (`floor` or `wall`) could go, the first where it would.
+         */
+        internal fun brief(content: BedroomContent, rules: InventRules, obs: Observation, minutes: Int, spots: (String) -> List<String> = { rules.freeSpots(content, it) }): String {
             val owned = obs.owns.orEmpty().keys
             fun has(name: String) = content.withName(name).any { it.id in owned }
             val uses = rules.uses.entries.joinToString("\n") { (use, u) ->
-                val cost = "materials $${u.base}" + if (u.perStrength > 0) " plus $${u.perStrength} a point of quality strength" else ""
+                val cost = if (u.built) "built from materials" else "$${u.base}" + if (u.perStrength > 0) " plus $${u.perStrength} a point of quality strength" else ""
                 // What else its verbs ask for that he doesn't have, so he knows a record needs a player.
                 val needs = content.verbs.filter { use in it.args.values }.flatMap { v -> (v.args.values + v.requires).filter { it != use && !has(it) } }.distinct()
                     .map { n -> content.withName(n).firstOrNull()?.name ?: n }
                 val also = if (needs.isEmpty()) "" else "; no use to you until you have a ${needs.joinToString(" and a ")}"
-                "- $use: ${what(use, content, rules, minutes)} ($cost$also)"
+                "- $use: ${what(use, content, rules, minutes, spots)} ($cost$also)"
             }
             val qualities = content.vocabulary.qualities.joinToString { q ->
                 val a = content.personality.affinity(q)
@@ -369,7 +391,8 @@ class Inventor(private val model: DecisionModel, private val timeout: Duration =
                 |You're at your workbench with $${obs.money ?: 0}. You can build one new thing today. It has exactly one use:
                 |$uses
                 |
-                |What it's like is up to ${rules.qualities.most} qualities, each with a strength from 1 to 3, adding up to at most ${rules.qualities.total.toInt()}: $qualities. Stronger qualities you like make it worth more to you and cost more in materials. You can't spend more than you have.
+                |What it's like is up to ${rules.qualities.most} qualities, each with a strength from 1 to 3, adding up to at most ${rules.qualities.total.toInt()}: $qualities. Stronger qualities you like make it worth more to you and take more to make. You can't use more than you have.
+                |${materials(content, rules, obs)}
                 |
                 |${look(rules.lookParts)}
                 |
@@ -379,11 +402,39 @@ class Inventor(private val model: DecisionModel, private val timeout: Duration =
             """.trimMargin()
         }
 
-        private fun what(use: String, content: BedroomContent, rules: InventRules, minutes: Int): String = when (use) {
+        /**
+         * The brief's paragraph on materials, when built things are made of them: each material, what
+         * it's for and costs, how a look adds up to a bill, the workings, and what he has. Empty without.
+         */
+        internal fun materials(content: BedroomContent, rules: InventRules, obs: Observation): String {
+            if (rules.materials.isEmpty()) return ""
+            val owns = obs.owns.orEmpty()
+            fun named(m: String, n: Int) = "$n " + plural(content.item(m)?.name ?: m, n)
+            val list = rules.materials.entries.joinToString("\n") { (m, mat) ->
+                val s = content.item(m)
+                val each = s?.price?.let { p -> " ($" + String.format(java.util.Locale.ROOT, "%.0f", p.toDouble() / s.pack) + " each, " + (if (s.pack > 1) "${s.pack} for $$p" else "$$p") + ")" }.orEmpty()
+                "- $m$each: ${mat.what}"
+            }
+            val side = Math.cbrt(rules.unit)
+            val workings = listOfNotNull(
+                rules.workings.code.takeIf { it.isNotEmpty() }?.let { w -> "a thing with code needs " + w.entries.joinToString(" and ") { (m, n) -> named(m, n) } + " of wiring, or it's built but does nothing" },
+                rules.workings.moving.takeIf { it.isNotEmpty() }?.let { w -> "one whose code moves a part, or that runs recipes, needs " + w.entries.joinToString(" and ") { (m, n) -> named(m, n) } + " for its mechanism" },
+            ).joinToString("; ")
+            val has = rules.materials.keys.filter { (owns[it] ?: 0) > 0 }.joinToString { named(it, owns.getValue(it)) }.ifEmpty { "none" }
+            return """
+                |
+                |What you build to look at, to play or to sell is made of materials, and each shape of its look names one (its `material`):
+                |$list
+                |A shape takes one of its material for every ${String.format(java.util.Locale.ROOT, "%.2f", side)} by ${String.format(java.util.Locale.ROOT, "%.2f", side)} by ${String.format(java.util.Locale.ROOT, "%.2f", side)} of it (a 0.3 cube takes ${ceil(0.027 / rules.unit).toInt()}), and at least 1; what most of it is made of takes ${rules.finish} more for each point of quality strength. ${workings.replaceFirstChar { it.uppercase() }}. Food and books are bought with money instead. The materials you have: $has. Build it from those: you can't buy more until you go shopping.
+            """.trimMargin()
+        }
+
+        private fun what(use: String, content: BedroomContent, rules: InventRules, minutes: Int, spots: (String) -> List<String>): String = when (use) {
             "viewable" -> {
-                val floor = rules.freeSpots(content, InventRules.FLOOR).size
-                val wall = rules.freeSpots(content, InventRules.WALL).size
-                "something to look at in your room, on the floor or in a wall ($floor free on the floor, $wall in the walls); the qualities you like in it raise your room's comfort, which lifts the mood you settle to, and while it's new it's stimulating"
+                val floor = spots(InventRules.FLOOR)
+                val wall = spots(InventRules.WALL)
+                fun free(s: List<String>) = if (s.isEmpty()) "none" else "${s.size}, the next at ${s.first()}"
+                "something to look at, on the floor or in a wall (free spots on the floor, indoors or out: ${free(floor)}; in a wall: ${free(wall)}); the qualities you like in it raise the comfort where you can see it, which lifts the mood you settle to, and while it's new it's stimulating"
             }
             "playable" -> "a record to play; its qualities are what you get from playing it"
             "readable" -> "a book you write, ${rules.book.minChapters} to ${rules.book.maxChapters} chapters to read back a chapter a sitting; its qualities are what you get from reading it, and it can raise one skill"
@@ -396,10 +447,12 @@ class Inventor(private val model: DecisionModel, private val timeout: Duration =
 
 /**
  * A few fixed designs, built one after another: a dev aid for watching him invent with no endpoint
- * (`LILGUY_INVENTOR`), as the random painter is for art.
+ * (`LILGUY_INVENTOR`), as the random painter is for art. A design whose name he already has is
+ * built again under a numbered name ("pebble lamp 2"), so a long run keeps filling his spots.
  */
 class CannedInventor(private val designs: List<Design> = DESIGNS, private val codes: Map<String, CodeDesign> = emptyMap()) : Inventing {
     private var world: BedroomWorld? = null
+    private var calls = 0
 
     override val id = "canned-inventor"
 
@@ -408,27 +461,36 @@ class CannedInventor(private val designs: List<Design> = DESIGNS, private val co
     }
 
     override suspend fun invent(call: AuthorCall): Drafted {
-        val made = world?.inventions.orEmpty().size
-        val design = designs[made % designs.size]
-        val code = codes[design.name]?.let { Coded(call.obs.tick, call.obs.clock?.day, call.obs.clock?.time, id, it, emptyList(), null, Usage(), Duration.ZERO, forThing = design.name) }
+        val canned = designs[calls++ % designs.size]
+        val names = world?.content?.items.orEmpty().map { it.name.lowercase() }.toSet()
+        val design = generateSequence(1) { it + 1 }.map { if (it == 1) canned.name else "${canned.name} $it" }.first { it !in names }.let { canned.copy(name = it) }
+        val code = codes[canned.name]?.let { Coded(call.obs.tick, call.obs.clock?.day, call.obs.clock?.time, id, it, emptyList(), null, Usage(), Duration.ZERO, forThing = design.name) }
         return Drafted(call.obs.tick, call.obs.clock?.day, call.obs.clock?.time, id, design, emptyList(), null, Usage(), Duration.ZERO, code = code)
     }
 
     companion object {
-        /** `LILGUY_INVENTOR=machines`: things that do something by themselves, with their code. Anything else: [DESIGNS], which only sit there. */
-        fun of(which: String): CannedInventor = if (which == "machines") CannedInventor(listOf(SPRINKLER), mapOf(SPRINKLER.name to SPRINKLER_CODE)) else CannedInventor()
+        /**
+         * `LILGUY_INVENTOR=machines`: things that do something by themselves, with their code.
+         * `workshop`: things that stand on the ground, the sprinkler with its code among them, for
+         * filling his spots. Anything else: [DESIGNS], which only sit there.
+         */
+        fun of(which: String): CannedInventor = when (which) {
+            "machines" -> CannedInventor(listOf(SPRINKLER), mapOf(SPRINKLER.name to SPRINKLER_CODE))
+            "workshop" -> CannedInventor(listOf(SPRINKLER) + DESIGNS.filter { it.place == InventRules.FLOOR }, mapOf(SPRINKLER.name to SPRINKLER_CODE))
+            else -> CannedInventor()
+        }
 
         /** A garden sprinkler: a spinning head over a mist dome, which swells and glows in its `spraying` variant. */
         val SPRINKLER = Design(
             name = "garden sprinkler", use = "viewable", qualities = mapOf("natural" to 1.0, "lively" to 1.0), place = InventRules.FLOOR,
             look = listOf(
-                LookPart("cylinder", 0.36, 0.04, 0.36, color = "#6b7a5a", part = "base"),
-                LookPart("cylinder", 0.05, 0.34, 0.05, y = 0.04, color = "#9aa3a8", part = "pipe"),
-                LookPart("cylinder", 0.12, 0.06, 0.12, y = 0.38, color = "#c9b458", part = "head"),
-                LookPart("box", 0.36, 0.025, 0.04, y = 0.41, color = "#c9b458", part = "head"),
-                LookPart("sphere", 0.06, 0.06, 0.06, x = -0.18, y = 0.4, color = "#4f8fc0", part = "head"),
-                LookPart("sphere", 0.06, 0.06, 0.06, x = 0.18, y = 0.4, color = "#4f8fc0", part = "head"),
-                LookPart("sphere", 0.5, 0.26, 0.5, y = 0.44, color = "#cfe8f3", part = "spray", cut = 0.5, opacity = 0.25),
+                LookPart("cylinder", 0.36, 0.04, 0.36, color = "#6b7a5a", part = "base", material = "metal"),
+                LookPart("cylinder", 0.05, 0.34, 0.05, y = 0.04, color = "#9aa3a8", part = "pipe", material = "metal"),
+                LookPart("cylinder", 0.12, 0.06, 0.12, y = 0.38, color = "#c9b458", part = "head", material = "metal"),
+                LookPart("box", 0.36, 0.025, 0.04, y = 0.41, color = "#c9b458", part = "head", material = "metal"),
+                LookPart("sphere", 0.06, 0.06, 0.06, x = -0.18, y = 0.4, color = "#4f8fc0", part = "head", material = "copper_wire"),
+                LookPart("sphere", 0.06, 0.06, 0.06, x = 0.18, y = 0.4, color = "#4f8fc0", part = "head", material = "copper_wire"),
+                LookPart("sphere", 0.5, 0.26, 0.5, y = 0.44, color = "#cfe8f3", part = "spray", cut = 0.5, opacity = 0.25, material = "glass"),
             ),
             why = "the seed-pod bush takes a day and a half to grow back, and it could use some help",
             variants = mapOf(
@@ -487,39 +549,39 @@ class CannedInventor(private val designs: List<Design> = DESIGNS, private val co
             Design(
                 name = "pebble lamp", use = "viewable", qualities = mapOf("calm" to 2.0, "natural" to 2.0), place = InventRules.FLOOR,
                 look = listOf(
-                    LookPart("cylinder", 0.34, 0.1, 0.34, color = "#8a6a4a"),
-                    LookPart("cylinder", 0.06, 0.5, 0.06, y = 0.1, color = "#6b5238"),
-                    LookPart("sphere", 0.36, 0.3, 0.36, y = 0.55, color = "#f2dc8a", part = "shade", glow = 1.0),
-                    LookPart("sphere", 0.2, 0.12, 0.2, x = 0.1, y = 0.08, z = 0.1, color = "#5f8a4e"),
-                    LookPart("sphere", 0.16, 0.1, 0.16, x = -0.12, y = 0.08, z = 0.06, color = "#74a05c"),
+                    LookPart("cylinder", 0.34, 0.1, 0.34, color = "#8a6a4a", material = "wood"),
+                    LookPart("cylinder", 0.06, 0.5, 0.06, y = 0.1, color = "#6b5238", material = "wood"),
+                    LookPart("sphere", 0.36, 0.3, 0.36, y = 0.55, color = "#f2dc8a", part = "shade", glow = 1.0, material = "glass"),
+                    LookPart("sphere", 0.2, 0.12, 0.2, x = 0.1, y = 0.08, z = 0.1, color = "#5f8a4e", material = "wood"),
+                    LookPart("sphere", 0.16, 0.1, 0.16, x = -0.12, y = 0.08, z = 0.06, color = "#74a05c", material = "wood"),
                 ),
                 why = "the room needs something green that glows",
             ),
             Design(
                 name = "paper kite", use = "viewable", qualities = mapOf("bright" to 2.0, "lively" to 1.0), place = InventRules.WALL,
                 look = listOf(
-                    LookPart("box", 0.4, 0.4, 0.03, y = 0.2, rotZ = 45.0, color = "#e2574c"),
-                    LookPart("box", 0.03, 0.5, 0.02, y = 0.15, z = 0.02, color = "#f4e9c9"),
-                    LookPart("box", 0.05, 0.3, 0.02, x = 0.05, y = -0.0, z = 0.02, rotZ = 15.0, color = "#4f8fc0"),
+                    LookPart("box", 0.4, 0.4, 0.03, y = 0.2, rotZ = 45.0, color = "#e2574c", material = "wood"),
+                    LookPart("box", 0.03, 0.5, 0.02, y = 0.15, z = 0.02, color = "#f4e9c9", material = "wood"),
+                    LookPart("box", 0.05, 0.3, 0.02, x = 0.05, y = -0.0, z = 0.02, rotZ = 15.0, color = "#4f8fc0", material = "wood"),
                 ),
                 why = "I can't go outside, so the sky can come in",
             ),
             Design(
                 name = "honey toast", use = "edible", qualities = mapOf("warm" to 2.0, "cozy" to 1.0),
-                look = listOf(LookPart("box", 0.2, 0.04, 0.2, color = "#d9a352")),
+                look = listOf(LookPart("box", 0.2, 0.04, 0.2, color = "#d9a352", material = "wood")),
                 why = "meals are fine but nothing about them is nice",
             ),
             Design(
                 name = "tin robot", use = "viewable", qualities = mapOf("strange" to 2.0, "lively" to 2.0), place = InventRules.FLOOR,
                 look = listOf(
-                    LookPart("box", 0.3, 0.34, 0.22, y = 0.2, color = "#9fb4c2"),
-                    LookPart("box", 0.22, 0.2, 0.2, y = 0.56, color = "#b9cad6"),
-                    LookPart("cylinder", 0.08, 0.2, 0.08, x = -0.09, color = "#70848f"),
-                    LookPart("cylinder", 0.08, 0.2, 0.08, x = 0.09, color = "#70848f"),
-                    LookPart("sphere", 0.05, 0.05, 0.03, x = -0.05, y = 0.66, z = 0.1, color = "#f2c94c"),
-                    LookPart("sphere", 0.05, 0.05, 0.03, x = 0.05, y = 0.66, z = 0.1, color = "#f2c94c"),
-                    LookPart("cylinder", 0.02, 0.14, 0.02, y = 0.76, color = "#70848f"),
-                    LookPart("sphere", 0.06, 0.06, 0.06, y = 0.9, color = "#e2574c"),
+                    LookPart("box", 0.3, 0.34, 0.22, y = 0.2, color = "#9fb4c2", material = "metal"),
+                    LookPart("box", 0.22, 0.2, 0.2, y = 0.56, color = "#b9cad6", material = "metal"),
+                    LookPart("cylinder", 0.08, 0.2, 0.08, x = -0.09, color = "#70848f", material = "metal"),
+                    LookPart("cylinder", 0.08, 0.2, 0.08, x = 0.09, color = "#70848f", material = "metal"),
+                    LookPart("sphere", 0.05, 0.05, 0.03, x = -0.05, y = 0.66, z = 0.1, color = "#f2c94c", material = "glass"),
+                    LookPart("sphere", 0.05, 0.05, 0.03, x = 0.05, y = 0.66, z = 0.1, color = "#f2c94c", material = "glass"),
+                    LookPart("cylinder", 0.02, 0.14, 0.02, y = 0.76, color = "#70848f", material = "copper_wire"),
+                    LookPart("sphere", 0.06, 0.06, 0.06, y = 0.9, color = "#e2574c", material = "metal"),
                 ),
                 why = "someone to keep me company who doesn't need feeding",
             ),

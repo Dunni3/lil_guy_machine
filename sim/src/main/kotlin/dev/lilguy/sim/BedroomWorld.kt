@@ -325,7 +325,11 @@ class BedroomWorld private constructor(
             val r = content.invent ?: return "there's nothing to build with"
             val today = clock.day(ticks)
             if (inventions.count { clock.day(it.tick) == today } >= r.perDay) return "you've built what you can today; a new idea needs a night's sleep"
-            if (!ledger.canAfford(r.cheapest)) return "materials cost at least $${r.cheapest} and you have $${ledger.balance}"
+            val cheapest = r.cheapest
+            if (r.materials.keys.none { count(it) > 0 } && (cheapest == null || !ledger.canAfford(cheapest))) {
+                return "you have no materials to build with; " + materialsSold(r.materials.keys) +
+                    (cheapest?.let { ", and food or a book costs at least $$it and you have $${ledger.balance}" } ?: "")
+            }
             return null
         }
 
@@ -338,9 +342,12 @@ class BedroomWorld private constructor(
         private fun unbuildable(verb: VerbSpec): String? {
             val staged = designs[verb.id] ?: return "you couldn't settle on a design, so nothing got built"
             val design = staged.design ?: return "you couldn't settle on a design, so nothing got built"
-            return when (val checked = content.invent!!.check(design, content, verb.minutes!!)) {
+            return when (val checked = content.invent!!.check(design, content, verb.minutes!!, ::inventSpot)) {
                 is InventRules.Checked.Refused -> "the ${design.name.ifBlank { "design" }} didn't work: " + checked.problems.joinToString("; ")
-                is InventRules.Checked.Ok -> checked.invention.cost.takeIf { !ledger.canAfford(it) }?.let { "the materials for the ${checked.invention.item.name} cost $$it and you have $${ledger.balance}" }
+                is InventRules.Checked.Ok -> checked.invention.let { made ->
+                    if (made.bill.isNotEmpty()) shortOf(made.bill, "the ${made.item.name}")
+                    else made.cost.takeIf { !ledger.canAfford(it) }?.let { "the ${made.item.name} costs $$it and you have $${ledger.balance}" }
+                }
             }
         }
 
@@ -492,36 +499,79 @@ class BedroomWorld private constructor(
         override fun repairText(id: String) = works.repairText(worksHost, id)
         override fun repair(id: String) = works.repair(worksHost, id)
 
+        // Unbound, the argument is still its tag ("invention"): nothing to say of a thing yet.
+        override fun dismantleLock(id: String): String? {
+            val spec = content.item(id) ?: return null
+            if (inventions.none { it.item.id == id }) return "the ${spec.name} isn't something you invented; only your own inventions can be taken apart"
+            if (spec.slot == null) return "the ${spec.name} doesn't stand anywhere, so there's nothing to take apart for room"
+            if (count(id) == 0) return "you don't have the ${spec.name}"
+            return null
+        }
+
+        override fun dismantleText(id: String): String {
+            val made = inventions.firstOrNull { it.item.id == id } ?: return "take one of your inventions apart for half its materials and its spot"
+            val back = content.invent!!.salvaged(made.bill)
+            return "take the ${made.item.name} apart: " + (if (back.isEmpty()) "nothing back" else "back " + back.entries.joinToString { (m, n) -> quantity(m, n) }) +
+                (made.item.slot?.let { ", and $it is free" } ?: "")
+        }
+
+        override fun dismantle(id: String) = this@BedroomWorld.dismantle(id)
+
         override fun build(verb: VerbSpec): List<String> {
             val staged = designs.remove(verb.id)!!
             val design = staged.design!!
-            val made = (content.invent!!.check(design, content, verb.minutes!!) as InventRules.Checked.Ok).invention.copy(tick = ticks)
+            val rules = content.invent!!
+            val body = (rules.check(design, content, verb.minutes!!, ::inventSpot) as InventRules.Checked.Ok).invention.copy(tick = ticks)
+            // Its workings (the wiring its code needs, a mechanism for moving parts) go in only if he has them too.
+            val code = staged.code?.takeIf { !it.isEmpty }
+            val workings = rules.workings(design, code)
+            val wired = workings.isEmpty() || shortOf(plus(body.bill, workings), "it") == null
+            val bill = if (wired) plus(body.bill, workings) else body.bill
+            val made = if (bill.isEmpty()) body else body.copy(bill = bill, cost = rules.value(bill, content), wired = wired && code != null)
             val spec = made.item
             this@BedroomWorld.content = content.plus(made)
             inventions = inventions + made
             knownCache = null
-            ledger.debit(ticks, made.cost, "materials for the ${spec.name}")
+            val paid = if (bill.isEmpty()) {
+                ledger.debit(ticks, made.cost, "materials for the ${spec.name}")
+                "materials $${made.cost} (money $${ledger.balance})"
+            } else {
+                takeBill(bill)
+                "used " + bill.entries.joinToString { (m, n) -> quantity(m, n) } + " ($${made.cost} of materials)"
+            }
             add(spec.id, 1)
             val like = spec.qualities.entries.joinToString { (q, s) -> "$q ${s.toInt()}" }
             val comfortNote = if (comfortOf(spec) != 0) comfortText() else null
             val newNote = newThingRate(spec).takeIf { it > 0 }?.let { newThings[spec.id] = ticks; "new: ${newThingText(it)}" }
             return listOfNotNull(
-                "built the ${spec.name}, ${article(spec.group)} of your own design" + if (like.isEmpty()) "" else " ($like)",
-                "materials $${made.cost} (money $${ledger.balance})",
+                "built the ${spec.name}, ${article(spec.group)} of your own design" + (if (like.isEmpty()) "" else " ($like)") + (spec.slot?.let { " at $it" } ?: ""),
+                paid,
                 spec.price?.let { "the shop will send more for $$it" },
                 spec.sellPrice?.let { "it sells for $$it" },
                 comfortNote,
                 newNote,
-            ) + (
+            ) + when {
                 // What it does, written with it: its verbs and its behavior, now that it has an id.
-                staged.code?.takeIf { !it.isEmpty }?.let { putCode(it.about(spec.id)) }
-                    ?: listOfNotNull(staged.codeFailed?.let { "you didn't get its code written ($it), so it doesn't do anything yet" })
-                )
+                code != null && wired -> putCode(code.about(spec.id))
+                code != null -> listOf("you didn't have " + workings.entries.joinToString(" and ") { (m, n) -> quantity(m, n) } + " for its workings, so it's built but doesn't do anything yet")
+                else -> listOfNotNull(staged.codeFailed?.let { "you didn't get its code written ($it), so it doesn't do anything yet" })
+            }
         }
 
         override fun buildText(): String {
             val r = content.invent ?: return "design and build a new thing"
-            return "design a new thing of your own and build it: ${r.uses.keys.joinToString(" or ") { useNoun(it) }}; materials from $${r.cheapest}"
+            val stock = r.materials.keys.filter { count(it) > 0 }.joinToString { quantity(it, count(it)) }.ifEmpty { "no materials" }
+            val dollars = r.cheapest?.let { "; food or a book from $$it" }.orEmpty()
+            val sp = spots()
+            val free = sp.free()
+            val ground = free.count { !sp.isWall(it) }
+            val wall = free.count(sp::isWall)
+            val room = when {
+                ground == 0 && wall == 0 -> "; no free spot on the ground or in a wall left for a new thing to stand: dismantle one of yours or move something first"
+                ground == 0 -> "; no free spot on the ground left ($wall in a wall): dismantle one of yours or move something to make room"
+                else -> "; $ground free spots on the ground, $wall in a wall"
+            }
+            return "design a new thing of your own and build it: ${r.uses.keys.joinToString(" or ") { useNoun(it) }}; things are built from your materials (you have $stock)$dollars$room"
         }
 
         override fun switchLock(lamp: String, to: LampMode): String? {
@@ -608,7 +658,8 @@ class BedroomWorld private constructor(
         owned.entries.sumOf { (id, n) -> if (answers(id, tag)) n else 0 } + if (extra != null && answers(extra, tag)) 1 else 0
 
     /** Whether [id] answers to [tag]: its id or an affordance, or `machine` for a thing with code, which wears and is mended like one. */
-    private fun answers(id: String, tag: String): Boolean = tag in item(id).names || (tag == Works.MACHINE && id in behaviors)
+    private fun answers(id: String, tag: String): Boolean = tag in item(id).names || (tag == Works.MACHINE && id in behaviors) ||
+        (tag == INVENTION && item(id).slot != null && inventions.any { it.item.id == id })
 
     private fun add(id: String, n: Int) {
         version++
@@ -875,6 +926,15 @@ class BedroomWorld private constructor(
         }
         d.behaviors.forEach { b ->
             CodeRules.problem(b, content, sandbox)?.let { parts += "$it, so it didn't go in"; return@forEach }
+            // A thing he built from materials does something only once it's wired: code written for it later takes the wiring then.
+            val made = inventions.firstOrNull { it.item.id == b.thing }?.takeIf { it.bill.isNotEmpty() && !it.wired }
+            val wiring = content.invent?.workings?.code.orEmpty()
+            if (made != null && wiring.isNotEmpty()) {
+                shortOf(wiring, "wiring the ${made.item.name}")?.let { parts += "the ${made.item.name}'s code didn't go in: $it"; return@forEach }
+                takeBill(wiring)
+                inventions = inventions.map { if (it === made) it.copy(bill = plus(it.bill, wiring), wired = true) else it }
+                parts += "wired the ${made.item.name} with " + wiring.entries.joinToString(" and ") { (m, n) -> quantity(m, n) }
+            }
             val was = behaviors[b.thing]
             behaviors = behaviors + (b.thing to ThingCode(b.code, b.says.trim(), (was?.version ?: 0) + 1, ticks, every = b.everyMinutes))
             parts += "the ${item(b.thing).name} " + (if (was != null) "does something new by itself: " else "now does something by itself: ") + b.says.trim()
@@ -1041,6 +1101,78 @@ class BedroomWorld private constructor(
 
     /** Where his things stand and could go, by the current content and map. */
     private fun spots() = Spots(content, layout) { count(it) > 0 }
+
+    /**
+     * Where a new thing of [place] (`floor` or `wall`) he invents goes: the room's first free spare
+     * spot of that kind (room.yaml `spots`), else the free spot of that kind nearest the workbench,
+     * in a room or on the land. Null when every one is taken.
+     */
+    fun inventSpot(place: String): String? = inventSpots(place).firstOrNull()
+
+    /** Every free spot a new thing of [place] could go, in the order [inventSpot] takes them. */
+    fun inventSpots(place: String): List<String> {
+        val s = spots()
+        val wall = place == InventRules.WALL
+        val free = s.free().filter { s.isWall(it) == wall }
+        val spare = (if (wall) content.room.spots.wall else content.room.spots.floor).filter { it in free }
+        val bench = content.verbs.firstOrNull { v -> v.ops<BuildOp>().isNotEmpty() }?.at?.firstNotNullOfOrNull { content.item(it)?.slot?.let(layout.slotCells::get) } ?: guy.cell
+        return spare + (free - spare.toSet()).mapNotNull { spot -> layout.distance(bench, layout.slotCells.getValue(spot))?.let { spot to it } }.sortedBy { it.second }.map { it.first }
+    }
+
+    /** [a] and [b] added up, material by material. */
+    private fun plus(a: Map<String, Int>, b: Map<String, Int>): Map<String, Int> = LinkedHashMap(a).also { m -> b.forEach { (k, n) -> m.merge(k, n, Int::plus) } }
+
+    /** Why [what] can't be built from his stock: what [bill] takes, what he has of it, and where the rest is sold. Null when he has it all. */
+    private fun shortOf(bill: Map<String, Int>, what: String): String? {
+        val short = bill.filter { (m, n) -> count(m) < n }
+        if (short.isEmpty()) return null
+        val has = short.keys.joinToString(" and ") { m -> if (count(m) == 0) "no ${quantity(m, 2).substringAfter(' ')}" else quantity(m, count(m)) }
+        return "$what takes " + bill.entries.joinToString(" and ") { (m, n) -> quantity(m, n) } + "; you have $has. " + materialsSold(short.keys).replaceFirstChar { it.uppercase() }
+    }
+
+    /** "the shop sells wood planks (5 for $10) and glass panes (3 for $9) on a shopping trip". */
+    private fun materialsSold(ids: Collection<String>): String =
+        "the shop sells " + ids.mapNotNull(content::item).joinToString(" and ") { s -> quantity(s.id, 2).substringAfter(' ') + " (" + (if (s.pack > 1) "${s.pack} for " else "") + "$${s.price})" } +
+            if (content.verbs.any { v -> v.ops<BasketOp>().isNotEmpty() }) " on a shopping trip" else ""
+
+    /** Takes [bill]'s materials from his stock; he has them ([shortOf]). */
+    private fun takeBill(bill: Map<String, Int>) = bill.forEach { (m, n) -> take(m, n) }
+
+    /**
+     * Takes apart [id], a thing he invented: it leaves his world with its book and the verbs he wrote
+     * for it, its code stops, what its machine held comes to him, its spot is free, and he gets back
+     * [InventRules.salvaged] of its bill. Returns the event's parts.
+     */
+    private fun dismantle(id: String): List<String> {
+        val made = inventions.first { it.item.id == id }
+        val spec = made.item
+        val back = content.invent!!.salvaged(made.bill)
+        val held = works.store(id).let { plus(it.inputs, it.outputs) }
+        val hadCode = behaviors.containsKey(id)
+        val gone = this.coded.filter { v -> id in v.verb.at || id in v.verb.args.values }
+        content = content.minus(id)
+        inventions = inventions.filter { it.item.id != id }
+        if (gone.isNotEmpty()) this.coded = this.coded - gone.toSet()
+        behaviors = behaviors - id
+        works.restore(works.export()) { it != id }
+        machines.restore(machines.export()) { it != id }
+        thingState.remove(id)
+        custom.remove(id)
+        lampModes.remove(id)
+        newThings.remove(id)
+        ownedSince.remove(id)
+        owned.remove(id)
+        contentChanged()
+        back.forEach { (m, n) -> add(m, n) }
+        held.forEach { (m, n) -> if (content.item(m) != null) add(m, n) }
+        return listOfNotNull(
+            "took the ${spec.name} apart" + (spec.slot?.let { ", and $it is free now" } ?: ""),
+            if (back.isEmpty()) "nothing in it could be used again" else "got back " + back.entries.joinToString(" and ") { (m, n) -> quantity(m, n) },
+            held.takeIf { it.isNotEmpty() }?.let { h -> "took out what it held: " + h.entries.joinToString(" and ") { (m, n) -> quantity(m, n) } },
+            if (hadCode) "its code has stopped" else null,
+            gone.takeIf { it.isNotEmpty() }?.let { g -> "your verbs done with it are gone (${g.joinToString { it.verb.id }})" },
+        )
+    }
 
     /** [Spots.options] for the observation, kept while nothing he owns or the content changes. */
     private var putCache: Pair<Int, PutOptions?>? = null
@@ -1214,13 +1346,19 @@ class BedroomWorld private constructor(
             val given = if (worded) design - "look" else design
             val d = runCatching { DESIGN_JSON.decodeFromJsonElement(Design.serializer(), toJson(given)) }
                 .getOrElse { throw ScriptProblem("the design didn't make sense: ${it.message?.lineSequence()?.firstOrNull()}") }
-            val made = when (val checked = rules.check(d, content, minutes)) {
+            val made = when (val checked = rules.check(d, content, minutes, ::inventSpot)) {
                 is InventRules.Checked.Refused -> throw ScriptProblem("the ${d.name} can't be made: " + checked.problems.joinToString("; "))
                 is InventRules.Checked.Ok -> checked.invention.copy(tick = ticks)
             }
-            // Its materials cost what they would at the workbench.
-            if (!ledger.canAfford(made.cost)) throw ScriptProblem("the ${made.item.name}'s materials cost $${made.cost}, and you have $${ledger.balance}")
-            if (made.cost > 0) ledger.debit(ticks, made.cost, "materials for the ${made.item.name}")
+            // It takes what it would at the workbench: materials from his stock, or dollars for food and books.
+            if (made.bill.isNotEmpty()) {
+                shortOf(made.bill, "the ${made.item.name}")?.let { throw ScriptProblem(it) }
+                takeBill(made.bill)
+                did += "used " + made.bill.entries.joinToString { (m, n) -> quantity(m, n) }
+            } else {
+                if (!ledger.canAfford(made.cost)) throw ScriptProblem("the ${made.item.name} costs $${made.cost}, and you have $${ledger.balance}")
+                if (made.cost > 0) ledger.debit(ticks, made.cost, "materials for the ${made.item.name}")
+            }
             content = content.plus(made)
             inventions = inventions + made
             contentChanged()
@@ -1648,6 +1786,8 @@ class BedroomWorld private constructor(
     /** "an easel ($120)", "a meal (3 for $18)", "a sketchbook". The cheapest item with [tag] for sale, if any; named as itself when [cheapest], not by its group. */
     private fun wanted(tag: String, cheapest: Boolean = false): String {
         val options = content.withName(tag)
+        // Nothing in the content answers to it yet: a thing he invents, before he has built one.
+        if (options.isEmpty()) return if (tag == INVENTION) "a thing you invented that stands somewhere" else article(tag.replace('_', ' '))
         val spec = options.filter { it.price != null }.minByOrNull { it.price!! } ?: options.first()
         val price = spec.price ?: return article(if (options.size > 1) noun(tag) else spec.name)
         val name = if (options.size > 1 && tag != spec.id && !cheapest) noun(tag) else spec.name
@@ -2546,6 +2686,7 @@ class BedroomWorld private constructor(
         spec.light?.let { parts += "gives light ${Lighting.level(it.strength)}, reaching ${Lighting.level(it.radius)} tiles" + if (LAMP in spec.affords) ", on a timer (lit ${timerOf(spec).text}) you can switch" else "" }
         newThingRate(spec).takeIf { it > 0 }?.let { parts += "new to you: ${newThingText(it)}" }
         if (spec.qualities.isNotEmpty()) parts += spec.qualities.keys.joinToString(", ")
+        content.invent?.materials?.get(spec.id)?.let { m -> parts += "a material for invent: ${m.what}" + if (count(spec.id) > 0) " (you have ${count(spec.id)})" else "" }
         // What owning it opens up: items the shop holds back until he has this.
         shopItems().filter { other -> other.id != spec.id && heldBack(other) != null && usesOf(other).any { a -> placesOf(a).any { it in spec.names } } }
             .map { "${article(it.name)} ($${it.price})" }.filter { o -> parts.none { o in it } }
