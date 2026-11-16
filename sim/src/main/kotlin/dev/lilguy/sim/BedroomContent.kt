@@ -74,6 +74,8 @@ data class BedroomContent(
     val weather: WeatherRules? = null,
     /** What machines make from what, how they wear and how they're mended ([Works]); null and nothing is a machine. */
     val machines: MachineRules? = null,
+    /** How selling a lot of one ware lowers what it fetches, and how fast that recovers ([Market]); null and wares always fetch their price. */
+    val market: MarketRules? = null,
     /** Where he hears a sound, and how much music lifts his mood there ([SoundRules]); null and music is heard everywhere. */
     val sound: SoundRules? = null,
     /** How cold or noise spoils his sleep ([SleepRules]); null and he sleeps the same anywhere. */
@@ -165,7 +167,7 @@ data class BedroomContent(
         /** The content's files, each with the top-level keys it holds. */
         val FILES: Map<String, List<String>> = linkedMapOf(
             "room" to listOf("room", "start"),
-            "rules" to listOf("needs", "night", "habituation", "novelty", "familiarity", "frustration", "skills", "shop", "reflection", "commissions", "gallery", "quality_value", "invent", "collection", "comfort", "light", "letters", "sound", "sleep", "growing", "machines"),
+            "rules" to listOf("needs", "night", "habituation", "novelty", "familiarity", "frustration", "skills", "shop", "reflection", "commissions", "gallery", "quality_value", "invent", "collection", "comfort", "light", "letters", "sound", "sleep", "growing", "machines", "market"),
             "vocabulary" to listOf("vocabulary"),
             "personality" to listOf("personality"),
             "items" to listOf("items"),
@@ -370,6 +372,7 @@ data class BedroomContent(
         require(slotted.size == slotted.toSet().size) { "two items can't share a slot: ${slotted.groupBy { it }.filterValues { it.size > 1 }.keys}" }
         invent?.problems(this)?.takeIf { it.isNotEmpty() }?.let { throw IllegalArgumentException(it.joinToString("; ")) }
         weather?.problems()?.firstOrNull()?.let { throw IllegalArgumentException(it) }
+        market?.problems()?.firstOrNull()?.let { throw IllegalArgumentException(it) }
         (machines ?: MachineRules().takeIf { items.any { it.machine != null } })?.problems(this)?.firstOrNull()?.let { throw IllegalArgumentException(it) }
         // A recorder logs the weather at its spot, so it stands outdoors, on one of the land's slots.
         items.filter { RECORDER in it.affords }.forEach { require(it.slot != null && it.slot in world?.slots.orEmpty()) { "item ${it.id} is a recorder, so it needs a slot on the land (world.yaml `slots`)" } }

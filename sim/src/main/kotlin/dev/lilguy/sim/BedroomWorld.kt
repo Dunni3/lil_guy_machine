@@ -251,6 +251,8 @@ class BedroomWorld private constructor(
     /** His machines' stores, batches and wear ([Works]). */
     private val works = Works()
     private val worksHost: WorksHost = WorksWorld()
+    /** The going price of each ware ([Market]). */
+    private val market = Market()
     /** What he said on his latest trip that he's saving for, until he owns it. */
     private var savingFor: String? = null
     /** [on]: what it plays on, for the renderer's "playing" state. */
@@ -264,7 +266,7 @@ class BedroomWorld private constructor(
         override val content get() = this@BedroomWorld.content
         override fun item(id: String) = this@BedroomWorld.item(id)
         override fun value(item: ItemSpec) = this@BedroomWorld.value(item)
-        override fun priceOf(id: String) = price(item(id), item(id).sellSkill?.let(::skill) ?: 0.0)
+        override fun priceOf(id: String) = price(item(id), item(id).sellSkill?.let(::skill) ?: 0.0)?.let { going(id, it) }
         override fun knows(id: String) = isKnown(id)
         override fun chaptersRead(book: String) = chapters[book] ?: 0
         override fun readChapter(book: String) = this@BedroomWorld.readChapter(book)
@@ -287,7 +289,8 @@ class BedroomWorld private constructor(
             val counts = owned.filter { (id, _) -> tag in item(id).names }
             val sale = saleOf(held(tag))
             val bonus = if (winner(sale.map { it.first }) != null) ", $${content.commissions!!.reward} of it for the request" else ""
-            return "$${sale.sumOf { it.second } + counts.entries.sumOf { (id, n) -> plainPrice(id) * n }} for the ${counts.entries.joinToString(" and ") { (id, n) -> quantity(id, n) }} you hold$bonus"
+            return "$${sale.sumOf { it.second } + counts.entries.sumOf { (id, n) -> quote(id, n) }} for the ${counts.entries.joinToString(" and ") { (id, n) -> quantity(id, n) }} you hold$bonus" +
+                counts.keys.mapNotNull(::lowNote).joinToString("") { "; $it" }
         }
 
         override fun checkout(verb: String, most: Int): List<String> {
@@ -1102,6 +1105,7 @@ class BedroomWorld private constructor(
         private val wasNeeds = Need.entries.associateWith { needs[it] }
         private val wasWorks = works.export()
         private val wasEmitted = surroundings.export()
+        private val wasMarket = market.export(null, ticks, dayTicks)
 
         /**
          * Puts back everything his code changed, when it broke partway: a verb either does all of what
@@ -1120,6 +1124,7 @@ class BedroomWorld private constructor(
             custom.clear(); custom.putAll(wasCustom)
             works.restore(wasWorks) { true }
             surroundings.restore(wasEmitted) { true }
+            market.load(wasMarket)
             if (content !== wasContent || inventions !== wasInventions) {
                 content = wasContent
                 inventions = wasInventions
@@ -1331,9 +1336,17 @@ class BedroomWorld private constructor(
             val k = minOf(n, count(id))
             if (k == 0) throw ScriptProblem("you have no ${s.name}")
             this@BedroomWorld.take(id, k)
-            ledger.credit(ticks, price * k, "$reason sold ${quantity(id, k)}")
-            did += "sold ${quantity(id, k)} for $${price * k}"
-            return price * k
+            val got = sellPlain(id, k)
+            ledger.credit(ticks, got, "$reason sold ${quantity(id, k)}")
+            did += "sold ${quantity(id, k)} for $$got" + (lowNote(id)?.let { "; $it" } ?: "")
+            return got
+        }
+
+        override fun price(id: String): Map<String, Any?>? {
+            val s = content.item(id) ?: throw ScriptProblem("there's no thing '$id'; world.catalog() lists them")
+            if (s.carried) throw ScriptProblem("art is priced as a piece and sold at the mail hatch (sell_art)")
+            val usual = s.sellPrice ?: return null
+            return mapOf("now" to going(id, usual), "usual" to usual)
         }
 
         override fun field(spot: String, kind: String): Double {
@@ -1912,8 +1925,9 @@ class BedroomWorld private constructor(
         val sale = saleOf(held(tag))
         val sold = take(tag, countTag(tag))
         sale.forEach { (p, _) -> p.state = PieceState.Sold }
-        val total = sale.sumOf { it.second } + sold.entries.sumOf { (id, n) -> plainPrice(id) * n }
+        val total = sale.sumOf { it.second } + sold.entries.sumOf { (id, n) -> sellPlain(id, n) }
         val what = sold.entries.joinToString(" and ") { (id, n) -> quantity(id, n) }
+        val low = sold.keys.mapNotNull(::lowNote)
         val winner = winner(sale.map { it.first })
         val bonus = winner?.let {
             commission!!.fulfilled = true
@@ -1921,11 +1935,57 @@ class BedroomWorld private constructor(
             " (${pieceName(it)} met the request for ${commission!!.wants}: +$${content.commissions!!.reward})"
         }.orEmpty()
         if (total > 0) ledger.credit(ticks, total, "sold $what" + if (winner != null) " (one for a commission)" else "")
-        return "sold $what for $$total$bonus (money $${ledger.balance})"
+        return "sold $what for $$total$bonus (money $${ledger.balance})" + low.joinToString("") { "; $it" }
     }
 
-    /** What one [id] sells for when it's a plain thing he owns and not a piece of art, which is priced as a piece; 0 otherwise. */
-    private fun plainPrice(id: String): Int = item(id).takeIf { !it.carried }?.sellPrice ?: 0
+    /** What one [id] sells for when it's a plain thing he owns and not a piece of art, which is priced as a piece; 0 otherwise. A ware's is its going price. */
+    private fun plainPrice(id: String): Int = item(id).takeIf { !it.carried }?.sellPrice?.let { going(id, it) } ?: 0
+
+    /** Game ticks in a day, for how fast the market recovers. */
+    private val dayTicks: Long get() = clock.ticks(GameClock.MINUTES_PER_DAY).toLong()
+
+    /** What one [id] fetches now from its usual [price]: lower for a ware he has sold a lot of lately. */
+    private fun going(id: String, price: Int): Int {
+        val rules = content.market ?: return price
+        return if (market.covers(item(id))) market.price(rules, id, price, ticks, dayTicks) else price
+    }
+
+    /** What [n] of a plain thing would fetch together now, each sold for less than the last when it's a ware. */
+    private fun quote(id: String, n: Int): Int {
+        val spec = item(id)
+        val price = spec.takeIf { !it.carried }?.sellPrice ?: return 0
+        val rules = content.market
+        return if (rules == null || !market.covers(spec)) price * n else market.quote(rules, id, price, n, ticks, dayTicks)
+    }
+
+    /** Sells [n] of a plain thing: a ware one after another at its falling going price, anything else at its price; the dollars. */
+    private fun sellPlain(id: String, n: Int): Int {
+        val spec = item(id)
+        val price = spec.takeIf { !it.carried }?.sellPrice ?: return 0
+        val rules = content.market
+        if (rules == null || !market.covers(spec)) return price * n
+        version++
+        return market.sell(rules, id, price, n, ticks, dayTicks)
+    }
+
+    /** "clay pots fetch $15 now, not $20: ...", for a ware selling below its usual price; null otherwise. */
+    private fun lowNote(id: String): String? = wareText(id, always = false)
+
+    /**
+     * What a ware fetches: "a clay pot fetches $15 now, not $20: ..." when it's below its usual
+     * price; when it isn't, "a clay pot sells for $20, ..." if [always], else null. Null for what isn't a ware.
+     */
+    private fun wareText(id: String, always: Boolean): String? {
+        val spec = item(id)
+        val usual = spec.sellPrice?.takeIf { market.covers(spec) } ?: return null
+        val now = going(id, usual)
+        return when {
+            now < usual -> "a ${spec.name} fetches $$now now, not $$usual: selling a lot of one ware lowers its price, and it climbs back over a few days"
+            !always -> null
+            content.market == null -> "a ${spec.name} sells for $$usual"
+            else -> "a ${spec.name} sells for $$usual, less after you sell a lot"
+        }
+    }
 
     /** "a thing to look at", for an affordance he can build for. */
     private fun useNoun(use: String): String = when (use) {
@@ -2293,6 +2353,7 @@ class BedroomWorld private constructor(
             ownedSince = LinkedHashMap(ownedSince),
             works = works.export(),
             surroundings = surroundings.export(),
+            market = market.export(content.market, ticks, dayTicks),
         )
     }
 
@@ -2376,6 +2437,7 @@ class BedroomWorld private constructor(
         records.restore(s.records) { content.item(it) != null }
         machines.restore(s.machines) { content.item(it) != null }
         works.restore(s.works) { content.item(it) != null }
+        market.load(s.market.filterKeys { content.item(it) != null })
         surroundings.restore(s.surroundings) { content.item(it) != null }
         thingState.clear()
         s.thingState.forEach { (id, kept) -> if (id == SELF || content.item(id) != null) thingState[id] = LinkedHashMap(kept) }
@@ -2537,6 +2599,9 @@ class BedroomWorld private constructor(
                 else -> "for ${a.id} ($what), which also $after"
             }
         }
+        // What its batches make to sell, at the going price.
+        spec.machine?.runs.orEmpty().mapNotNull { content.machines?.recipe(it) }.flatMap { it.makes.keys }.distinct()
+            .map(::item).filter { it.sellPrice != null && market.covers(it) }.forEach { parts += wareText(it.id, always = true)!! }
         val comfort = comfortOf(spec)
         val seen = if (content.comfort != null) " in view (near you${if (content.light != null) ", lit" else ""})" else ""
         when {
