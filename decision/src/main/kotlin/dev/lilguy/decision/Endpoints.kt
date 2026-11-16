@@ -37,7 +37,7 @@ data class EndpointsFile(
 
 @Serializable
 data class EndpointConfig(
-    /** Backend: `openai_compat`, or `typesafe` (System One; picks from a closed set). */
+    /** Backend: `openai_compat`, `anthropic` (the Messages API), or `typesafe` (System One; picks from a closed set). */
     val kind: String = "openai_compat",
     @SerialName("base_url") val baseUrl: String,
     val model: String,
@@ -155,6 +155,7 @@ object Endpoints {
         return when (endpoint.kind) {
             "openai_compat" -> OpenAiCompatBackend(endpoint, key, id = "$name:${endpoint.model}")
             "typesafe" -> TypesafeBackend(endpoint, key, id = "$name:${endpoint.model}")
+            "anthropic" -> AnthropicBackend(endpoint, key, id = "$name:${endpoint.model}")
             else -> throw IllegalArgumentException("endpoint '$name' has unknown kind '${endpoint.kind}'")
         }
     }
