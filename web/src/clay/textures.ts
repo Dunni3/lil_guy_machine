@@ -63,6 +63,31 @@ export class ClayTextures {
 }
 
 const PAINTERS: Record<string, () => Texture> = {
+  /**
+   * The grain of an invention's wooden parts: near white, so the part's colour shows through, with
+   * darker streaks along it and a knot or two. Small and repeated; each face of a part gets it once.
+   */
+  wood_grain: () => paint(128, 128, (g, w, h) => {
+    const r = rng(11);
+    g.fillStyle = "#fbf3e8";
+    g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 26; i++) {
+      const y0 = r() * h;
+      g.strokeStyle = `rgba(120,78,44,${0.12 + r() * 0.16})`;
+      g.lineWidth = 1 + r() * 2.5;
+      g.beginPath();
+      g.moveTo(0, y0);
+      for (let x = 0; x <= w; x += 16) g.lineTo(x, y0 + Math.sin(x / 19 + i) * 2.2 + (r() - 0.5) * 1.5);
+      g.stroke();
+    }
+    for (let k = 0; k < 2; k++) {
+      g.strokeStyle = "rgba(110,70,40,.28)";
+      g.lineWidth = 1.5;
+      g.beginPath();
+      g.ellipse(20 + r() * 88, 20 + r() * 88, 5 + r() * 4, 2.5 + r() * 2, 0, 0, Math.PI * 2);
+      g.stroke();
+    }
+  }, true),
   /** Honey planks with a little grain, a texture to every 3 metres. */
   floor: () => paint(512, 512, (g, w, h) => {
     const r = rng(3);

@@ -389,7 +389,7 @@
                       "type": "object",
                       "properties": {},
                       "additionalProperties": false,
-                      "description": "Builds the thing he designed in the verb's `write: { with: invention, timing: before }`: the design (one use, some qualities, a look) is checked against rules.yaml `invent`, its materials are charged, and the new item joins his world for the rest of the run. A design that's refused fails the verb with the reasons. (at the finish)"
+                      "description": "Builds the thing he designed in the verb's `write: { with: invention, timing: before }`: the design (one use, some qualities, a look) is checked against rules.yaml `invent`, each shape names its material, and the materials its look takes (by volume, plus `finish` a point of quality strength, plus `workings` for code or moving parts) come from his stock; food and books are paid in dollars. The new item joins his world for the rest of the run, at the room's first free spare spot or the nearest free spot of its kind anywhere. A design that's refused, or that he hasn't the materials for, fails the verb with the reasons. (at the finish)"
                     },
                     {
                       "type": "null"
@@ -551,6 +551,13 @@
                     "null"
                   ],
                   "description": "Watches the visitors at the thing bound to `on` (its `lure` draws them, world.yaml `visitors`): they leave one of their `yields`, and stay away `rest_hours`. Locked while none are there, saying when they come. (at the finish)"
+                },
+                "dismantle": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Takes apart the thing bound to `on` (an argument `invention`: a thing he invented that stands somewhere): it leaves his world with its book and his verbs for it, its code stops, what its machine held comes to him, its spot is free, and he gets back rules.yaml `invent.salvage` of its materials, each rounded down. Bought things and the house can't be taken apart. (at the finish)"
                 }
               },
               "minProperties": 1,

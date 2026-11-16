@@ -16,7 +16,7 @@ class EffectsTest {
         val w = shipped.weather!!
         val clear = Sky.entries.associate { it.id to mapOf("clear" to 1.0) }
         return shipped.copy(
-            start = shipped.start.copy(time = time, money = 100, items = shipped.start.items + items.associateWith { 1 }),
+            start = shipped.start.copy(time = time, money = 100, items = shipped.start.items + items.associateWith { 1 } + mapOf("wood" to 20, "copper_wire" to 6)),
             weather = w.copy(turns = clear, temperature = w.temperature.copy(mean = mean, drift = 0.0)),
         )
     }

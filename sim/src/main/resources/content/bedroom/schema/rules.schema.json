@@ -436,12 +436,13 @@
                   },
                   "per_strength": {
                     "type": "integer"
+                  },
+                  "built": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
-                  "group",
-                  "base",
-                  "per_strength"
+                  "group"
                 ],
                 "additionalProperties": false
               }
@@ -466,6 +467,48 @@
             },
             "look_parts": {
               "type": "integer"
+            },
+            "materials": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "for": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "for"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "unit": {
+              "type": "number"
+            },
+            "finish": {
+              "type": "integer"
+            },
+            "workings": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "integer"
+                  }
+                },
+                "moving": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "integer"
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "salvage": {
+              "type": "number"
             }
           },
           "required": [

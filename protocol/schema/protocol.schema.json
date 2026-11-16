@@ -1597,6 +1597,12 @@
                             "$ref": "#/$defs/VariantChange"
                         }
                     }
+                },
+                "bill": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer"
+                    }
                 }
             },
             "required": [
@@ -1611,7 +1617,8 @@
                 "why",
                 "look",
                 "tick",
-                "variants"
+                "variants",
+                "bill"
             ],
             "additionalProperties": false
         },
@@ -1876,6 +1883,9 @@
                 },
                 "opacity": {
                     "type": "number"
+                },
+                "material": {
+                    "type": "string"
                 }
             },
             "required": [
@@ -1896,7 +1906,8 @@
                 "hole",
                 "arc",
                 "glow",
-                "opacity"
+                "opacity",
+                "material"
             ],
             "additionalProperties": false
         },

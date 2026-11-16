@@ -188,6 +188,29 @@ data object BuildOp : Op() {
 }
 
 /**
+ * Takes apart the thing of his bound to [on], one he invented that stands somewhere: it leaves his
+ * world (its code stops, what its machine held goes to him) and its spot is free, and he gets back
+ * rules.yaml `invent.salvage` of the materials it took, each rounded down. Bought things and the
+ * house aren't his to take apart.
+ */
+data class DismantleOp(val on: String) : Op() {
+    override val key get() = "dismantle"
+
+    override fun problems(c: BedroomContent, verb: VerbSpec) = listOfNotNull(
+        if (verb.args[on] == null) "dismantle's thing must be an argument slot (`on`)" else null,
+        if (c.invent == null) "dismantles, but rules.yaml has no `invent`" else null,
+    )
+
+    override fun lockReason(w: OpWorld, b: Bound) = b.args[on]?.let(w::dismantleLock)
+
+    override fun gone(w: OpWorld, b: Bound) = w.dismantleLock(b.resolve(on))
+
+    override fun finish(w: OpWorld, b: Bound) = w.dismantle(b.resolve(on))
+
+    override fun describe(w: OpWorld, b: Bound, forSale: Boolean) = if (forSale) emptyList() else listOfNotNull(b.args[on]?.let(w::dismantleText))
+}
+
+/**
  * Puts an item he holds into a [state]. The one state so far is `hung`: his newest held piece
  * answering to [target] goes on the picture rail ([GalleryRules]).
  */
@@ -556,6 +579,14 @@ internal interface OpWorld {
     fun repairLock(id: String): String?
     fun repairText(id: String): String
     fun repair(id: String): List<String>
+
+    // Taking his things apart ([DismantleOp]).
+    /** Why thing [id] can't be taken apart, or null. */
+    fun dismantleLock(id: String): String?
+    /** "back: 4 wood planks, 1 copper wire coil", for the option. */
+    fun dismantleText(id: String): String
+    /** Takes thing [id] apart; the event's parts. */
+    fun dismantle(id: String): List<String>
 }
 
 /**
@@ -751,6 +782,7 @@ internal data class OpEntry(
     val water: String? = null,
     val harvest: String? = null,
     val watch: String? = null,
+    val dismantle: String? = null,
 ) {
     /** `switch: { target: on, to: off }`: to is on, off or timer. */
     @Serializable
@@ -794,7 +826,7 @@ internal data class OpEntry(
             write?.let { WriteOp(it.with, it.into, it.timing, it.showsAs, it.optional) }, draw?.let(::DrawOp), build?.let { BuildOp },
             survey?.let(::SurveyOp), gather?.let(::GatherOp), placeRoom?.let { PlaceRoomOp(it.room, it.site) }, openMail?.let { OpenMailOp }, postLetter?.let { PostLetterOp },
             script?.let { ScriptOp }, define?.let { DefineOp }, readLog?.let(::ReadLogOp), switch?.let { SwitchOp(it.target, LampMode.of(it.to)) }, tend?.let(::TendOp), repair?.let(::RepairOp),
-            water?.let(::WaterOp), harvest?.let(::HarvestOp), watch?.let(::WatchOp),
+            water?.let(::WaterOp), harvest?.let(::HarvestOp), watch?.let(::WatchOp), dismantle?.let(::DismantleOp),
         )
         require(set.size == 1) { "an effect is one op, such as `- need: { mood: 2 }`; this one has ${if (set.isEmpty()) "none" else set.joinToString { it.key }}" }
         return set.single()
@@ -832,6 +864,7 @@ internal data class OpEntry(
             is WaterOp -> OpEntry(water = op.on)
             is HarvestOp -> OpEntry(harvest = op.on)
             is WatchOp -> OpEntry(watch = op.on)
+            is DismantleOp -> OpEntry(dismantle = op.on)
         }
     }
 }

@@ -347,8 +347,8 @@ data class ShopState(val catalog: List<CatalogState>, val verbs: List<VerbState>
  * Something he invented: an item [Content] doesn't have, with how it looks. [use]: the one thing
  * it's for (viewable, playable, readable, edible, sellable). [like]: its qualities and their
  * strengths. [price]: what the shop sends more for, null when it doesn't. [wall]: it hangs in a
- * wall. [cost]: what its materials cost him. [look]: its shapes, as a part list's parts. [tick]:
- * when he built it.
+ * wall. [cost]: what its materials cost him, in dollars. [look]: its shapes, as a part list's parts. [tick]:
+ * when he built it. [bill]: the materials it took, material id to count (empty for food and books).
  */
 @Serializable
 data class Invented(
@@ -365,6 +365,7 @@ data class Invented(
     val tick: Long = 0,
     /** Its other looks, by name: each the changes it makes to the shapes of [look] with that `part`. */
     val variants: Map<String, List<VariantChange>> = emptyMap(),
+    val bill: Map<String, Int> = emptyMap(),
 )
 
 /** One change a variant makes to the shapes named [part]: a [color], [glow], rotation, a [scale] about the part's bottom centre, or [hidden]; null keeps the look's own. */
@@ -383,7 +384,8 @@ data class VariantChange(
 /**
  * One shape of an invention: metres, the model's pivot at its bottom centre, ([x], [y], [z]) the shape's bottom centre, rotations in degrees.
  * [part]: what it is of the thing. The rest are a part list's clay fields (`parts/Part.kt`): [taper] (cylinders), [cut] (spheres),
- * [hole] and [arc] (cylinders), [glow] and [opacity].
+ * [hole] and [arc] (cylinders), [glow] and [opacity]. [material]: what it's made of (wood, metal, copper_wire, glass; empty in a
+ * look from before materials), which the renderer draws it as.
  */
 @Serializable
 data class LookShape(
@@ -405,6 +407,7 @@ data class LookShape(
     val arc: Float,
     val glow: Float,
     val opacity: Float,
+    val material: String = "",
 )
 
 /**

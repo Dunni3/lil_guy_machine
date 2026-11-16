@@ -150,13 +150,14 @@ class StateReader(private val dbEvery: Duration = 1.seconds) {
                             made.look.map { p ->
                                 LookShape(
                                     p.shape, p.w.toFloat(), p.h.toFloat(), p.d.toFloat(), p.x.toFloat(), p.y.toFloat(), p.z.toFloat(), p.rotX.toFloat(), p.rotY.toFloat(), p.rotZ.toFloat(), p.color,
-                                    p.part, p.taper.toFloat(), p.cut.toFloat(), p.hole.toFloat(), p.arc.toFloat(), p.glow.toFloat(), p.opacity.toFloat(),
+                                    p.part, p.taper.toFloat(), p.cut.toFloat(), p.hole.toFloat(), p.arc.toFloat(), p.glow.toFloat(), p.opacity.toFloat(), p.material,
                                 )
                             },
                             made.tick,
                             made.variants.mapValues { (_, changes) ->
                                 changes.map { c -> VariantChange(c.part, c.color, c.glow?.toFloat(), c.rotX?.toFloat(), c.rotY?.toFloat(), c.rotZ?.toFloat(), c.scale?.toFloat(), c.hidden) }
                             },
+                            made.bill,
                         )
                     },
                 )

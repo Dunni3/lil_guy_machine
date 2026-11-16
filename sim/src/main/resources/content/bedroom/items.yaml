@@ -87,6 +87,12 @@ items:
   # runs the same recipe, is how he gets ahead. It only pays while he keeps it fed, empties it and mends it.
   - { id: kiln, name: kiln, group: gadget, slot: kiln_pad, blocks: true, price: 60, qualities: { warm: 1 }, machine: { runs: [fire], holds: 6, wear: 8 } }
   - { id: clay, name: clay, group: supply, price: 6, pack: 4, stackable: true }
+  # What his inventions are built from (rules.yaml `invent.materials`): each part of a look names one,
+  # and the workbench takes them from his stock. Sold in packs on shopping trips, and they never run out.
+  - { id: wood, name: wood plank, group: supply, price: 10, pack: 5, stackable: true }
+  - { id: metal, name: metal bar, group: supply, price: 15, pack: 5, stackable: true }
+  - { id: copper_wire, name: copper wire coil, group: supply, price: 12, pack: 3, stackable: true }
+  - { id: glass, name: glass pane, group: supply, price: 9, pack: 3, stackable: true }
   - { id: clay_pot, name: clay pot, group: ware, affords: { ware: { price: 20 } }, stackable: true }
   # Warmth, sound, growing things and visitors (rules.yaml `sleep`, `sound`, `growing`; world.yaml `visitors`).
   # `warmth: { strength, radius }` adds degrees round it; on a thing that stands nowhere (the blanket), round

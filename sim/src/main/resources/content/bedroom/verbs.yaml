@@ -337,6 +337,19 @@ verbs:
       - consume: { spare_parts: 1 }
       - practice: { tinkering: 0.2 }
       - need: { energy: -3, stimulation: 4 }
+  # Taking apart a thing he invented that stands somewhere (rules.yaml `invent.salvage`): he gets back
+  # half its materials, its code stops, what its machine held comes to him, and its spot is free for
+  # something else. Bought things and the house stay.
+  - id: dismantle
+    kind: upkeep
+    phrase: take apart a thing you invented, for half its materials back and its spot
+    args: { on: invention }
+    at: [on]
+    minutes: 40
+    effects:
+      - dismantle: on
+      - practice: { tinkering: 0.1 }
+      - need: { energy: -3 }
   # Visitors (world.yaml `visitors`) come to the things that draw them, when it suits them: watching
   # them there takes nothing but the time, and they leave something behind (the `watch` op).
   - id: watch
