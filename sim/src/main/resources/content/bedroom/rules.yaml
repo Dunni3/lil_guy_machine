@@ -96,25 +96,45 @@ shop:
   minutes: 10
 
 # Inventing (the `build` op): one invention is one new item with one use and some qualities. He
-# never names a price: materials cost `base` plus `per_strength` a point of quality strength, so
-# what he builds lands near what the shop charges for the same thing (decor about $5 a point, a
-# record $20, a meal $8). `uses`: the affordances open to him and the group their things join;
-# the others stay closed (sim/.../Invention.kt, InventRules.OPEN). A thing to look at takes a spare
-# spot (room.yaml `spots`). Food he invents can be reordered from the shop at its materials cost.
-# A thing made to sell sells once, for its materials plus `wage_per_hour` an hour of the build,
-# which is less than sketching pays. A book he writes raises one skill `skill_gain` a chapter.
+# never names a price. A thing that's `built` (to look at, to play, to sell, and machines) is made
+# of materials he buys from the shop (items.yaml, group supply), and each part of its look names
+# its material: a part takes one unit of its material for every `unit` cubic metres of its shape,
+# at least 1, and its main material (what most of it is made of) takes `finish` more for each point
+# of quality strength. Its workings take more on top: code needs `workings.code` (wiring), and code
+# that moves a part, or recipes it runs, need `workings.moving` (a mechanism). The build takes them
+# from his stock; without them it doesn't happen, and without the wiring the thing is built but
+# does nothing. Food and books aren't made of wood: they cost dollars, `base` plus `per_strength` a
+# point of quality strength (a meal $8, a book a few dollars of paper). `uses`: the affordances
+# open to him and the group their things join; the others stay closed (sim/.../Invention.kt,
+# InventRules.OPEN). A thing to look at takes the first free spare spot of its kind in the room
+# (room.yaml `spots`), else the free spot of its kind nearest the workbench, indoors or out.
+# Food he invents can be reordered from the shop at what it cost. A thing made to sell sells once,
+# for its materials plus `wage_per_hour` an hour of the build, which is less than sketching pays.
+# A book he writes raises one skill `skill_gain` a chapter. `dismantle` takes one of his things
+# apart and gives back `salvage` of its bill, each material rounded down.
 invent:
   per_day: 1
   qualities: { most: 3, total: 6 }
   uses:
-    viewable: { group: decor, base: 4, per_strength: 5 }
-    playable: { group: record, base: 5, per_strength: 5 }
+    viewable: { group: decor, built: true }
+    playable: { group: record, built: true }
     readable: { group: book, base: 3, per_strength: 3 }
     edible: { group: food, base: 8, per_strength: 2 }
-    sellable: { group: ware, base: 6, per_strength: 2 }
+    sellable: { group: ware, built: true }
   book: { min_chapters: 3, max_chapters: 5, skill_gain: 0.25 }
   wage_per_hour: 4
   look_parts: 12
+  materials:
+    wood: { for: "bodies, boxes, frames, legs, shelves and handles: warm, easy, the cheapest" }
+    metal: { for: "casings, gears, pipes, stands and anything that turns or takes heat; a machine's mechanism" }
+    copper_wire: { for: "coils, springs, antennae and fine lines; the wiring any thing with code needs" }
+    glass: { for: "panes, domes, bulbs, jars and lenses: light shows through it" }
+  unit: 0.006
+  finish: 1
+  workings:
+    code: { copper_wire: 3 }
+    moving: { metal: 5 }
+  salvage: 0.5
 
 # A decision-loop policy: after `every` decisions without `verb`, he's made to do it (the decision
 # model isn't asked), when something writes its result. Remove it to leave thinking to the model.

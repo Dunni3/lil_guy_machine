@@ -110,3 +110,4 @@ these hold the outcome. Skim this index before related changes.
 - 2026-11-15 [Machines are fed and wear out, and his code makes nothing from nothing: physical costs replace "uncapped"](2026-11-15-machines-are-fed-and-wear-out-instead-of-uncapped.md)
 - 2026-11-15 [Warmth, sound, water and lures are effects on the same engine as light; his code reads them with field() and gives them off with emit()](2026-11-15-warmth-sound-water-and-lures-are-effects-on-the-same-engine.md)
 - 2026-11-15 [Art gets him by; machines that make things to sell get him ahead, he's told so, and he starts with enough for one](2026-11-15-art-gets-him-by-machines-get-him-ahead.md)
+- 2026-11-15 [Inventions are built from bought materials; a new thing goes to any free spot, and he can take his things apart (`dismantle`)](2026-11-15-inventions-are-built-from-bought-materials.md)

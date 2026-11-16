@@ -32,7 +32,7 @@ test("viewers get the pages and a sign-in but no run controls; the admin's keys 
     ],
   };
   // What he made: an invention with a verb and an hourly behavior, a verb of his own, and a value his code kept.
-  const lamp = { id: "pebble_lamp", name: "pebble lamp", group: "decor", use: "viewable", like: { calm: 2 }, price: null, wall: false, cost: 12, why: "for the dark", look: [], tick: 9, variants: {} };
+  const lamp = { id: "pebble_lamp", name: "pebble lamp", group: "decor", use: "viewable", like: { calm: 2 }, price: null, wall: false, cost: 12, why: "for the dark", look: [], tick: 9, variants: {}, bill: { wood: 6 } };
   const verb = (id: string, what: string | null, source: string) => ({ id, phrase: id.replace(/_/g, " "), says: "calms him", minutes: 10, what, at: "here", source, version: 1, why: "", tick: 9, day: 1, time: "09:00" });
   const code = {
     verbs: [verb("glow_lamp", "pebble_lamp", "function finish(world) {\n  world.need('mood', 2);\n}"), verb("stretch", null, "function finish(world) { world.need('energy', 1); }")],

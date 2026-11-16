@@ -518,7 +518,8 @@ function inventionDetail(out: Detail, v: PageView, i: Invented) {
   out.para(thingName(v, i.id), SCALE.title, COLORS.ink);
   const has = life.wallet.owns[i.id] ?? 0;
   const like = Object.entries(i.like).map(([q, n]) => `${q} ${n}`).join(", ");
-  out.para(`built ${stamp(i.tick, life.fast, life.run.ticks_per_minute)} · materials $${i.cost}` + (i.price !== null ? ` · the shop sends more for $${i.price}` : "") + ` · ${has ? `he has ${has}` : "he doesn't have it now"}`, SCALE.small, COLORS.muted, 0, 4);
+  const bill = Object.entries(i.bill ?? {}).map(([m, n]) => `${n} ${m.replace("_", " ")}`).join(", ");
+  out.para(`built ${stamp(i.tick, life.fast, life.run.ticks_per_minute)} · ` + (bill ? `made of ${bill} ($${i.cost})` : `materials $${i.cost}`) + (i.price !== null ? ` · the shop sends more for $${i.price}` : "") + ` · ${has ? `he has ${has}` : "he doesn't have it now"}`, SCALE.small, COLORS.muted, 0, 4);
   out.para(`It's ${i.use}${like ? `, and it's ${like}` : ""}${i.wall ? "; it hangs on a wall" : ""}.`, SCALE.body, COLORS.ink, 0, 6);
   if (i.why) {
     out.head("WHY HE MADE IT");

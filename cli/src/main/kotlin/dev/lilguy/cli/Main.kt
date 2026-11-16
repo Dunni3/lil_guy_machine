@@ -399,7 +399,10 @@ fun main(argv: Array<String>) {
                     val picker = decisionModel.takeIf { painting }?.let { ledger.meter(it, TokenPurpose.Shop, priceOf(endpoint)) }
                     writerModel?.let { Shopper(ledger.meter(it, TokenPurpose.Shop, priceOf(writerEndpoint!!)), fallback = picker) } ?: picker?.let { Shopper(it) }
                 },
-                inventor = writerModel?.takeIf { scenario == Scenario.Bedroom }?.let { Inventor(ledger.meter(it, TokenPurpose.Invent, priceOf(writerEndpoint!!))) },
+                // LILGUY_INVENTOR=workshop (or machines, or 1) builds from fixed designs with no endpoint, as the host's.
+                inventor = if (scenario != Scenario.Bedroom) null else
+                    writerModel?.let { Inventor(ledger.meter(it, TokenPurpose.Invent, priceOf(writerEndpoint!!))) }
+                        ?: System.getenv("LILGUY_INVENTOR")?.takeIf { it.isNotEmpty() }?.let { dev.lilguy.agent.invent.CannedInventor.of(it) },
                 // His code: the deciding model when it's a text model, else the writer.
                 coder = if (scenario != Scenario.Bedroom) null else
                     decisionModel.takeIf { painting }?.let { dev.lilguy.agent.code.Coder(ledger.meter(it, TokenPurpose.Code, priceOf(endpoint))) }

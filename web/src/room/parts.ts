@@ -31,6 +31,27 @@ function javaHash(s: string): number {
 const pick = (id: string, n: number) => ((javaHash(id) % n) + n) % n;
 const shifted = (list: Part[], x: number) => list.map((p) => ({ ...p, x: p.x + x }));
 
+/**
+ * What each material an invented part is made of does to its colour: the part's own colour, drawn
+ * toward the material's (warm wood, grey metal, copper) by how much of it shows; glass goes lighter.
+ */
+const MATERIAL_TINTS: Record<string, { color: string; by: number }> = {
+  wood: { color: "#a8734a", by: 0.25 },
+  metal: { color: "#a4abb3", by: 0.45 },
+  copper_wire: { color: "#c47a42", by: 0.7 },
+  glass: { color: "#e6f3f5", by: 0.35 },
+};
+/** The most a glass part is solid: light shows through it however it was designed. */
+const GLASS_OPACITY = 0.55;
+
+/** [hex] moved toward [to] by [by], 0 to 1. */
+function mix(hex: string, to: string, by: number): string {
+  const a = parseInt(hex.slice(1), 16);
+  const b = parseInt(to.slice(1), 16);
+  const ch = (s: number) => Math.round(((a >> s) & 255) * (1 - by) + ((b >> s) & 255) * by);
+  return "#" + ((ch(16) << 16) | (ch(8) << 8) | ch(0)).toString(16).padStart(6, "0");
+}
+
 /** How far up a wall the things he invents for it hang, and the most they stand out from it. */
 const INVENTED_WALL_Y = 1.0;
 const INVENTED_WALL_DEPTH = 0.25;
@@ -40,28 +61,33 @@ const INVENTED_WALL_DEPTH = 0.25;
  * is lifted up it and flattened against it, its back at z = 0 as the wall items' part lists are.
  */
 function lookParts(made: Invented, look: LookShape[] = made.look): Part[] {
-  return look.map((p) => ({
-    shape: p.shape,
-    w: p.w,
-    h: p.h,
-    d: made.wall ? Math.min(p.d, INVENTED_WALL_DEPTH) : p.d,
-    x: p.x,
-    y: p.y + (made.wall ? INVENTED_WALL_Y : 0),
-    z: made.wall ? 0.01 + (p.z + 0.5) * INVENTED_WALL_DEPTH : p.z,
-    rotX: p.rot_x,
-    rotY: p.rot_y,
-    rotZ: p.rot_z,
-    color: p.color,
-    texture: null,
-    round: -1,
-    // A look from a host before these fields came has none of them: the defaults.
-    taper: p.taper ?? 1,
-    cut: p.cut ?? 1,
-    hole: p.hole ?? 0,
-    arc: p.arc ?? 360,
-    glow: p.glow ?? 0,
-    opacity: p.opacity ?? 1,
-  }));
+  return look.map((p) => {
+    const tint = MATERIAL_TINTS[p.material ?? ""];
+    return {
+      shape: p.shape,
+      w: p.w,
+      h: p.h,
+      d: made.wall ? Math.min(p.d, INVENTED_WALL_DEPTH) : p.d,
+      x: p.x,
+      y: p.y + (made.wall ? INVENTED_WALL_Y : 0),
+      z: made.wall ? 0.01 + (p.z + 0.5) * INVENTED_WALL_DEPTH : p.z,
+      rotX: p.rot_x,
+      rotY: p.rot_y,
+      rotZ: p.rot_z,
+      color: tint ? mix(p.color, tint.color, tint.by) : p.color,
+      texture: null,
+      round: -1,
+      // A look from a host before these fields came has none of them: the defaults.
+      taper: p.taper ?? 1,
+      cut: p.cut ?? 1,
+      hole: p.hole ?? 0,
+      arc: p.arc ?? 360,
+      glow: p.glow ?? 0,
+      // A glowing glass part (a bulb) is drawn by its glow, as designed; the rest of the glass lets light through.
+      opacity: p.material === "glass" && !(p.glow ?? 0) ? Math.min(p.opacity ?? 1, GLASS_OPACITY) : (p.opacity ?? 1),
+      material: p.material || undefined,
+    };
+  });
 }
 
 /** The middle of [shapes] across and front to back, and their bottom: where a part of several shapes turns, swells and bobs about. */

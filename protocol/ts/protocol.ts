@@ -1,5 +1,5 @@
 /* Generated from schema/protocol.schema.json (protocol/.../*.kt) by gen_types.sh. Don't edit; run `make protocol-types`.
- * schema sha256: b8fcf953a1e1bdf789d7ca845a904f8efcc0456bd8fb785169c9b49b5a7b4898
+ * schema sha256: d810e62f5395e020f927c6a4f8bc1cc9068bf60b3360ef9fde47ee7507a8a786
  */
 
 /**
@@ -461,6 +461,9 @@ export interface Invented {
   variants: {
     [k: string]: VariantChange[];
   };
+  bill: {
+    [k: string]: number;
+  };
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -485,6 +488,7 @@ export interface LookShape {
   arc: number;
   glow: number;
   opacity: number;
+  material: string;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema

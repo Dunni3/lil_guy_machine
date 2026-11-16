@@ -98,7 +98,7 @@ class BedroomPolicy(
                 Intent.Do("sketch") to "Sketch: $$money and $$held in art, short of the next pack of meals ($$mealPrice)."
             "sell_art" in can && meals == 0 ->
                 Intent.Do("sell_art") to "No food and too tired to sketch; sell what I hold."
-            else -> tending(obs, night) ?: watching(obs, night) ?: (Intent.Wait(BedroomPrompt.WAIT_TICKS) to "Nothing I need to do right now; wait.")
+            else -> tending(obs, night) ?: workshop(obs, night) ?: watching(obs, night) ?: (Intent.Wait(BedroomPrompt.WAIT_TICKS) to "Nothing I need to do right now; wait.")
         }
     }
 
@@ -130,6 +130,30 @@ class BedroomPolicy(
         val affordable = obs.shop.orEmpty().filter { it.affordable }.map { it.id }.toSet()
         if ((owns["clay"] ?: 0) < CLAY_BATCH && "clay" in affordable) return Intent.Buy("clay") to "The kiln needs clay."
         if ((owns["spare_parts"] ?: 0) == 0 && "spare_parts" in affordable) return Intent.Buy("spare_parts") to "A spare part for when the kiln jams."
+        return null
+    }
+
+    /**
+     * With a workbench and an inventor (`invent` is offered and something writes its design), his
+     * spare daylight builds: take apart his oldest invention once the ground has no free spot left,
+     * stock up on each material the shop sells for building while the money keeps food in reach,
+     * then invent. Without a workbench, nothing: the baseline stays the baseline.
+     */
+    private fun workshop(obs: Observation, night: Boolean): Pair<Intent, String>? {
+        if (night) return null
+        val acts = obs.activities.orEmpty()
+        val invent = acts.firstOrNull { it.id == "invent" } ?: return null
+        val gives = invent.gives.orEmpty()
+        if (NO_GROUND in gives || NO_GROUND in invent.locked.orEmpty()) {
+            acts.firstOrNull { it.id == "dismantle" && it.locked == null && it.on != null }
+                ?.let { return Intent.Do("dismantle", on = it.on) to "No free spot left on the ground; take the ${it.on} apart for its materials and its spot." }
+        }
+        val owns = obs.owns.orEmpty()
+        val shop = obs.shop.orEmpty().associateBy { it.id }
+        val meal = shop["meal"]?.price ?: 0
+        STOCK.entries.firstOrNull { (m, n) -> (owns[m] ?: 0) < n && shop[m]?.let { it.affordable && (obs.money ?: 0) - it.price >= meal * 2 } == true }
+            ?.let { (m, n) -> return Intent.Buy(m) to "Only ${owns[m] ?: 0} $m for the workbench (I keep $n); buy a pack." }
+        if (invent.locked == null && NO_GROUND !in gives) return Intent.Do("invent") to "Build something new at the workbench: $gives."
         return null
     }
 
@@ -190,6 +214,10 @@ class BedroomPolicy(
         const val CHECK_HOURS = 8
         /** Scraps worth a walk to the compost bin: a batch's. */
         const val SCRAPS = 3
+        /** What [workshop] keeps of each material: enough for a machine with code and moving parts. */
+        val STOCK = mapOf("wood" to 12, "metal" to 15, "copper_wire" to 8, "glass" to 8)
+        /** What the invent option says when the ground has no free spot left (`BedroomWorld.buildText`). */
+        const val NO_GROUND = "no free spot on the ground"
         /** Clay for one firing. */
         const val CLAY_BATCH = 2
         val TOMATOES = Regex("""take out \d+ [a-z ]*tomato""")

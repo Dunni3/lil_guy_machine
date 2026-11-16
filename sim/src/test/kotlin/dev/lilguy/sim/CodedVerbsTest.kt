@@ -7,11 +7,11 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class CodedVerbsTest {
-    private val content = BedroomContent.default().let { it.copy(start = it.start.copy(money = 100, items = it.start.items + ("workbench" to 1))) }
+    private val content = BedroomContent.default().let { it.copy(start = it.start.copy(money = 100, items = it.start.items + mapOf("workbench" to 1, "wood" to 30, "metal" to 10, "copper_wire" to 10, "glass" to 10))) }
 
     private val musicBox = Design(
         name = "music box", use = "viewable", qualities = mapOf("calm" to 1.0, "pretty" to 1.0), place = "floor",
-        look = listOf(LookPart("box", 0.3, 0.2, 0.2, color = "#a0522d"), LookPart("cylinder", 0.08, 0.06, 0.08, y = 0.2, color = "#d4af37")),
+        look = listOf(LookPart("box", 0.3, 0.2, 0.2, color = "#a0522d", material = "wood"), LookPart("cylinder", 0.08, 0.06, 0.08, y = 0.2, color = "#d4af37", material = "metal")),
         why = "something that plays when I wind it",
     )
 
@@ -169,11 +169,13 @@ class CodedVerbsTest {
             assertIs<IntentStatus.Failed>(w.finish(Intent.Do("craft")))
         }
 
+        val wood = w.count("wood")
         write("craft", "function finish(world) { world.spend(25, 'materials'); return world.make({ name: 'music box', use: 'playable', look: 'a wooden box of brass gears' }); }")
         assertIs<IntentStatus.Succeeded>(w.finish(Intent.Do("craft")))
         assertTrue("made a music box (plain to look at" in w.events(), w.events())
         assertEquals(1, w.count("music_box"))
-        // The music box's materials are paid for, as at the workbench.
-        assertTrue(w.observe(w.agentId).money!! < money - 25)
+        // The music box's materials come from his stock, as at the workbench: a plain thing takes a little wood.
+        assertEquals(money - 25, w.observe(w.agentId).money!!)
+        assertEquals(wood - InventRules.PLAIN, w.count("wood"))
     }
 }

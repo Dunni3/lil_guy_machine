@@ -62,8 +62,8 @@ private class BenchWorker : DecisionModel {
         val bench = request.tools!!
         fun part(json: String) = Json.parseToJsonElement(json) as JsonObject
         val add = bench.looks.single { it.name == "add_part" }
-        answers += add.answer(part("""{"shape":"cylinder","w":0.3,"h":0.3,"d":0.3,"x":0,"y":0,"z":0,"rot_x":0,"rot_y":0,"rot_z":0,"color":"#8a6a4a","part":"pot","taper":0.8,"cut":1,"hole":0.85,"arc":360,"glow":0,"opacity":1}"""))
-        answers += add.answer(part("""{"shape":"sphere","w":0.3,"h":0.2,"d":0.3,"x":0,"y":0.3,"z":0,"rot_x":0,"rot_y":0,"rot_z":0,"color":"#557755","part":"moss","taper":1,"cut":0.5,"hole":0,"arc":360,"glow":0,"opacity":1}"""))
+        answers += add.answer(part("""{"shape":"cylinder","w":0.3,"h":0.3,"d":0.3,"x":0,"y":0,"z":0,"rot_x":0,"rot_y":0,"rot_z":0,"color":"#8a6a4a","part":"pot","taper":0.8,"cut":1,"hole":0.85,"arc":360,"glow":0,"opacity":1,"material":"wood"}"""))
+        answers += add.answer(part("""{"shape":"sphere","w":0.3,"h":0.2,"d":0.3,"x":0,"y":0.3,"z":0,"rot_x":0,"rot_y":0,"rot_z":0,"color":"#557755","part":"moss","taper":1,"cut":0.5,"hole":0,"arc":360,"glow":0,"opacity":1,"material":"wood"}"""))
         val build = bench.tools.single()
         val args = part("""{"name":"moss pot","use":"viewable","qualities":[{"quality":"natural","strength":2}],"place":"floor","book":null,"why":"something green"}""")
         try {
@@ -77,11 +77,11 @@ private class BenchWorker : DecisionModel {
 }
 
 class InventorTest {
-    private val content = BedroomContent.default().let { it.copy(start = it.start.copy(money = 100, items = it.start.items + ("workbench" to 1))) }
+    private val content = BedroomContent.default().let { it.copy(start = it.start.copy(money = 100, items = it.start.items + mapOf("workbench" to 1, "wood" to 20))) }
 
     /** A lamp that is calm 2, natural 2 and cozy [cozy]: with cozy 3 it adds up to 7, over the quality budget of 6. */
     private fun design(cozy: Int) =
-        """{"name":"pebble lamp","use":"viewable","qualities":[{"quality":"calm","strength":2},{"quality":"natural","strength":2},{"quality":"cozy","strength":$cozy}],"place":"floor","look":[{"shape":"sphere","w":0.3,"h":0.3,"d":0.3,"x":0,"y":0,"z":0,"rot_x":0,"rot_y":0,"rot_z":0,"color":"#557755","part":"moss","taper":1,"cut":1,"hole":0,"arc":360,"glow":0,"opacity":1}],"book":null,"why":"the room needs something green","variants":[],"runs":[]}"""
+        """{"name":"pebble lamp","use":"viewable","qualities":[{"quality":"calm","strength":2},{"quality":"natural","strength":2},{"quality":"cozy","strength":$cozy}],"place":"floor","look":[{"shape":"sphere","w":0.3,"h":0.3,"d":0.3,"x":0,"y":0,"z":0,"rot_x":0,"rot_y":0,"rot_z":0,"color":"#557755","part":"moss","taper":1,"cut":1,"hole":0,"arc":360,"glow":0,"opacity":1,"material":"wood"}],"book":null,"why":"the room needs something green","variants":[],"runs":[]}"""
 
     @Test
     fun `the writer's design is redone once when it's refused, built by the sim and remembered, and a design that stays refused fails the verb`() {
@@ -100,7 +100,9 @@ class InventorTest {
         assertTrue("look it over" in designer.requests[2].messages.last().content, designer.requests[2].messages.last().content)
         assertTrue("You're at your workbench with $100" in designer.requests[0].messages.first().content)
         assertEquals("pebble_lamp", world.inventions.single().item.id)
-        assertEquals(100 - (4 + 5 * 5), world.ledger.balance)
+        // Built from his wood (3 for the moss, 5 for its qualities), not his money.
+        assertEquals(100, world.ledger.balance)
+        assertEquals(mapOf("wood" to 8), world.inventions.single().bill)
         assertEquals(1, drafts.single().redid.size)
         val event = store.eventsAfter("r", 0, 100).single { it.kind == EventKind.Invention }
         assertEquals("I invented the pebble lamp and built it at my workbench (calm, natural, cozy): the room needs something green.", event.text)

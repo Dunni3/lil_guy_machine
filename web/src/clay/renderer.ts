@@ -38,7 +38,20 @@ interface Batch {
   texture: string | null;
   glow: number;
   opacity: number;
+  /** What its parts are made of, when they're an invention's ([Part.material]); null for plain clay. */
+  material: string | null;
 }
+
+/**
+ * How each material an invention is made of is drawn: wood with its grain (a texture the part's colour
+ * tints), metal and copper with a sheen off the lights, glass by its opacity. One material each, shared
+ * by every invention, so it costs no more to draw than plain clay.
+ */
+const SURFACES: Record<string, { roughness: number; metalness: number; grain?: boolean }> = {
+  wood: { roughness: 0.82, metalness: 0, grain: true },
+  metal: { roughness: 0.34, metalness: 0.55 },
+  copper_wire: { roughness: 0.28, metalness: 0.6 },
+};
 
 /**
  * A part list built into meshes once: the parts merged into one mesh per kind of surface (plain, by
@@ -59,9 +72,10 @@ export class ClayModel {
     for (const p of parts) {
       const glow = p.glow ?? 0;
       const opacity = p.opacity ?? 1;
-      const key = `${p.texture ?? ""}/${glow}/${opacity}`;
+      const material = p.material && p.material in SURFACES ? p.material : null;
+      const key = `${p.texture ?? ""}/${glow}/${opacity}/${material ?? ""}`;
       let g = groups.get(key);
-      if (!g) groups.set(key, (g = { parts: [], batch: { texture: p.texture, glow, opacity } }));
+      if (!g) groups.set(key, (g = { parts: [], batch: { texture: p.texture, glow, opacity, material } }));
       g.parts.push(p);
       if (glow > 0) glows.push({ at: new Vector3(0, 0, 0).applyMatrix4(placement(p, m)), strength: glow });
     }
@@ -141,6 +155,7 @@ export class ClayRenderer {
   private readonly textured = new Map<Texture, MeshStandardMaterial>();
   private readonly glowing = new Map<number, MeshStandardMaterial>();
   private readonly glass = new Map<string, MeshStandardMaterial>();
+  private readonly surfaces = new Map<string, MeshStandardMaterial>();
   private readonly clear = new Color();
   private readonly shadowSun = new Vector3(Infinity, 0, 0);
   private dirty = true;
@@ -342,6 +357,16 @@ export class ClayRenderer {
   }
 
   private material(b: Batch): Material {
+    // A glowing or see-through part of an invention is drawn by its glow or glass, whatever it's made of.
+    if (b.material && b.glow === 0 && b.opacity >= 1) {
+      let m = this.surfaces.get(b.material);
+      if (!m) {
+        const s = SURFACES[b.material];
+        m = new MeshStandardMaterial({ vertexColors: true, roughness: s.roughness, metalness: s.metalness, map: s.grain ? this.texture("wood_grain") : null });
+        this.surfaces.set(b.material, m);
+      }
+      return m;
+    }
     if (b.texture) {
       const t = this.texture(b.texture);
       if (!t) return this.solid;

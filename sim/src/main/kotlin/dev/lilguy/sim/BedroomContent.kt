@@ -119,6 +119,16 @@ data class BedroomContent(
     fun plus(invention: Invention): BedroomContent =
         copy(items = items + invention.item, books = books + listOfNotNull(invention.book)).also { it.validate() }
 
+    /**
+     * The content without [id], a thing he invented and took apart: its item, its book, and the
+     * verbs he wrote that are done with it or at it. Checked like any content.
+     */
+    fun minus(id: String): BedroomContent = copy(
+        items = items.filter { it.id != id },
+        books = books.filter { it.id != id },
+        verbs = verbs.filter { v -> v.code == null || (id !in v.at && id !in v.args.values) },
+    ).also { it.validate() }
+
     /** The content with [verb], one he wrote, in it, in place of his verb of the same id if there is one. Checked like any content. */
     fun plusVerb(verb: VerbSpec): BedroomContent =
         copy(verbs = verbs.filter { it.id != verb.id } + verb).also { it.validate() }
@@ -139,7 +149,10 @@ data class BedroomContent(
         val withGatedRooms = world?.rooms.orEmpty().filter { r -> byId[r.plan]?.let { !open(it.id, it.tier) } ?: true }.flatMap { it.items }.toSet()
         val items = items.filter { open(it.id, it.tier) && it.id !in withGatedRooms }
         // A verb whose arguments nothing left could fill goes with them: no lamps, no switching one.
-        val verbs = verbs.filter { v -> open(v.id, v.tier) && v.args.values.all { tag -> items.any { tag in it.names } } }
+        val opened = verbs.filter { v -> open(v.id, v.tier) && v.args.values.all { tag -> tag == INVENTION || items.any { tag in it.names } } }
+        // Nothing to take apart where nothing can be built: the verbs that take an invention go with the workbench.
+        val building = opened.any { v -> v.ops<BuildOp>().isNotEmpty() && v.at.all { at -> at in v.args || at == VerbSpec.HERE || items.any { it.id == at } } }
+        val verbs = opened.filter { v -> building || INVENTION !in v.args.values }
         val ids = (items.map { it.id } + verbs.map { it.id }).toSet()
         return copy(
             items = items,
@@ -249,10 +262,11 @@ data class BedroomContent(
             (a.args.keys - VerbSpec.SLOTS).forEach { throw IllegalArgumentException("$where: argument '$it' isn't a slot; use ${VerbSpec.SLOTS.joinToString(" or ")}") }
             require(a.at.isNotEmpty()) { "$where needs at least one place in `at`" }
             a.at.forEach { at ->
-                val places = a.args[at]?.let(::withName) ?: if (at == VerbSpec.HERE) null else listOfNotNull(byId[at])
+                // Things he invents come during a run, and stand somewhere when they're anything to take apart.
+                val places = a.args[at]?.let { if (it == INVENTION) null else withName(it) } ?: if (at == VerbSpec.HERE || a.args[at] == INVENTION) null else listOfNotNull(byId[at])
                 require(places == null || (places.isNotEmpty() && places.all { it.slot != null })) { "$where happens at '$at', which isn't a slot item, an argument naming slot items, or `here`" }
             }
-            (a.requires + a.args.values).forEach { require(it in tags) { "$where names '$it', which isn't an item or an affordance any item has" } }
+            (a.requires + a.args.values).forEach { require(it in tags || it == INVENTION) { "$where names '$it', which isn't an item or an affordance any item has" } }
             require(a.effects.isNotEmpty()) { "$where does nothing: give it `effects`" }
             (a.effects.flatMap { it.problems(this, a) } + a.kind.violations(a, affordances)).takeIf { it.isNotEmpty() }?.let { throw IllegalArgumentException("$where: " + it.joinToString("; ")) }
             require((a.minutes != null) != (a.until != null)) { "$where needs exactly one of `minutes` and `until`" }
@@ -378,6 +392,9 @@ data class BedroomContent(
 
 /** The affordance of a thing that logs the weather where it stands ([Records], [StationLog]). */
 const val RECORDER = "recorder"
+
+/** What a verb's argument names for a thing he invented that stands somewhere (the `dismantle` verb): none are in the content until he builds one. */
+const val INVENTION = "invention"
 
 /** The affordance of a light he can switch: on its timer, or on or off until he switches it again ([LampMode]). */
 const val LAMP = "lamp"
