@@ -100,7 +100,7 @@ class PromptBuilder(
         if (tools && toolTurn != null) return toolRequest(toolTurn, obs, recent, memories, null, found, reflections)
         val history = recent.joinToString("\n") { e ->
             "${stamp(e.tick)}: ${json.encodeToString(Intent.serializer(), e.intent)} -> ${e.result?.let(::describe) ?: "running"}" +
-                (e.thought?.let { "; you thought: \"$it\"" } ?: "")
+                (e.thought?.let { "; on your mind: \"$it\"" } ?: "")
         }
         val user = buildString {
             appendLine(OBSERVATION_HEADER)
@@ -133,7 +133,7 @@ class PromptBuilder(
                 // What he thought as he chose it is his own words, said before the call.
                 val call = ToolCall("call_${e.tick}_$i", name, args)
                 val ended = e.result?.let(::describe) ?: "still going"
-                val result = "Started ${stamp(e.tick)}. " + (e.outcome?.let { "$ended: $it" } ?: ended) + (e.thought?.let { " You thought: \"$it\"" } ?: "")
+                val result = "Started ${stamp(e.tick)}. " + (e.outcome?.let { "$ended: $it" } ?: ended) + (e.thought?.let { " On your mind: \"$it\"" } ?: "")
                 messages += Message(Message.Role.Assistant, e.reason.orEmpty(), call)
                 messages += Message(Message.Role.Tool, result, call)
             }
@@ -205,9 +205,9 @@ class PromptBuilder(
 
     companion object {
         private const val OBSERVATION_HEADER = "Observation:"
-        const val MEMORY_HEADER = "What you remember from earlier (memories, and thoughts you had), oldest first:"
+        const val MEMORY_HEADER = "What you remember from earlier (memories, and what was on your mind), oldest first:"
         const val REFLECTION_HEADER = "What you concluded the latest times you stepped back from your days (patterns and lessons you've drawn), oldest first:"
-        const val THOUGHT_HEADER = "What you decided the last time you stopped to think (your plan for now):"
+        const val THOUGHT_HEADER = "Your plan for now, from the last time you took stock:"
         const val FOUND_HEADER = "What you found out lately, by asking how your world works or looking things up online, oldest first:"
         private const val ASK = "Choose your next action."
         private const val STATUS_HEADER = "How things stand now:"
@@ -225,7 +225,7 @@ class PromptBuilder(
             val now = request.messages.lastOrNull { it.role == Message.Role.User }?.content?.removeSuffix(ASK)?.removeSuffix(CALL)?.removeSuffix(LOOK_THEN_CALL)?.removeSuffix(THINK)?.removeSuffix(THINK_LOOK)?.trimEnd().orEmpty()
             val calls = request.messages.filter { it.role == Message.Role.Tool && it.call != null }.map { m ->
                 val c = m.call!!
-                "- ${c.name} ${JsonObject(c.arguments - BedroomTools.THOUGHT)}: ${m.content}"
+                "- ${c.name} ${JsonObject(c.arguments - BedroomTools.THOUGHT - "thought")}: ${m.content}"
             }
             return if (calls.isEmpty()) now else "Your recent actions, oldest first:\n${calls.joinToString("\n")}\n$now"
         }
@@ -261,7 +261,7 @@ class PromptBuilder(
                 |Actions (the "intent" field), each with an example:
                 |$actions
                 |
-                |Reply with a JSON object {"thought": ..., "intent": ...}. "thought" is your reasoning in a sentence or two; "intent" is the one action to take now. Use only ids from the observation: an id in "nearby", or an item id in your inventory.
+                |Reply with a JSON object {"thought": ..., "intent": ...}. "thought" is a line of your inner voice, in your own words; "intent" is the one action to take now. Use only ids from the observation: an id in "nearby", or an item id in your inventory.
                 |
                 |The observation is JSON:
                 |- self: your id, position (x, y), facing, and inventory (ids of the items you hold)

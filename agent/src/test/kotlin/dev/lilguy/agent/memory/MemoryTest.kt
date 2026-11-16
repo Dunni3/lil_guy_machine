@@ -96,7 +96,7 @@ class MemoryTest {
         assertEquals(listOf(5L, 6L), Recall(latest = 2, related = 1).select(all, "nothing relevant").map { it.id })
         assertEquals(listOf(6L), Recall(latest = 3, related = 0, charBudget = 30).select(all, "").map { it.id })
         assertEquals("Day 1 08:00-09:00: I painted.", all.last().render())
-        assertEquals("Day 1 08:30, you thought: \"I want the easel.\"", easel.render())
+        assertEquals("Day 1 08:30, on your mind: \"I want the easel.\"", easel.render())
         // Ranked: the latest memory always, then by relevance, importance and recency.
         assertEquals(listOf(7L, 6L), Recall(pick = 2).selectRanked(all, mapOf(easel.key to 1.0), now = 70).map { it.id })
     }

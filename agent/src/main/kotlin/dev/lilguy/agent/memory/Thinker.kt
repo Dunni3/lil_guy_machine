@@ -17,13 +17,13 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
 @Serializable
-@SerialName("thought")
-data class ThoughtReply(val thought: String)
+@SerialName("plan")
+data class ThoughtReply(@SerialName("plan") val thought: String)
 
 /** One step of thinking with questions left: a question for the oracle, or the thought that ends it. */
 @Serializable
-@SerialName("think")
-data class ThinkStep(val ask: String?, val thought: String?)
+@SerialName("plan_step")
+data class ThinkStep(val ask: String?, @SerialName("plan") val thought: String?)
 
 /** One time he stopped to think, for logs and the dev view. [text] is null when the model failed ([error]). */
 data class Thought(
@@ -70,18 +70,18 @@ class Thinker(
     val thinker: String get() = model.id
 
     private val schema = ActionSchema.of(
-        "thought",
+        "plan",
         ThoughtReply.serializer(),
-        SchemaHints(descriptions = mapOf("thought.thought" to "What you want to do next and what you want to achieve, first person, under $WORD_CAP words.")),
+        SchemaHints(descriptions = mapOf("plan.plan" to "What you want to do next and what you want to achieve, first person, under $WORD_CAP words.")),
     ) { null }
 
     private val stepSchema = ActionSchema.of(
-        "think",
+        "plan_step",
         ThinkStep.serializer(),
         SchemaHints(
             descriptions = mapOf(
-                "think.ask" to "One question about how your world works, first person, under $QUESTION_CAP words; null when you're ready to say your thought.",
-                "think.thought" to "What you want to do next and what you want to achieve, first person, under $WORD_CAP words; null while you ask.",
+                "plan_step.ask" to "One question about how your world works, first person, under $QUESTION_CAP words; null when you're ready to say your plan.",
+                "plan_step.plan" to "What you want to do next and what you want to achieve, first person, under $WORD_CAP words; null while you ask.",
             ),
         ),
     ) { null }
@@ -119,7 +119,7 @@ class Thinker(
                 messages += Message(
                     Message.Role.User,
                     (answer.reply.text?.let { "The answer: $it" } ?: "No answer came.") + "\n\n" +
-                        if (left > 0) "You can ask $left more, or say your thought." else "No more questions now. Say your thought: reply {\"thought\": ...}.",
+                        if (left > 0) "You can ask $left more, or say your plan." else "No more questions now. Say your plan: reply {\"plan\": ...}.",
                 )
             }
             val decision = withTimeout(timeout) { model.decide(request(), schema) }
@@ -155,17 +155,17 @@ class Thinker(
         const val ASK_WITH_QUESTIONS = "What do you want to do next, and what do you want to achieve? Ask first if there's something about how your world works you'd like to know."
 
         val INSTRUCTIONS = """
-            |Right now you are not choosing an action: you have stopped to think. Look at your situation: your needs and money, what you remember and thought before, and what you have done lately. Think about what you want to do next and what you want to achieve, and say it plainly: what you will do next, and what you are working toward. Keep in view what you are working toward, not only what keeps you fed: money and food are means, not ends. Write in the first person, as yourself, under $WORD_CAP words.
+            |Right now you are not choosing an action: you have stopped to take stock. Look at your situation: your needs and money, what you remember and what was on your mind before, and what you have done lately. Then say plainly, as yourself, what you will do next and what you are working toward. Keep in view what you are working toward, not only what keeps you fed: money and food are means, not ends. Write in the first person, as yourself, under $WORD_CAP words.
             |
-            |For this reply only, ignore the reply format above: reply with a JSON object {"thought": ...} and nothing else.
+            |For this reply only, ignore the reply format above: reply with a JSON object {"plan": ...} and nothing else.
         """.trimMargin()
 
         val INSTRUCTIONS_WITH_QUESTIONS = """
-            |Right now you are not choosing an action: you have stopped to think. Look at your situation: your needs and money, what you remember and thought before, and what you have done lately. Think about what you want to do next and what you want to achieve, and say it plainly: what you will do next, and what you are working toward. Keep in view what you are working toward, not only what keeps you fed: money and food are means, not ends.
+            |Right now you are not choosing an action: you have stopped to take stock. Look at your situation: your needs and money, what you remember and what was on your mind before, and what you have done lately. Then say plainly, as yourself, what you will do next and what you are working toward. Keep in view what you are working toward, not only what keeps you fed: money and food are means, not ends.
             |
-            |While you think, you can ask how something in your world works, and someone who knows its workings will answer: how to get to something you can't do yet, what something is for, what you could do that you haven't tried. There's more to your world than you can see from here. Ask one question at a time, up to $MAX_ASKS, each in the first person under $QUESTION_CAP words, when an answer would change what you do; don't ask what you already know. Then say your thought, in the first person, as yourself, under $WORD_CAP words.
+            |While you take stock, you can ask how something in your world works, and someone who knows its workings will answer: how to get to something you can't do yet, what something is for, what you could do that you haven't tried. There's more to your world than you can see from here. Ask one question at a time, up to $MAX_ASKS, each in the first person under $QUESTION_CAP words, when an answer would change what you do; don't ask what you already know. Then say your plan, in the first person, as yourself, under $WORD_CAP words.
             |
-            |For these replies only, ignore the reply format above: reply with a JSON object {"ask": ..., "thought": ...} and nothing else. To ask, give "ask" your question and "thought" null; to finish, give "ask" null and "thought" your thought.
+            |For these replies only, ignore the reply format above: reply with a JSON object {"ask": ..., "plan": ...} and nothing else. To ask, give "ask" your question and "plan" null; to finish, give "ask" null and "plan" your plan.
         """.trimMargin()
     }
 }

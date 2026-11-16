@@ -40,7 +40,7 @@ private class FakeAskWriter : DecisionModel {
     override suspend fun <A> decide(request: DecisionRequest, schema: ActionSchema<A>): Decision<A> {
         requests += request
         val raw = when (schema.name) {
-            "think" -> if (request.messages.size == 1) """{"ask":"How can I make more money?","thought":null}""" else """{"ask":null,"thought":"I'll sketch and sell at the hatch."}"""
+            "plan_step" -> if (request.messages.size == 1) """{"ask":"How can I make more money?","plan":null}""" else """{"ask":null,"plan":"I'll sketch and sell at the hatch."}"""
             "search" -> """{"open":["verb:sketch","verb:sell_art","no:such"]}"""
             else -> """{"answer":"Sketch at your desk, then sell the sketches at the hatch, 3 dollars each."}"""
         }
