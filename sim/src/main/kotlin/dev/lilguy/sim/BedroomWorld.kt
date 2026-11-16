@@ -503,13 +503,12 @@ class BedroomWorld private constructor(
         override fun dismantleLock(id: String): String? {
             val spec = content.item(id) ?: return null
             if (inventions.none { it.item.id == id }) return "the ${spec.name} isn't something you invented; only your own inventions can be taken apart"
-            if (spec.slot == null) return "the ${spec.name} doesn't stand anywhere, so there's nothing to take apart for room"
             if (count(id) == 0) return "you don't have the ${spec.name}"
             return null
         }
 
         override fun dismantleText(id: String): String {
-            val made = inventions.firstOrNull { it.item.id == id } ?: return "take one of your inventions apart for half its materials and its spot"
+            val made = inventions.firstOrNull { it.item.id == id } ?: return "take one of your inventions apart for half its materials, and its spot if it stands somewhere"
             val back = content.invent!!.salvaged(made.bill)
             return "take the ${made.item.name} apart: " + (if (back.isEmpty()) "nothing back" else "back " + back.entries.joinToString { (m, n) -> quantity(m, n) }) +
                 (made.item.slot?.let { ", and $it is free" } ?: "")
@@ -659,7 +658,7 @@ class BedroomWorld private constructor(
 
     /** Whether [id] answers to [tag]: its id or an affordance, or `machine` for a thing with code, which wears and is mended like one. */
     private fun answers(id: String, tag: String): Boolean = tag in item(id).names || (tag == Works.MACHINE && id in behaviors) ||
-        (tag == INVENTION && item(id).slot != null && inventions.any { it.item.id == id })
+        (tag == INVENTION && inventions.any { it.item.id == id })
 
     private fun add(id: String, n: Int) {
         version++
@@ -1159,6 +1158,7 @@ class BedroomWorld private constructor(
         thingState.remove(id)
         custom.remove(id)
         lampModes.remove(id)
+        if (music?.itemId == id) music = null
         newThings.remove(id)
         ownedSince.remove(id)
         owned.remove(id)
@@ -1787,7 +1787,7 @@ class BedroomWorld private constructor(
     private fun wanted(tag: String, cheapest: Boolean = false): String {
         val options = content.withName(tag)
         // Nothing in the content answers to it yet: a thing he invents, before he has built one.
-        if (options.isEmpty()) return if (tag == INVENTION) "a thing you invented that stands somewhere" else article(tag.replace('_', ' '))
+        if (options.isEmpty()) return if (tag == INVENTION) "a thing you invented" else article(tag.replace('_', ' '))
         val spec = options.filter { it.price != null }.minByOrNull { it.price!! } ?: options.first()
         val price = spec.price ?: return article(if (options.size > 1) noun(tag) else spec.name)
         val name = if (options.size > 1 && tag != spec.id && !cheapest) noun(tag) else spec.name
@@ -1976,8 +1976,9 @@ class BedroomWorld private constructor(
             id
         }
         lockReason(a, args)?.let { reject("can't ${a.id}: $it") }
-        val places = a.at.mapNotNull { if (it == VerbSpec.HERE) null else args[it] ?: it }
-        if (VerbSpec.HERE in a.at) return activity(a, guy.cell, args) { complete(a, args) }
+        // A thing bound to an argument that stands nowhere (a record he holds) is done with where he is.
+        val places = a.at.mapNotNull { at -> if (at == VerbSpec.HERE || (at in args && item(args.getValue(at)).slot == null)) null else args[at] ?: at }
+        if (VerbSpec.HERE in a.at || places.isEmpty()) return activity(a, guy.cell, args) { complete(a, args) }
         val (walk, at) = walkToNearest(litEnough(a, places))
         return Work.Steps(walk, activity(a, at, args) { complete(a, args) })
     }

@@ -132,7 +132,7 @@ object ScriptApi {
         Fn("take", "world.take(id, n)", "uses up n of something you own (an id, or a use like \"edible\"); returns how many it took", true) { w, a -> w.take(a.str(0, "id"), a.optInt(1) ?: 1) },
         Fn(
             "make", "world.make({ name, use, qualities, place, look, book, why })",
-            "makes a new kind of thing and gives you one; returns its id. use is one of viewable, playable, readable, edible, sellable; qualities like { cozy: 2 }; place is floor or wall for a viewable thing; look is a list of shapes, each like { shape: \"box\", w: 0.3, h: 0.2, d: 0.3, x: 0, y: 0, z: 0, color: \"#8a5a3c\", material: \"wood\" } (shape is box, cylinder, sphere or capsule; metres, y up from the floor; material is wood, metal, copper_wire or glass), or leave it out for a plain one; book, for a readable thing, is { title, blurb, chapters: [a sentence each], skill }. It takes the materials from what you own, as the workbench does, and money for food or a book",
+            makeDoc(null),
             true,
         ) { w, a -> w.make(a.obj(0, "design")) },
         Fn("setState", "world.setState(id, key, value)", "stores a value (a string, number, true/false, or null to remove it) on a thing you own, or on \"self\"; it stays until changed", true) { w, a -> w.setState(a.str(0, "id"), a.str(1, "key"), a.getOrNull(2)) },
@@ -169,9 +169,29 @@ object ScriptApi {
         "give" to "things don't come from nothing: a machine makes them from what it takes (world.machine), and world.transfer(machine, \"self\", item) takes them out; or collect or buy them",
     )
 
-    /** The API as lines for a prompt: one per function, plus `say` and the verb's arguments. */
-    fun reference(): String = (
-        FUNCTIONS.map { "- ${it.signature}: ${it.doc}" } + listOf(
+    /**
+     * What `world.make` does, with the uses and materials of [content]'s `invent` rules (rules.yaml),
+     * so a run whose content builds from other materials is told those; null names none.
+     */
+    fun makeDoc(content: BedroomContent?): String {
+        val rules = content?.invent
+        val uses = rules?.uses?.keys?.joinToString()?.let { "use is one of $it" } ?: "use is what it's for (viewable, playable, readable, edible or sellable)"
+        val materials = rules?.materials?.keys?.toList().orEmpty()
+        val example = materials.firstOrNull()?.let { ", material: \"$it\"" }.orEmpty()
+        val made = when (materials.size) {
+            0 -> ""
+            1 -> "; material is ${materials[0]}"
+            else -> "; material is ${materials.dropLast(1).joinToString()} or ${materials.last()}"
+        }
+        return "makes a new kind of thing and gives you one; returns its id. $uses; qualities like { cozy: 2 }; place is floor or wall for a viewable thing; " +
+            "look is a list of shapes, each like { shape: \"box\", w: 0.3, h: 0.2, d: 0.3, x: 0, y: 0, z: 0, color: \"#8a5a3c\"$example } " +
+            "(shape is box, cylinder, sphere or capsule; metres, y up from the floor$made), or leave it out for a plain one; " +
+            "book, for a readable thing, is { title, blurb, chapters: [a sentence each], skill }. It takes the materials from what you own, as the workbench does, and money for food or a book"
+    }
+
+    /** The API as lines for a prompt: one per function, plus `say` and the verb's arguments; [content] fills in what `make` can use ([makeDoc]). */
+    fun reference(content: BedroomContent? = null): String = (
+        FUNCTIONS.map { "- ${it.signature}: ${if (it.name == "make" && content != null) makeDoc(content) else it.doc}" } + listOf(
             "- world.say(text): says something out loud as the verb finishes; console.log does the same",
             "- world.args: the things this doing of the verb is bound to, { what, on } (ids), when the verb takes them",
             "- world.verb: this verb's id",

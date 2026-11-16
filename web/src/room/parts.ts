@@ -238,6 +238,11 @@ export class Models {
     });
   }
 
+  /** His stock of materials on the workbench's lower shelf, [shown] of each ([stockShown]). */
+  stock(shown: Record<string, number>): ClayModel {
+    return this.cached(`stock/${STOCK.map((m) => shown[m] ?? 0).join(",")}`, () => stockParts(shown));
+  }
+
   /** A painter's palette with a dab of each of [colors] round its far edge (`RoomParts.palette`). */
   palette(colors: string[]): ClayModel {
     return this.cached(`palette/${colors.join(",")}`, () => {
@@ -291,4 +296,51 @@ function jar(id: string, x: number): Part[] {
     { ...base, shape: "cylinder", x, y, z, w: 0.09, h: 0.12, d: 0.09, color: "#e8f4f6", round: 0.02, opacity: 0.45 },
     { ...base, shape: "cylinder", x, y: y + 0.12, z, w: 0.08, h: 0.025, d: 0.08, color: "#d9a95a", round: 0.008 },
   ];
+}
+
+/**
+ * His materials as the workbench's lower shelf holds them, each drawn of its own material: wood
+ * planks stacked at the back, metal bars piled front left, copper coils in the middle and glass panes
+ * leaning on the right leg. Each shown piece stands for [STOCK_PER] of what he has, up to a shelf's worth.
+ */
+const STOCK = ["wood", "metal", "copper_wire", "glass"];
+const STOCK_MOST: Record<string, number> = { wood: 8, metal: 6, copper_wire: 4, glass: 6 };
+const STOCK_PER = 2;
+/** The top of the workbench's lower shelf (`RoomParts` "workbench"). */
+const SHELF_TOP = 0.17;
+
+/** How many pieces of each material to draw for what he [owns]; empty when he has none. */
+export function stockShown(owns: Record<string, number>): Record<string, number> {
+  const shown: Record<string, number> = {};
+  for (const m of STOCK) {
+    const n = owns[m] ?? 0;
+    if (n > 0) shown[m] = Math.min(STOCK_MOST[m], Math.ceil(n / STOCK_PER));
+  }
+  return shown;
+}
+
+function stockParts(shown: Record<string, number>): Part[] {
+  const base = { rotX: 0, rotY: 0, rotZ: 0, texture: null, taper: 1, round: 0.006 };
+  const out: Part[] = [];
+  // Planks, each a little askew, as they were put down.
+  for (let i = 0; i < (shown.wood ?? 0); i++) {
+    out.push({ ...base, shape: "box", material: "wood", color: i % 2 ? "#c08a5a" : "#b47c4c", x: ((i % 3) - 1) * 0.015, y: SHELF_TOP + i * 0.024, z: -0.09, w: 0.64, h: 0.022, d: 0.11, rotY: ((i * 7) % 5) - 2 });
+  }
+  // Bars in a pile: three, then two on them, then one.
+  const rows = [3, 2, 1];
+  let left = shown.metal ?? 0;
+  rows.forEach((n, r) => {
+    for (let k = 0; k < n && left > 0; k++, left--) {
+      out.push({ ...base, shape: "box", material: "metal", color: "#9aa2aa", x: -0.2, y: SHELF_TOP + r * 0.034, z: 0.1 + (k - (n - 1) / 2) * 0.038, w: 0.26, h: 0.034, d: 0.034 });
+    }
+  });
+  // Coils of wire, two side by side, then two on them: the wire drawing winds each.
+  for (let i = 0; i < (shown.copper_wire ?? 0); i++) {
+    out.push({ ...base, shape: "cylinder", material: "copper_wire", color: "#c47a42", x: 0.0 + (i % 2) * 0.09, y: SHELF_TOP + Math.floor(i / 2) * 0.1, z: 0.1, w: 0.08, h: 0.1, d: 0.08 });
+  }
+  // Panes on edge, leaning on the right leg, each a little further out.
+  for (let i = 0; i < (shown.glass ?? 0); i++) {
+    out.push({ ...base, shape: "box", material: "glass", color: "#d8eef2", opacity: 0.5, x: 0.33 - i * 0.022, y: SHELF_TOP, z: 0.08, w: 0.008, h: 0.22, d: 0.17, rotZ: 10 + i * 2 });
+  }
+  return out;
 }

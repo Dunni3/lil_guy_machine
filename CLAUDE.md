@@ -127,7 +127,7 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   prices its materials and adds it to the run's content (`sim/.../Invention.kt`: `Design`, `InventRules` from rules.yaml
   `invent`, `Invention`; `BedroomContent.plus`). `BedroomWorld.content` grows during a run, so read it when needed. Inventions
   are saved in `BedroomState.inventions`, go to viewers in the protocol's `shop.inventions`, and the web renderer builds their
-  models from the look (`web/src/room/parts.ts`). Things to look at stand in room.yaml's spare `spots`.
+  models from the look (`web/src/room/parts.ts`; copper wire parts are drawn as wire, `clay/geometry.ts` `wire`, and his materials pile on the workbench's lower shelf, `stockParts`). Things to look at stand in room.yaml's spare `spots`. Materials sell back at rules.yaml `invent.sell_back` (`sell_materials`; the `material` tag, `ItemSpec.resale`).
 - Code he writes (`docs/decisions/2026-11-15-he-writes-his-verbs-and-what-his-things-do-as-code.md`): `sim/.../Scripts.kt`
   (the Rhino sandbox and the world API table, `ScriptApi.FUNCTIONS`, which the coder's brief and the oracle are made from),
   `sim/.../CodedVerbs.kt` (verb and behavior designs, `CodeRules`, the `script` and `define` ops); the world side is

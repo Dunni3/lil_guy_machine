@@ -337,12 +337,12 @@ verbs:
       - consume: { spare_parts: 1 }
       - practice: { tinkering: 0.2 }
       - need: { energy: -3, stimulation: 4 }
-  # Taking apart a thing he invented that stands somewhere (rules.yaml `invent.salvage`): he gets back
-  # half its materials, its code stops, what its machine held comes to him, and its spot is free for
-  # something else. Bought things and the house stay.
+  # Taking apart a thing he invented (rules.yaml `invent.salvage`): he gets back half its materials,
+  # its code stops, what its machine held comes to him, and its spot, if it stands somewhere, is free
+  # for something else. A record or a ware he holds is taken apart where he is. Bought things and the house stay.
   - id: dismantle
     kind: upkeep
-    phrase: take apart a thing you invented, for half its materials back and its spot
+    phrase: take apart a thing you invented, for half its materials back and any spot it took
     args: { on: invention }
     at: [on]
     minutes: 40
@@ -396,6 +396,16 @@ verbs:
     kind: economic
     phrase: sell what your machines made
     args: { what: ware }
+    at: [mail_hatch]
+    minutes: 1
+    effects:
+      - sell: what
+  # Materials he doesn't need go back to the shop for about half what they cost (rules.yaml
+  # `invent.sell_back`): taking things apart and selling what comes back turns a full world into money.
+  - id: sell_materials
+    kind: economic
+    phrase: sell materials you don't need back to the shop
+    args: { what: material }
     at: [mail_hatch]
     minutes: 1
     effects:

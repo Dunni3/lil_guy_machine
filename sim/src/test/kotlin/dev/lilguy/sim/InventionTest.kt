@@ -108,7 +108,7 @@ class InventionTest {
         // Things he doesn't own yet keep the room's four spare floor spots.
         val full = content.copy(items = content.items + (1..4).map { ItemSpec("crate_$it", "crate $it", "decor", slot = "spot_$it", blocks = true) })
         val w = BedroomWorld.create(full)
-        assertEquals("needs a thing you invented that stands somewhere", w.observe(w.agentId).activities!!.first { it.id == "dismantle" }.locked)
+        assertEquals("needs a thing you invented", w.observe(w.agentId).activities!!.first { it.id == "dismantle" }.locked)
         w.stage("invent", AuthoredResult.Designed(lamp))
         assertIs<IntentStatus.Succeeded>(w.finish(Intent.Do("invent")))
         val spot = w.inventions.single().item.slot!!
@@ -130,5 +130,38 @@ class InventionTest {
         val restored = BedroomWorld.restore(w.exportState(), full, strict = true).world
         assertTrue(restored.inventions.isEmpty() && restored.content.item("pebble_lamp") == null)
         assertEquals(6, restored.count("wood"))
+    }
+
+    @Test
+    fun `a record he holds is taken apart for its salvage where he is`() {
+        val w = BedroomWorld.create(content)
+        val record = lamp.copy(name = "tin song", use = "playable", place = null, qualities = mapOf("calm" to 3.0), look = listOf(LookPart("cylinder", 0.3, 0.02, 0.3, color = "#333333", material = "wood")))
+        w.stage("invent", AuthoredResult.Designed(record))
+        assertIs<IntentStatus.Succeeded>(w.finish(Intent.Do("invent")))
+        val made = w.inventions.single()
+        assertEquals(null, made.item.slot)
+        assertEquals(mapOf("wood" to 4), made.bill)
+        assertEquals(10 - 4, w.count("wood"))
+
+        val option = w.observe(w.agentId).activities!!.first { it.id == "dismantle" }
+        assertEquals("tin_song", option.on)
+        assertEquals(null, option.locked)
+        assertIs<IntentStatus.Succeeded>(w.finish(Intent.Do("dismantle", on = "tin_song")))
+        assertEquals(null, w.content.item("tin_song"))
+        assertEquals(6 + 2, w.count("wood"))
+        val outcome = w.observe(w.agentId).recentEvents.joinToString("\n")
+        assertTrue("took the tin song apart" in outcome && "got back 2 wood planks" in outcome, outcome)
+    }
+
+    @Test
+    fun `materials he doesn't need sell back to the shop for about half`() {
+        val w = BedroomWorld.create(content)
+        val options = w.observe(w.agentId).activities!!.filter { it.id == "sell_materials" }
+        assertEquals(listOf("wood", "glass"), options.map { it.what })
+        assertTrue("$10 for the 10 wood planks you hold" in options[0].gives.orEmpty(), options[0].gives)
+        assertIs<IntentStatus.Succeeded>(w.finish(Intent.Do("sell_materials", what = "glass")))
+        assertEquals(0, w.count("glass"))
+        assertEquals(10, w.count("wood"))
+        assertEquals(100 + 3 * 2, w.ledger.balance)
     }
 }

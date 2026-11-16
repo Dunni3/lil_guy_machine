@@ -509,6 +509,9 @@
             },
             "salvage": {
               "type": "number"
+            },
+            "sell_back": {
+              "type": "number"
             }
           },
           "required": [
