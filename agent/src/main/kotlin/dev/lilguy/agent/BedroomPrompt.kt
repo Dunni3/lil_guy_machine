@@ -223,7 +223,7 @@ object BedroomPrompt {
         val invent = content.verbs.firstOrNull { v -> v.effects.any { it is BuildOp } }?.id
         val mine = content.verbs.filter { it.code != null }.map { it.id }
         return "- Code: what you and your things can do isn't fixed. $devise writes JavaScript against your world: a new verb of your own (something you can do, with any of your things, that changes your needs, skills, money, things, where they stand, their colours and names, what's stored on them, or makes new things), " +
-            "or what one of your things does by itself every hour. Nothing caps what your code does." +
+            "or what one of your things does by itself every hour. It makes nothing from nothing: money comes from selling things, things from machines fed with what they take, and machines wear out and need mending." +
             (invent?.let { " Things you $it get their function written with them: what they let you do, and what they do on their own." } ?: "") +
             (if (mine.isEmpty()) "" else " Your own verbs so far: ${mine.joinToString()}; $devise can rewrite or fix them.")
     }
@@ -305,7 +305,8 @@ object BedroomPrompt {
         val actions = examples(content, ticksPerMinute, map != null).joinToString("\n") { (intent, what) ->
             "- ${PromptBuilder.tag(intent)}: $what\n  ${PromptBuilder.exampleJson.encodeToString(Intent.serializer(), intent)}"
         }
-        val makers = content.verbs.filter { it.ops<ProduceOp>().isNotEmpty() }.map { it.id }
+        // What makes something that sells: eating leaves a scrap, which isn't art.
+        val makers = content.verbs.filter { v -> v.ops<ProduceOp>().any { op -> op.items.keys.any { content.item(it)?.sellPrice != null } } }.map { it.id }
         val made = content.verbs.flatMap { v -> v.ops<ProduceOp>().flatMap { it.items.keys } }.toSet()
         val art = content.items.filter { it.sellPrice != null && it.id in made }.joinToString(" and ") { "a ${it.name} sells for $${it.sellPrice}" } +
             if (content.items.any { it.id in made && it.pricePerLevel > 0 }) ", more as your skill grows" else ""

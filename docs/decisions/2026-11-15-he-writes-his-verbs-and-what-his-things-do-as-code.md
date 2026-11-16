@@ -6,6 +6,8 @@ status: active
 
 # He writes his verbs and what his things do, as code
 
+The "Uncapped" part is superseded by [machines are fed and wear out](2026-11-15-machines-are-fed-and-wear-out-instead-of-uncapped.md): his code makes nothing from nothing, and machines have inputs and upkeep.
+
 **Context.** In the live life on day 18 he owned all 35 catalog items and had $2,510, and he painted
 for the commission every day. He had invented things (a moss terrarium and others), but they only
 sat in the room: an invention is one item with one use, and with the house's comfort full, something

@@ -79,13 +79,13 @@ class BedroomPolicy(
                 Intent.Say("New day. Let's see what I can make of it.") to "First thing: say hello, then get going."
             // Sleep can last 9 hours, and fullness keeps falling through it.
             sleepy && needs.fullness < BEFORE_BED && "eat" in can ->
-                Intent.Do("eat") to "Fullness ${needs.fullness} and about to sleep; eat first."
+                eat(activities) to "Fullness ${needs.fullness} and about to sleep; eat first."
             sleepy && needs.fullness < BEFORE_BED && meals == 0 && "meal" in affordable ->
                 Intent.Buy("meal") to "No food in the house before bed; buy some."
             sleepy ->
                 Intent.Do("sleep") to "Energy ${needs.energy} at ${obs.clock?.time}; sleep."
             "eat" in can && needs.fullness < HUNGRY ->
-                Intent.Do("eat") to "Fullness ${needs.fullness}; eat a meal."
+                eat(activities) to "Fullness ${needs.fullness}; eat."
             "read_mail" in can ->
                 Intent.Do("read_mail") to "A letter is waiting at the hatch; open it."
             meals < MEAL_STOCK && "meal" in affordable ->
@@ -98,9 +98,28 @@ class BedroomPolicy(
                 Intent.Do("sketch") to "Sketch: $$money and $$held in art, short of the next pack of meals ($$mealPrice)."
             "sell_art" in can && meals == 0 ->
                 Intent.Do("sell_art") to "No food and too tired to sketch; sell what I hold."
-            else -> watching(obs, night) ?: (Intent.Wait(BedroomPrompt.WAIT_TICKS) to "Nothing I need to do right now; wait.")
+            else -> tending(obs, night) ?: watching(obs, night) ?: (Intent.Wait(BedroomPrompt.WAIT_TICKS) to "Nothing I need to do right now; wait.")
         }
     }
+
+    /**
+     * With machines, his spare daylight looks after them: mend one once it has jammed (the baseline
+     * runs a thing until it breaks), fill one when he has a batch's worth of scraps, and take out food
+     * it grew. What one machine makes for the one beside it he leaves to them. Without, nothing.
+     */
+    private fun tending(obs: Observation, night: Boolean): Pair<Intent, String>? {
+        if (night) return null
+        val open = obs.activities.orEmpty().filter { it.locked == null }
+        open.firstOrNull { it.id == "repair" && it.gives.orEmpty().contains("works again") }?.let { return Intent.Do("repair", on = it.on) to "The ${it.on} has jammed; mend it." }
+        val scraps = obs.owns.orEmpty()["food_scrap"] ?: 0
+        open.firstOrNull { it.id == "tend" && ((it.gives.orEmpty().contains("put in") && scraps >= SCRAPS) || TOMATOES.containsMatchIn(it.gives.orEmpty())) }
+            ?.let { return Intent.Do("tend", on = it.on) to "Tend the ${it.on}: ${it.gives}." }
+        return null
+    }
+
+    /** Eat what he grew before what he bought: the first open eat that isn't a meal, else a meal. */
+    private fun eat(activities: List<dev.lilguy.sim.ActivityOption>): Intent =
+        Intent.Do("eat", what = activities.firstOrNull { it.id == "eat" && it.locked == null && it.what != null && it.what != "meal" }?.what)
 
     /** The script's `go:` and `until:` at its head: a walk or a wait, or null when it's done (the caller drops it) or isn't one. */
     private fun scripted(obs: Observation): Pair<Intent, String>? {
@@ -153,6 +172,9 @@ class BedroomPolicy(
         const val MEAL_STOCK = 2
         const val SKETCH_ENERGY = 22
         const val CHECK_HOURS = 8
+        /** Scraps worth a walk to the compost bin: a batch's. */
+        const val SCRAPS = 3
+        val TOMATOES = Regex("""take out \d+ [a-z ]*tomato""")
         /** How many packs of meals' worth of cash and art to earn before stopping. */
         const val RESERVE_PACKS = 1
         val DOLLARS = Regex("""\$(\d+) for""")

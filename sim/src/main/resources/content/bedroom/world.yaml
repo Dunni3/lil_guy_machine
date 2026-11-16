@@ -58,6 +58,9 @@ world:
     pond_patch: [26, 25]
     garden_bench: [6, 17]
     seedpod_bush: [10, 20]
+    # His machines in the garden's corner, the raised bed within the compost bin's reach (rules.yaml `machines`).
+    compost_corner: [4, 21]
+    garden_bed: [6, 21]
     # Where the outdoor things in the shop stand when they arrive (items.yaml): a fire ring in the
     # garden, a feeder post by the weather station, a lamp and a chime hook by the front door.
     fire_ring: [6, 19]

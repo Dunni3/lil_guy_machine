@@ -35,7 +35,7 @@ object ClayParts {
         "bed", "desk", "chair", "easel", "record_player", "plant", "rug", "mail_hatch", "picture_rail", "poster",
         "lava_lamp", "mushroom_lamp", "string_lights", "cloud_light",
         "microscope", "garden_bench", "forest_trail", "clearing_log", "pond_edge",
-        "lab_bench", "lab_shelf", "armchair", "floor_lamp", "weather_station",
+        "lab_bench", "lab_shelf", "armchair", "floor_lamp", "weather_station", "compost_bin", "raised_bed",
         "heater", "fire_pit", "wind_chime", "bird_feeder", "moth_lamp", "planter",
     ) + PATCHES.flatMap { listOf(it, "${it}_bare") } + LOOKS
 
@@ -69,6 +69,8 @@ object ClayParts {
             "armchair" -> armchair()
             "floor_lamp" -> floorLamp()
             "weather_station" -> weatherStation()
+            "compost_bin" -> compostBin()
+            "raised_bed" -> raisedBed()
             "heater" -> heater()
             "fire_pit" -> firePit()
             "wind_chime" -> windChime()
@@ -388,6 +390,24 @@ object ClayParts {
         box(WOOD_D, -0.2f, 0.55f, 0f, 0.28f, 0.04f, 0.05f, round = 0.015f)
         cylinder(LENS, -0.32f, 0.57f, 0f, 0.09f, 0.2f, 0.09f, opacity = 0.7f)
         cylinder(BLANKET, -0.32f, 0.58f, 0f, 0.07f, 0.06f, 0.07f)
+    }
+
+    /** A slatted wooden bin with a lid propped open and a heap of compost showing. */
+    private fun PartList.compostBin() {
+        for (i in 0..4) box(if (i % 2 == 0) WOOD else WOOD_D, 0f, i * 0.11f, 0f, 0.62f, 0.09f, 0.56f, round = 0.02f)
+        for (sx in listOf(-0.3f, 0.3f)) for (sz in listOf(-0.27f, 0.27f)) box(WOOD_D, sx, 0f, sz, 0.06f, 0.6f, 0.06f, round = 0.02f)
+        sphere(SOIL, 0f, 0.44f, 0f, 0.52f, 0.14f, 0.46f)
+        box(WOOD_D, 0f, 0.6f, -0.3f, 0.66f, 0.05f, 0.5f, round = 0.02f, rotX = -60f)
+    }
+
+    /** A raised wooden bed of soil with a staked tomato plant. */
+    private fun PartList.raisedBed() {
+        box(WOOD, 0f, 0f, 0f, 0.8f, 0.28f, 0.5f, round = 0.03f)
+        box(SOIL, 0f, 0.26f, 0f, 0.72f, 0.04f, 0.42f, round = 0.02f)
+        cylinder(WOOD_D, 0.12f, 0.28f, 0f, 0.025f, 0.6f, 0.025f)
+        cylinder(LEAF, 0f, 0.28f, 0f, 0.03f, 0.42f, 0.03f)
+        for ((x, y, z) in listOf(Triple(-0.12f, 0.42f, 0.06f), Triple(0.1f, 0.52f, -0.06f), Triple(-0.06f, 0.62f, -0.04f))) sphere(LEAF_LIGHT, x, y, z, 0.2f, 0.12f, 0.16f)
+        for ((x, y) in listOf(0.06f to 0.46f, -0.1f to 0.56f)) sphere(CORAL, x, y, 0.08f, 0.08f, 0.08f, 0.08f)
     }
 
     /** A rounded radiator on little feet, its fins warm-glowing. */

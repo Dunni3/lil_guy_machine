@@ -42,8 +42,12 @@ menu:
     says: move one of his things to another spot - elsewhere in the house, or outdoors by the front door, in the garden, by the pond or in the forest
     put: true
   - id: workshop
-    says: invent something new of his own design at the workbench and build it - a thing for his room, a record, a book, food or something to sell - or write code for a new thing to do, or for what one of his things does
+    says: his machines, or invent something new of his own design at the workbench and build it - a thing for his room, a record, a book, food or something to sell - or write code for a new thing to do, or for what one of his things does
     verbs: [invent, devise]
+  - id: machines
+    under: workshop
+    says: look after his machines - fill one and take out what it made, or mend one that's worn or jammed
+    verbs: [tend, repair]
   - id: shopping
     says: go through the shop's catalog and buy food, supplies or things to own - furniture, decor, books, records - or see what to save for
     verbs: [shop]

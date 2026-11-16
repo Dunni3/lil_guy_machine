@@ -291,7 +291,8 @@
             "enum": [
               "art",
               "music",
-              "nature"
+              "nature",
+              "tinkering"
             ]
           },
           "additionalProperties": {
@@ -723,6 +724,98 @@
             },
             "dries_per_hour": {
               "type": "number"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "machines": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "recipes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "says": {
+                    "type": "string"
+                  },
+                  "takes": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "integer"
+                    }
+                  },
+                  "makes": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "integer"
+                    }
+                  },
+                  "hours": {
+                    "type": "number"
+                  },
+                  "needs": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "number"
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "says",
+                  "takes",
+                  "makes",
+                  "hours"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "holds": {
+              "type": "integer"
+            },
+            "reach": {
+              "type": "integer"
+            },
+            "wear_per_batch": {
+              "type": "number"
+            },
+            "wear_per_run": {
+              "type": "number"
+            },
+            "slow_at": {
+              "type": "number"
+            },
+            "repair": {
+              "type": "object",
+              "properties": {
+                "restores": {
+                  "type": "number"
+                },
+                "per_level": {
+                  "type": "number"
+                },
+                "skill": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "worn_at": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
             }
           },
           "additionalProperties": false

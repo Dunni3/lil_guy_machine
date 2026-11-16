@@ -13,6 +13,8 @@ class BedroomWorldTest {
         "workbench", "invent",
         "canvas", "easel", "record_player", "jazz_record", "ambient_record", "folk_record", "novel", "poetry_book",
         "field_guide", "painting", "paint", "read", "listen", "play_record",
+        "drawing_book", "music_book", "guitar", "play_guitar", "build_room", "microscope", "study_sample", "weather_station", "check_station",
+        "compost_bin", "raised_bed", "spare_parts", "tend", "repair",
         "drawing_book", "music_book", "guitar", "play_guitar", "build_room", "microscope", "study_sample", "weather_station", "check_station", "watch", "water_plant", "harvest",
         "heater", "fire_pit", "blanket", "bird_feeder", "moth_lamp", "watering_can", "planter",
     ) + BedroomContent.default().items.filter { it.group == "decor" || it.group == "room" || (it.group == "food" && it.id !in setOf("meal", "oats")) }.map { it.id }
@@ -94,7 +96,7 @@ class BedroomWorldTest {
         assertNull(w.activity("sketch").locked)
         assertEquals("1h", w.activity("sketch").takes)
         assertEquals("1 sketch, sells for $5; art skill +0.1; energy -3; mood -1; stimulation +4; fresh to you (gains at 100%), stimulation +8, mood +3", w.activity("sketch").gives)
-        assertEquals("uses a meal (you have 2); fullness +45", w.activity("eat").gives)
+        assertEquals("uses a meal (you have 2); fullness +45; 1 food scrap", w.activity("eat").gives)
         assertEquals("needs a record player ($150)", w.activity("play_record").locked, "what it happens at first: the shop holds records back until then")
 
         assertEquals("can't paint: needs an easel ($17)", failure(w.run(Intent.Do("paint"))))

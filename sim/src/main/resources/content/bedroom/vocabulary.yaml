@@ -17,4 +17,5 @@ vocabulary:
   qualities: [cozy, calm, warm, soft, bright, pretty, natural, lively, strange, loud]
   # What he can get better at, each a number from 0 with no cap: `practice` ops and reading a
   # book raise them (rules.yaml `skills` says what they do).
-  skills: [art, music, nature]
+  # `tinkering` rises with mending his machines (verbs.yaml `repair`) and makes each mend take off more wear.
+  skills: [art, music, nature, tinkering]

@@ -24,6 +24,7 @@
               "social",
               "economic",
               "perceptual",
+              "upkeep",
               "scripted",
               "rest"
             ]
@@ -318,7 +319,8 @@
                         "enum": [
                           "art",
                           "music",
-                          "nature"
+                          "nature",
+                          "tinkering"
                         ]
                       },
                       "additionalProperties": {
@@ -514,6 +516,20 @@
                       "type": "null"
                     }
                   ]
+                },
+                "tend": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Fills the machine bound to `on` (an item with `machine`, or anything of his with code) with what he has that its recipes take, up to what it holds, and takes out everything it has made (rules.yaml `machines`). Locked when there's nothing to put in or take out. (at the finish)"
+                },
+                "repair": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Mends the machine bound to `on`: takes `machines.repair.restores` wear off it, plus `per_level` for each level of the repair skill, and a jammed one (wear 100) works again. Locked below `worn_at` wear. (at the finish)"
                 },
                 "water": {
                   "type": [

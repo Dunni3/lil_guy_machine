@@ -197,6 +197,37 @@
               }
             ]
           },
+          "machine": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "runs": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "holds": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "wear": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "warmth": {
             "anyOf": [
               {

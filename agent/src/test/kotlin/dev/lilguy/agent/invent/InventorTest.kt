@@ -81,7 +81,7 @@ class InventorTest {
 
     /** A lamp that is calm 2, natural 2 and cozy [cozy]: with cozy 3 it adds up to 7, over the quality budget of 6. */
     private fun design(cozy: Int) =
-        """{"name":"pebble lamp","use":"viewable","qualities":[{"quality":"calm","strength":2},{"quality":"natural","strength":2},{"quality":"cozy","strength":$cozy}],"place":"floor","look":[{"shape":"sphere","w":0.3,"h":0.3,"d":0.3,"x":0,"y":0,"z":0,"rot_x":0,"rot_y":0,"rot_z":0,"color":"#557755","part":"moss","taper":1,"cut":1,"hole":0,"arc":360,"glow":0,"opacity":1}],"book":null,"why":"the room needs something green","variants":[]}"""
+        """{"name":"pebble lamp","use":"viewable","qualities":[{"quality":"calm","strength":2},{"quality":"natural","strength":2},{"quality":"cozy","strength":$cozy}],"place":"floor","look":[{"shape":"sphere","w":0.3,"h":0.3,"d":0.3,"x":0,"y":0,"z":0,"rot_x":0,"rot_y":0,"rot_z":0,"color":"#557755","part":"moss","taper":1,"cut":1,"hole":0,"arc":360,"glow":0,"opacity":1}],"book":null,"why":"the room needs something green","variants":[],"runs":[]}"""
 
     @Test
     fun `the writer's design is redone once when it's refused, built by the sim and remembered, and a design that stays refused fails the verb`() {

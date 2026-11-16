@@ -120,6 +120,10 @@ interface MachineHost {
     fun event(text: String, place: String?)
     /** Something a viewer or his options see changed. */
     fun changed()
+    /** Worn out ([Works]): its code doesn't run until it's repaired. */
+    fun broken(id: String): Boolean = false
+    /** A run of [id]'s code changed something, which wears it ([Works.wore]). */
+    fun wore(id: String) {}
 }
 
 /**
@@ -205,7 +209,7 @@ class Machines(private val sandbox: ScriptSandbox) {
     }
 
     private fun runs(h: MachineHost, id: String, code: ThingCode, t: Trigger): Boolean {
-        if (h.count(id) == 0 || h.content.item(id) == null) return false
+        if (h.count(id) == 0 || h.content.item(id) == null || h.broken(id)) return false
         if (t is Trigger.Timer && t.thing != id) return false
         if (t is Trigger.Every && (code.every == null || h.minutes() % code.every != 0L)) return false
         return t.fn in has(code.source)
@@ -231,6 +235,8 @@ class Machines(private val sandbox: ScriptSandbox) {
             if (code.failures > 0) h.setBehavior(id, code.copy(failures = 0))
             val what = m.did + run.says.map { "\"$it\"" } + listOfNotNull(run.result?.takeIf { it.isNotBlank() })
             if (what.isNotEmpty()) placed(h, "your $name: " + what.joinToString(", "), place)
+            // Doing something wears it, as a batch wears a machine.
+            if (m.did.isNotEmpty()) h.wore(id)
         }
         return run.steps + CALL_STEPS
     }
@@ -239,7 +245,7 @@ class Machines(private val sandbox: ScriptSandbox) {
      * An event in [place]: told now when he's there (or the world has no places), else held until he
      * walks in. Repeats of the same text are counted, and a place keeps its latest [HELD].
      */
-    private fun placed(h: MachineHost, text: String, place: String?) {
+    internal fun placed(h: MachineHost, text: String, place: String?) {
         val here = h.layout.placeOf(h.hisCell())?.id
         if (place == null || !h.layout.outdoors || place == here) return h.event(text, place)
         val i = held.indexOfLast { it.place == place && it.text == text }

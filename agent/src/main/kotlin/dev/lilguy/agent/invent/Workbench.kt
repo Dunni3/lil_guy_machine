@@ -32,6 +32,7 @@ data class BuildArgs(
     val book: BookDesign?,
     val why: String,
     val variants: List<VariantPick> = emptyList(),
+    val runs: List<String> = emptyList(),
 )
 
 /**
@@ -129,7 +130,7 @@ class Workbench(
     private fun build(args: JsonObject): JsonObject {
         if (parts.isEmpty()) throw ActionSchema.InvalidReply("there's nothing on the bench yet: add its shapes with add_part first, then build")
         val b = JSON.decodeFromJsonElement(BuildArgs.serializer(), args)
-        val reply = DesignReply(b.name, b.use, b.qualities, b.place, parts.toList(), b.book, b.why, b.variants)
+        val reply = DesignReply(b.name, b.use, b.qualities, b.place, parts.toList(), b.book, b.why, b.variants, b.runs)
         val design = reply.design()
         val wrong = problems(design)
         if (wrong.isNotEmpty()) throw ActionSchema.InvalidReply("that can't be built: ${wrong.joinToString("; ")}")
@@ -211,6 +212,7 @@ class Workbench(
                 "build_args.book" to "Only for a readable thing: the book it is. Null otherwise.",
                 "build_args.why" to "Why you're making it, first person, under ${Inventor.WHY_CAP} words.",
                 "build_args.variants" to Inventor.VARIANTS_HINT,
+                "build_args.runs" to Inventor.runsHint(content),
                 "book_design.chapters" to "${rules.book.minChapters} to ${rules.book.maxChapters} chapters, one sentence each of what's in it.",
                 "book_design.skill" to "The one skill reading it raises, or null.",
             ) + variantHints,

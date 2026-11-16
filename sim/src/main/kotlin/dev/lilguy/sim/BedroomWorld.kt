@@ -248,6 +248,9 @@ class BedroomWorld private constructor(
     }
     private val machineHost: MachineHost = MachineWorld()
     private val reach = Reach(machineHost)
+    /** His machines' stores, batches and wear ([Works]). */
+    private val works = Works()
+    private val worksHost: WorksHost = WorksWorld()
     /** What he said on his latest trip that he's saving for, until he owns it. */
     private var savingFor: String? = null
     /** [on]: what it plays on, for the renderer's "playing" state. */
@@ -482,6 +485,13 @@ class BedroomWorld private constructor(
             return "write the code for a new thing to do, or rewrite one of yours" + if (n == 0) "" else ": you've written $n (${coded.joinToString { it.verb.id }})"
         }
 
+        override fun tendLock(id: String) = works.tendLock(worksHost, id)
+        override fun tendText(id: String) = works.tendText(worksHost, id)
+        override fun tend(id: String) = works.tend(worksHost, id)
+        override fun repairLock(id: String) = works.repairLock(worksHost, id)
+        override fun repairText(id: String) = works.repairText(worksHost, id)
+        override fun repair(id: String) = works.repair(worksHost, id)
+
         override fun build(verb: VerbSpec): List<String> {
             val staged = designs.remove(verb.id)!!
             val design = staged.design!!
@@ -595,7 +605,10 @@ class BedroomWorld private constructor(
 
     /** How many owned items answer to [tag] (an id or an affordance), plus one more [extra] if given (for "what if he bought it"). */
     private fun countTag(tag: String, extra: String? = null): Int =
-        owned.entries.sumOf { (id, n) -> if (tag in item(id).names) n else 0 } + if (extra != null && tag in item(extra).names) 1 else 0
+        owned.entries.sumOf { (id, n) -> if (answers(id, tag)) n else 0 } + if (extra != null && answers(extra, tag)) 1 else 0
+
+    /** Whether [id] answers to [tag]: its id or an affordance, or `machine` for a thing with code, which wears and is mended like one. */
+    private fun answers(id: String, tag: String): Boolean = tag in item(id).names || (tag == Works.MACHINE && id in behaviors)
 
     private fun add(id: String, n: Int) {
         version++
@@ -897,6 +910,8 @@ class BedroomWorld private constructor(
         override fun changed() {
             version++
         }
+        override fun broken(id: String) = works.broken(id)
+        override fun wore(id: String) = works.wore(worksHost, id)
 
         /** A thing's code runs as "your <thing>"; its gains in mood and stimulation wear thin as a verb's do, by how often it runs. */
         override fun run(id: String, code: ThingCode, fn: String, extra: List<Any?>, limit: Long): MachineRun {
@@ -910,6 +925,28 @@ class BedroomWorld private constructor(
             }
             // What broken code changed before it broke is undone, as for his verbs.
             return MachineRun(run, view.did, if (run.error != null) view.undo() else emptyList())
+        }
+    }
+
+    /** The world as [Works] sees it. */
+    private inner class WorksWorld : WorksHost {
+        override val content get() = this@BedroomWorld.content
+        override val layout get() = this@BedroomWorld.layout
+        override val coded: Set<String> get() = behaviors.keys
+        override fun count(id: String) = this@BedroomWorld.count(id)
+        override fun standing(id: String) = content.item(id)?.slot?.takeIf { count(id) > 0 && id != carrying }?.let { layout.slotCells[it] }
+        override fun hisCell() = guy.cell
+        override fun effect(kind: EffectKind, cell: Cell) = when (kind) {
+            EffectKind.Light -> if (content.light == null) EffectKind.Light.most else lightField(lantern = false)[cell]
+            else -> surroundings.field(effectHost, kind.id)?.get(cell) ?: 0.0
+        }
+        override fun add(id: String, n: Int) = this@BedroomWorld.add(id, n)
+        override fun take(id: String, n: Int) = this@BedroomWorld.take(id, n).values.sum()
+        override fun skill(name: String) = this@BedroomWorld.skill(name)
+        override fun quantity(id: String, n: Int) = this@BedroomWorld.quantity(id, n)
+        override fun tell(text: String, place: String?) = machines.placed(machineHost, text, place)
+        override fun changed() {
+            version++
         }
     }
 
@@ -1063,6 +1100,7 @@ class BedroomWorld private constructor(
         private val wasCustom = LinkedHashMap(custom)
         private val wasMoney = ledger.balance
         private val wasNeeds = Need.entries.associateWith { needs[it] }
+        private val wasWorks = works.export()
         private val wasEmitted = surroundings.export()
 
         /**
@@ -1080,6 +1118,7 @@ class BedroomWorld private constructor(
             skills.clear(); skills.putAll(wasSkills)
             thingState.clear(); thingState.putAll(wasState)
             custom.clear(); custom.putAll(wasCustom)
+            works.restore(wasWorks) { true }
             surroundings.restore(wasEmitted) { true }
             if (content !== wasContent || inventions !== wasInventions) {
                 content = wasContent
@@ -1132,19 +1171,14 @@ class BedroomWorld private constructor(
 
         override fun need(name: String, delta: Double): Double {
             val need = runCatching { needOf(name) }.getOrElse { throw ScriptProblem("'$name' isn't a need; they are ${Need.entries.joinToString { it.id }}") }
+            // Fullness comes from eating and energy from rest: code can spend them, not make them.
+            if (delta > 0 && need == Need.Fullness) throw ScriptProblem("fullness comes from eating something; code can't fill you up")
+            if (delta > 0 && need == Need.Energy) throw ScriptProblem("energy comes from sleep; code can't give it")
             // Like any verb's, its gains in mood and stimulation shrink as it wears thin.
             val applied = needs.change(ticks, need, paid(name, delta), reason)
             if (applied > 0 && (need == Need.Mood || need == Need.Stimulation)) gained = true
             if (applied.roundToInt() != 0) did += "$name ${signed(applied.roundToInt().toDouble())}"
             return (needs[need] * 10).roundToInt() / 10.0
-        }
-
-        override fun earn(amount: Int, why: String): Int {
-            if (amount < 1) throw ScriptProblem("earn a whole number of dollars above 0")
-            ledger.credit(ticks, amount, why.ifBlank { reason }.take(80))
-            did += "+$$amount" + (why.takeIf { it.isNotBlank() }?.let { " ($it)" } ?: "")
-            version++
-            return ledger.balance
         }
 
         override fun spend(amount: Int, why: String): Boolean {
@@ -1157,19 +1191,10 @@ class BedroomWorld private constructor(
         }
 
         override fun practice(skill: String, amount: Double): Double {
+            if (self != null) throw ScriptProblem("skill comes from doing things yourself; a thing's code can't practise for you")
             if (skill !in content.vocabulary.skills) throw ScriptProblem("'$skill' isn't a skill; they are ${content.vocabulary.skills.joinToString()}")
             did += practise(skill, amount)
             return skill(skill)
-        }
-
-        override fun give(id: String, n: Int): Int {
-            val s = content.item(id)?.takeIf { isKnown(id) } ?: throw ScriptProblem("there's no kind of thing '$id'; world.catalog() lists them")
-            if (s.carried) throw ScriptProblem("art comes from drawing it, not from code")
-            if (s.group == "fixture") throw ScriptProblem("the ${s.name} is part of the house or the land")
-            if (n !in 1..MAX_GIVE) throw ScriptProblem("give 1 to $MAX_GIVE at a time")
-            add(id, n)
-            did += "+${quantity(id, n)}"
-            return count(id)
         }
 
         override fun take(id: String, n: Int): Int {
@@ -1191,8 +1216,11 @@ class BedroomWorld private constructor(
                 .getOrElse { throw ScriptProblem("the design didn't make sense: ${it.message?.lineSequence()?.firstOrNull()}") }
             val made = when (val checked = rules.check(d, content, minutes)) {
                 is InventRules.Checked.Refused -> throw ScriptProblem("the ${d.name} can't be made: " + checked.problems.joinToString("; "))
-                is InventRules.Checked.Ok -> checked.invention.copy(cost = 0, tick = ticks)
+                is InventRules.Checked.Ok -> checked.invention.copy(tick = ticks)
             }
+            // Its materials cost what they would at the workbench.
+            if (!ledger.canAfford(made.cost)) throw ScriptProblem("the ${made.item.name}'s materials cost $${made.cost}, and you have $${ledger.balance}")
+            if (made.cost > 0) ledger.debit(ticks, made.cost, "materials for the ${made.item.name}")
             content = content.plus(made)
             inventions = inventions + made
             contentChanged()
@@ -1285,6 +1313,28 @@ class BedroomWorld private constructor(
         override fun motion(id: String, part: String, kind: String?, speed: Double) = machines.motion(machineHost, id, part, kind, speed)
         override fun readout(id: String, text: String?) = machines.readout(machineHost, id, text)
         override fun after(minutes: Int, key: String, id: String?) = machines.after(machineHost, minutes, key, id, self)
+
+        override fun machine(id: String): Map<String, Any?> {
+            val s = content.item(id) ?: throw ScriptProblem("there's no thing '$id'; world.owns() lists yours")
+            if (count(id) == 0) throw ScriptProblem("you don't own a ${s.name}")
+            if (!works.isMachine(worksHost, id)) throw ScriptProblem("the ${s.name} isn't a machine: it runs nothing and has no code")
+            return works.view(worksHost, id)
+        }
+
+        override fun transfer(from: String, to: String, item: String, n: Int) = works.transfer(worksHost, from, to, item, n, self, did)
+
+        override fun sell(id: String, n: Int): Int {
+            val s = content.item(id) ?: throw ScriptProblem("there's no thing '$id'; world.owns() lists yours")
+            if (s.carried) throw ScriptProblem("art is sold at the mail hatch (sell_art)")
+            val price = s.sellPrice ?: throw ScriptProblem("nobody buys the ${s.name}")
+            if (n < 1) throw ScriptProblem("sell at least 1")
+            val k = minOf(n, count(id))
+            if (k == 0) throw ScriptProblem("you have no ${s.name}")
+            this@BedroomWorld.take(id, k)
+            ledger.credit(ticks, price * k, "$reason sold ${quantity(id, k)}")
+            did += "sold ${quantity(id, k)} for $${price * k}"
+            return price * k
+        }
 
         override fun field(spot: String, kind: String): Double {
             val cell = when {
@@ -1779,10 +1829,10 @@ class BedroomWorld private constructor(
         (given.keys - a.args.keys).firstOrNull()?.let { reject("${a.id} takes no `$it`" + if (a.args.isEmpty()) "" else "; it takes ${a.args.keys.joinToString(" and ")}") }
         lockReason(a)?.let { reject("can't ${a.id}: $it") }
         val args = a.args.mapValues { (slot, type) ->
-            val id = given[slot] ?: return@mapValues owned.keys.first { type in item(it).names }
+            val id = given[slot] ?: return@mapValues owned.keys.first { answers(it, type) }
             val spec = content.item(id)
             if (spec == null || count(id) == 0) reject("you don't have '$id'")
-            if (type !in spec.names) reject("${a.id} takes ${article(noun(type))} as `$slot`, and the ${spec.name} isn't one")
+            if (!answers(spec.id, type)) reject("${a.id} takes ${article(noun(type))} as `$slot`, and the ${spec.name} isn't one")
             id
         }
         lockReason(a, args)?.let { reject("can't ${a.id}: $it") }
@@ -1795,7 +1845,7 @@ class BedroomWorld private constructor(
     /** Every way to bind [a]'s arguments to items he owns, in the order he owns them; one empty binding when it has none. */
     private fun bindings(a: VerbSpec): List<Map<String, String>> =
         a.args.entries.fold(listOf(emptyMap())) { acc, (slot, type) ->
-            acc.flatMap { b -> owned.keys.filter { type in item(it).names && isKnown(it) }.map { b + (slot to it) } }
+            acc.flatMap { b -> owned.keys.filter { answers(it, type) && isKnown(it) }.map { b + (slot to it) } }
         }
 
     private fun planBuy(id: String): Work {
@@ -2123,6 +2173,7 @@ class BedroomWorld private constructor(
         }
         if (!clock.isMinuteStart(ticks)) return machines.afterTick(machineHost)
         applyMinute()
+        works.minute(worksHost, clock.minutes(ticks))
         val minute = clock.minuteOfDay(ticks)
         if (minute % 60 == 0) needs.flush(ticks)
         if (minute % 60 == 0) weatherHour()
@@ -2240,6 +2291,7 @@ class BedroomWorld private constructor(
             machines = machines.export(),
             familiar = familiar?.export().orEmpty(),
             ownedSince = LinkedHashMap(ownedSince),
+            works = works.export(),
             surroundings = surroundings.export(),
         )
     }
@@ -2323,6 +2375,7 @@ class BedroomWorld private constructor(
         behaviors = s.behaviors.filterKeys { content.item(it) != null }
         records.restore(s.records) { content.item(it) != null }
         machines.restore(s.machines) { content.item(it) != null }
+        works.restore(s.works) { content.item(it) != null }
         surroundings.restore(s.surroundings) { content.item(it) != null }
         thingState.clear()
         s.thingState.forEach { (id, kept) -> if (id == SELF || content.item(id) != null) thingState[id] = LinkedHashMap(kept) }
@@ -2519,14 +2572,14 @@ class BedroomWorld private constructor(
                     LAMP in spec.affords && !lampLit(spec) -> "off"
                     spec.lure != null && visited.any { it.lure.id == spec.id } -> VISITED
                     spec.grows != null && surroundings.harvestLock(spec) == null -> RIPE
-                    else -> null
+                    else -> if (works.isMachine(worksHost, spec.id)) works.state(worksHost, spec.id) else null
                 }
                 val look = machines.look(spec.id)
                 val light = spec.light?.takeIf { lampLit(spec) }
                 add(
                     EntitySnapshot(
                         EntityId(spec.id), spec.group, cell.x + 0.5f, cell.y + 0.5f, if (spec.blocks) 1f else 0.2f, 0f, state, carriedBy = guy.id.takeIf { spec.id == carrying }, place = layout.placeOf(cell)?.id, color = custom[spec.id]?.color,
-                        variant = look?.variant, motions = look?.motions.orEmpty(), readout = look?.readout, light = light,
+                        variant = look?.variant, motions = look?.motions.orEmpty(), readout = look?.readout ?: works.readout(worksHost, spec.id), light = light,
                     ),
                 )
             }
@@ -2764,7 +2817,6 @@ class BedroomWorld private constructor(
 
         /** What his code may store state on besides his things: himself. */
         const val SELF = "self"
-        private const val MAX_GIVE = 100
         private const val MAX_TEXT = 200
         private const val MAX_KEYS = 20
         private const val MAX_STATEFUL = 200

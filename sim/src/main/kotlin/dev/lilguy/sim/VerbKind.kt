@@ -27,7 +27,7 @@ enum class VerbKind(
     @SerialName("consumptive")
     Consumptive(
         "consumptive", "does something with an item it asks for by affordance, and changes needs",
-        allowed = setOf("need", "rate", "consume", "background", "enjoy", "hear", "progress", "practice", "write"),
+        allowed = setOf("need", "rate", "consume", "produce", "background", "enjoy", "hear", "progress", "practice", "write"),
         required = listOf(setOf("need", "rate", "background", "enjoy")),
         affordance = true,
     ),
@@ -87,6 +87,14 @@ enum class VerbKind(
         "perceptual", "he looks at something and takes in what it shows",
         allowed = setOf("need", "rate", "read_log", "write", "watch", "practice"),
         required = listOf(setOf("read_log", "watch")),
+    ),
+
+    /** Looking after a machine: filling it, emptying it, mending it ([Works]). */
+    @SerialName("upkeep")
+    Upkeep(
+        "upkeep", "he looks after a machine: fills it, empties it or mends it",
+        allowed = setOf("need", "rate", "tend", "repair", "consume", "practice"),
+        required = listOf(setOf("tend", "repair")),
     ),
 
     /** A verb he wrote: what it does is its code ([ScriptOp]), so the contract is only that it has some. */
