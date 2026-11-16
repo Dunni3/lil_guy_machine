@@ -64,7 +64,8 @@
                 "recorder",
                 "lamp",
                 "lure",
-                "growable"
+                "growable",
+                "ware"
               ]
             },
             "additionalProperties": {

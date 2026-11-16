@@ -22,10 +22,12 @@ import dev.lilguy.sim.ProduceOp
 import dev.lilguy.sim.ProgressOp
 import dev.lilguy.sim.RateOp
 import dev.lilguy.sim.ReadLogOp
+import dev.lilguy.sim.RepairOp
 import dev.lilguy.sim.SellOp
 import dev.lilguy.sim.SetStateOp
 import dev.lilguy.sim.Spots
 import dev.lilguy.sim.Target
+import dev.lilguy.sim.TendOp
 import dev.lilguy.sim.WriteOp
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.add
@@ -162,6 +164,31 @@ object BedroomPrompt {
             if (content.books.isNotEmpty()) add("A book is read a chapter at a time, one a session, and `books` shows how far you are. Finishing one can teach you things you don't know yet, which then show up in `activities` and `shop`; the shop says what a book teaches.")
         }
         return "- Learning: " + parts.joinToString(" ")
+    }
+
+    /**
+     * "- Getting ahead: ...": art keeps him fed and little more, and the machines that make wares (things
+     * that sell for more than their inputs cost), with what each takes and fetches and the verbs that fill,
+     * empty, sell and mend them; null when no machine in the shop makes a ware.
+     */
+    private fun machinesHint(content: BedroomContent): String? {
+        val paying = content.machines?.recipes.orEmpty().mapNotNull { r ->
+            val ware = r.makes.keys.mapNotNull { content.item(it) }.firstOrNull { "ware" in it.affords } ?: return@mapNotNull null
+            val machine = content.items.firstOrNull { it.machine?.runs?.contains(r.id) == true && it.price != null } ?: return@mapNotNull null
+            Triple(r, ware, machine)
+        }.takeIf { it.isNotEmpty() } ?: return null
+        val tend = content.verbs.firstOrNull { v -> v.effects.any { it is TendOp } }?.id ?: return null
+        val repair = content.verbs.firstOrNull { v -> v.effects.any { it is RepairOp } }?.id
+        val sell = content.verbs.firstOrNull { v -> v.effects.any { it is SellOp } && "ware" in v.args.values }?.id ?: return null
+        val each = paying.joinToString("; ") { (r, ware, m) ->
+            val inputs = r.takes.entries.joinToString(" and ") { (id, n) -> content.item(id)?.let { i -> "$n ${i.name}" + (i.price?.let { p -> " ($$p for ${i.pack})" } ?: "") } ?: "$n $id" }
+            val hours = if (r.hours % 1.0 == 0.0) "${r.hours.toInt()} hours" else "${r.hours} hours"
+            "the ${m.name} ($${m.price}) makes ${r.makes.getValue(ware.id)} ${ware.name} from $inputs in $hours, and a ${ware.name} sells for $${ware.sellPrice}"
+        }
+        val invent = if (content.verbs.any { v -> v.effects.any { it is BuildOp } }) " A thing you invent can run the same recipe." else ""
+        return "- Getting ahead: art keeps you fed and not much more. Machines that make things to sell earn far more: $each. " +
+            "$tend fills one with what it takes and takes out what it made, and $sell sells what it made at the hatch. A machine only works while it has what it takes and room for what it made, " +
+            "so it pays as often as you keep it fed and empty it; it wears with every batch and jams until you ${repair ?: "mend it"}. Two of them make twice as much.$invent"
     }
 
     /** The outdoors line: exploring, collecting, regrowth and what samples are for; null without land. */
@@ -347,6 +374,7 @@ object BedroomPrompt {
             "- Time: the clock shows the day and the time. Activities take game minutes or hours, and you choose again when one finishes.",
             "- Needs, each from 0 to 100. Energy falls ${-r.awakeEnergyPerHour.toInt()} an hour while you're awake and comes back while you sleep. Fullness falls ${-r.fullnessPerHour.toInt()} an hour${r.asleepFullnessPerHour?.let { " (${(-it).toInt()} asleep)" }.orEmpty()}; eating brings it back.${stimulationRule(content)}${frustrationRule(content)} $mood Below ${r.low.toInt()} energy or fullness, mood falls ${-r.lowMoodPerHour.toInt()} an hour instead.$sinking When $floor you can't work ($work).",
             "- Money: ${makers.joinToString(" and ")} make${if (makers.size > 1) "" else "s"} art, and ${sellAt?.id ?: "selling"} sells everything you hold through the $hatch: $art. The shop delivers through the $hatch, and you pay when it arrives.",
+            machinesHint(content),
             nightHint(content),
             varietyHint(content),
             learningHint(content),

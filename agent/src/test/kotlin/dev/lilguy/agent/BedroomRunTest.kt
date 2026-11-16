@@ -24,9 +24,12 @@ class BedroomRunTest {
         val lowestFullnessBy: Map<Int, Double>,
     )
 
+    /** Art alone: he starts with $20, as before he started with enough for a kiln (2026-11-15-art-gets-him-by-*). */
+    private val artOnly = dev.lilguy.sim.BedroomContent.default().let { it.copy(start = it.start.copy(money = 20)) }
+
     private fun live(days: Int): Lived {
         val decisions = mutableListOf<AgentRuntime.DecisionRecord>()
-        val (world, runtime) = bedroomScenario(BedroomPolicy()) { decisions += it }
+        val (world, runtime) = bedroomScenario(BedroomPolicy(), content = artOnly) { decisions += it }
         val lowest = Need.entries.associateWith { Double.MAX_VALUE }.toMutableMap()
         val ticksOn = mutableMapOf<Int, MutableMap<String, Long>>()
         val fullnessBy = mutableMapOf<Int, Double>()
@@ -72,6 +75,9 @@ class BedroomRunTest {
      * shrinks as he practises: about 2.6 hours a day over days 2 to 6 (was 4 to 5), with the
      * spare hours about 13. That's the point (skill buys him time and money for new things), so
      * the bound records it rather than retuning.
+     *
+     * Art that just gets him by ($4 plus $1 a level, 2026-11-15-art-gets-him-by-*) puts the sketching
+     * back up; the run starts with the old $20, since this is the art-only economy without a kiln.
      */
     @Test
     fun `surviving takes part of the day and leaves 8 to 14 spare waking hours`() {
@@ -95,13 +101,13 @@ class BedroomRunTest {
     }
 
     /** The shipped file gates nothing; the small world and its grants are tested on what used to be tier 1, all decor, and the food he invented. */
-    private val smallWorld = dev.lilguy.sim.BedroomContent.default().let { c ->
+    private val smallWorld = artOnly.let { c ->
         val tier1 = setOf(
         "workbench", "invent",
             "canvas", "easel", "record_player", "jazz_record", "ambient_record", "folk_record", "novel", "poetry_book",
             "field_guide", "drawing_book", "music_book", "guitar", "painting", "paint", "read",
             "listen", "play_record", "play_guitar", "build_room", "microscope", "study_sample", "weather_station", "check_station",
-            "compost_bin", "raised_bed", "spare_parts", "tend", "repair",
+            "compost_bin", "raised_bed", "spare_parts", "tend", "repair", "kiln", "clay", "sell_wares",
             "watch", "water_plant", "harvest", "heater", "fire_pit", "blanket", "bird_feeder", "moth_lamp", "watering_can", "planter",
         ) + c.items.filter { it.group == "decor" || it.group == "room" || (it.group == "food" && it.id !in setOf("meal", "oats")) }.map { it.id }
         c.copy(
@@ -146,7 +152,7 @@ class BedroomRunTest {
         assertTrue(system.startsWith(world.content.personality.core.you), system.take(80))
         assertTrue("- What you can do: eat, eat plain oats from the cupboard, sketch, write code for a new thing to do, or for what one of your things does, sell your art, go through the shop's catalog, open a letter waiting at the mail hatch, write a letter to someone who has written to you, hang your art on the wall, sleep, stop and think, explore a place outdoors, collect a sample and sell samples." in system)
         assertTrue("You live in this bedroom. You need money for food." in system)
-        assertTrue("a sketch sells for $5" in system)
+        assertTrue("a sketch sells for $4" in system)
         listOf("easel", "canvas", "record", "painting", "decor", "`uses`", "music", "journal", "restrictive").forEach { w -> assertTrue(w !in system, "mentions '$w': " + system.lines().filter { w in it }) }
         assertTrue(Persona.SELF_HEADER !in system, "no self-model unless something revises it")
         val withSelf = BedroomPrompt.system(world.content, world.clock.ticksPerMinute, self = "- Who I am: someone who sketches.")
@@ -154,7 +160,7 @@ class BedroomRunTest {
 
         // Granting brings the gated content into the prompt.
         val grown = BedroomPrompt.system(smallWorld.unlocked(setOf("paint", "easel", "canvas", "painting")), 5)
-        assertTrue("sketch and paint make art" in grown && "a painting sells for $40" in grown, grown)
+        assertTrue("sketch and paint make art" in grown && "a painting sells for $25" in grown, grown)
         assertTrue("for food and for anything you want to own" in grown)
     }
 

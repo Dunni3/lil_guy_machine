@@ -38,7 +38,9 @@ class MemoryTest {
     fun `a run records outcomes, what happened around him, and a snapshot when he wakes`() {
         val store = InMemoryStore()
         val decisions = mutableListOf<dev.lilguy.agent.AgentRuntime.DecisionRecord>()
-        val (world, runtime) = bedroomScenario(BedroomPolicy(), longTerm = AgentMemory(store, "r1")) { decisions += it }
+        // The old $20 start, so he sketches on the first day (2026-11-15-art-gets-him-by-*).
+        val content = dev.lilguy.sim.BedroomContent.default().let { it.copy(start = it.start.copy(money = 20)) }
+        val (world, runtime) = bedroomScenario(BedroomPolicy(), content = content, longTerm = AgentMemory(store, "r1")) { decisions += it }
         runBlocking { runLockstep(world, runtime, maxTicks = 2 * 7200) }
         val events = store.eventsAfter("r1", 0, 10_000)
         val outcomes = events.filter { it.kind == EventKind.Outcome }

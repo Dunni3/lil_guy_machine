@@ -114,6 +114,22 @@ class BedroomPolicy(
         val scraps = obs.owns.orEmpty()["food_scrap"] ?: 0
         open.firstOrNull { it.id == "tend" && ((it.gives.orEmpty().contains("put in") && scraps >= SCRAPS) || TOMATOES.containsMatchIn(it.gives.orEmpty())) }
             ?.let { return Intent.Do("tend", on = it.on) to "Tend the ${it.on}: ${it.gives}." }
+        return kiln(obs, open)
+    }
+
+    /**
+     * With a kiln (he never buys one: start him with it), keep it going: sell the pots he holds, empty it
+     * and fill it with clay, and buy clay, and a spare part for when it jams, while he can afford them.
+     */
+    private fun kiln(obs: Observation, open: List<dev.lilguy.sim.ActivityOption>): Pair<Intent, String>? {
+        val owns = obs.owns.orEmpty()
+        if ((owns["kiln"] ?: 0) == 0) return null
+        open.firstOrNull { it.id == "sell_wares" }?.let { return Intent.Do("sell_wares", what = it.what) to "Sell the pots the kiln made." }
+        open.firstOrNull { it.id == "tend" && it.on == "kiln" && ("take out" in it.gives.orEmpty() || ("put in" in it.gives.orEmpty() && (owns["clay"] ?: 0) >= CLAY_BATCH)) }
+            ?.let { return Intent.Do("tend", on = "kiln") to "Tend the kiln: ${it.gives}." }
+        val affordable = obs.shop.orEmpty().filter { it.affordable }.map { it.id }.toSet()
+        if ((owns["clay"] ?: 0) < CLAY_BATCH && "clay" in affordable) return Intent.Buy("clay") to "The kiln needs clay."
+        if ((owns["spare_parts"] ?: 0) == 0 && "spare_parts" in affordable) return Intent.Buy("spare_parts") to "A spare part for when the kiln jams."
         return null
     }
 
@@ -174,6 +190,8 @@ class BedroomPolicy(
         const val CHECK_HOURS = 8
         /** Scraps worth a walk to the compost bin: a batch's. */
         const val SCRAPS = 3
+        /** Clay for one firing. */
+        const val CLAY_BATCH = 2
         val TOMATOES = Regex("""take out \d+ [a-z ]*tomato""")
         /** How many packs of meals' worth of cash and art to earn before stopping. */
         const val RESERVE_PACKS = 1

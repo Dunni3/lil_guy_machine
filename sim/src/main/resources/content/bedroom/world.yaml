@@ -67,6 +67,8 @@ world:
     feeder_post: [8, 18]
     porch_lamp: [13, 13]
     porch_hook: [16, 13]
+    # The kiln, by the front door (items.yaml `kiln`).
+    kiln_pad: [17, 14]
     # Free spots: nothing in items.yaml stands in these, so his things can be put down here (the
     # `put` intent, or world.move in his code). Each is named by what it's beside. On the ground
     # only: a thing that goes in a wall stays indoors.

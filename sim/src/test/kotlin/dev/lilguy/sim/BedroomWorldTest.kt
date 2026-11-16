@@ -14,7 +14,7 @@ class BedroomWorldTest {
         "canvas", "easel", "record_player", "jazz_record", "ambient_record", "folk_record", "novel", "poetry_book",
         "field_guide", "painting", "paint", "read", "listen", "play_record",
         "drawing_book", "music_book", "guitar", "play_guitar", "build_room", "microscope", "study_sample", "weather_station", "check_station",
-        "compost_bin", "raised_bed", "spare_parts", "tend", "repair",
+        "compost_bin", "raised_bed", "spare_parts", "tend", "repair", "kiln", "clay", "clay_pot", "sell_wares",
         "drawing_book", "music_book", "guitar", "play_guitar", "build_room", "microscope", "study_sample", "weather_station", "check_station", "watch", "water_plant", "harvest",
         "heater", "fire_pit", "blanket", "bird_feeder", "moth_lamp", "watering_can", "planter",
     ) + BedroomContent.default().items.filter { it.group == "decor" || it.group == "room" || (it.group == "food" && it.id !in setOf("meal", "oats")) }.map { it.id }
@@ -24,6 +24,8 @@ class BedroomWorldTest {
             items = c.items.map { if (it.id in tier1) it.copy(tier = 1) else it },
             verbs = c.verbs.map { if (it.id in tier1) it.copy(tier = 1) else it },
             books = c.books.map { it.copy(teaches = emptyList()) },
+            // The old $20 start: these tests are the art economy without a kiln (2026-11-15-art-gets-him-by-*).
+            start = c.start.copy(money = 20),
         )
     }
     private val shipped = BedroomContent.default()
@@ -95,7 +97,7 @@ class BedroomWorldTest {
         assertEquals("not bedtime yet; by day only a nap, when exhausted (energy 80)", w.activity("sleep").locked)
         assertNull(w.activity("sketch").locked)
         assertEquals("1h", w.activity("sketch").takes)
-        assertEquals("1 sketch, sells for $5; art skill +0.1; energy -3; mood -1; stimulation +4; fresh to you (gains at 100%), stimulation +8, mood +3", w.activity("sketch").gives)
+        assertEquals("1 sketch, sells for $4; art skill +0.1; energy -3; mood -1; stimulation +4; fresh to you (gains at 100%), stimulation +8, mood +3", w.activity("sketch").gives)
         assertEquals("uses a meal (you have 2); fullness +45; 1 food scrap", w.activity("eat").gives)
         assertEquals("needs a record player ($150)", w.activity("play_record").locked, "what it happens at first: the shop holds records back until then")
 
@@ -117,7 +119,7 @@ class BedroomWorldTest {
         // Awake decay over the walk and the hour, plus the sketch's -3.
         assertTrue(obs.needs!!.energy in 72..73, "energy ${obs.needs!!.energy}")
         assertTrue(obs.recentEvents.last().endsWith("finished sketch: +1 sketch, art skill 0.1 (+0.1), energy -3, mood -1, stimulation +4, fresh to you (gains at 100%), stimulation +8, mood +3"), obs.recentEvents.last())
-        assertEquals("$5 for the 1 sketch you hold", w.activity("sell_art").gives)
+        assertEquals("$4 for the 1 sketch you hold", w.activity("sell_art").gives)
     }
 
     @Test
@@ -126,16 +128,16 @@ class BedroomWorldTest {
         w.run(Intent.Do("sketch"))
         w.run(Intent.Do("sketch"))
         assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("sell_art")).status)
-        assertEquals(30, w.ledger.balance)
+        assertEquals(28, w.ledger.balance)
         assertEquals(emptyList(), w.obs().holding)
 
         assertIs<IntentStatus.Succeeded>(w.run(Intent.Buy("meal")).status)
-        assertEquals(6, w.ledger.balance)
+        assertEquals(4, w.ledger.balance)
         assertEquals(5, w.count("meal"))
-        assertEquals(listOf(10, -24), w.ledger.transactions.map { it.amount })
+        assertEquals(listOf(8, -24), w.ledger.transactions.map { it.amount })
         assertEquals(listOf("sold 2 sketches", "bought 3 meals"), w.ledger.transactions.map { it.reason })
         assertEquals(20 + w.ledger.transactions.sumOf { it.amount }, w.ledger.balance)
-        assertTrue(w.obs().recentEvents.any { "bought 3 meals for $24 (money $6)" in it })
+        assertTrue(w.obs().recentEvents.any { "bought 3 meals for $24 (money $4)" in it })
         assertEquals(w.ledger.transactions, w.snapshot().life!!.transactions)
     }
 
@@ -144,7 +146,7 @@ class BedroomWorldTest {
         val w = world(money = 10)
         val shop = w.obs().shop!!.associateBy { it.id }
         assertEquals(ShopOption("meal", 24, false, "3 meals; for eat"), shop["meal"])
-        assertEquals(ShopOption("easel", 17, false, "for paint (3h: 1 painting, sells for $40; uses a canvas), which also needs a canvas ($15)"), shop["easel"])
+        assertEquals(ShopOption("easel", 17, false, "for paint (3h: 1 painting, sells for $25; uses a canvas), which also needs a canvas ($15)"), shop["easel"])
         assertEquals("comfort +4 in view (near you, lit): mood settles 4 higher; new to you: stimulation +2/h while you're awake and can see it, fading over 3 days; natural, calm", shop.getValue("plant").gives)
         assertEquals("the easel costs $17 and you have $10", failure(w.run(Intent.Buy("easel"))))
         // What's no use without something else isn't sold until he has it; the thing it needs says what it opens up.
@@ -158,13 +160,13 @@ class BedroomWorldTest {
         assertEquals("you already have the easel", failure(rich.run(Intent.Buy("easel"))))
         assertTrue(rich.obs().shop!!.none { it.id == "easel" }, "one of a kind: gone from the shop once owned")
         assertEquals("needs a canvas ($15)", rich.activity("paint").locked)
-        assertEquals("unlocks paint (3h: 1 painting, sells for $40; uses a canvas)", rich.obs().shop!!.first { it.id == "canvas" }.gives)
+        assertEquals("unlocks paint (3h: 1 painting, sells for $25; uses a canvas)", rich.obs().shop!!.first { it.id == "canvas" }.gives)
         rich.run(Intent.Buy("canvas"))
         assertIs<IntentStatus.Succeeded>(rich.run(Intent.Do("paint")).status)
         assertEquals(listOf("painting"), rich.obs().holding)
         assertEquals(0, rich.count("canvas"))
         rich.run(Intent.Do("sell_art"))
-        assertEquals(500 - 17 - 15 + 40, rich.ledger.balance)
+        assertEquals(500 - 17 - 15 + 25, rich.ledger.balance)
     }
 
     @Test
@@ -303,7 +305,7 @@ class BedroomWorldTest {
         w.step()
         val notes = w.obs().art!!.associate { it.id to it.commission }
         assertEquals("doesn't match the request: there's no $noun drawn in it", notes[first.piece])
-        assertEquals("matches the request: +$20 when sold", notes[second.piece])
+        assertEquals("matches the request: +$5 when sold", notes[second.piece])
     }
 
     @Test
@@ -429,7 +431,7 @@ class BedroomWorldTest {
     @Test
     fun `art skill adds dollars to a piece and strokes to its canvas, a whole level at a time, up to its most`() {
         val sketch = shipped.item("sketch")!!
-        assertEquals(listOf(5, 8, 11, 20), listOf(0.0, 1.0, 2.0, 5.0).map { sketch.priceAt(it) })
+        assertEquals(listOf(4, 5, 6, 9), listOf(0.0, 1.0, 2.0, 5.0).map { sketch.priceAt(it) })
         assertEquals(listOf(6, 6, 8, 12, 16, 16), listOf(0.0, 0.9, 1.0, 3.5, 5.0, 9.0).map { sketch.canvasAt(it)!!.strokes })
     }
 
@@ -462,7 +464,7 @@ class BedroomWorldTest {
         assertEquals(2.0, w.obs().skills!!["art"], "rereading a finished book raises nothing")
         // Painting is in his world now, and his art skill raises what a piece sells for: $40 plus $12 a level at 2.0 is $64.
         assertEquals("needs an easel ($17)", w.activity("paint").locked)
-        assertEquals("for paint (3h: 1 painting, sells for $64; uses a canvas), which also needs a canvas ($15)", w.obs().shop!!.first { it.id == "easel" }.gives)
+        assertEquals("for paint (3h: 1 painting, sells for $33; uses a canvas), which also needs a canvas ($15)", w.obs().shop!!.first { it.id == "easel" }.gives)
         assertTrue(w.knownContent().verb("paint") != null && shipped.known(emptySet()).verb("paint") == null)
         assertEquals(null, w.snapshot().life!!.catalog.first { it.id == "easel" }.taughtBy)
     }
