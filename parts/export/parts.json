@@ -937,6 +937,65 @@
 {"shape":"cylinder","w":0.09,"h":0.2,"d":0.09,"x":-0.32,"y":0.57,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#bfe3ea","texture":null,"round":-1.0,"lump":0.0,"seed":18,"outline":0.0,"taper":1.0,"opacity":0.7},
 {"shape":"cylinder","w":0.07,"h":0.06,"d":0.07,"x":-0.32,"y":0.58,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#9db8d8","texture":null,"round":-1.0,"lump":0.0,"seed":19,"outline":0.0,"taper":1.0}
 ],
+"heater": [
+{"shape":"box","w":0.06,"h":0.06,"d":0.2,"x":-0.24,"y":0.0,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#4a3a4f","texture":null,"round":0.02,"lump":0.0,"seed":1,"outline":0.0,"taper":1.0},
+{"shape":"box","w":0.06,"h":0.06,"d":0.2,"x":0.24,"y":0.0,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#4a3a4f","texture":null,"round":0.02,"lump":0.0,"seed":2,"outline":0.0,"taper":1.0},
+{"shape":"box","w":0.62,"h":0.5,"d":0.16,"x":0.0,"y":0.06,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#f6ead6","texture":null,"round":0.05,"lump":0.0,"seed":3,"outline":0.0,"taper":1.0},
+{"shape":"box","w":0.05,"h":0.36,"d":0.01,"x":-0.22,"y":0.12,"z":0.085,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#e58573","texture":null,"round":0.02,"lump":0.0,"seed":4,"outline":0.0,"taper":1.0,"glow":0.35},
+{"shape":"box","w":0.05,"h":0.36,"d":0.01,"x":-0.11,"y":0.12,"z":0.085,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#e58573","texture":null,"round":0.02,"lump":0.0,"seed":5,"outline":0.0,"taper":1.0,"glow":0.35},
+{"shape":"box","w":0.05,"h":0.36,"d":0.01,"x":0.0,"y":0.12,"z":0.085,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#e58573","texture":null,"round":0.02,"lump":0.0,"seed":6,"outline":0.0,"taper":1.0,"glow":0.35},
+{"shape":"box","w":0.05,"h":0.36,"d":0.01,"x":0.109999985,"y":0.12,"z":0.085,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#e58573","texture":null,"round":0.02,"lump":0.0,"seed":7,"outline":0.0,"taper":1.0,"glow":0.35},
+{"shape":"box","w":0.05,"h":0.36,"d":0.01,"x":0.22,"y":0.12,"z":0.085,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#e58573","texture":null,"round":0.02,"lump":0.0,"seed":8,"outline":0.0,"taper":1.0,"glow":0.35}
+],
+"fire_pit": [
+{"shape":"sphere","w":0.2,"h":0.16,"d":0.18,"x":0.36,"y":0.0,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#b8b0a8","texture":null,"round":-1.0,"lump":0.0,"seed":1,"outline":0.0,"taper":1.0},
+{"shape":"sphere","w":0.2,"h":0.16,"d":0.18,"x":0.275776,"y":0.0,"z":0.23140356,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#b8b0a8","texture":null,"round":-1.0,"lump":0.0,"seed":2,"outline":0.0,"taper":1.0},
+{"shape":"sphere","w":0.2,"h":0.16,"d":0.18,"x":0.06251332,"y":0.0,"z":0.3545308,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#b8b0a8","texture":null,"round":-1.0,"lump":0.0,"seed":3,"outline":0.0,"taper":1.0},
+{"shape":"sphere","w":0.2,"h":0.16,"d":0.18,"x":-0.18000002,"y":0.0,"z":0.31176916,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#b8b0a8","texture":null,"round":-1.0,"lump":0.0,"seed":4,"outline":0.0,"taper":1.0},
+{"shape":"sphere","w":0.2,"h":0.16,"d":0.18,"x":-0.33828938,"y":0.0,"z":0.12312721,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#b8b0a8","texture":null,"round":-1.0,"lump":0.0,"seed":5,"outline":0.0,"taper":1.0},
+{"shape":"sphere","w":0.2,"h":0.16,"d":0.18,"x":-0.33828932,"y":0.0,"z":-0.12312735,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#b8b0a8","texture":null,"round":-1.0,"lump":0.0,"seed":6,"outline":0.0,"taper":1.0},
+{"shape":"sphere","w":0.2,"h":0.16,"d":0.18,"x":-0.17999998,"y":0.0,"z":-0.3117692,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#b8b0a8","texture":null,"round":-1.0,"lump":0.0,"seed":7,"outline":0.0,"taper":1.0},
+{"shape":"sphere","w":0.2,"h":0.16,"d":0.18,"x":0.06251351,"y":0.0,"z":-0.35453078,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#b8b0a8","texture":null,"round":-1.0,"lump":0.0,"seed":8,"outline":0.0,"taper":1.0},
+{"shape":"sphere","w":0.2,"h":0.16,"d":0.18,"x":0.27577606,"y":0.0,"z":-0.23140347,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#b8b0a8","texture":null,"round":-1.0,"lump":0.0,"seed":9,"outline":0.0,"taper":1.0},
+{"shape":"capsule","w":0.06,"h":0.42,"d":0.06,"x":0.0,"y":0.06,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":90.0,"color":"#b98862","texture":null,"round":-1.0,"lump":0.0,"seed":10,"outline":0.0,"taper":1.0},
+{"shape":"capsule","w":0.06,"h":0.42,"d":0.06,"x":0.0,"y":0.06,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":150.0,"color":"#b98862","texture":null,"round":-1.0,"lump":0.0,"seed":11,"outline":0.0,"taper":1.0},
+{"shape":"capsule","w":0.06,"h":0.42,"d":0.06,"x":0.0,"y":0.06,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":210.0,"color":"#b98862","texture":null,"round":-1.0,"lump":0.0,"seed":12,"outline":0.0,"taper":1.0},
+{"shape":"sphere","w":0.3,"h":0.2,"d":0.3,"x":0.0,"y":0.05,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#ff9a5c","texture":null,"round":-1.0,"lump":0.0,"seed":13,"outline":0.0,"taper":1.0,"cut":0.5,"glow":1.0,"opacity":0.9},
+{"shape":"sphere","w":0.16,"h":0.13,"d":0.16,"x":0.0,"y":0.08,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#ffc47a","texture":null,"round":-1.0,"lump":0.0,"seed":14,"outline":0.0,"taper":1.0,"cut":0.5,"glow":1.0}
+],
+"wind_chime": [
+{"shape":"cylinder","w":0.06,"h":1.5,"d":0.06,"x":0.0,"y":0.0,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#b98862","texture":null,"round":0.02,"lump":0.0,"seed":1,"outline":0.0,"taper":1.0},
+{"shape":"box","w":0.3,"h":0.04,"d":0.04,"x":0.14,"y":1.44,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#b98862","texture":null,"round":0.015,"lump":0.0,"seed":2,"outline":0.0,"taper":1.0},
+{"shape":"cylinder","w":0.14,"h":0.02,"d":0.14,"x":0.24,"y":1.28,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#d9a95a","texture":null,"round":-1.0,"lump":0.0,"seed":3,"outline":0.0,"taper":1.0},
+{"shape":"cylinder","w":0.025,"h":0.24,"d":0.025,"x":0.29,"y":1.0,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#bfe3ea","texture":null,"round":-1.0,"lump":0.0,"seed":4,"outline":0.0,"taper":1.0},
+{"shape":"cylinder","w":0.025,"h":0.19999999,"d":0.025,"x":0.25545084,"y":1.04,"z":0.047552828,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#bfe3ea","texture":null,"round":-1.0,"lump":0.0,"seed":5,"outline":0.0,"taper":1.0},
+{"shape":"cylinder","w":0.025,"h":0.16,"d":0.025,"x":0.19954914,"y":1.08,"z":0.02938926,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#bfe3ea","texture":null,"round":-1.0,"lump":0.0,"seed":6,"outline":0.0,"taper":1.0},
+{"shape":"cylinder","w":0.025,"h":0.24,"d":0.025,"x":0.19954914,"y":1.0,"z":-0.029389268,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#bfe3ea","texture":null,"round":-1.0,"lump":0.0,"seed":7,"outline":0.0,"taper":1.0},
+{"shape":"cylinder","w":0.025,"h":0.19999999,"d":0.025,"x":0.25545084,"y":1.04,"z":-0.047552824,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#bfe3ea","texture":null,"round":-1.0,"lump":0.0,"seed":8,"outline":0.0,"taper":1.0}
+],
+"bird_feeder": [
+{"shape":"cylinder","w":0.07,"h":1.0,"d":0.07,"x":0.0,"y":0.0,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#b98862","texture":null,"round":0.02,"lump":0.0,"seed":1,"outline":0.0,"taper":1.0},
+{"shape":"box","w":0.44,"h":0.04,"d":0.34,"x":0.0,"y":1.0,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#d2a67c","texture":null,"round":0.015,"lump":0.0,"seed":2,"outline":0.0,"taper":1.0},
+{"shape":"cylinder","w":0.2,"h":0.22,"d":0.2,"x":0.0,"y":1.04,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#bfe3ea","texture":null,"round":-1.0,"lump":0.0,"seed":3,"outline":0.0,"taper":1.0,"opacity":0.7},
+{"shape":"cylinder","w":0.16,"h":0.12,"d":0.16,"x":0.0,"y":1.04,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#ffe3a1","texture":null,"round":-1.0,"lump":0.0,"seed":4,"outline":0.0,"taper":1.0},
+{"shape":"box","w":0.5,"h":0.05,"d":0.4,"x":0.0,"y":1.27,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#e58573","texture":null,"round":0.02,"lump":0.0,"seed":5,"outline":0.0,"taper":1.0}
+],
+"moth_lamp": [
+{"shape":"cylinder","w":0.07,"h":1.25,"d":0.07,"x":0.0,"y":0.0,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#4a3a4f","texture":null,"round":0.02,"lump":0.0,"seed":1,"outline":0.0,"taper":1.0},
+{"shape":"box","w":0.24,"h":0.04,"d":0.24,"x":0.0,"y":1.25,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#4a3a4f","texture":null,"round":0.015,"lump":0.0,"seed":2,"outline":0.0,"taper":1.0},
+{"shape":"cylinder","w":0.18,"h":0.24,"d":0.18,"x":0.0,"y":1.29,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#ffd9a0","texture":null,"round":-1.0,"lump":0.0,"seed":3,"outline":0.0,"taper":1.0,"glow":1.0,"opacity":0.9},
+{"shape":"cylinder","w":0.26,"h":0.08,"d":0.26,"x":0.0,"y":1.53,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#4a3a4f","texture":null,"round":-1.0,"lump":0.0,"seed":4,"outline":0.0,"taper":0.5}
+],
+"planter": [
+{"shape":"box","w":0.7,"h":0.3,"d":0.36,"x":0.0,"y":0.0,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#d2a67c","texture":null,"round":0.03,"lump":0.0,"seed":1,"outline":0.0,"taper":1.0},
+{"shape":"box","w":0.62,"h":0.03,"d":0.3,"x":0.0,"y":0.28,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#8d6b55","texture":null,"round":0.01,"lump":0.0,"seed":2,"outline":0.0,"taper":1.0},
+{"shape":"cylinder","w":0.03,"h":0.14,"d":0.03,"x":-0.2,"y":0.3,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#7fb58a","texture":null,"round":-1.0,"lump":0.0,"seed":3,"outline":0.0,"taper":1.0},
+{"shape":"sphere","w":0.16,"h":0.1,"d":0.14,"x":-0.2,"y":0.384,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#9ccf9a","texture":null,"round":-1.0,"lump":0.0,"seed":4,"outline":0.0,"taper":1.0},
+{"shape":"cylinder","w":0.03,"h":0.14,"d":0.03,"x":0.0,"y":0.3,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#7fb58a","texture":null,"round":-1.0,"lump":0.0,"seed":5,"outline":0.0,"taper":1.0},
+{"shape":"sphere","w":0.16,"h":0.1,"d":0.14,"x":0.0,"y":0.384,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#9ccf9a","texture":null,"round":-1.0,"lump":0.0,"seed":6,"outline":0.0,"taper":1.0},
+{"shape":"cylinder","w":0.03,"h":0.14,"d":0.03,"x":0.2,"y":0.3,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#7fb58a","texture":null,"round":-1.0,"lump":0.0,"seed":7,"outline":0.0,"taper":1.0},
+{"shape":"sphere","w":0.16,"h":0.1,"d":0.14,"x":0.2,"y":0.384,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#9ccf9a","texture":null,"round":-1.0,"lump":0.0,"seed":8,"outline":0.0,"taper":1.0}
+],
 "glowcap_patch": [
 {"shape":"cylinder","w":0.34,"h":0.9,"d":0.34,"x":0.0,"y":0.18,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":90.0,"color":"#b98862","texture":null,"round":0.05,"lump":0.0,"seed":1,"outline":0.0,"taper":1.0},
 {"shape":"cylinder","w":0.05,"h":0.2,"d":0.05,"x":-0.2,"y":0.0,"z":0.24,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#fffaf0","texture":null,"round":-1.0,"lump":0.0,"seed":2,"outline":0.0,"taper":1.0},
@@ -1014,6 +1073,71 @@
 "seedpod_bush_bare": [
 {"shape":"sphere","w":0.7,"h":0.55,"d":0.6,"x":0.0,"y":0.0,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#7fb58a","texture":null,"round":-1.0,"lump":0.0,"seed":1,"outline":0.0,"taper":1.0},
 {"shape":"sphere","w":0.4,"h":0.36,"d":0.36,"x":0.18,"y":0.22,"z":0.08,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#9ccf9a","texture":null,"round":-1.0,"lump":0.0,"seed":2,"outline":0.0,"taper":1.0}
+],
+"bird_feeder_visited": [
+{"shape":"cylinder","w":0.07,"h":1.0,"d":0.07,"x":0.0,"y":0.0,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#b98862","texture":null,"round":0.02,"lump":0.0,"seed":1,"outline":0.0,"taper":1.0},
+{"shape":"box","w":0.44,"h":0.04,"d":0.34,"x":0.0,"y":1.0,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#d2a67c","texture":null,"round":0.015,"lump":0.0,"seed":2,"outline":0.0,"taper":1.0},
+{"shape":"cylinder","w":0.2,"h":0.22,"d":0.2,"x":0.0,"y":1.04,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#bfe3ea","texture":null,"round":-1.0,"lump":0.0,"seed":3,"outline":0.0,"taper":1.0,"opacity":0.7},
+{"shape":"cylinder","w":0.16,"h":0.12,"d":0.16,"x":0.0,"y":1.04,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#ffe3a1","texture":null,"round":-1.0,"lump":0.0,"seed":4,"outline":0.0,"taper":1.0},
+{"shape":"box","w":0.5,"h":0.05,"d":0.4,"x":0.0,"y":1.27,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#e58573","texture":null,"round":0.02,"lump":0.0,"seed":5,"outline":0.0,"taper":1.0},
+{"shape":"sphere","w":0.13,"h":0.11,"d":0.17,"x":-0.18,"y":1.05,"z":0.12,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#7d9bc4","texture":null,"round":-1.0,"lump":0.0,"seed":6,"outline":0.0,"taper":1.0},
+{"shape":"sphere","w":0.08,"h":0.08,"d":0.08,"x":-0.18,"y":1.14,"z":0.17999999,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#7d9bc4","texture":null,"round":-1.0,"lump":0.0,"seed":7,"outline":0.0,"taper":1.0},
+{"shape":"sphere","w":0.03,"h":0.02,"d":0.04,"x":-0.18,"y":1.14,"z":0.22999999,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#ffe3a1","texture":null,"round":-1.0,"lump":0.0,"seed":8,"outline":0.0,"taper":1.0},
+{"shape":"sphere","w":0.13,"h":0.11,"d":0.17,"x":0.2,"y":1.05,"z":-0.1,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#c98f6b","texture":null,"round":-1.0,"lump":0.0,"seed":9,"outline":0.0,"taper":1.0},
+{"shape":"sphere","w":0.08,"h":0.08,"d":0.08,"x":0.2,"y":1.14,"z":-0.040000003,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#c98f6b","texture":null,"round":-1.0,"lump":0.0,"seed":10,"outline":0.0,"taper":1.0},
+{"shape":"sphere","w":0.03,"h":0.02,"d":0.04,"x":0.2,"y":1.14,"z":0.009999998,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#ffe3a1","texture":null,"round":-1.0,"lump":0.0,"seed":11,"outline":0.0,"taper":1.0},
+{"shape":"sphere","w":0.13,"h":0.11,"d":0.17,"x":0.32,"y":0.0,"z":0.3,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#9aa86e","texture":null,"round":-1.0,"lump":0.0,"seed":12,"outline":0.0,"taper":1.0},
+{"shape":"sphere","w":0.08,"h":0.08,"d":0.08,"x":0.32,"y":0.09,"z":0.36,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#9aa86e","texture":null,"round":-1.0,"lump":0.0,"seed":13,"outline":0.0,"taper":1.0},
+{"shape":"sphere","w":0.03,"h":0.02,"d":0.04,"x":0.32,"y":0.09,"z":0.41000003,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#ffe3a1","texture":null,"round":-1.0,"lump":0.0,"seed":14,"outline":0.0,"taper":1.0}
+],
+"moth_lamp_visited": [
+{"shape":"cylinder","w":0.07,"h":1.25,"d":0.07,"x":0.0,"y":0.0,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#4a3a4f","texture":null,"round":0.02,"lump":0.0,"seed":1,"outline":0.0,"taper":1.0},
+{"shape":"box","w":0.24,"h":0.04,"d":0.24,"x":0.0,"y":1.25,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#4a3a4f","texture":null,"round":0.015,"lump":0.0,"seed":2,"outline":0.0,"taper":1.0},
+{"shape":"cylinder","w":0.18,"h":0.24,"d":0.18,"x":0.0,"y":1.29,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#ffd9a0","texture":null,"round":-1.0,"lump":0.0,"seed":3,"outline":0.0,"taper":1.0,"glow":1.0,"opacity":0.9},
+{"shape":"cylinder","w":0.26,"h":0.08,"d":0.26,"x":0.0,"y":1.53,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#4a3a4f","texture":null,"round":-1.0,"lump":0.0,"seed":4,"outline":0.0,"taper":0.5},
+{"shape":"box","w":0.09,"h":0.012,"d":0.05,"x":0.20263341,"y":1.25,"z":0.085672036,"rotX":0.0,"rotY":-22.918312,"rotZ":25.0,"color":"#efe6d8","texture":null,"round":0.004,"lump":0.0,"seed":5,"outline":0.0,"taper":1.0,"glow":0.2},
+{"shape":"box","w":0.09,"h":0.012,"d":0.05,"x":0.03945098,"y":1.37,"z":0.31755883,"rotX":0.0,"rotY":-82.91831,"rotZ":-25.0,"color":"#efe6d8","texture":null,"round":0.004,"lump":0.0,"seed":6,"outline":0.0,"taper":1.0,"glow":0.2},
+{"shape":"box","w":0.09,"h":0.012,"d":0.05,"x":-0.17551088,"y":1.49,"z":0.13264963,"rotX":0.0,"rotY":-142.91832,"rotZ":25.0,"color":"#efe6d8","texture":null,"round":0.004,"lump":0.0,"seed":7,"outline":0.0,"taper":1.0,"glow":0.2},
+{"shape":"box","w":0.09,"h":0.012,"d":0.05,"x":-0.29473948,"y":1.25,"z":-0.12461392,"rotX":0.0,"rotY":-202.9183,"rotZ":-25.0,"color":"#efe6d8","texture":null,"round":0.004,"lump":0.0,"seed":8,"outline":0.0,"taper":1.0,"glow":0.2},
+{"shape":"box","w":0.09,"h":0.012,"d":0.05,"x":-0.027122503,"y":1.37,"z":-0.21832171,"rotX":0.0,"rotY":-262.91833,"rotZ":25.0,"color":"#efe6d8","texture":null,"round":0.004,"lump":0.0,"seed":9,"outline":0.0,"taper":1.0,"glow":0.2},
+{"shape":"box","w":0.09,"h":0.012,"d":0.05,"x":0.2552886,"y":1.49,"z":-0.19294484,"rotX":0.0,"rotY":-322.91833,"rotZ":-25.0,"color":"#efe6d8","texture":null,"round":0.004,"lump":0.0,"seed":10,"outline":0.0,"taper":1.0,"glow":0.2}
+],
+"pond_patch_visited": [
+{"shape":"cylinder","w":0.025,"h":0.5,"d":0.025,"x":-0.25,"y":0.0,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":-9.0,"color":"#7fae84","texture":null,"round":-1.0,"lump":0.0,"seed":1,"outline":0.0,"taper":1.0},
+{"shape":"cylinder","w":0.025,"h":0.68,"d":0.025,"x":-0.15,"y":0.0,"z":0.04,"rotX":0.0,"rotY":0.0,"rotZ":-6.0,"color":"#7fae84","texture":null,"round":-1.0,"lump":0.0,"seed":2,"outline":0.0,"taper":1.0},
+{"shape":"capsule","w":0.05,"h":0.14,"d":0.05,"x":-0.15,"y":0.66,"z":0.04,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#a9805f","texture":null,"round":-1.0,"lump":0.0,"seed":3,"outline":0.0,"taper":1.0},
+{"shape":"cylinder","w":0.025,"h":0.86,"d":0.025,"x":-0.049999997,"y":0.0,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":-3.0,"color":"#7fae84","texture":null,"round":-1.0,"lump":0.0,"seed":4,"outline":0.0,"taper":1.0},
+{"shape":"cylinder","w":0.025,"h":0.5,"d":0.025,"x":0.050000012,"y":0.0,"z":0.04,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#7fae84","texture":null,"round":-1.0,"lump":0.0,"seed":5,"outline":0.0,"taper":1.0},
+{"shape":"capsule","w":0.05,"h":0.14,"d":0.05,"x":0.050000012,"y":0.48,"z":0.04,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#a9805f","texture":null,"round":-1.0,"lump":0.0,"seed":6,"outline":0.0,"taper":1.0},
+{"shape":"cylinder","w":0.025,"h":0.68,"d":0.025,"x":0.15,"y":0.0,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":3.0,"color":"#7fae84","texture":null,"round":-1.0,"lump":0.0,"seed":7,"outline":0.0,"taper":1.0},
+{"shape":"cylinder","w":0.025,"h":0.86,"d":0.025,"x":0.25,"y":0.0,"z":0.04,"rotX":0.0,"rotY":0.0,"rotZ":6.0,"color":"#7fae84","texture":null,"round":-1.0,"lump":0.0,"seed":8,"outline":0.0,"taper":1.0},
+{"shape":"capsule","w":0.05,"h":0.14,"d":0.05,"x":0.25,"y":0.84000003,"z":0.04,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#a9805f","texture":null,"round":-1.0,"lump":0.0,"seed":9,"outline":0.0,"taper":1.0},
+{"shape":"cylinder","w":0.12,"h":0.14,"d":0.12,"x":0.32,"y":0.0,"z":0.1,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#9fd0d6","texture":null,"round":-1.0,"lump":0.0,"seed":10,"outline":0.0,"taper":1.0,"opacity":0.75},
+{"shape":"sphere","w":0.04,"h":0.04,"d":0.04,"x":0.4,"y":0.35,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#e8ff9a","texture":null,"round":-1.0,"lump":0.0,"seed":11,"outline":0.0,"taper":1.0,"glow":1.0},
+{"shape":"sphere","w":0.04,"h":0.04,"d":0.04,"x":-0.29495752,"y":0.53,"z":0.2364121,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#e8ff9a","texture":null,"round":-1.0,"lump":0.0,"seed":12,"outline":0.0,"taper":1.0,"glow":1.0},
+{"shape":"sphere","w":0.04,"h":0.04,"d":0.04,"x":0.03499967,"y":0.71000004,"z":-0.3486576,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#e8ff9a","texture":null,"round":-1.0,"lump":0.0,"seed":13,"outline":0.0,"taper":1.0,"glow":1.0},
+{"shape":"sphere","w":0.04,"h":0.04,"d":0.04,"x":0.24334045,"y":0.89,"z":0.2777838,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#e8ff9a","texture":null,"round":-1.0,"lump":0.0,"seed":14,"outline":0.0,"taper":1.0,"glow":1.0},
+{"shape":"sphere","w":0.04,"h":0.04,"d":0.04,"x":-0.39387512,"y":0.35,"z":-0.061014503,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#e8ff9a","texture":null,"round":-1.0,"lump":0.0,"seed":15,"outline":0.0,"taper":1.0,"glow":1.0},
+{"shape":"sphere","w":0.04,"h":0.04,"d":0.04,"x":0.33754158,"y":0.53,"z":-0.18780053,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#e8ff9a","texture":null,"round":-1.0,"lump":0.0,"seed":16,"outline":0.0,"taper":1.0,"glow":1.0},
+{"shape":"sphere","w":0.04,"h":0.04,"d":0.04,"x":-0.10392716,"y":0.71000004,"z":0.33798018,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#e8ff9a","texture":null,"round":-1.0,"lump":0.0,"seed":17,"outline":0.0,"taper":1.0,"glow":1.0},
+{"shape":"sphere","w":0.04,"h":0.04,"d":0.04,"x":-0.18427102,"y":0.89,"z":-0.31064865,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#e8ff9a","texture":null,"round":-1.0,"lump":0.0,"seed":18,"outline":0.0,"taper":1.0,"glow":1.0},
+{"shape":"sphere","w":0.04,"h":0.04,"d":0.04,"x":0.37568805,"y":0.35,"z":0.12016047,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#e8ff9a","texture":null,"round":-1.0,"lump":0.0,"seed":19,"outline":0.0,"taper":1.0,"glow":1.0}
+],
+"planter_ripe": [
+{"shape":"box","w":0.7,"h":0.3,"d":0.36,"x":0.0,"y":0.0,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#d2a67c","texture":null,"round":0.03,"lump":0.0,"seed":1,"outline":0.0,"taper":1.0},
+{"shape":"box","w":0.62,"h":0.03,"d":0.3,"x":0.0,"y":0.28,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#8d6b55","texture":null,"round":0.01,"lump":0.0,"seed":2,"outline":0.0,"taper":1.0},
+{"shape":"cylinder","w":0.03,"h":0.42,"d":0.03,"x":-0.2,"y":0.3,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#7fb58a","texture":null,"round":-1.0,"lump":0.0,"seed":3,"outline":0.0,"taper":1.0},
+{"shape":"sphere","w":0.16,"h":0.24,"d":0.14,"x":-0.2,"y":0.55200005,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#9ccf9a","texture":null,"round":-1.0,"lump":0.0,"seed":4,"outline":0.0,"taper":1.0},
+{"shape":"sphere","w":0.07,"h":0.07,"d":0.07,"x":-0.15,"y":0.42,"z":0.07,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#e58573","texture":null,"round":-1.0,"lump":0.0,"seed":5,"outline":0.0,"taper":1.0},
+{"shape":"sphere","w":0.07,"h":0.07,"d":0.07,"x":-0.25,"y":0.53999996,"z":0.07,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#e58573","texture":null,"round":-1.0,"lump":0.0,"seed":6,"outline":0.0,"taper":1.0},
+{"shape":"cylinder","w":0.03,"h":0.42,"d":0.03,"x":0.0,"y":0.3,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#7fb58a","texture":null,"round":-1.0,"lump":0.0,"seed":7,"outline":0.0,"taper":1.0},
+{"shape":"sphere","w":0.16,"h":0.24,"d":0.14,"x":0.0,"y":0.55200005,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#9ccf9a","texture":null,"round":-1.0,"lump":0.0,"seed":8,"outline":0.0,"taper":1.0},
+{"shape":"sphere","w":0.07,"h":0.07,"d":0.07,"x":0.05,"y":0.42,"z":0.07,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#e58573","texture":null,"round":-1.0,"lump":0.0,"seed":9,"outline":0.0,"taper":1.0},
+{"shape":"sphere","w":0.07,"h":0.07,"d":0.07,"x":-0.05,"y":0.53999996,"z":0.07,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#e58573","texture":null,"round":-1.0,"lump":0.0,"seed":10,"outline":0.0,"taper":1.0},
+{"shape":"cylinder","w":0.03,"h":0.42,"d":0.03,"x":0.2,"y":0.3,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#7fb58a","texture":null,"round":-1.0,"lump":0.0,"seed":11,"outline":0.0,"taper":1.0},
+{"shape":"sphere","w":0.16,"h":0.24,"d":0.14,"x":0.2,"y":0.55200005,"z":0.0,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#9ccf9a","texture":null,"round":-1.0,"lump":0.0,"seed":12,"outline":0.0,"taper":1.0},
+{"shape":"sphere","w":0.07,"h":0.07,"d":0.07,"x":0.25,"y":0.42,"z":0.07,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#e58573","texture":null,"round":-1.0,"lump":0.0,"seed":13,"outline":0.0,"taper":1.0},
+{"shape":"sphere","w":0.07,"h":0.07,"d":0.07,"x":0.15,"y":0.53999996,"z":0.07,"rotX":0.0,"rotY":0.0,"rotZ":0.0,"color":"#e58573","texture":null,"round":-1.0,"lump":0.0,"seed":14,"outline":0.0,"taper":1.0}
 ]
 },
 "clay_props": {

@@ -200,6 +200,10 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
 - Part lists: `parts/` (pure Kotlin): `Part.kt` (`Part`, `PartList`; the clay fields `cut`, `hole`, `arc`, `glow`, `opacity` and `ring`/`dome`, which `:app` ignores),
   `ClayParts.kt` (the clay models and the guy's pieces), `RoomParts.kt` (the crayon furniture, props, the room's constants), `DecorParts.kt`, `PartExport.kt`
   (writes `parts/export/parts.json`, the web renderer's copy, checked by `make test`). `:app` builds meshes from the crayon lists.
+- Effects besides light (`docs/decisions/2026-11-15-warmth-sound-water-and-lures-*`): `sim/.../Surroundings.kt` (warmth, sound,
+  water and lure fields on the `Effects.kt` engine; the cold, sleep, music heard, planters' soil, world.yaml `visitors`, and
+  what his code gives off through `world.field`/`world.emit`). Items carry `warmth`, `sound`, `lure` and `grows`; rules.yaml
+  `sound`, `sleep`, `growing`; verbs `watch`, `water_plant`, `harvest`. `Observation.senses` says them only when they matter.
 - Token accounting: `agent/.../TokenLedger.kt`. `ledger.meter(model, purpose)` wraps a model so every call
   (decision, think, summary, self, recall, significance, art) is recorded with its sim tick and game day; `TokenReport` prints
   tokens per game day and the 30-day projection. The CLI and the app (`SimSession`, the TOKENS page) wire it and

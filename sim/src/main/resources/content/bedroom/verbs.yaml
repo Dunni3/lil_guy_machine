@@ -285,7 +285,7 @@ verbs:
     args: { on: explorable }
     at: [on]
     minutes: 40
-    needs: { light: 3 }
+    needs: { light: 3, warmth: 4 }
     effects:
       - survey: on
       - practice: { nature: 0.1 }
@@ -312,6 +312,38 @@ verbs:
     effects:
       - read_log: what
       - need: { stimulation: 3 }
+  # Visitors (world.yaml `visitors`) come to the things that draw them, when it suits them: watching
+  # them there takes nothing but the time, and they leave something behind (the `watch` op).
+  - id: watch
+    kind: perceptual
+    phrase: watch the visitors
+    args: { on: lure }
+    at: [on]
+    minutes: 20
+    effects:
+      - watch: on
+      - practice: { nature: 0.1 }
+      - need: { mood: 3, stimulation: 6 }
+  # A planter grows in sun on damp soil (rules.yaml `growing`); indoors only watering keeps it damp.
+  - id: water_plant
+    kind: transformative
+    phrase: water a plant
+    args: { on: growable }
+    requires: [watering_can]
+    at: [on]
+    minutes: 5
+    routine: true
+    effects:
+      - water: on
+  - id: harvest
+    kind: generative
+    phrase: pick what a planter has grown
+    args: { on: growable }
+    at: [on]
+    minutes: 10
+    effects:
+      - harvest: on
+      - need: { mood: 2, stimulation: 3 }
   - id: study_sample
     kind: study
     phrase: study a sample under the microscope

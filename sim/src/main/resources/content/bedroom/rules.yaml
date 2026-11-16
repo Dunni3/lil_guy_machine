@@ -169,6 +169,30 @@ light:
   # switched it on or off. Across midnight when off is earlier.
   timer: { on: "18:00", off: "00:00" }
 
+# Sound, from 0 to 10, carries through walls muffled (a wall lets a third through) and out of a room.
+# He hears it at `hear` or more; music lifts his mood in full where it's `full` loud, less where it's
+# fainter, and not at all where he can't hear it. Something nice he can hear (a chime) counts toward
+# comfort as if he could see it.
+sound:
+  hear: 1
+  full: 4
+
+# Asleep where it's colder than `cold` degrees (the warmth on the bed's tile) or `noisy` loud or more,
+# energy comes back at `rest` of the rate. A heater by the bed keeps a cold night out.
+sleep:
+  cold: 16
+  noisy: 2
+  rest: 0.8
+
+# A planter (items.yaml `grows`) grows an hour toward its harvest for each hour its soil is damp and the
+# sun on it (daylight and the windows' share; lamps don't count) is `sun` or more: by the window or
+# outdoors on a clear day, not in a dim corner. Soil holds `soil` of water, loses `dries_per_hour`, and
+# gets the rain (and any spray) on its tile each hour; watering fills it.
+growing:
+  sun: 7
+  soil: 10
+  dries_per_hour: 0.4
+
 # Samples he keeps are his collection, on a shelf in his room: each kind he has adds comfort, up to `max` kinds.
 collection:
   comfort_each: 2

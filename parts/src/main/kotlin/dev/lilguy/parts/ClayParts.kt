@@ -27,13 +27,17 @@ object ClayParts {
     /** Patches on the land, each with a `_bare` model for while nothing has grown back (declared first: [ITEM_IDS] uses it). */
     val PATCHES = listOf("glowcap_patch", "moss_patch", "fern_patch", "beetle_log", "pond_patch", "seedpod_bush")
 
+    /** Looks an item takes on in a state the sim publishes: with its visitors round it (`_visited`), or ripe (declared before [ITEM_IDS], which uses it). */
+    val LOOKS = listOf("bird_feeder_visited", "moth_lamp_visited", "pond_patch_visited", "planter_ripe")
+
     /** Item ids with a clay model of their own. */
     val ITEM_IDS = listOf(
         "bed", "desk", "chair", "easel", "record_player", "plant", "rug", "mail_hatch", "picture_rail", "poster",
         "lava_lamp", "mushroom_lamp", "string_lights", "cloud_light",
         "microscope", "garden_bench", "forest_trail", "clearing_log", "pond_edge",
         "lab_bench", "lab_shelf", "armchair", "floor_lamp", "weather_station",
-    ) + PATCHES.flatMap { listOf(it, "${it}_bare") }
+        "heater", "fire_pit", "wind_chime", "bird_feeder", "moth_lamp", "planter",
+    ) + PATCHES.flatMap { listOf(it, "${it}_bare") } + LOOKS
 
     /** The clay model of item [id]. */
     fun item(id: String): List<Part> = parts {
@@ -65,6 +69,16 @@ object ClayParts {
             "armchair" -> armchair()
             "floor_lamp" -> floorLamp()
             "weather_station" -> weatherStation()
+            "heater" -> heater()
+            "fire_pit" -> firePit()
+            "wind_chime" -> windChime()
+            "bird_feeder" -> birdFeeder(false)
+            "bird_feeder_visited" -> birdFeeder(true)
+            "moth_lamp" -> porchLantern(false)
+            "moth_lamp_visited" -> porchLantern(true)
+            "pond_patch_visited" -> { reeds(false); fireflies() }
+            "planter" -> planter(false)
+            "planter_ripe" -> planter(true)
             else -> {
                 val bare = id.endsWith("_bare")
                 when (id.removeSuffix("_bare")) {
@@ -374,6 +388,88 @@ object ClayParts {
         box(WOOD_D, -0.2f, 0.55f, 0f, 0.28f, 0.04f, 0.05f, round = 0.015f)
         cylinder(LENS, -0.32f, 0.57f, 0f, 0.09f, 0.2f, 0.09f, opacity = 0.7f)
         cylinder(BLANKET, -0.32f, 0.58f, 0f, 0.07f, 0.06f, 0.07f)
+    }
+
+    /** A rounded radiator on little feet, its fins warm-glowing. */
+    private fun PartList.heater() {
+        for (sx in listOf(-0.24f, 0.24f)) box(INK, sx, 0f, 0f, 0.06f, 0.06f, 0.2f, round = 0.02f)
+        box(CREAM, 0f, 0.06f, 0f, 0.62f, 0.5f, 0.16f, round = 0.05f)
+        for (i in 0..4) box(CORAL, -0.22f + i * 0.11f, 0.12f, 0.085f, 0.05f, 0.36f, 0.01f, round = 0.02f, glow = 0.35f)
+    }
+
+    /** A ring of stones round a little fire. */
+    private fun PartList.firePit() {
+        for (k in 0 until 9) {
+            val a = k * 2 * PI.toFloat() / 9
+            sphere("#b8b0a8", 0.36f * cos(a), 0f, 0.36f * sin(a), 0.2f, 0.16f, 0.18f)
+        }
+        for (k in 0..2) capsule(WOOD_D, 0f, 0.06f, 0f, 0.06f, 0.42f, 0.06f, rotZ = 90f + k * 60f)
+        dome("#ff9a5c", 0f, 0.05f, 0f, 0.3f, 0.4f, 0.3f, glow = 1f, opacity = 0.9f)
+        dome(AMBER, 0f, 0.08f, 0f, 0.16f, 0.26f, 0.16f, glow = 1f)
+    }
+
+    /** A hook on a post with a few hanging tubes. */
+    private fun PartList.windChime() {
+        cylinder(WOOD_D, 0f, 0f, 0f, 0.06f, 1.5f, 0.06f, round = 0.02f)
+        box(WOOD_D, 0.14f, 1.44f, 0f, 0.3f, 0.04f, 0.04f, round = 0.015f)
+        cylinder(BRASS, 0.24f, 1.28f, 0f, 0.14f, 0.02f, 0.14f)
+        for (k in 0 until 5) {
+            val a = k * 2 * PI.toFloat() / 5
+            cylinder(LENS, 0.24f + 0.05f * cos(a), 1.0f + (k % 3) * 0.04f, 0.05f * sin(a), 0.025f, 0.24f - (k % 3) * 0.04f, 0.025f)
+        }
+    }
+
+    /** A little house of seed on a post; [birds] perch on it and peck below. */
+    private fun PartList.birdFeeder(birds: Boolean) {
+        cylinder(WOOD_D, 0f, 0f, 0f, 0.07f, 1.0f, 0.07f, round = 0.02f)
+        box(WOOD, 0f, 1.0f, 0f, 0.44f, 0.04f, 0.34f, round = 0.015f)
+        cylinder(LENS, 0f, 1.04f, 0f, 0.2f, 0.22f, 0.2f, opacity = 0.7f)
+        cylinder(BUTTER, 0f, 1.04f, 0f, 0.16f, 0.12f, 0.16f)
+        box(CORAL, 0f, 1.27f, 0f, 0.5f, 0.05f, 0.4f, round = 0.02f, rotZ = 0f)
+        if (!birds) return
+        for ((x, y, z, c) in listOf(Quad(-0.18f, 1.05f, 0.12f, "#7d9bc4"), Quad(0.2f, 1.05f, -0.1f, "#c98f6b"), Quad(0.32f, 0f, 0.3f, "#9aa86e"))) {
+            sphere(c, x, y, z, 0.13f, 0.11f, 0.17f)
+            sphere(c, x, y + 0.09f, z + 0.06f, 0.08f, 0.08f, 0.08f)
+            sphere(BUTTER, x, y + 0.09f, z + 0.11f, 0.03f, 0.02f, 0.04f)
+        }
+    }
+
+    private data class Quad(val x: Float, val y: Float, val z: Float, val c: String)
+
+    /** A lantern on a post by the door; [moths] flutter round its glass. */
+    private fun PartList.porchLantern(moths: Boolean) {
+        cylinder(INK, 0f, 0f, 0f, 0.07f, 1.25f, 0.07f, round = 0.02f)
+        box(INK, 0f, 1.25f, 0f, 0.24f, 0.04f, 0.24f, round = 0.015f)
+        cylinder(SHADE, 0f, 1.29f, 0f, 0.18f, 0.24f, 0.18f, glow = 1f, opacity = 0.9f)
+        cylinder(INK, 0f, 1.53f, 0f, 0.26f, 0.08f, 0.26f, taper = 0.5f)
+        if (!moths) return
+        for (k in 0 until 6) {
+            val a = k * 2 * PI.toFloat() / 6 + 0.4f
+            val r = 0.22f + (k % 2) * 0.1f
+            val y = 1.25f + (k % 3) * 0.12f
+            box("#efe6d8", r * cos(a), y, r * sin(a), 0.09f, 0.012f, 0.05f, rotY = deg(-a), rotZ = if (k % 2 == 0) 25f else -25f, round = 0.004f, glow = 0.2f)
+        }
+    }
+
+    /** Fireflies over the reeds: points of glow at different heights. */
+    private fun PartList.fireflies() {
+        for (k in 0 until 9) {
+            val a = k * 2.4f
+            sphere("#e8ff9a", 0.4f * cos(a), 0.35f + (k % 4) * 0.18f, 0.35f * sin(a), 0.04f, 0.04f, 0.04f, glow = 1f)
+        }
+    }
+
+    /** A wooden trough of soil with seedlings; [ripe], tomato vines with red fruit. */
+    private fun PartList.planter(ripe: Boolean) {
+        box(WOOD, 0f, 0f, 0f, 0.7f, 0.3f, 0.36f, round = 0.03f)
+        box(SOIL, 0f, 0.28f, 0f, 0.62f, 0.03f, 0.3f, round = 0.01f)
+        for (i in 0..2) {
+            val x = -0.2f + i * 0.2f
+            val h = if (ripe) 0.42f else 0.14f
+            cylinder(LEAF, x, 0.3f, 0f, 0.03f, h, 0.03f)
+            sphere(LEAF_LIGHT, x, 0.3f + h * 0.6f, 0f, 0.16f, if (ripe) 0.24f else 0.1f, 0.14f)
+            if (ripe) for (j in 0..1) sphere(CORAL, x + 0.05f - j * 0.1f, 0.42f + j * 0.12f, 0.07f, 0.07f, 0.07f, 0.07f)
+        }
     }
 
     /** A post with a little sign pointing into the trees. */

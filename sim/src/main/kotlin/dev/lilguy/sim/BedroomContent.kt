@@ -72,6 +72,12 @@ data class BedroomContent(
     val letters: LetterRules? = null,
     /** The sky, temperature and hidden pressure over the land, and what a recorder keeps (Weather.kt); null for no weather. */
     val weather: WeatherRules? = null,
+    /** Where he hears a sound, and how much music lifts his mood there ([SoundRules]); null and music is heard everywhere. */
+    val sound: SoundRules? = null,
+    /** How cold or noise spoils his sleep ([SleepRules]); null and he sleeps the same anywhere. */
+    val sleep: SleepRules? = null,
+    /** How planters grow ([GrowingRules]); null and nothing grows. */
+    val growing: GrowingRules? = null,
 ) {
     @Transient private val byId = items.associateBy { it.id }
 
@@ -149,7 +155,7 @@ data class BedroomContent(
         /** The content's files, each with the top-level keys it holds. */
         val FILES: Map<String, List<String>> = linkedMapOf(
             "room" to listOf("room", "start"),
-            "rules" to listOf("needs", "night", "habituation", "novelty", "familiarity", "frustration", "skills", "shop", "reflection", "commissions", "gallery", "quality_value", "invent", "collection", "comfort", "light", "letters"),
+            "rules" to listOf("needs", "night", "habituation", "novelty", "familiarity", "frustration", "skills", "shop", "reflection", "commissions", "gallery", "quality_value", "invent", "collection", "comfort", "light", "letters", "sound", "sleep", "growing"),
             "vocabulary" to listOf("vocabulary"),
             "personality" to listOf("personality"),
             "items" to listOf("items"),
@@ -266,6 +272,26 @@ data class BedroomContent(
                 t.problems("item ${item.id} light.timer").firstOrNull()?.let { throw IllegalArgumentException(it) }
             }
         }
+        items.forEach { item ->
+            listOfNotNull(item.warmth?.let { "warmth" to (it.strength to it.radius) }, item.sound?.let { "sound" to (it.strength to it.radius) }, item.lure?.let { "lure" to (it.strength to it.radius) }).forEach { (what, r) ->
+                require(r.first > 0 && r.second >= 0) { "item ${item.id}: $what needs a strength above 0 and a radius not negative" }
+            }
+            item.lure?.let { l ->
+                require(world?.visitor(l.draws) != null) { "item ${item.id} lures '${l.draws}', which isn't in world.yaml `visitors`" }
+                require(LURE in item.affords) { "item ${item.id} has a lure, so it affords `$LURE` (what the watch verb asks for)" }
+            }
+            item.grows?.let { g ->
+                require(byId[g.yields] != null) { "item ${item.id} grows '${g.yields}', which isn't an item" }
+                require(g.hours > 0 && g.count > 0) { "item ${item.id}: grows needs hours and count above 0" }
+                require(GROWABLE in item.affords && item.slot != null) { "item ${item.id} grows things, so it stands in a slot and affords `$GROWABLE`" }
+                require(growing != null) { "item ${item.id} grows things, so rules need `growing`" }
+            }
+        }
+        world?.visitors?.forEach { v ->
+            require(byId[v.yields] != null) { "visitor ${v.id} leaves '${v.yields}', which isn't an item" }
+            v.problems().firstOrNull()?.let { throw IllegalArgumentException(it) }
+        }
+        world?.visitors?.map { it.id }?.let { ids -> require(ids.size == ids.toSet().size) { "visitor ids must be unique" } }
         (light?.problems().orEmpty() + comfort?.problems().orEmpty() + familiarity?.problems().orEmpty()).firstOrNull()?.let { throw IllegalArgumentException(it) }
         (room.windows + world?.rooms?.flatMap { it.windows }.orEmpty()).forEach { require(it.size == 2) { "a window is [x, y]: $it" } }
         night?.let { GameClock.parseHhmm(it.from); GameClock.parseHhmm(it.to) }
@@ -344,6 +370,11 @@ const val RECORDER = "recorder"
 
 /** The affordance of a light he can switch: on its timer, or on or off until he switches it again ([LampMode]). */
 const val LAMP = "lamp"
+/** The affordance of a thing visitors come to (its `lure`), which the watch verb asks for. */
+const val LURE = "lure"
+
+/** The affordance of a planter (its `grows`), which watering and harvesting ask for. */
+const val GROWABLE = "growable"
 
 @Serializable
 data class RoomContent(
@@ -692,6 +723,14 @@ data class ItemSpec(
     val tier: Int = 0,
     /** The light it gives off where it stands; null for none. */
     val light: LightSpec? = null,
+    /** The degrees it adds round where it stands (a heater, a fire); on a thing that stands nowhere (a blanket), round him out of doors. Null for none. */
+    val warmth: EffectSpec? = null,
+    /** The sound it makes where it stands (a chime; a record player only while a record plays on it). Null for none. */
+    val sound: SoundSpec? = null,
+    /** The visitors it draws (world.yaml `visitors`), and how far. Null for none. */
+    val lure: LureSpec? = null,
+    /** What it grows in sun and damp soil (rules.yaml `growing`), as a planter. Null for nothing. */
+    val grows: GrowSpec? = null,
 ) {
     /** What an activity can ask for it by: its id and its affordances. */
     @Transient val names: Set<String> = setOf(id) + affords.keys

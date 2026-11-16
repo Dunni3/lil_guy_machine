@@ -4,8 +4,8 @@ import kotlin.math.abs
 import kotlin.math.hypot
 
 /**
- * Effects with reach: something gives off an effect (light first; warmth, sound, sun and water and
- * attraction later) that the sim spreads over the map's tiles, and perception, verb conditions and
+ * Effects with reach: something gives off an effect (light, warmth, sound, water, and the lures that
+ * draw visitors) that the sim spreads over the map's tiles, and perception, verb conditions and
  * needs read it where they happen. One [Field] per kind, each recomputed only when what goes into it
  * changes ([Effects.field]).
  *
@@ -18,20 +18,47 @@ import kotlin.math.hypot
  */
 enum class EffectKind(val id: String) {
     Light("light"),
+
+    /** Degrees: the weather's (or the house's) temperature on every tile, plus what heaters and fires add. */
+    Warmth("warmth"),
+
+    /** How loud it is, 0 to 10: a record playing, a wind chime. Walls muffle it rather than stop it, and it carries out of a room. */
+    Sound("sound"),
+
+    /** How wet it is, 0 to 10: the rain outdoors (millimetres in the hour gone), plus a sprinkler's spray. */
+    Water("water"),
+
+    /** What draws a kind of visitor (birds, moths, fireflies) to a spot: a feeder, a lamp, the pond ([VisitorSpec]). */
+    Lure("lure"),
     ;
 
     /** The most it can be on a tile, however many emitters add to it: light is never brighter than noon. */
     val most: Double get() = when (this) {
-        Light -> 10.0
+        Warmth -> 40.0
+        else -> 10.0
     }
 
     /** Whether a tile drawn as [letter] on the [Layout]'s rows stops this effect. */
-    fun blocks(letter: Char): Boolean = when (this) {
-        Light -> letter == '#' || letter == 'T'
+    fun blocks(letter: Char): Boolean = passes(letter) == 0.0
+
+    /**
+     * How much of this effect gets through a tile drawn as [letter], 0 (stops it) to 1: walls and
+     * trees stop light, walls stop warmth, water and lures, and sound gets through a wall muffled.
+     */
+    fun passes(letter: Char): Double = when (this) {
+        Light -> if (letter == '#' || letter == 'T') 0.0 else 1.0
+        Sound -> if (letter == '#') SOUND_THROUGH_WALL else 1.0
+        else -> if (letter == '#') 0.0 else 1.0
     }
+
+    /** False when an emitter's effect stays on its side of the walls (a room's lamp lights only that room); sound carries. */
+    val keepsToItsSide: Boolean get() = this != Sound
 
     companion object {
         fun of(id: String): EffectKind? = entries.firstOrNull { it.id == id }
+
+        /** The share of a sound that gets through one tile of wall. */
+        const val SOUND_THROUGH_WALL = 0.35
     }
 }
 
@@ -55,10 +82,10 @@ class Field(val kind: EffectKind, val width: Int, val height: Int, private val l
  * The effect fields of one map, kept until their inputs change. [field] takes everything a kind's
  * field depends on; asked again with equal inputs, it returns the same field without recomputing.
  */
-class Effects {
+class Effects(private val keep: Int = KEPT) {
     /** The last few fields by their inputs: a kind can be asked for in more than one way (light with his lantern, and without). */
     private val kept = object : LinkedHashMap<Any, Field>(8, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Any, Field>?) = size > KEPT
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Any, Field>?) = size > keep
     }
 
     /** How many times a field has been worked out: for tests and for watching the cost. */
@@ -101,12 +128,8 @@ class Effects {
                 val r = e.radius.toInt() + 1
                 for (y in e.cell.y - r..e.cell.y + r) for (x in e.cell.x - r..e.cell.x + r) {
                     if (x !in 0 until w || y !in 0 until h) continue
-                    val c = Cell(x, y)
-                    val there = layout.placeOf(c)
-                    if (!sameSide(home, there)) continue
-                    val d = hypot((x - e.cell.x).toDouble(), (y - e.cell.y).toDouble()) / (e.radius + 1)
-                    val v = e.strength * (1 - d * d)
-                    if (v <= 0 || !clear(kind, layout, e.cell, c)) continue
+                    val v = reach(e, layout, Cell(x, y), home)
+                    if (v <= 0) continue
                     val at = y * w + x
                     levels[at] += v
                     if (v > best[at]) {
@@ -123,12 +146,30 @@ class Effects {
             return Field(kind, w, h, levels, strongest, emitters)
         }
 
+        /**
+         * How much of [e] reaches [c]: its strength, falling with the square of the distance to nothing a
+         * tile past its radius, times what gets through on the straight line there; 0 on the other side
+         * of a wall for a kind that keeps to its side. [home]: the place [e] stands in, when known.
+         */
+        fun reach(e: Emitter, layout: Layout, c: Cell, home: Place? = layout.placeOf(e.cell)): Double {
+            if (e.strength <= 0 || e.radius < 0) return 0.0
+            if (e.kind.keepsToItsSide && !sameSide(home, layout.placeOf(c))) return 0.0
+            val d = hypot((c.x - e.cell.x).toDouble(), (c.y - e.cell.y).toDouble()) / (e.radius + 1)
+            val v = e.strength * (1 - d * d)
+            if (v <= 0) return 0.0
+            return v * through(e.kind, layout, e.cell, c)
+        }
+
         /** An emitter reaches a tile in its own room, or, outdoors, any tile outdoors. */
         private fun sameSide(home: Place?, there: Place?): Boolean =
             if (home?.kind == PlaceKind.Room) there == home else there?.kind != PlaceKind.Room
 
         /** True when nothing between [a] and [b] (neither end counted) blocks [kind]: a straight line, tile by tile. */
-        fun clear(kind: EffectKind, layout: Layout, a: Cell, b: Cell): Boolean {
+        fun clear(kind: EffectKind, layout: Layout, a: Cell, b: Cell): Boolean = through(kind, layout, a, b) > 0
+
+        /** The share of [kind] that gets from [a] to [b] along a straight line: each tile between (neither end counted) lets [EffectKind.passes] of it through. */
+        fun through(kind: EffectKind, layout: Layout, a: Cell, b: Cell): Double {
+            var share = 1.0
             var x = a.x
             var y = a.y
             val dx = abs(b.x - a.x)
@@ -137,8 +178,11 @@ class Effects {
             val sy = if (a.y < b.y) 1 else -1
             var err = dx + dy
             while (true) {
-                if (x == b.x && y == b.y) return true
-                if ((x != a.x || y != a.y) && kind.blocks(layout.rows[y][x])) return false
+                if (x == b.x && y == b.y) return share
+                if (x != a.x || y != a.y) {
+                    share *= kind.passes(layout.rows[y][x])
+                    if (share <= 0) return 0.0
+                }
                 val e2 = 2 * err
                 if (e2 >= dy) {
                     err += dy
