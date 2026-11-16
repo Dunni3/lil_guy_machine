@@ -10,7 +10,7 @@
 #   max_tokens, reasoning_effort   passed through when set
 #   timeout_s          per HTTP call   [30]
 #   max_retries        invalid replies sent back with the error   [2]
-#   tool_choice        for structured_output: tools   [required]; the bedroom's own tools are always auto (calling is optional)
+#   tool_choice        for structured_output: tools   [required]; the bedroom's own tools are always auto (calling is optional); anthropic: auto, or any (current Opus and Sonnet reject any)
 #   beam               typesafe: paths kept when walking a grouped choice set; 0 for one flat list   [3]
 #   price_in, price_out   dollars per million input / output tokens; the CLI's token report then shows cost
 #   price_cached       dollars per million input tokens read from the server's prompt cache   [price_in]
@@ -75,6 +75,44 @@ endpoints:
     price_in: 0.14
     price_cached: 0.0042
     price_out: 0.42
+  # Anthropic's Messages API, natively (kind: anthropic). No temperature is sent; reasoning_effort
+  # becomes output_config.effort; thinking is the model's adaptive default and counts toward
+  # max_tokens. Drop-ins for the gemini writers, by price: claude-haiku under gemini-lite, claude-sonnet
+  # near gemini, claude (Opus) above both. Anthropic's list prices (Nov 2026); the prompt is cached,
+  # and cache writes (1.25x price_in) aren't counted in the report.
+  claude-haiku:
+    kind: anthropic
+    base_url: https://api.anthropic.com/v1
+    api_key_env: ANTHROPIC_API_KEY
+    model: claude-haiku-5-5
+    timeout_s: 60
+    reasoning_effort: low
+    max_tokens: 8192
+    price_in: 0.1
+    price_cached: 0.01
+    price_out: 0.5
+  claude-sonnet:
+    kind: anthropic
+    base_url: https://api.anthropic.com/v1
+    api_key_env: ANTHROPIC_API_KEY
+    model: claude-sonnet-5-5
+    timeout_s: 60
+    reasoning_effort: low
+    max_tokens: 8192
+    price_in: 2
+    price_cached: 0.1
+    price_out: 10
+  claude:
+    kind: anthropic
+    base_url: https://api.anthropic.com/v1
+    api_key_env: ANTHROPIC_API_KEY
+    model: claude-opus-5-5
+    timeout_s: 90
+    reasoning_effort: low
+    max_tokens: 8192
+    price_in: 4
+    price_cached: 0.2
+    price_out: 20
   hosted:
     kind: openai_compat
     base_url: https://api.provider.example/v1
