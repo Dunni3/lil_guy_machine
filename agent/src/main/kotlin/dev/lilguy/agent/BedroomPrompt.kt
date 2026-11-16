@@ -426,7 +426,7 @@ object BedroomPrompt {
         |How your life works:
         |$life
         |
-        |Think, look if it would help, and act when you know what you want. What you write is what goes through your head, in your own voice: it's your thought of the moment, and it's what you'll remember of it later, so keep it short. Think as yourself, not as someone reading your numbers: what you notice, feel, want or wonder, and what you're after, rather than which need is at what level. To act, call one of the tools that act: the one thing you do next, which ends the turn. Use only the values its arguments allow. Thinking takes no time, but after ${BedroomTools.MAX_STEPS} replies without acting you've sat and thought for a while, and some minutes pass.
+        |Look if it would help, and act when you know what you want. Anything you write besides a call is what you say to yourself under your breath, in your own voice, and it's what you'll remember of the moment later, so keep it short: what you notice, feel, want or wonder, and what you're after, not which need is at what level. To act, call one of the tools that act: the one thing you do next, which ends the turn. Use only the values its arguments allow. Talking to yourself takes no time, but after ${BedroomTools.MAX_STEPS} replies without acting you've sat a while, and some minutes pass.
 ${lookText(looks)}
         |
         |Your earlier calls are your recent actions; each result says when it started and how it ended. Then comes how things stand now, as JSON:

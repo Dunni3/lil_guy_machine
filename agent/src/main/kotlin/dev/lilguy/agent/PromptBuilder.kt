@@ -214,8 +214,8 @@ class PromptBuilder(
         private const val HISTORY_HEADER = "Your recent actions, oldest first, are the calls below; each result says when it started and how it ended."
         private const val CALL = "Call one tool: what you do next."
         private const val LOOK_THEN_CALL = "If something you'd remember, or don't know about how your world works, would change what you do, look first. Then call one tool that acts: what you do next."
-        private const val THINK = "Think it over, and act when you know what you want."
-        private const val THINK_LOOK = "Think, remember or act: say what you're thinking, recall something or ask how something works, or do what you want to do next."
+        private const val THINK = "Talk it over with yourself, and act when you know what you want."
+        private const val THINK_LOOK = "Talk to yourself, remember or act: say something to yourself, recall something or ask how something works, or do what you want to do next."
 
         /**
          * His situation, for authored ops: the request's last user message without the closing ask,
