@@ -108,3 +108,4 @@ these hold the outcome. Skim this index before related changes.
 - 2026-11-15 [He steps back every few hours; reflections over the event stream sit beside his thoughts of the moment](2026-11-15-he-steps-back-every-few-hours-reflections-over-the-stream.md)
 - 2026-11-15 [Fun comes from how unfamiliar what he does is, by what it's like, not what it's called; he gets used to what he owns](2026-11-15-fun-comes-from-what-is-unfamiliar.md)
 - 2026-11-15 [Machines are fed and wear out, and his code makes nothing from nothing: physical costs replace "uncapped"](2026-11-15-machines-are-fed-and-wear-out-instead-of-uncapped.md)
+- 2026-11-15 [Warmth, sound, water and lures are effects on the same engine as light; his code reads them with field() and gives them off with emit()](2026-11-15-warmth-sound-water-and-lures-are-effects-on-the-same-engine.md)

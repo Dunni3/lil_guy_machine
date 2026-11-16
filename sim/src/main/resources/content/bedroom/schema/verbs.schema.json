@@ -530,6 +530,27 @@
                     "null"
                   ],
                   "description": "Mends the machine bound to `on`: takes `machines.repair.restores` wear off it, plus `per_level` for each level of the repair skill, and a jammed one (wear 100) works again. Locked below `worn_at` wear. (at the finish)"
+                },
+                "water": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Waters the planter bound to `on` (a thing with `grows`): its soil is full (rules.yaml `growing.soil`) and dries `dries_per_hour`. Rain and spray on its tile water it too. Locked while its soil is still wet. (at the finish)"
+                },
+                "harvest": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Picks what the planter bound to `on` has grown (items.yaml `grows`: `count` of `yields`), once it has had `hours` sunny hours on damp soil, and it starts again. An hour counts when its soil is damp and the sun on it (daylight and windows, not lamps) is `growing.sun` or more. Locked until then, saying how far along it is and why it isn't growing. (at the finish)"
+                },
+                "watch": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Watches the visitors at the thing bound to `on` (its `lure` draws them, world.yaml `visitors`): they leave one of their `yields`, and stay away `rest_hours`. Locked while none are there, saying when they come. (at the finish)"
                 }
               },
               "minProperties": 1,

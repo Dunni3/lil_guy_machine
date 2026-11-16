@@ -184,9 +184,34 @@ object BedroomPrompt {
     private fun weatherHint(content: BedroomContent): String? {
         val w = content.weather ?: return null
         val regrow = if (w.rain.regrow > 1 && content.world?.finds?.isNotEmpty() == true) " Rain makes what you've collected grow back faster." else ""
-        val cold = w.cold?.let { " Out in the cold, your mood falls." }.orEmpty()
+        val cold = w.cold?.let { " In the cold your mood${if (it.energyPerHour < 0) " and energy" else ""} fall; a fire, a heater or a blanket keeps it off, and the house keeps most of its warmth." }.orEmpty()
         val station = content.verbs.firstOrNull { v -> v.ops<ReadLogOp>().isNotEmpty() }?.let { v -> " A weather station outdoors logs the weather where it stands each hour; you read its log there (${v.id})." }.orEmpty()
         return "- Weather: it changes through the day. `weather` is what you see of it now: outside, how it feels; inside, only the sky through the window.$regrow$cold$station"
+    }
+
+    /** "senses: the cold, music you can barely hear, or a bed that would sleep badly, when there's any.", naming only what the content has; null for none. */
+    private fun sensesDoc(content: BedroomContent): String? {
+        val what = listOfNotNull(
+            content.weather?.cold?.let { "the cold" },
+            content.sound?.takeIf { content.items.any { it.sound?.playing == true } }?.let { "music you can barely hear" },
+            content.sleep?.let { "a bed that would sleep badly" },
+        )
+        if (what.isEmpty()) return null
+        return "senses: " + (if (what.size == 1) what[0] else what.dropLast(1).joinToString(", ") + ", or " + what.last()) + ", when there's any."
+    }
+
+    /**
+     * "- Round you: ...": sound, sleep, planters and visitors, a sentence for each the content has; null with none.
+     * What one does where he is right now is in the observation's `senses`, only when it matters.
+     */
+    private fun effectsHint(content: BedroomContent): String? {
+        val parts = listOfNotNull(
+            content.sound?.takeIf { content.items.any { it.sound?.playing == true } }?.let { "Music lifts your mood only where you can hear it; it carries through walls, muffled." },
+            content.sleep?.let { "A cold or noisy bed sleeps less well." },
+            content.growing?.takeIf { content.items.any { it.grows != null } }?.let { "A planter grows only in sun (by a window, or outdoors on a clear day) with damp soil." },
+            content.world?.visitors?.takeIf { it.isNotEmpty() }?.let { vs -> "Visitors come to some things when it suits them (${vs.joinToString(", ") { it.name }}); where you put those things decides who comes, and you can watch them there." },
+        )
+        return if (parts.isEmpty()) null else "- Round you: " + parts.joinToString(" ")
     }
 
     /**
@@ -327,6 +352,7 @@ object BedroomPrompt {
             learningHint(content),
             outdoorsHint(content),
             weatherHint(content),
+            effectsHint(content),
             codeHint(content),
             artHint(content),
             reflectionHint(content),
@@ -354,7 +380,7 @@ object BedroomPrompt {
             |- holding: art you're carrying, to sell. owns: everything else you own, id to count.$music${if (content.vocabulary.skills.isNotEmpty()) "\n            |- skills: your skills, name to level." else ""}${if (content.books.isNotEmpty()) "\n            |- books: the books you own, how many chapters you've read of how many, what studying one raises, and what finishing it would teach you." else ""}
             |- art: the pieces you have made and still have, held to sell or hung on your wall, with their titles. commission: today's request for a piece, if one is open.
             |- $options: your options, as above.
-            |- ${if (map != null) "place: where you are, and places: where else you could go, with the walk there. put: your things you could move, and the free spots by place. " else ""}${if (content.light != null) "light: how lit it is round you, when anything near you is too dark for something. " else ""}self and nearby: where you are and the furniture around you, with tile x and y${if (content.light != null) " (remembered: too dark to see, but you know it's there)" else ""}. localMap: ${if (map != null) "the room you're in, or the land round you, one string per row, north at the top; localMapAt is its top-left tile" else "the room, one string per row, north at the top"}.
+            |- ${if (map != null) "place: where you are, and places: where else you could go, with the walk there. put: your things you could move, and the free spots by place. " else ""}${if (content.light != null) "light: how lit it is round you, when anything near you is too dark for something. " else ""}${sensesDoc(content)?.let { "$it " }.orEmpty()}self and nearby: where you are and the furniture around you, with tile x and y${if (content.light != null) " (remembered: too dark to see, but you know it's there)" else ""}. localMap: ${if (map != null) "the room you're in, or the land round you, one string per row, north at the top; localMapAt is its top-left tile" else "the room, one string per row, north at the top"}.
             |- lastIntent and lastResult: your previous action and how it ended (succeeded, failed with a reason, or interrupted).
             |- recentEvents: the last few things that happened, stamped with day and time.
             |- lately: what you've done most in the last 2 days, what you could do now but haven't for 2 days or more, and what you could do and never have.
@@ -379,7 +405,7 @@ ${lookText(looks)}
         |- clock: day and time. money: dollars. needs: ${needNames(content).let { it.dropLast(1).joinToString(", ") + " and " + it.last() }}, 0 to 100.
         |- holding: art you're carrying, to sell. owns: everything else you own, id to count.$music${if (content.vocabulary.skills.isNotEmpty()) "\n        |- skills: your skills, name to level." else ""}${if (content.books.isNotEmpty()) "\n        |- books: the books you own, how many chapters you've read of how many, what studying one raises, and what finishing it would teach you." else ""}
         |- art: the pieces you have made and still have, held to sell or hung on your wall, with their titles. commission: today's request for a piece, if one is open.
-        |- place: where you are. here: the things round you in this place, nearest first, which way and how far${if (content.light != null) " (too dark to see: you know it's there but can't make it out)" else ""}; walk_to takes you over to one, and look_around tells you more.${if (content.light != null) " light: how lit it is round you, when anything near you is too dark for something." else ""}
+        |- place: where you are. here: the things round you in this place, nearest first, which way and how far${if (content.light != null) " (too dark to see: you know it's there but can't make it out)" else ""}; walk_to takes you over to one, and look_around tells you more.${if (content.light != null) " light: how lit it is round you, when anything near you is too dark for something." else ""}${sensesDoc(content)?.let { " $it" }.orEmpty()}
         |- activities: what you can't do right now, and why.${if (trips(content)) "" else " shop: what the shop will sell you now: its price, whether you can afford it, and what it's for."}
         |- recentEvents: the last few things that happened besides what you did, stamped with day and time.
         |- lately: what you've done most in the last 2 days, what you could do now but haven't for 2 days or more, and what you could do and never have.

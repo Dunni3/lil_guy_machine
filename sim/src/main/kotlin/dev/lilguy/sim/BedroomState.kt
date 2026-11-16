@@ -94,6 +94,8 @@ data class BedroomState(
     @SerialName("owned_since") val ownedSince: Map<String, Long>? = null,
     /** What his machines hold and have made, how far into a batch and how worn ([Works]). */
     val works: Map<String, Store> = emptyMap(),
+    /** What his code has his things give off, the planters' soil, and when visitors are back ([Surroundings]). */
+    val surroundings: SurroundingsState = SurroundingsState(),
 ) {
     /** One thing as his code left it: its [slot], [name] and [color], each null when unchanged. */
     @Serializable

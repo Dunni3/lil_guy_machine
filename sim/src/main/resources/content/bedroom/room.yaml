@@ -7,9 +7,9 @@ room:
   rows:
     - "#l7#5F8g9w6o##"
     - "ubvfK1OI2Nstn#"
-    - "m........M.Cp#"
+    - "m.h......M.Cp#"
     - "H.....r.....J#"
-    - "iG.........q.#"
+    - "iGP........q.#"
     - "ke...........#"
     - "ay@3BWA.cdDx4#"
     - "##############"
@@ -21,6 +21,8 @@ room:
       v: lava_lamp, f: sunflowers, t: mushroom_lamp, n: beanbag, q: fishbowl, y: teddy_bear, x: cactus,
       l: string_lights, w: window_succulents, m: moon_mobile, i: round_mirror, k: cork_board, a: rainbow, u: cloud_light, g: bunting,
       W: workbench, M: microscope,
+      # Warmth and growing things (rules.yaml `sleep`, `growing`): a heater by the bed, a planter in the far corner from the window.
+      h: heater, P: planter,
       # Things he invented in live runs, sold in the shop now (items.yaml).
       K: sunroom_lamp, O: amber_floor_lamp, I: moss_lamp, N: acorn_lamp, C: pinecone_ornament, J: fern_pot,
       G: floor_pillow, B: tiny_wooden_stool, A: moss_terrarium, D: moss_bowl,

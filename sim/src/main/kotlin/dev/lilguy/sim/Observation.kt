@@ -35,6 +35,12 @@ data class Observation(
      * [nearby] said briefly, for a model that calls tools; it sees no [nearby]. Null for every other model.
      */
     @EncodeDefault(EncodeDefault.Mode.NEVER) val here: List<String>? = null,
+    /**
+     * What he feels of warmth and sound where he is, only when it limits or explains something
+     * ("cold here (4°): your mood and energy fall", "you can't hear the jazz record from here",
+     * "the bed is cold (14°): you'd sleep less well tonight").
+     */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val senses: List<String>? = null,
     /** The other places he could walk to, nearest first, with the walk from here; null in rooms without places. */
     @EncodeDefault(EncodeDefault.Mode.NEVER) val places: List<PlaceOption>? = null,
     /** What of his he could put somewhere else, and the free spots by place ([Intent.Put]); null when there's nothing to move or nowhere to put it. */

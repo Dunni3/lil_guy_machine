@@ -45,9 +45,11 @@ it:** the PR says so.
   costs a part and his time. Anything with code answers to the `machine` tag, so it can be repaired too.
 - **The worked chain.** Eating a meal leaves a food scrap (`eat` now produces `food_scrap`). The
   compost bin (garden corner, $25) turns 3 scraps into a compost brick in 6 hours and wears 15 a
-  batch. The planter beside it ($20, 2 tiles away) takes the brick itself and grows a tomato from it in
-  10 hours of daylight (light 3), wearing 8 a batch. A tomato is food, and eating it leaves a scrap. The
-  loop leaks: 3 scraps make 1 brick, which makes 1 tomato, which leaves 1 scrap. So 3 meals give 4.5 in
+  batch. The raised bed beside it ($20, 2 tiles away) takes the brick itself and grows a serving of cherry
+  tomatoes from it in 10 hours of daylight (light 3), wearing 8 a batch. (The indoor `planter` from the
+  warmth-sound-water decision grows the same cherry tomatoes by watering and sun instead; the raised bed
+  is the machine that grows them from compost.) Cherry tomatoes are food, and eating them leaves a scrap. The
+  loop leaks: 3 scraps make 1 brick, which makes 1 serving, which leaves 1 scrap. So 3 meals give 4.5 in
   all, and the chain needs bought meals, his walks and spare parts to keep going.
 - **His inventions join a chain** through `Design.runs`, the recipes a viewable invention runs. The
   inventor's schema and the workbench's `build` list them with their inputs and outputs. New recipes
@@ -73,7 +75,7 @@ quarter of that): the coder's brief went from 7,650 to 8,293 (+643, about 160 to
 inventor's design ask gained about 270 (the `runs` hint with the recipes), and the system prompt about
 260 (the two verbs' phrases, the skill, the code line). Before he owns a machine, a decision's activities
 gain about 95 (tend and repair, locked). The scripted baseline (`BedroomPolicy`) now eats what he grew
-before meals, fills a machine once he has a batch's worth of scraps, takes out tomatoes, and mends a
+before meals, fills a machine once he has a batch's worth of scraps, takes out the tomatoes, and mends a
 machine only once it has jammed.
 
 **Not done.** Recipes he invents, which would need an accounting of what an input is worth; machines

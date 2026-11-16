@@ -670,6 +670,69 @@
         }
       ]
     },
+    "sound": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "hear": {
+              "type": "number"
+            },
+            "full": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "sleep": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "cold": {
+              "type": "number"
+            },
+            "noisy": {
+              "type": "number"
+            },
+            "rest": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "growing": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "sun": {
+              "type": "number"
+            },
+            "soil": {
+              "type": "number"
+            },
+            "dries_per_hour": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "machines": {
       "anyOf": [
         {

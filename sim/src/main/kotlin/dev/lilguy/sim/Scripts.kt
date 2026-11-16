@@ -91,6 +91,11 @@ interface ScriptWorld {
     fun transfer(from: String, to: String, item: String, n: Int): Int = throw ScriptProblem("nothing moves here")
     /** Sells [n] of something of his that sells; the dollars it fetched. */
     fun sell(id: String, n: Int): Int = throw ScriptProblem("nothing sells here")
+    // Effects with reach ([Surroundings]).
+    /** [kind] (light, warmth, sound, water, or a visitor's lure) at [spot]: a spot, a thing of his, or `self`. */
+    fun field(spot: String, kind: String): Double = throw ScriptProblem("there are no effects here")
+    /** Has thing [id] give off [kind] ([strength] on its tile, reaching [radius]) until changed; 0 stops it. Returns the strength. */
+    fun emit(id: String, kind: String, strength: Double, radius: Double): Double = throw ScriptProblem("nothing gives anything off here")
 }
 
 /** A bad call from his code, in words he can act on; his script sees it as an `Error`. */
@@ -149,6 +154,8 @@ object ScriptApi {
         Fn("show", "world.show(id, variant)", "shows one of the variants your invention was designed with; null for its own look", true) { w, a -> w.show(a.str(0, "id"), a.optStr(1)) },
         Fn("motion", "world.motion(id, part, kind, speed)", "moves a named part of your invention: kind is ${Machines.MOTIONS.joinToString()}; speed 0.1 to ${Machines.MAX_SPEED.toInt()} (1 is gentle); null kind or speed 0 stops it", true) { w, a -> w.motion(a.str(0, "id"), a.str(1, "part"), a.optStr(2), a.optNum(3) ?: 1.0) },
         Fn("readout", "world.readout(id, text)", "a short label (up to ${Machines.READOUT} characters) floating over a thing of yours, like \"62%\" or \"watering\"; null clears it", true) { w, a -> w.readout(a.str(0, "id"), a.optStr(1)) },
+        Fn("field", "world.field(spot, kind)", "how much of an effect there is at a spot (a spot name, a thing of yours, or \"self\"): kind is light (0 to 10), warmth (degrees), sound (0 to 10), water (rain and spray, 0 to 10), or a visitor like birds (what draws them there)", false) { w, a -> w.field(a.str(0, "spot"), a.str(1, "kind")) },
+        Fn("emit", "world.emit(id, kind, strength, radius)", "has a thing of yours give off light, warmth (degrees), sound or water: strength on its own tile, fading to nothing a tile past radius (0 to ${Surroundings.MOST_RADIUS.toInt()}); it lasts until you change it, and strength 0 stops it. What it gives off is real: light lets you see and work, warmth keeps off the cold, sound is heard (and keeps you awake), water waters a planter", true) { w, a -> w.emit(a.str(0, "id"), a.str(1, "kind"), a.num(2, "strength"), a.num(3, "radius")) },
         Fn("after", "world.after(minutes, key, id)", "in that many game minutes (1 to ${Machines.MOST_TIMER}), runs onTimer(world, thing, key) of a thing of yours (id; this thing when left out); the same key again resets it", true) { w, a -> w.after(a.int(0, "minutes"), a.str(1, "key"), a.optStr(2)) },
         // Machines: what they take and make.
         Fn("machine", "world.machine(id)", "a machine of yours: { runs: [{ id, takes, makes, hours, needs }], holds, in, out, wear (0 to 100; it slows past ${MachineRules().slowAt.toInt()} and jams at 100), broken, making, done (%), stuck }", false) { w, a -> w.machine(a.str(0, "id")) },

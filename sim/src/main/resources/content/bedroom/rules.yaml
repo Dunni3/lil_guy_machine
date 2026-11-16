@@ -169,6 +169,30 @@ light:
   # switched it on or off. Across midnight when off is earlier.
   timer: { on: "18:00", off: "00:00" }
 
+# Sound, from 0 to 10, carries through walls muffled (a wall lets a third through) and out of a room.
+# He hears it at `hear` or more; music lifts his mood in full where it's `full` loud, less where it's
+# fainter, and not at all where he can't hear it. Something nice he can hear (a chime) counts toward
+# comfort as if he could see it.
+sound:
+  hear: 1
+  full: 4
+
+# Asleep where it's colder than `cold` degrees (the warmth on the bed's tile) or `noisy` loud or more,
+# energy comes back at `rest` of the rate. A heater by the bed keeps a cold night out.
+sleep:
+  cold: 16
+  noisy: 2
+  rest: 0.8
+
+# A planter (items.yaml `grows`) grows an hour toward its harvest for each hour its soil is damp and the
+# sun on it (daylight and the windows' share; lamps don't count) is `sun` or more: by the window or
+# outdoors on a clear day, not in a dim corner. Soil holds `soil` of water, loses `dries_per_hour`, and
+# gets the rain (and any spray) on its tile each hour; watering fills it.
+growing:
+  sun: 7
+  soil: 10
+  dries_per_hour: 0.4
+
 # Samples he keeps are his collection, on a shelf in his room: each kind he has adds comfort, up to `max` kinds.
 collection:
   comfort_each: 2
@@ -193,7 +217,7 @@ letters:
 # Machines (sim/.../Works.kt; docs/decisions/2026-11-15-machines-are-fed-and-wear-out-instead-of-uncapped.md):
 # what a machine makes is a recipe, a batch that takes its inputs and, after `hours` of working, makes
 # its outputs. Nothing comes from nothing: a machine only works while it has what a batch takes, room
-# for what it makes (`holds` of each), and the effects it `needs` at its tile (a planter grows by
+# for what it makes (`holds` of each), and the effects it `needs` at its tile (a raised bed grows by
 # daylight). A machine takes what it needs from what another made within `reach` tiles in the same
 # place; anything else he carries over (the `tend` verb). Each batch wears it (`wear_per_batch`, or
 # the item's `wear`), and each run of a thing's code that changes something wears that thing
@@ -208,4 +232,4 @@ machines:
   repair: { restores: 45, per_level: 25, skill: tinkering, worn_at: 25 }
   recipes:
     - { id: compost, says: composting, takes: { food_scrap: 3 }, makes: { compost_brick: 1 }, hours: 6 }
-    - { id: grow, says: growing, takes: { compost_brick: 1 }, makes: { tomato: 1 }, hours: 10, needs: { light: 3 } }
+    - { id: grow, says: growing, takes: { compost_brick: 1 }, makes: { cherry_tomatoes: 1 }, hours: 10, needs: { light: 3 } }

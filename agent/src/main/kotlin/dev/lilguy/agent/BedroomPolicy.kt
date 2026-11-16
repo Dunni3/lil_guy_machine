@@ -8,6 +8,7 @@ import dev.lilguy.decision.DecisionRequest
 import dev.lilguy.decision.Usage
 import dev.lilguy.sim.GameClock
 import dev.lilguy.sim.Intent
+import dev.lilguy.sim.Target
 import dev.lilguy.sim.Observation
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
@@ -23,7 +24,7 @@ import kotlin.time.TimeSource
  * [thinkTime] fakes model latency for watched runs; tests and the CLI use zero. [script] is a dev aid
  * for screenshots (LILGUY_SCRIPT): verbs done first, in order, each skipped if it's locked when its
  * turn comes; `put:<thing>:<spot>` puts a thing there instead, skipped unless `put` offers both. `verb@thing` does it on that thing
- * (`explore@garden_bench`).
+ * (`explore@garden_bench`). `go:<place>` walks there; `until:HH:MM` (or `until:2/HH:MM`, on day 2) waits until then.
  */
 class BedroomPolicy(
     private val thinkTime: Duration = Duration.ZERO,
@@ -50,7 +51,9 @@ class BedroomPolicy(
         val activities = obs.activities.orEmpty()
         val can = activities.filter { it.locked == null }.map { it.id }.toSet()
         while (script.isNotEmpty()) {
+            scripted(obs)?.let { return it }
             val verb = script.removeFirst()
+            if (verb.startsWith("until:") || verb.startsWith("go:")) continue
             val on = verb.substringAfter('@', "").ifEmpty { null }
             if (verb.substringBefore('@') in can) return Intent.Do(verb.substringBefore('@'), on = on) to "Scripted: $verb."
             val put = verb.split(':').takeIf { it.size == 3 && it[0] == "put" } ?: continue
@@ -118,6 +121,22 @@ class BedroomPolicy(
     private fun eat(activities: List<dev.lilguy.sim.ActivityOption>): Intent =
         Intent.Do("eat", what = activities.firstOrNull { it.id == "eat" && it.locked == null && it.what != null && it.what != "meal" }?.what)
 
+    /** The script's `go:` and `until:` at its head: a walk or a wait, or null when it's done (the caller drops it) or isn't one. */
+    private fun scripted(obs: Observation): Pair<Intent, String>? {
+        val head = script.first()
+        if (head.startsWith("go:")) {
+            val place = obs.places.orEmpty().firstOrNull { it.id == head.removePrefix("go:") } ?: return null
+            script.removeFirst()
+            return Intent.MoveTo(Target.Place(place.id)) to "Scripted: go to ${place.name}."
+        }
+        if (!head.startsWith("until:")) return null
+        val (day, time) = head.removePrefix("until:").let { if ('/' in it) it.substringBefore('/').toInt() to it.substringAfter('/') else null to it }
+        val clock = obs.clock ?: return null
+        val now = (clock.day - 1L) * GameClock.MINUTES_PER_DAY + GameClock.parseHhmm(clock.time)
+        val target = ((day ?: clock.day) - 1L) * GameClock.MINUTES_PER_DAY + GameClock.parseHhmm(time)
+        return if (now < target) Intent.Wait(BedroomPrompt.WAIT_TICKS) to "Scripted: wait until $head." else null
+    }
+
     /** Game minutes at his last check of the station. */
     private var checked: Long? = null
     private val lookedRound = mutableSetOf<String>()
@@ -155,7 +174,7 @@ class BedroomPolicy(
         const val CHECK_HOURS = 8
         /** Scraps worth a walk to the compost bin: a batch's. */
         const val SCRAPS = 3
-        val TOMATOES = Regex("""take out \d+ tomato""")
+        val TOMATOES = Regex("""take out \d+ [a-z ]*tomato""")
         /** How many packs of meals' worth of cash and art to earn before stopping. */
         const val RESERVE_PACKS = 1
         val DOLLARS = Regex("""\$(\d+) for""")

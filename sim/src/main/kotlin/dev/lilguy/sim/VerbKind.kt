@@ -36,8 +36,8 @@ enum class VerbKind(
     @SerialName("generative")
     Generative(
         "generative", "turns time (and maybe items it uses up) into a new item",
-        allowed = setOf("need", "rate", "consume", "produce", "draw", "practice", "build", "write", "gather"),
-        required = listOf(setOf("produce", "build", "gather")),
+        allowed = setOf("need", "rate", "consume", "produce", "draw", "practice", "build", "write", "gather", "harvest"),
+        required = listOf(setOf("produce", "build", "gather", "harvest")),
     ),
 
     /** Working through a book or practising: raises a skill, and may teach him things. */
@@ -48,12 +48,12 @@ enum class VerbKind(
         required = listOf(setOf("progress", "practice", "survey")),
     ),
 
-    /** Changing the state of an item he has: hanging a piece, switching a lamp. */
+    /** Changing the state of an item he has: hanging a piece, switching a lamp, watering a planter. */
     @SerialName("transformative")
     Transformative(
         "transformative", "changes the state of an item he has",
-        allowed = setOf("need", "rate", "set_state", "place_room", "switch"),
-        required = listOf(setOf("set_state", "place_room", "switch")),
+        allowed = setOf("need", "rate", "set_state", "place_room", "switch", "water"),
+        required = listOf(setOf("set_state", "place_room", "switch", "water")),
     ),
 
     /** Writing something that persists: a thought, later letters. */
@@ -81,12 +81,12 @@ enum class VerbKind(
         routine = true,
     ),
 
-    /** Looking at something and taking in what it shows: reading a recorder's log. */
+    /** Looking at something and taking in what it shows: reading a recorder's log, watching the birds at a feeder. */
     @SerialName("perceptual")
     Perceptual(
         "perceptual", "he looks at something and takes in what it shows",
-        allowed = setOf("need", "rate", "read_log", "write"),
-        required = listOf(setOf("read_log")),
+        allowed = setOf("need", "rate", "read_log", "write", "watch", "practice"),
+        required = listOf(setOf("read_log", "watch")),
     ),
 
     /** Looking after a machine: filling it, emptying it, mending it ([Works]). */

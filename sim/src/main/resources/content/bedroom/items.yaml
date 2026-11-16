@@ -21,7 +21,8 @@ items:
   # Painting is learned: drawing_book teaches paint, the easel and canvas (library.yaml).
   - { id: canvas, name: canvas, group: supply, price: 15, stackable: true }
   - { id: easel, name: easel, group: furniture, slot: easel, blocks: true, price: 17 }
-  - { id: record_player, name: record player, group: furniture, slot: shelf, blocks: true, price: 150 }
+  # It's heard while a record plays on it (rules.yaml `sound`): through the bedroom wall, muffled, it carries to the garden.
+  - { id: record_player, name: record player, group: furniture, slot: shelf, blocks: true, price: 150, sound: { strength: 8, radius: 21, playing: true } }
   - { id: jazz_record, name: jazz record, group: record, affords: { playable: {} }, qualities: { lively: 2, warm: 1 }, price: 20 }
   - { id: ambient_record, name: ambient record, group: record, affords: { playable: {} }, qualities: { calm: 2, strange: 1 }, price: 20 }
   - { id: folk_record, name: folk record, group: record, affords: { playable: {} }, qualities: { warm: 2, natural: 1 }, price: 20 }
@@ -42,7 +43,8 @@ items:
   - { id: moss_patch, name: mossy stones, group: fixture, slot: moss_patch, affords: { forageable: {} } }
   - { id: fern_patch, name: blue ferns, group: fixture, slot: fern_patch, affords: { forageable: {} } }
   - { id: beetle_log, name: rotting log with beetles, group: fixture, slot: beetle_log, affords: { forageable: {} } }
-  - { id: pond_patch, name: reeds at the pond, group: fixture, slot: pond_patch, affords: { forageable: {} } }
+  # Fireflies come to the reeds on warm evenings (world.yaml `visitors`).
+  - { id: pond_patch, name: reeds at the pond, group: fixture, slot: pond_patch, affords: { forageable: {}, lure: {} }, lure: { draws: fireflies, strength: 3, radius: 3 } }
   - { id: seedpod_bush, name: seed-pod bush, group: fixture, slot: seedpod_bush, affords: { forageable: {} } }
   # Samples he collects: kept, they're his collection (rules.yaml `collection`); studied at the
   # microscope they raise nature; sold at the hatch for their `specimen` price (sell_art leaves them).
@@ -69,17 +71,32 @@ items:
   - { id: weather_station, name: weather station, group: gadget, slot: by_garden_bench, blocks: true, price: 40, affords: { recorder: {} } }
   # Machines (rules.yaml `machines`): each runs recipes, holds what it takes and what it made, wears
   # with each batch (`wear`) and jams at 100 until it's mended (verbs.yaml `tend`, `repair`). The
-  # compost bin turns the scraps left from his meals into compost; the planter beside it, within
-  # reach, takes the compost itself and grows a tomato from each by daylight. He carries the scraps
-  # over and the tomatoes in.
+  # compost bin turns the scraps left from his meals into compost; the raised bed beside it, within
+  # reach, takes the compost itself and grows cherry tomatoes from each by daylight. He carries the
+  # scraps over and the tomatoes in. (The planter indoors grows by watering instead: rules.yaml `growing`.)
   - { id: compost_bin, name: compost bin, group: gadget, slot: compost_corner, blocks: true, price: 25, machine: { runs: [compost], holds: 6, wear: 15 } }
-  - { id: planter, name: planter, group: gadget, slot: garden_bed, blocks: true, price: 20, qualities: { natural: 1 }, machine: { runs: [grow], holds: 3, wear: 8 } }
-  # What eating leaves, what the bin makes of it, and what the planter grows.
+  - { id: raised_bed, name: raised bed, group: gadget, slot: garden_bed, blocks: true, price: 20, qualities: { natural: 1 }, machine: { runs: [grow], holds: 3, wear: 8 } }
+  # What eating leaves and what the bin makes of it (the raised bed grows cherry tomatoes, below).
   - { id: food_scrap, name: food scrap, group: scrap, stackable: true }
   - { id: compost_brick, name: compost brick, group: scrap, stackable: true }
-  - { id: tomato, name: tomato, group: food, affords: { edible: {} }, qualities: { natural: 1, bright: 1 }, stackable: true }
   # What mending a machine uses up.
   - { id: spare_parts, name: spare part, group: supply, price: 8, pack: 2, stackable: true }
+  # Warmth, sound, growing things and visitors (rules.yaml `sleep`, `sound`, `growing`; world.yaml `visitors`).
+  # `warmth: { strength, radius }` adds degrees round it; on a thing that stands nowhere (the blanket), round
+  # him out of doors. `sound` is heard round it. `lure` draws a visitor. `grows`: what a planter grows.
+  - { id: heater, name: heater, group: furniture, slot: heater, blocks: true, price: 45, qualities: { warm: 2, cozy: 1 }, warmth: { strength: 6, radius: 4 } }
+  - { id: fire_pit, name: fire pit, group: furniture, slot: fire_ring, blocks: true, price: 55, qualities: { warm: 2, cozy: 2, lively: 1 }, warmth: { strength: 12, radius: 3 }, light: { strength: 4.5, radius: 3 } }
+  - { id: blanket, name: blanket, group: tool, price: 14, warmth: { strength: 4, radius: 0 } }
+  - { id: wind_chime, name: wind chime, group: decor, slot: porch_hook, blocks: true, price: 18, affords: { viewable: {} }, qualities: { calm: 2, pretty: 1 }, sound: { strength: 2.5, radius: 5 } }
+  - { id: bird_feeder, name: bird feeder, group: gadget, slot: feeder_post, blocks: true, price: 22, affords: { lure: {} }, qualities: { natural: 1, lively: 1 }, lure: { draws: birds, strength: 3, radius: 3 } }
+  # A lamp on its timer like the others: switched off, it draws no moths (world.yaml `visitors` need its light).
+  - { id: moth_lamp, name: porch lantern, group: gadget, slot: porch_lamp, blocks: true, price: 30, affords: { lure: {}, lamp: {} }, qualities: { warm: 1, strange: 1 }, light: { strength: 4, radius: 3, timer: { on: "19:00", off: "02:00" } }, lure: { draws: moths, strength: 3, radius: 3 } }
+  - { id: watering_can, name: watering can, group: tool, price: 8 }
+  - { id: planter, name: planter, group: furniture, slot: planter, blocks: true, price: 20, affords: { growable: {} }, qualities: { natural: 2 }, grows: { yields: cherry_tomatoes, hours: 10, count: 3 } }
+  - { id: cherry_tomatoes, name: cherry tomatoes, group: produce, affords: { edible: {} }, qualities: { natural: 1, bright: 1 }, stackable: true }
+  - { id: feather, name: feather, group: sample, affords: { specimen: { price: 3 } }, qualities: { soft: 2, pretty: 1 }, stackable: true }
+  - { id: silver_moth, name: silver moth, group: sample, affords: { specimen: { price: 7 } }, qualities: { strange: 2, pretty: 1 }, stackable: true }
+  - { id: firefly_jar, name: jar of fireflies, group: sample, affords: { specimen: { price: 5 } }, qualities: { bright: 2, strange: 1 }, stackable: true }
   # Where samples are studied (verbs.yaml `study_sample`).
   - { id: microscope, name: microscope, group: furniture, slot: microscope, blocks: true, price: 35 }
   # Taught by music_book.

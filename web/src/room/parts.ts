@@ -156,6 +156,9 @@ export class Models {
     if (made && made.look.length > 0) return this.cached(`invented/${id}/${variant ?? ""}`, () => lookParts(made, variantLook(made, variant)));
     const bare = state === "bare" ? parts.clay_items[`${id}_bare`] : undefined;
     if (bare) return this.cached(`${kind}/${id}_bare`, () => bare);
+    // Visitors round a thing that draws them, or a planter that's ripe: a look of its own, built once.
+    const look = state === "visited" || state === "ripe" ? parts.clay_items[`${id}_${state}`] : undefined;
+    if (look) return this.cached(`${kind}/${id}_${state}`, () => look);
     return this.cached(`${kind}/${id}`, () => parts.clay_items[id] ?? parts.items[id] ?? parts.kinds[kind] ?? parts.kinds["*"]);
   }
 

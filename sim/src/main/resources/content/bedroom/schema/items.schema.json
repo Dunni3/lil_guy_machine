@@ -62,7 +62,9 @@
                 "buildable",
                 "site",
                 "recorder",
-                "lamp"
+                "lamp",
+                "lure",
+                "growable"
               ]
             },
             "additionalProperties": {
@@ -219,6 +221,108 @@
                     ]
                   }
                 },
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "warmth": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "strength": {
+                    "type": "number"
+                  },
+                  "radius": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "strength",
+                  "radius"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sound": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "strength": {
+                    "type": "number"
+                  },
+                  "radius": {
+                    "type": "number"
+                  },
+                  "playing": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "strength",
+                  "radius"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lure": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "draws": {
+                    "type": "string"
+                  },
+                  "strength": {
+                    "type": "number"
+                  },
+                  "radius": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "draws",
+                  "strength",
+                  "radius"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "grows": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "yields": {
+                    "type": "string"
+                  },
+                  "hours": {
+                    "type": "integer"
+                  },
+                  "count": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "yields",
+                  "hours"
+                ],
                 "additionalProperties": false
               },
               {

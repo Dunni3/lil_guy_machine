@@ -26,24 +26,24 @@ class WorksTest {
     private fun BedroomWorld.open(verb: String, on: String) = observe(agentId).activities!!.any { it.id == verb && it.on == on && it.locked == null }
 
     @Test
-    fun `scraps from a meal become compost, the planter beside the bin takes it and grows a tomato, and the bin wears, jams and is mended`() {
-        val w = BedroomWorld.create(content("compost_bin" to 1, "planter" to 1, "food_scrap" to 20, "spare_parts" to 1, "meal" to 1))
+    fun `scraps from a meal become compost, the raised bed beside the bin takes it and grows tomatoes, and the bin wears, jams and is mended`() {
+        val w = BedroomWorld.create(content("compost_bin" to 1, "raised_bed" to 1, "food_scrap" to 20, "spare_parts" to 1, "meal" to 1))
         w.done(Intent.Do("eat", what = "meal"))
         assertEquals(21, w.count("food_scrap"), "eating leaves a scrap")
 
-        // He carries the scraps over; the bin works through them, and the planter within reach takes what it makes.
+        // He carries the scraps over; the bin works through them, and the raised bed within reach takes what it makes.
         var hours = 0
         while (!w.store("compost_bin").broken && hours < 200) {
             if (w.open("tend", "compost_bin") && w.count("food_scrap") >= 3) w.done(Intent.Do("tend", on = "compost_bin"))
-            if (w.open("tend", "planter") && "take out" in w.observe(w.agentId).activities!!.first { it.id == "tend" && it.on == "planter" }.gives.orEmpty()) w.done(Intent.Do("tend", on = "planter"))
+            if (w.open("tend", "raised_bed") && "take out" in w.observe(w.agentId).activities!!.first { it.id == "tend" && it.on == "raised_bed" }.gives.orEmpty()) w.done(Intent.Do("tend", on = "raised_bed"))
             repeat(3) { w.finish(Intent.Wait(GridWorld.MAX_WAIT)) }
             hours += 2
         }
         val bin = w.store("compost_bin")
         assertTrue(bin.broken, "the bin jams after enough batches: $bin")
-        assertTrue(w.count("tomato") >= 1, "the planter grew food from the bin's compost: ${w.exportState().works}")
+        assertTrue(w.count("cherry_tomatoes") >= 1, "the raised bed grew food from the bin's compost: ${w.exportState().works}")
         val log = w.snapshot().events.joinToString("\n") { it.text }
-        assertTrue("the planter took 1 compost brick from the compost bin" in log && "jammed and needs repairing" in log, log)
+        assertTrue("the raised bed took 1 compost brick from the compost bin" in log && "jammed and needs repairing" in log, log)
         val entity = w.snapshot().entities.first { it.id.value == "compost_bin" }
         assertEquals("jammed", entity.readout)
 

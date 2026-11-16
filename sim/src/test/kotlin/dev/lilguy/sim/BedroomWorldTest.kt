@@ -14,7 +14,9 @@ class BedroomWorldTest {
         "canvas", "easel", "record_player", "jazz_record", "ambient_record", "folk_record", "novel", "poetry_book",
         "field_guide", "painting", "paint", "read", "listen", "play_record",
         "drawing_book", "music_book", "guitar", "play_guitar", "build_room", "microscope", "study_sample", "weather_station", "check_station",
-        "compost_bin", "planter", "spare_parts", "tend", "repair",
+        "compost_bin", "raised_bed", "spare_parts", "tend", "repair",
+        "drawing_book", "music_book", "guitar", "play_guitar", "build_room", "microscope", "study_sample", "weather_station", "check_station", "watch", "water_plant", "harvest",
+        "heater", "fire_pit", "blanket", "bird_feeder", "moth_lamp", "watering_can", "planter",
     ) + BedroomContent.default().items.filter { it.group == "decor" || it.group == "room" || (it.group == "food" && it.id !in setOf("meal", "oats")) }.map { it.id }
     /** Books here teach nothing, so painting and the guitar are there from the start; [shipped] is the file as it is. */
     private val content = BedroomContent.default().let { c ->
@@ -411,7 +413,7 @@ class BedroomWorldTest {
         assertTrue("isn't in vocabulary.qualities" in broken(withItem("rug") { it.copy(qualities = mapOf("shiny" to 1.0)) }))
         assertTrue("isn't in vocabulary.affords" in broken(withItem("novel") { it.copy(affords = mapOf("edible?" to AffordanceParams())) }))
         assertEquals("item sketch, sellable: needs price from 1 to 10000", broken(withItem("sketch") { it.copy(affords = it.affords + ("sellable" to AffordanceParams())) }))
-        assertEquals("verb read: a generative verb needs produce or build or gather; a generative verb can't progress; a generative verb can't enjoy", broken(withActivity("read") { it.copy(kind = VerbKind.Generative) }))
+        assertEquals("verb read: a generative verb needs produce or build or gather or harvest; a generative verb can't progress; a generative verb can't enjoy", broken(withActivity("read") { it.copy(kind = VerbKind.Generative) }))
         assertEquals("verb listen: a consumptive verb needs an affordance in requires, args or a consume, or a hear", broken(withActivity("listen") { it.copy(requires = listOf("record_player"), effects = it.effects.drop(1)) }))
         // Kinds list what they allow: an op no kind lists for it is refused.
         assertEquals("verb think: an expressive verb can't produce", broken(withActivity("think") { it.copy(effects = it.effects + ProduceOp(mapOf("sketch" to 1))) }))
