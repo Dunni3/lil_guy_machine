@@ -26,6 +26,8 @@ export interface Part {
   arc?: number;
   glow?: number;
   opacity?: number;
+  /** What an invented part is made of (wood, metal, copper_wire, glass), drawn by [ClayRenderer]; absent for the room's own furniture. */
+  material?: string;
 }
 
 /** A soft edge where a part doesn't say: a bit rounder than crayon's, as clay is. */

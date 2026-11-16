@@ -2630,7 +2630,9 @@ class BedroomWorld private constructor(
     private fun usesOf(spec: ItemSpec): List<VerbSpec> = memo?.uses?.getOrPut(spec.id) { findUses(spec) } ?: findUses(spec)
 
     private fun findUses(spec: ItemSpec): List<VerbSpec> = content.verbs.filter { a ->
-        isKnown(a.id) && (spec.id in a.at || (a.requires + a.effects.flatMap { it.asksFor } + a.args.values).any { it in spec.names })
+        isKnown(a.id) && (spec.id in a.at || (a.requires + a.effects.flatMap { it.asksFor } + a.args.values).any { it in spec.names } ||
+            // A material is for building: the shop holds it back until he has a workbench, and says it's for invent.
+            (content.invent?.materials?.containsKey(spec.id) == true && a.ops<BuildOp>().isNotEmpty()))
     }.filterNot { a ->
         a.args.isNotEmpty() && a.args.values.all { it in spec.names } &&
             a.effects.any { it.lockReason(ops, Bound(a, a.args.mapValues { spec.id }, 1.0, extra = spec.id)) != null }
@@ -2686,7 +2688,6 @@ class BedroomWorld private constructor(
         spec.light?.let { parts += "gives light ${Lighting.level(it.strength)}, reaching ${Lighting.level(it.radius)} tiles" + if (LAMP in spec.affords) ", on a timer (lit ${timerOf(spec).text}) you can switch" else "" }
         newThingRate(spec).takeIf { it > 0 }?.let { parts += "new to you: ${newThingText(it)}" }
         if (spec.qualities.isNotEmpty()) parts += spec.qualities.keys.joinToString(", ")
-        content.invent?.materials?.get(spec.id)?.let { m -> parts += "a material for invent: ${m.what}" + if (count(spec.id) > 0) " (you have ${count(spec.id)})" else "" }
         // What owning it opens up: items the shop holds back until he has this.
         shopItems().filter { other -> other.id != spec.id && heldBack(other) != null && usesOf(other).any { a -> placesOf(a).any { it in spec.names } } }
             .map { "${article(it.name)} ($${it.price})" }.filter { o -> parts.none { o in it } }
