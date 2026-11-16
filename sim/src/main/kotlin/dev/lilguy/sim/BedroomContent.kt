@@ -664,6 +664,7 @@ object Affordance {
     val PARAMS: Map<String, Map<String, IntRange>> = mapOf(
         "sellable" to mapOf("price" to 1..10_000),
         "specimen" to mapOf("price" to 1..10_000),
+        "ware" to mapOf("price" to 1..10_000),
         "drawable" to mapOf("size" to 4..64, "colors" to 2..32, "strokes" to 1..100),
     )
 
@@ -749,7 +750,7 @@ data class ItemSpec(
     @Transient val names: Set<String> = setOf(id) + affords.keys + listOfNotNull(Works.MACHINE.takeIf { machine != null })
 
     /** What one sells for, when it's `sellable`, before any skill raises it. */
-    val sellPrice: Int? get() = affords["sellable"]?.price ?: affords["specimen"]?.price
+    val sellPrice: Int? get() = affords["sellable"]?.price ?: affords["specimen"]?.price ?: affords["ware"]?.price
 
     /** The skill its price grows with, if any. */
     val sellSkill: String? get() = affords["sellable"]?.skill

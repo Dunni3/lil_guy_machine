@@ -35,7 +35,7 @@ object ClayParts {
         "bed", "desk", "chair", "easel", "record_player", "plant", "rug", "mail_hatch", "picture_rail", "poster",
         "lava_lamp", "mushroom_lamp", "string_lights", "cloud_light",
         "microscope", "garden_bench", "forest_trail", "clearing_log", "pond_edge",
-        "lab_bench", "lab_shelf", "armchair", "floor_lamp", "weather_station", "compost_bin", "raised_bed",
+        "lab_bench", "lab_shelf", "armchair", "floor_lamp", "weather_station", "compost_bin", "raised_bed", "kiln",
         "heater", "fire_pit", "wind_chime", "bird_feeder", "moth_lamp", "planter",
     ) + PATCHES.flatMap { listOf(it, "${it}_bare") } + LOOKS
 
@@ -71,6 +71,7 @@ object ClayParts {
             "weather_station" -> weatherStation()
             "compost_bin" -> compostBin()
             "raised_bed" -> raisedBed()
+            "kiln" -> kiln()
             "heater" -> heater()
             "fire_pit" -> firePit()
             "wind_chime" -> windChime()
@@ -390,6 +391,14 @@ object ClayParts {
         box(WOOD_D, -0.2f, 0.55f, 0f, 0.28f, 0.04f, 0.05f, round = 0.015f)
         cylinder(LENS, -0.32f, 0.57f, 0f, 0.09f, 0.2f, 0.09f, opacity = 0.7f)
         cylinder(BLANKET, -0.32f, 0.58f, 0f, 0.07f, 0.06f, 0.07f)
+    }
+
+    /** A squat brick kiln: a dome on a plinth, a glowing mouth and a stubby chimney. */
+    private fun PartList.kiln() {
+        box("#9c6b52", 0f, 0f, 0f, 0.82f, 0.16f, 0.74f, round = 0.03f)
+        dome("#b5785a", 0f, 0.16f, 0f, 0.7f, 0.62f, 0.62f)
+        dome("#ff9a5c", 0f, 0.16f, 0.27f, 0.24f, 0.22f, 0.1f, glow = 0.8f)
+        cylinder("#8a5c46", 0.18f, 0.6f, -0.12f, 0.12f, 0.32f, 0.12f, round = 0.02f)
     }
 
     /** A slatted wooden bin with a lid propped open and a heap of compost showing. */

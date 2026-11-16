@@ -81,6 +81,13 @@ items:
   - { id: compost_brick, name: compost brick, group: scrap, stackable: true }
   # What mending a machine uses up.
   - { id: spare_parts, name: spare part, group: supply, price: 8, pack: 2, stackable: true }
+  # The machine that pays (docs/decisions/2026-11-15-art-gets-him-by-machines-get-him-ahead.md): the kiln
+  # by the front door fires bought clay into pots, which sell at the hatch for far more than the clay
+  # cost (verbs.yaml `sell_wares`). Art keeps him fed; a kiln, or more than one, or one he invents that
+  # runs the same recipe, is how he gets ahead. It only pays while he keeps it fed, empties it and mends it.
+  - { id: kiln, name: kiln, group: gadget, slot: kiln_pad, blocks: true, price: 60, qualities: { warm: 1 }, machine: { runs: [fire], holds: 6, wear: 8 } }
+  - { id: clay, name: clay, group: supply, price: 6, pack: 4, stackable: true }
+  - { id: clay_pot, name: clay pot, group: ware, affords: { ware: { price: 20 } }, stackable: true }
   # Warmth, sound, growing things and visitors (rules.yaml `sleep`, `sound`, `growing`; world.yaml `visitors`).
   # `warmth: { strength, radius }` adds degrees round it; on a thing that stands nowhere (the blanket), round
   # him out of doors. `sound` is heard round it. `lure` draws a visitor. `grows`: what a planter grows.
@@ -171,7 +178,7 @@ items:
     carried: true
     stackable: true
     affords:
-      sellable: { price: 5, skill: art, price_per_level: 3 }
+      sellable: { price: 4, skill: art, price_per_level: 1 }
       hangable: {}
       viewable: {}
       drawable: { size: 16, colors: 4, strokes: 6, skill: art, strokes_per_level: 2, max_strokes: 16 }
@@ -181,7 +188,7 @@ items:
     carried: true
     stackable: true
     affords:
-      sellable: { price: 40, skill: art, price_per_level: 12 }
+      sellable: { price: 25, skill: art, price_per_level: 4 }
       hangable: {}
       viewable: {}
       drawable: { size: 32, colors: 16, strokes: 12, skill: art, strokes_per_level: 3, max_strokes: 30 }

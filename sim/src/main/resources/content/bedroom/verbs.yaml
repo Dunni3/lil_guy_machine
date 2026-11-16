@@ -379,6 +379,14 @@ verbs:
     effects:
       - practice: { nature: 0.2 }
       - need: { energy: -2, mood: 2, stimulation: 6 }
+  - id: sell_wares
+    kind: economic
+    phrase: sell what your machines made
+    args: { what: ware }
+    at: [mail_hatch]
+    minutes: 1
+    effects:
+      - sell: what
   - id: sell_sample
     kind: economic
     phrase: sell samples

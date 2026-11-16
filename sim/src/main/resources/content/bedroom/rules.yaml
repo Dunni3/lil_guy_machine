@@ -128,7 +128,7 @@ reflection:
 # earns `reward` on top of its price.
 commissions:
   arrive: "09:00"
-  reward: 20
+  reward: 5
   adjectives: [sleepy, stormy, tiny, golden, lonely, cheerful, ancient, frozen, glowing, secret, upside-down, rainy, busy, quiet, wild, striped]
   nouns: [lighthouse, cat, mountain, teapot, garden, whale, rocket, fox, castle, bicycle, moon, sailboat, owl, cactus, bridge, forest]
 
@@ -233,3 +233,5 @@ machines:
   recipes:
     - { id: compost, says: composting, takes: { food_scrap: 3 }, makes: { compost_brick: 1 }, hours: 6 }
     - { id: grow, says: growing, takes: { compost_brick: 1 }, makes: { cherry_tomatoes: 1 }, hours: 10, needs: { light: 3 } }
+    # The kiln's: $3 of clay into a $20 pot.
+    - { id: fire, says: firing, takes: { clay: 2 }, makes: { clay_pot: 1 }, hours: 4 }
