@@ -203,12 +203,14 @@ class AnthropicBackend(
             if (output.isNotEmpty()) put("output_config", output)
             if (fallbacks) put("fallbacks", "default")
             if (strategy == Strategy.Tools) {
+                // The API takes at most MAX_STRICT_TOOLS strict tools a request; past that none are strict (replies are validated here anyway).
+                val strictAllowed = config.strict && tools!!.size <= MAX_STRICT_TOOLS
                 put("tools", buildJsonArray {
                     tools!!.forEach { tool ->
                         add(buildJsonObject {
                             put("name", tool.name)
                             tool.description?.let { put("description", it) }
-                            val strict = config.strict && !hasMaps(tool.parameters)
+                            val strict = strictAllowed && !hasMaps(tool.parameters)
                             put("input_schema", if (strict) strictSchema(tool.parameters) else tool.parameters)
                             if (strict) put("strict", true)
                         })
@@ -272,6 +274,8 @@ class AnthropicBackend(
     companion object {
         const val API_VERSION = "2026-10-21"
         const val DEFAULT_MAX_TOKENS = 16_000
+        /** Strict tools the API takes in one request. */
+        const val MAX_STRICT_TOOLS = 20
         private const val FALLBACK_BETA = "server-side-fallback-2026-07-01"
         private val FALLBACK_MODELS = setOf("claude-fable-5-2", "claude-fable-5-1", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5")
 
