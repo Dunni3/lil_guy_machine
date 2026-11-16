@@ -96,6 +96,8 @@ data class BedroomState(
     val works: Map<String, Store> = emptyMap(),
     /** What his code has his things give off, the planters' soil, and when visitors are back ([Surroundings]). */
     val surroundings: SurroundingsState = SurroundingsState(),
+    /** The wares selling below their usual price: kind to its demand (1 is usual) and the tick it was set ([Market]). */
+    val market: Map<String, Wear> = emptyMap(),
 ) {
     /** One thing as his code left it: its [slot], [name] and [color], each null when unchanged. */
     @Serializable

@@ -36,6 +36,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
+import kotlin.math.roundToInt
 
 /**
  * How the bedroom is put to a model: the system prompt, the action examples, the per-request
@@ -186,9 +187,14 @@ object BedroomPrompt {
             "the ${m.name} ($${m.price}) makes ${r.makes.getValue(ware.id)} ${ware.name} from $inputs in $hours, and a ${ware.name} sells for $${ware.sellPrice}"
         }
         val invent = if (content.verbs.any { v -> v.effects.any { it is BuildOp } }) " A thing you invent can run the same recipe." else ""
-        return "- Getting ahead: art keeps you fed and not much more. Machines that make things to sell earn far more: $each. " +
+        // With a market, the price is the usual one and each sale lowers the next ([dev.lilguy.sim.Market]).
+        val more = content.market?.let { m ->
+            " That's the usual price: each one sold fetches ${(m.drop * 100).roundToInt()}% less than the last, and the price recovers ${if (m.recoverPerDay == 0.5) "half" else "${(m.recoverPerDay * 100).roundToInt()}% of"} the gap a day, " +
+                "so a second machine making the same ware earns less than the first, and a different ware has its own price."
+        } ?: " Two of them make twice as much."
+        return "- Getting ahead: art keeps you fed and not much more. Machines that make things to sell earn far more: $each.$more " +
             "$tend fills one with what it takes and takes out what it made, and $sell sells what it made at the hatch. A machine only works while it has what it takes and room for what it made, " +
-            "so it pays as often as you keep it fed and empty it; it wears with every batch and jams until you ${repair ?: "mend it"}. Two of them make twice as much.$invent"
+            "so it pays as often as you keep it fed and empty it; it wears with every batch and jams until you ${repair ?: "mend it"}.$invent"
     }
 
     /** The outdoors line: exploring, collecting, regrowth and what samples are for; null without land. */

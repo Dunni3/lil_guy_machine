@@ -255,3 +255,12 @@ machines:
     - { id: grow, says: growing, takes: { compost_brick: 1 }, makes: { cherry_tomatoes: 1 }, hours: 10, needs: { light: 3 } }
     # The kiln's: $3 of clay into a $20 pot.
     - { id: fire, says: firing, takes: { clay: 2 }, makes: { clay_pot: 1 }, hours: 4 }
+
+# Wares (the ware affordance, or the ware group) sell for less the more of one kind he sells: each one
+# sold lowers what the next fetches by `drop` of its going price, never below `floor` of its usual
+# price, and the going price climbs back by `recover_per_day` of the gap a game day (sim/.../Market.kt).
+# Art and samples aren't wares. A second kiln earns less than the first; a new kind of ware pays.
+market:
+  drop: 0.06
+  recover_per_day: 0.5
+  floor: 0.25
