@@ -66,6 +66,14 @@ data class EndpointConfig(
     @SerialName("price_out") val priceOut: Double? = null,
     /** Dollars per million input tokens read from the server's prompt cache; unset, they cost [priceIn]. */
     @SerialName("price_cached") val priceCached: Double? = null,
+    /**
+     * Anthropic: past [loadedTools] tools, the rest are sent by name only (`defer_loading`) with the
+     * API's tool search, and the system prompt lists their names. Loaded: looks and the tools called
+     * most recently in the conversation.
+     */
+    @SerialName("tool_search") val toolSearch: Boolean = false,
+    /** Anthropic, with [toolSearch]: how many of a turn's acting tools stay loaded. */
+    @SerialName("loaded_tools") val loadedTools: Int = 8,
     /** TypeSafe: how many paths [BeamSearch] keeps when the options come in groups; 0 asks over the flat list. */
     val beam: Int = 3,
 ) {

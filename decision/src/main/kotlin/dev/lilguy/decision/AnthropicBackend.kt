@@ -81,11 +81,16 @@ class AnthropicBackend(
             strategy == Strategy.Tools -> schema.tools ?: error("${schema.name} can't be expressed as tools")
             else -> null
         }
+        val lookNames = own?.looks.orEmpty().map { it.name }.toSet()
+        // The same tools at every step, looks included, so the cached prefix holds while he looks and thinks.
+        val offered = if (own != null) tools!! + own.looks.map { ActionSchema.Tool(it.name, it.description, it.parameters) } else tools
+        val deferred = if (own != null) deferredOf(own, request.messages, lookNames) else emptyList()
         // System messages inside the conversation join the system prompt; the API has one, up top.
         val system = buildString {
             append(request.system)
             if (strategy == Strategy.Text) append(textInstructions(schema))
             request.messages.filter { it.role == Message.Role.System }.forEach { append("\n\n").append(it.content) }
+            if (deferred.isNotEmpty()) append("\n\nMore tools, loaded when you search for them with $SEARCH_TOOL: ${deferred.joinToString(", ")}.")
         }
         val turns = Turns()
         request.messages.filter { it.role != Message.Role.System }.forEach { turns.add(it) }
@@ -94,13 +99,11 @@ class AnthropicBackend(
         val attempts = mutableListOf<Attempt>()
         val looked = mutableListOf<Looked>()
         val musings = mutableListOf<String>()
-        val lookNames = own?.looks.orEmpty().map { it.name }.toSet()
-        // The same tools at every step, looks included, so the cached prefix holds while he looks and thinks.
-        val offered = if (own != null) tools!! + own.looks.map { ActionSchema.Tool(it.name, it.description, it.parameters) } else tools
         val optional = own?.ponder != null
         var steps = 0
         var usage = Usage()
         var failures = 0
+        var pauses = 0
         fun pondered(): Decision<A> {
             val said = musings.joinToString(" ")
             val value = schema.decode(own!!.ponder!!(said))
@@ -108,10 +111,16 @@ class AnthropicBackend(
         }
         fun failed(message: String) = DecisionFailed(message, attempts.toList(), usage, looked = looked.toList(), musings = musings.toList(), steps = steps)
         while (failures <= config.maxRetries) {
-            val response = http.post(url, body(system, schema, turns, offered, strategy), attempts, usage)
+            val response = http.post(url, body(system, schema, turns, offered, strategy, deferred.toSet()), attempts, usage)
             usage += usageOf(response)
             val content = response["content"] as? JsonArray ?: throw failed("reply has no content: ${response.toString().take(300)}")
             val stop = (response["stop_reason"] as? JsonPrimitive)?.contentOrNull
+            if (stop == "pause_turn") {
+                // A server tool (the tool search) paused the turn: send it back as it is and the model carries on.
+                if (++pauses > MAX_PAUSES) throw failed("the turn paused $pauses times")
+                turns.add("assistant", content)
+                continue
+            }
             if (stop == "refusal") {
                 val category = ((response["stop_details"] as? JsonObject)?.get("category") as? JsonPrimitive)?.contentOrNull
                 throw failed("the model declined (refusal${category?.let { ": $it" } ?: ""})")
@@ -121,7 +130,7 @@ class AnthropicBackend(
                 .trim().takeIf { it.isNotEmpty() }
             val calls = blocks.filter { typeOf(it) == "tool_use" }
             // What goes back as the assistant's turn: its content as sent (thinking blocks too), unless nothing in it can stand alone.
-            val replay = if (blocks.any { typeOf(it) == "text" || typeOf(it) == "tool_use" }) content else JsonArray(listOf(textBlock("(no reply)")))
+            val replay = if (blocks.any { typeOf(it) != "thinking" && typeOf(it) != "redacted_thinking" }) content else JsonArray(listOf(textBlock("(no reply)")))
             val acting = calls.firstOrNull { nameOf(it) !in lookNames }
             val thinking = optional && calls.isEmpty() && text != null
             if (own != null && acting == null && steps < own.maxSteps && (thinking || calls.isNotEmpty())) {
@@ -185,7 +194,21 @@ class AnthropicBackend(
         throw failed("no valid reply after ${attempts.size} tries; last: ${attempts.last().error}")
     }
 
-    private fun <A> body(system: String, schema: ActionSchema<A>, turns: Turns, tools: List<ActionSchema.Tool>?, strategy: Strategy) =
+    /**
+     * With [EndpointConfig.toolSearch], the acting tools past [EndpointConfig.loadedTools] that go by
+     * name only: all but those called most recently in [messages]. Looks always stay loaded.
+     */
+    private fun deferredOf(own: ToolSet, messages: List<Message>, lookNames: Set<String>): List<String> {
+        if (!config.toolSearch || own.tools.size <= config.loadedTools) return emptyList()
+        val acting = own.tools.map { it.name }
+        val recent = messages.mapNotNull { it.call?.name }.asReversed().distinct().filter { it in acting }
+        val loaded = recent.take(config.loadedTools).toMutableSet()
+        // The API needs one tool loaded; with no looks and no history, that's the first.
+        if (loaded.isEmpty() && lookNames.isEmpty()) loaded += acting.first()
+        return acting.filter { it !in loaded }
+    }
+
+    private fun <A> body(system: String, schema: ActionSchema<A>, turns: Turns, tools: List<ActionSchema.Tool>?, strategy: Strategy, deferred: Set<String> = emptySet()) =
         buildJsonObject {
             put("model", config.model)
             put("max_tokens", config.maxTokens ?: DEFAULT_MAX_TOKENS)
@@ -204,17 +227,23 @@ class AnthropicBackend(
             if (fallbacks) put("fallbacks", "default")
             if (strategy == Strategy.Tools) {
                 // The API takes at most MAX_STRICT_TOOLS strict tools a request; past that none are strict (replies are validated here anyway).
-                val strictAllowed = config.strict && tools!!.size <= MAX_STRICT_TOOLS
+                // Deferred tools are never strict, so they don't count toward the limit.
+                val strictAllowed = config.strict && tools!!.count { it.name !in deferred } <= MAX_STRICT_TOOLS
                 put("tools", buildJsonArray {
                     tools!!.forEach { tool ->
                         add(buildJsonObject {
                             put("name", tool.name)
                             tool.description?.let { put("description", it) }
-                            val strict = strictAllowed && !hasMaps(tool.parameters)
+                            val strict = strictAllowed && tool.name !in deferred && !hasMaps(tool.parameters)
                             put("input_schema", if (strict) strictSchema(tool.parameters) else tool.parameters)
                             if (strict) put("strict", true)
+                            if (tool.name in deferred) put("defer_loading", true)
                         })
                     }
+                    if (deferred.isNotEmpty()) add(buildJsonObject {
+                        put("type", SEARCH_TOOL_TYPE)
+                        put("name", SEARCH_TOOL)
+                    })
                 })
                 put("tool_choice", buildJsonObject { put("type", if (config.toolChoice == "any") "any" else "auto") })
             }
@@ -276,6 +305,11 @@ class AnthropicBackend(
         const val DEFAULT_MAX_TOKENS = 16_000
         /** Strict tools the API takes in one request. */
         const val MAX_STRICT_TOOLS = 20
+        /** The API's tool search, by BM25 over the deferred tools' names and descriptions. */
+        private const val SEARCH_TOOL_TYPE = "tool_search_tool_bm25_20251119"
+        private const val SEARCH_TOOL = "tool_search_tool_bm25"
+        /** Times a turn may pause on a server tool before it counts as failed. */
+        private const val MAX_PAUSES = 3
         private const val FALLBACK_BETA = "server-side-fallback-2026-07-01"
         private val FALLBACK_MODELS = setOf("claude-fable-5-2", "claude-fable-5-1", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5")
 
