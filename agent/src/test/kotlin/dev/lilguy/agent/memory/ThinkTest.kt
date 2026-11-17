@@ -49,7 +49,7 @@ private class FakeThinkerModel : DecisionModel {
 
     override suspend fun <A> decide(request: DecisionRequest, schema: ActionSchema<A>): Decision<A> {
         requests += request
-        val raw = """{"thought":"I'll sketch until I can afford an easel."}"""
+        val raw = """{"plan":"I'll sketch until I can afford an easel."}"""
         return Decision(schema.decode(raw), null, Usage(5, 9), Duration.ZERO, raw)
     }
 }
@@ -77,11 +77,11 @@ class ThinkTest {
         assertEquals(null, thoughts[1])
         // The thinker saw the decision prompt and its situation, with its own ask.
         val call = thinker.requests.first()
-        assertTrue(call.system.startsWith(world.content.personality.core.you) && "you have stopped to think" in call.system)
+        assertTrue(call.system.startsWith(world.content.personality.core.you) && "you have stopped to take stock" in call.system)
         assertTrue(call.messages.single().content.startsWith("Observation:") && call.messages.single().content.endsWith(Thinker.ASK))
         // In the event stream as a thought, and in the next decision's recent actions.
         assertTrue(store.eventsAfter("r", 0, 1000).any { it.kind == EventKind.Thought && it.text == "I'll sketch until I can afford an easel." })
-        assertTrue("you thought: \"I'll sketch until I can afford an easel.\"" in prompts[1], prompts[1])
+        assertTrue("on your mind: \"I'll sketch until I can afford an easel.\"" in prompts[1], prompts[1])
         // Ten minutes awake (4 an hour) plus the think's 1.
         assertTrue(world.snapshot().events.any { it.text == "finished think: energy -1" })
         assertTrue(world.needs[dev.lilguy.sim.Need.Energy] < energyBefore - 1)

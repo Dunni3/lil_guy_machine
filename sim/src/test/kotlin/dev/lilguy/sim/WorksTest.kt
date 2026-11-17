@@ -75,4 +75,33 @@ class WorksTest {
         val far = assertIs<IntentStatus.Failed>(w.finish(Intent.Do("empty_bin"))).reason
         assertTrue("too far apart" in far, far)
     }
+
+    @Test
+    fun `a ware fetches less the more of it he sells, by his code or at the hatch alike, and recovers over days`() {
+        val w = BedroomWorld.create(content("clay_pot" to 4))
+        fun write(called: String, code: String) {
+            w.stage("devise", AuthoredResult.Coded(CodeDesign(verbs = listOf(VerbDesign(called, called, "tries something", 5, code = code)))))
+            w.done(Intent.Do("devise"))
+        }
+        fun events() = w.observe(w.agentId).recentEvents.joinToString("\n")
+        write("sell_a_pot", "function finish(world) { return 'got ' + world.sell('clay_pot', 1); }")
+        write("pot_price", "function finish(world) { const p = world.price('clay_pot'); return 'now ' + p.now + ' usual ' + p.usual; }")
+
+        val money = w.observe(w.agentId).money!!
+        w.done(Intent.Do("sell_a_pot"))
+        assertTrue("got 20" in events(), events())
+        // The hatch carries on from where his code left the price: $19, $18, $17 (6% off each).
+        w.done(Intent.Do("sell_wares", what = "clay_pot"))
+        assertTrue("sold 3 clay pots for \$54" in events() && "a clay pot fetches \$16 now, not \$20" in events(), events())
+        assertEquals(money + 74, w.observe(w.agentId).money)
+        w.done(Intent.Do("pot_price"))
+        assertTrue("now 16 usual 20" in events(), events())
+
+        // Saved with the world, and half the gap back a day: by midnight two days on, $19.
+        assertEquals(w.exportState().market, BedroomWorld.restore(w.exportState(), BedroomContent.default(), strict = true).world.exportState().market)
+        val day = w.observe(w.agentId).clock!!.day
+        while (w.observe(w.agentId).clock!!.day < day + 2) w.finish(Intent.Wait(GridWorld.MAX_WAIT))
+        w.done(Intent.Do("pot_price"))
+        assertTrue("now 19 usual 20" in events(), events())
+    }
 }

@@ -870,6 +870,28 @@
           "type": "null"
         }
       ]
+    },
+    "market": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "drop": {
+              "type": "number"
+            },
+            "recover_per_day": {
+              "type": "number"
+            },
+            "floor": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "required": [

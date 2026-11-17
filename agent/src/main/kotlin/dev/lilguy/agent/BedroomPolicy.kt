@@ -118,15 +118,24 @@ class BedroomPolicy(
     }
 
     /**
-     * With a kiln (he never buys one: start him with it), keep it going: sell the pots he holds, empty it
-     * and fill it with clay, and buy clay, and a spare part for when it jams, while he can afford them.
+     * With a kiln (he never buys one: start him with it), or more than one (anything whose id starts
+     * `kiln`), keep them going: sell the pots he holds, empty and fill each with clay, and buy clay, and a
+     * spare part for when one jams, while he can afford them. Pots wait while the market is low (the
+     * sell's "fetches $14 now, not $20"), until he holds [HOLD_MOST] or is short of food money.
      */
     private fun kiln(obs: Observation, open: List<dev.lilguy.sim.ActivityOption>): Pair<Intent, String>? {
         val owns = obs.owns.orEmpty()
-        if ((owns["kiln"] ?: 0) == 0) return null
-        open.firstOrNull { it.id == "sell_wares" }?.let { return Intent.Do("sell_wares", what = it.what) to "Sell the pots the kiln made." }
-        open.firstOrNull { it.id == "tend" && it.on == "kiln" && ("take out" in it.gives.orEmpty() || ("put in" in it.gives.orEmpty() && (owns["clay"] ?: 0) >= CLAY_BATCH)) }
-            ?.let { return Intent.Do("tend", on = "kiln") to "Tend the kiln: ${it.gives}." }
+        val kilns = owns.filter { (id, n) -> id.startsWith("kiln") && n > 0 }.keys
+        if (kilns.isEmpty()) return null
+        open.firstOrNull { it.id == "sell_wares" }?.let { o ->
+            val low = FETCHES.find(o.gives.orEmpty())?.groupValues?.let { it[1].toInt() to it[2].toInt() }
+            val short = (obs.money ?: 0) < (obs.shop.orEmpty().firstOrNull { it.id == "meal" }?.price ?: 0) * RESERVE_PACKS
+            if (low == null || low.first >= low.second * HOLD_BELOW || (owns[o.what] ?: 0) >= HOLD_MOST || short) {
+                return Intent.Do("sell_wares", what = o.what) to "Sell the pots the kilns made" + (low?.let { " ($${it.first} each now)" } ?: "") + "."
+            }
+        }
+        open.firstOrNull { it.id == "tend" && it.on in kilns && ("take out" in it.gives.orEmpty() || ("put in" in it.gives.orEmpty() && (owns["clay"] ?: 0) >= CLAY_BATCH)) }
+            ?.let { return Intent.Do("tend", on = it.on) to "Tend the ${it.on}: ${it.gives}." }
         val affordable = obs.shop.orEmpty().filter { it.affordable }.map { it.id }.toSet()
         if ((owns["clay"] ?: 0) < CLAY_BATCH && "clay" in affordable) return Intent.Buy("clay") to "The kiln needs clay."
         if ((owns["spare_parts"] ?: 0) == 0 && "spare_parts" in affordable) return Intent.Buy("spare_parts") to "A spare part for when the kiln jams."
@@ -225,6 +234,12 @@ class BedroomPolicy(
         const val RESERVE_PACKS = 1
         val DOLLARS = Regex("""\$(\d+) for""")
         val SELLS_FOR = Regex("""sells for \$(\d+)""")
+        /** A ware's going price below its usual: "fetches $14 now, not $20". */
+        val FETCHES = Regex("""fetches \$(\d+) now, not \$(\d+)""")
+        /** Pots wait while they fetch less than this share of their usual price... */
+        const val HOLD_BELOW = 0.7
+        /** ...until he holds this many. */
+        const val HOLD_MOST = 6
         val json = Json
     }
 }

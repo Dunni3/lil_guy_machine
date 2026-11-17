@@ -91,6 +91,8 @@ interface ScriptWorld {
     fun transfer(from: String, to: String, item: String, n: Int): Int = throw ScriptProblem("nothing moves here")
     /** Sells [n] of something of his that sells; the dollars it fetched. */
     fun sell(id: String, n: Int): Int = throw ScriptProblem("nothing sells here")
+    /** What one [id] sells for now and usually: { now, usual }; null when nobody buys it. */
+    fun price(id: String): Map<String, Any?>? = throw ScriptProblem("nothing sells here")
     // Effects with reach ([Surroundings]).
     /** [kind] (light, warmth, sound, water, or a visitor's lure) at [spot]: a spot, a thing of his, or `self`. */
     fun field(spot: String, kind: String): Double = throw ScriptProblem("there are no effects here")
@@ -161,6 +163,7 @@ object ScriptApi {
         Fn("machine", "world.machine(id)", "a machine of yours: { runs: [{ id, takes, makes, hours, needs }], holds, in, out, wear (0 to 100; it slows past ${MachineRules().slowAt.toInt()} and jams at 100), broken, making, done (%), stuck }", false) { w, a -> w.machine(a.str(0, "id")) },
         Fn("transfer", "world.transfer(from, to, item, n)", "moves n of a thing between a machine and you (\"self\") or two machines within a few tiles of each other: out of a machine comes what it made, into one only what it takes; returns how many moved", true) { w, a -> w.transfer(a.str(0, "from"), a.str(1, "to"), a.str(2, "item"), a.optInt(3) ?: 1) },
         Fn("sell", "world.sell(id, n)", "sells n of something you own that sells (samples, not art: that's sold at the mail hatch); returns the dollars", true) { w, a -> w.sell(a.str(0, "id"), a.optInt(1) ?: 1) },
+        Fn("price", "world.price(id)", "what one of something sells for: { now, usual }, or null if nobody buys it; a ware fetches less after you sell a lot of it, and recovers over days", false) { w, a -> w.price(a.str(0, "id")) },
     )
 
     /** Functions there used to be, and where what they did comes from now: calling one throws this. */

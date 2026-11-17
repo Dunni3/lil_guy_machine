@@ -36,6 +36,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
+import kotlin.math.roundToInt
 
 /**
  * How the bedroom is put to a model: the system prompt, the action examples, the per-request
@@ -186,9 +187,14 @@ object BedroomPrompt {
             "the ${m.name} ($${m.price}) makes ${r.makes.getValue(ware.id)} ${ware.name} from $inputs in $hours, and a ${ware.name} sells for $${ware.sellPrice}"
         }
         val invent = if (content.verbs.any { v -> v.effects.any { it is BuildOp } }) " A thing you invent can run the same recipe." else ""
-        return "- Getting ahead: art keeps you fed and not much more. Machines that make things to sell earn far more: $each. " +
+        // With a market, the price is the usual one and each sale lowers the next ([dev.lilguy.sim.Market]).
+        val more = content.market?.let { m ->
+            " That's the usual price: each one sold fetches ${(m.drop * 100).roundToInt()}% less than the last, and the price recovers ${if (m.recoverPerDay == 0.5) "half" else "${(m.recoverPerDay * 100).roundToInt()}% of"} the gap a day, " +
+                "so a second machine making the same ware earns less than the first, and a different ware has its own price."
+        } ?: " Two of them make twice as much."
+        return "- Getting ahead: art keeps you fed and not much more. Machines that make things to sell earn far more: $each.$more " +
             "$tend fills one with what it takes and takes out what it made, and $sell sells what it made at the hatch. A machine only works while it has what it takes and room for what it made, " +
-            "so it pays as often as you keep it fed and empty it; it wears with every batch and jams until you ${repair ?: "mend it"}. Two of them make twice as much.$invent"
+            "so it pays as often as you keep it fed and empty it; it wears with every batch and jams until you ${repair ?: "mend it"}.$invent"
     }
 
     /** The outdoors line: exploring, collecting, regrowth and what samples are for; null without land. */
@@ -401,7 +407,7 @@ object BedroomPrompt {
             |Actions (the "intent" field), each with an example:
             |$actions
             |
-            |Reply with a JSON object {"thought": ..., "intent": ...}. "thought" is your reasoning in a sentence or two; "intent" is the one action to take now. Use only ids from the observation.
+            |Reply with a JSON object {"thought": ..., "intent": ...}. "thought" is a line of your inner voice, in your own words: what you notice, feel or want; "intent" is the one action to take now. Use only ids from the observation.
             |
             |The observation is JSON:
             |- clock: day and time. money: dollars. needs: ${needNames(content).let { it.dropLast(1).joinToString(", ") + " and " + it.last() }}, 0 to 100.
@@ -413,7 +419,7 @@ object BedroomPrompt {
             |- recentEvents: the last few things that happened, stamped with day and time.
             |- lately: what you've done most in the last 2 days, what you could do now but haven't for 2 days or more, and what you could do and never have.
             |
-            |Below the observation you may see what you remember from earlier (memories, and thoughts you had), what you concluded the latest times you stepped back from your days, and what you decided the last time you stopped to think. Those are your own words: let the lessons and plans in them shape what you do with your hours.
+            |Below the observation you may see what you remember from earlier (memories, and what was on your mind), what you concluded the latest times you stepped back from your days, and your plan from the last time you took stock. Those are your own words: let the lessons and plans in them shape what you do with your hours.
         """.trimMargin()
     }
 
@@ -426,7 +432,7 @@ object BedroomPrompt {
         |How your life works:
         |$life
         |
-        |Think, look if it would help, and act when you know what you want. What you write is what goes through your head, in your own voice: it's your thought of the moment, and it's what you'll remember of it later, so keep it short. Think as yourself, not as someone reading your numbers: what you notice, feel, want or wonder, and what you're after, rather than which need is at what level. To act, call one of the tools that act: the one thing you do next, which ends the turn. Use only the values its arguments allow. Thinking takes no time, but after ${BedroomTools.MAX_STEPS} replies without acting you've sat and thought for a while, and some minutes pass.
+        |Look if it would help, and act when you know what you want. Any words you write are your inner voice: a line or two of what you notice, feel, want or wonder, the way you'd say it to yourself, never an account of how you're weighing your options. It's what you'll remember of the moment later, so keep it short, and speak of what you're after rather than which need is at what level. To act, call one of the tools that act: the one thing you do next, which ends the turn. Use only the values its arguments allow. A word to yourself takes no time, but after ${BedroomTools.MAX_STEPS} replies without acting you've sat and mused for a while, and some minutes pass.
 ${lookText(looks)}
         |
         |Your earlier calls are your recent actions; each result says when it started and how it ended. Then comes how things stand now, as JSON:
@@ -438,7 +444,7 @@ ${lookText(looks)}
         |- recentEvents: the last few things that happened besides what you did, stamped with day and time.
         |- lately: what you've done most in the last 2 days, what you could do now but haven't for 2 days or more, and what you could do and never have.
         |
-        |After that you may see what you remember from earlier (memories, and thoughts you had), what you concluded the latest times you stepped back from your days, and what you decided the last time you stopped to think. Those are your own words: let the lessons and plans in them shape what you do with your hours.
+        |After that you may see what you remember from earlier (memories, and what was on your mind), what you concluded the latest times you stepped back from your days, and your plan from the last time you took stock. Those are your own words: let the lessons and plans in them shape what you do with your hours.
     """.trimMargin()
 
     /** The system prompt's paragraph on [looks] ("look_around", "recall", "ask", "search"), with its blank line before; empty for none. */
@@ -463,7 +469,7 @@ ${lookText(looks)}
         val open = obs.activities.orEmpty().filter { it.locked == null }
         val hints = SchemaHints(
             descriptions = VARIANT_DESCRIPTIONS + mapOf(
-                "reply.thought" to "Your reasoning in a sentence or two, before you act.",
+                "reply.thought" to "A line of your inner voice, in your own words: what you notice, feel or want.",
                 "reply.intent" to "The one action to take now.",
                 "do.activity" to "An activity from `activities` that isn't locked.",
                 "do.what" to "What to do it with, as listed with the activity; null when it lists none.",
