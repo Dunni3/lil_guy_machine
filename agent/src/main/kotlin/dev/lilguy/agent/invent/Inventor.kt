@@ -250,9 +250,12 @@ class Inventor(private val model: DecisionModel, private val timeout: Duration =
             val short = bill.filter { (m, n) -> (owns[m] ?: 0) < n }
             if (short.isEmpty()) return null
             fun named(m: String, n: Int) = "$n " + plural(content.item(m)?.name ?: m, n)
+            // What would be left over says what to swap to: a design a part or two over in one material was redone a little smaller and still over.
+            val spare = content.invent?.materials?.keys.orEmpty().associateWith { m -> (owns[m] ?: 0) - (bill[m] ?: 0) }.filterValues { it > 0 }
             return "it takes " + bill.entries.joinToString(" and ") { (m, n) -> named(m, n) } + ", and you have " +
                 short.keys.joinToString(" and ") { m -> named(m, owns[m] ?: 0) } +
-                "; make it smaller or of fewer parts, or out of the materials you have more of (you can buy more on a shopping trip, but not now)"
+                (if (spare.isEmpty()) "" else "; you'd have " + spare.entries.joinToString(" and ") { (m, n) -> named(m, n) } + " to spare, so make some of its parts of those") +
+                "; or make it smaller or of fewer parts (you can buy more on a shopping trip, but not now)"
         }
 
         /** [name] for [n] of it, as the sim counts things ("1 wood plank", "3 glass panes"). */

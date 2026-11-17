@@ -152,9 +152,9 @@ data class BedroomContent(
         val items = items.filter { open(it.id, it.tier) && it.id !in withGatedRooms }
         // A verb whose arguments nothing left could fill goes with them: no lamps, no switching one.
         val opened = verbs.filter { v -> open(v.id, v.tier) && v.args.values.all { tag -> tag == INVENTION || items.any { tag in it.names } } }
-        // Nothing to take apart where nothing can be built: the verbs that take an invention go with the workbench.
+        // Nothing to take apart or sell back where nothing can be built: the verbs that take an invention or a material go with the workbench.
         val building = opened.any { v -> v.ops<BuildOp>().isNotEmpty() && v.at.all { at -> at in v.args || at == VerbSpec.HERE || items.any { it.id == at } } }
-        val verbs = opened.filter { v -> building || INVENTION !in v.args.values }
+        val verbs = opened.filter { v -> building || v.args.values.none { it == INVENTION || it == MATERIAL } }
         val ids = (items.map { it.id } + verbs.map { it.id }).toSet()
         return copy(
             items = items,
@@ -202,7 +202,7 @@ data class BedroomContent(
                     entries[k] = v
                 }
             }
-            return yaml.decodeFromYamlNode(serializer(), YamlMap(entries, YamlPath.root)).also { it.validate() }
+            return yaml.decodeFromYamlNode(serializer(), YamlMap(entries, YamlPath.root)).resold().also { it.validate() }
         }
 
         /** Content from a directory of the [FILES]; `world.yaml` and `weather.yaml` may be left out, for a bedroom with no land around it or no weather. */
@@ -219,6 +219,12 @@ data class BedroomContent(
                 ?: error("content/bedroom/$name.yaml is missing from the classpath")
             stream.bufferedReader().use { it.readText() }
         }
+    }
+
+    /** The content with its materials priced for selling back ([InventRules.resale]). */
+    private fun resold(): BedroomContent {
+        val rules = invent ?: return this
+        return copy(items = items.map { i -> rules.resale(i).let { if (it == i.resale) i else i.copy(resale = it) } })
     }
 
     private fun validate() {
@@ -398,6 +404,9 @@ const val RECORDER = "recorder"
 
 /** What a verb's argument names for a thing he invented that stands somewhere (the `dismantle` verb): none are in the content until he builds one. */
 const val INVENTION = "invention"
+
+/** The tag a material he builds with answers to when the shop takes it back ([ItemSpec.resale]): what `sell_materials` sells. */
+const val MATERIAL = "material"
 
 /** The affordance of a light he can switch: on its timer, or on or off until he switches it again ([LampMode]). */
 const val LAMP = "lamp"
@@ -765,12 +774,14 @@ data class ItemSpec(
     val lure: LureSpec? = null,
     /** What it grows in sun and damp soil (rules.yaml `growing`), as a planter. Null for nothing. */
     val grows: GrowSpec? = null,
+    /** What the shop gives back for one, when it's a material he builds with (rules.yaml `invent.sell_back`); set by the content, not its files. */
+    @Transient val resale: Int? = null,
 ) {
-    /** What an activity can ask for it by: its id and its affordances, and `machine` for a machine. */
-    @Transient val names: Set<String> = setOf(id) + affords.keys + listOfNotNull(Works.MACHINE.takeIf { machine != null })
+    /** What an activity can ask for it by: its id and its affordances, `machine` for a machine, and `material` for one the shop takes back. */
+    @Transient val names: Set<String> = setOf(id) + affords.keys + listOfNotNull(Works.MACHINE.takeIf { machine != null }, MATERIAL.takeIf { resale != null })
 
-    /** What one sells for, when it's `sellable`, before any skill raises it. */
-    val sellPrice: Int? get() = affords["sellable"]?.price ?: affords["specimen"]?.price ?: affords["ware"]?.price
+    /** What one sells for, when it's `sellable` (or a sample, a ware, or a material the shop takes back), before any skill raises it. */
+    val sellPrice: Int? get() = affords["sellable"]?.price ?: affords["specimen"]?.price ?: affords["ware"]?.price ?: resale
 
     /** The skill its price grows with, if any. */
     val sellSkill: String? get() = affords["sellable"]?.skill

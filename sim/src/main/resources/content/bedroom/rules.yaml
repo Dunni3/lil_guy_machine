@@ -135,6 +135,9 @@ invent:
     code: { copper_wire: 3 }
     moving: { metal: 5 }
   salvage: 0.5
+  # The shop takes back materials he doesn't need (verbs.yaml `sell_materials`) for this share of what
+  # one costs in its pack, in whole dollars, at least 1: a wood plank $1, a metal bar, copper wire coil or glass pane $2.
+  sell_back: 0.5
 
 # A decision-loop policy: after `every` decisions without `verb`, he's made to do it (the decision
 # model isn't asked), when something writes its result. Remove it to leave thinking to the model.

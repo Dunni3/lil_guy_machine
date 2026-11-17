@@ -183,7 +183,7 @@ class Coder(private val model: DecisionModel, private val timeout: Duration = 12
                 |What your code does happens, but nothing comes from nothing: money comes from selling things, things from machines fed with what they take (world.machine, world.transfer), fullness from eating and energy from sleep. Machines wear with use, a thing's code too: a worn one slows, then jams until you mend it (the repair verb, with a spare part). A thing's code reaches what's in its own place (a sprinkler in the garden waters the garden), what it does there you hear about when you're next there, and what it does for your mood or stimulation wears thin with repeating, as a verb's does. An invention can show the variants it was designed with, move its named parts and show a readout, so you can see what it's doing. Code that throws an error fails the verb with the error, and a behavior that breaks three runs in a row stops.
                 |
                 |The world API:
-                |${ScriptApi.reference()}
+                |${ScriptApi.reference(content)}
                 |
                 |An example, to show the shape (write your own thing, not this). A verb:
                 |```js

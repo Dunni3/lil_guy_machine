@@ -7,7 +7,7 @@ import { X_AXIS, Y_AXIS, Z_AXIS, rotate, scale, translate } from "../math";
 import type { Place } from "../stream/track";
 import { ArtLayer } from "./art";
 import { CameraRig, type CameraMode } from "./camera";
-import { Models, SAMPLE_COLORS, constants, wallItem } from "./parts";
+import { Models, SAMPLE_COLORS, constants, stockShown, wallItem } from "./parts";
 import { ADDED_ROOM, BEDROOM } from "./room";
 import { groundTexture, landParts, treeParts } from "./land";
 import { Terrain, paneParts, shellParts } from "./shell";
@@ -104,6 +104,10 @@ export class RoomView {
   private shelfWallet: LifeState["wallet"] | null = null;
   private shelfKey = "";
   private guitar: Placed | null = null;
+  /** His materials on the workbench's lower shelf, and what they were drawn from. */
+  private stock: Placed | null = null;
+  private stockFrom: [LifeState["wallet"] | null, LifeState["things"] | null] = [null, null];
+  private stockKey = "";
   private readonly guitarAt = new Matrix4();
 
   private heldBook: Placed | null = null;
@@ -158,6 +162,7 @@ export class RoomView {
     this.syncThings(state);
     this.animate(delta);
     this.syncShelf(state, content);
+    this.syncStock(state);
 
     const agent = fast.agents[0] ?? null;
     const intent = agent?.intent ?? null;
@@ -477,6 +482,23 @@ export class RoomView {
       this.r.remove(this.guitar);
       this.guitar = null;
     }
+  }
+
+  /**
+   * The materials he holds (wood, metal, copper wire, glass), piled on the lower shelf of his
+   * workbench wherever it stands: more as he buys, fewer as he builds. Nothing without a workbench
+   * or materials. Built again only when what's shown changes.
+   */
+  private syncStock(state: LifeState) {
+    if (state.wallet === this.stockFrom[0] && state.things === this.stockFrom[1]) return;
+    this.stockFrom = [state.wallet, state.things];
+    const bench = state.things.entities.find((e) => e.id === "workbench" && e.carried_by === null);
+    const shown = bench ? stockShown(state.wallet.owns) : {};
+    const key = bench && Object.keys(shown).length ? `${bench.x}/${bench.y}/${JSON.stringify(shown)}` : "";
+    if (key === this.stockKey) return;
+    this.stockKey = key;
+    if (this.stock) this.r.remove(this.stock);
+    this.stock = key ? this.r.add(this.models.stock(shown)).set(new Matrix4().makeTranslation(bench!.x, 0, bench!.y)) : null;
   }
 
   /** The book in his hands, its spine's colour, or the guitar, off its peg while he plays it. */

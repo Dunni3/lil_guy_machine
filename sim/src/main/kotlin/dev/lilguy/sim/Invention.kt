@@ -162,6 +162,11 @@ data class InventRules(
     val workings: Workings = Workings(),
     /** The share of a thing's bill taking it apart gives back, each material rounded down (the `dismantle` op). */
     val salvage: Double = 0.5,
+    /**
+     * The share of a material's price (a pack's over its size) the shop gives back for one he sells it,
+     * rounded to whole dollars and at least 1 ([resale]); 0 and the shop takes none back.
+     */
+    @SerialName("sell_back") val sellBack: Double = 0.0,
 ) {
     @Serializable
     data class QualityBudget(val most: Int = 3, val total: Double = 6.0)
@@ -181,6 +186,13 @@ data class InventRules(
     /** [chapters]: the fewest and the most. [skillGain]: what each chapter adds to the book's skill. */
     @Serializable
     data class BookBudget(@SerialName("min_chapters") val minChapters: Int = 3, @SerialName("max_chapters") val maxChapters: Int = 5, @SerialName("skill_gain") val skillGain: Double = 0.25)
+
+    /** What the shop gives for one of [item] when it's one of the [materials] and [sellBack] is set; null otherwise. */
+    fun resale(item: ItemSpec): Int? {
+        val price = item.price ?: return null
+        if (item.id !in materials || sellBack <= 0) return null
+        return max(1, (price.toDouble() / item.pack * sellBack).roundToInt())
+    }
 
     /** The least a design paid in dollars costs, or null when every use is built of materials. */
     val cheapest: Int? get() = uses.values.filter { !it.built }.minOfOrNull { it.base }

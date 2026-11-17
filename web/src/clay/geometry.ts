@@ -1,5 +1,6 @@
 import {
-  BufferAttribute, BufferGeometry, CapsuleGeometry, CircleGeometry, LatheGeometry, Matrix4, PlaneGeometry, SphereGeometry, Vector2,
+  BufferAttribute, BufferGeometry, CapsuleGeometry, CircleGeometry, Curve, CylinderGeometry, LatheGeometry, Matrix4, PlaneGeometry, SphereGeometry,
+  TorusGeometry, TubeGeometry, Vector2, Vector3,
 } from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
@@ -36,6 +37,7 @@ const DEG = Math.PI / 180;
 
 /** [p]'s geometry centred on its box's middle, before it's placed: position, normal and uv. */
 export function partGeometry(p: Part): BufferGeometry {
+  if (p.material === "copper_wire") return wire(p);
   const small = Math.min(p.w, p.h, p.d);
   const round = p.round >= 0 ? p.round : Math.min(DEFAULT_ROUND, small * 0.3);
   switch (p.shape) {
@@ -56,6 +58,50 @@ export function partGeometry(p: Part): BufferGeometry {
     default:
       throw new Error(`a part of unknown shape: ${p.shape}`);
   }
+}
+
+/** A copper wire part's gauge, its radius in metres, whatever size the shape was designed: wire reads as wire. */
+const WIRE = 0.009;
+/** A coil's turns are this many gauges apart, and it has at most this many. */
+const COIL_PITCH = 2.6;
+const COIL_TURNS = 14;
+
+/** A helix up y from -h/2 to h/2, [rx] by [rz] round, of [turns]. */
+class Helix extends Curve<Vector3> {
+  constructor(private readonly rx: number, private readonly rz: number, private readonly h: number, private readonly turns: number) {
+    super();
+  }
+
+  override getPoint(t: number, target = new Vector3()): Vector3 {
+    const a = t * this.turns * Math.PI * 2;
+    return target.set(this.rx * Math.cos(a), (t - 0.5) * this.h, this.rz * Math.sin(a));
+  }
+}
+
+/**
+ * A part made of copper wire, drawn as wire rather than a block of copper its designed size, inside
+ * its box: a ring (a cylinder with a big hole, flatter than it's wide) as a loop of wire; a long thin
+ * shape (one side three times the next) as a straight length of it; anything else as a coil wound
+ * round the shape's long axis (a cylinder's or capsule's own).
+ */
+function wire(p: Part): BufferGeometry {
+  const g = Math.max(0.003, Math.min(WIRE, Math.min(p.w, p.h, p.d) / 2));
+  if (p.shape === "cylinder" && (p.hole ?? 0) >= 0.5 && p.h < p.w / 2) {
+    const r = Math.max(2 * g, p.w / 2 - g);
+    return new TorusGeometry(r, g, 6, 32, Math.min(360, p.arc ?? 360) * DEG).rotateZ(-((Math.min(360, p.arc ?? 360) * DEG) / 2) + Math.PI / 2).rotateX(Math.PI / 2).scale(1, 1, p.d / p.w);
+  }
+  const sides: [number, "x" | "y" | "z"][] = [[p.w, "x"], [p.h, "y"], [p.d, "z"]];
+  const sorted = [...sides].sort((a, b) => b[0] - a[0]);
+  // Laid along y, then turned to its axis.
+  const along = (geo: BufferGeometry, axis: "x" | "y" | "z") => (axis === "x" ? geo.rotateZ(Math.PI / 2) : axis === "z" ? geo.rotateX(Math.PI / 2) : geo);
+  if (sorted[0][0] >= 3 * sorted[1][0]) return along(new CylinderGeometry(g, g, sorted[0][0], 6, 1), sorted[0][1]);
+  const axis = p.shape === "cylinder" || p.shape === "capsule" ? "y" : sorted[0][1];
+  const length = axis === "x" ? p.w : axis === "z" ? p.d : p.h;
+  // The other two sides, in the order the coil's x and z take them once it's turned to its axis.
+  const [a, b] = axis === "x" ? [p.h, p.d] : axis === "z" ? [p.w, p.h] : [p.w, p.d];
+  const turns = Math.max(1.5, Math.min(COIL_TURNS, Math.floor((length - 2 * g) / (COIL_PITCH * g))));
+  const helix = new Helix(Math.max(g, a / 2 - g), Math.max(g, b / 2 - g), Math.max(0, length - 2 * g), turns);
+  return along(new TubeGeometry(helix, Math.ceil(turns * 20), g, 6, false), axis);
 }
 
 /** Where a part's geometry goes in the model: to the bottom centre, turned (Y, then X, then Z), then up by half its height. */
