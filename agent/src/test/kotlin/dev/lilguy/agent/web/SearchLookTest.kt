@@ -37,7 +37,7 @@ class SearchLookTest {
         // Each turn: search, then wait with a thought.
         MockChatServer { _, n ->
             200 to if (n % 2 == 1) MockChatServer.toolCall("search", """{"query":"how to tune a guitar by ear"}""")
-            else MockChatServer.toolCall("wait", """{"thought":"I'll try tuning it by ear tonight.","minutes":5}""")
+            else MockChatServer.toolCall("wait", """{"inner_voice":"I'll try tuning it by ear tonight.","minutes":5}""")
         }.use { server ->
             val model = OpenAiCompatBackend(EndpointConfig(baseUrl = server.baseUrl, model = "mock", timeoutSeconds = 5.0), null)
             val records = mutableListOf<AgentRuntime.DecisionRecord>()

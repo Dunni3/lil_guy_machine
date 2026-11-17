@@ -31,7 +31,11 @@ import kotlinx.serialization.json.putJsonObject
  * thought: the turn ends as the [ponder] intent.
  */
 object BedroomTools {
-    const val THOUGHT = "thought"
+    /**
+     * The argument his thought goes in. Not "thought" or anything like "reasoning": Claude declines
+     * a call that seems to ask for its own reasoning ("reasoning_extraction"), and the name counts too.
+     */
+    const val THOUGHT = "inner_voice"
 
     const val LOOK_AROUND = "look_around"
 
@@ -242,7 +246,7 @@ object BedroomTools {
         putJsonObject("properties") {
             putJsonObject(THOUGHT) {
                 put("type", "string")
-                put("description", "Only if you haven't said it: what goes through your head as you choose this, in your own voice (what you notice, feel, want or wonder, not your numbers). First person, under $THOUGHT_WORDS words.")
+                put("description", "Only if you haven't said it: a line of your inner voice as you do this (what you notice, feel, want or wonder, not your numbers and not how you chose). First person, under $THOUGHT_WORDS words.")
             }
             enums.forEach { (name, values) ->
                 putJsonObject(name) {

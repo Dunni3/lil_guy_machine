@@ -22,11 +22,11 @@ data class Recollection(
     /** Unique across kinds: "memory_12", "day_3", "thought_40". */
     val key: String get() = "${kind.name.lowercase()}_$id"
 
-    /** "Day 2 08:00-14:30: I sketched ...", "Day 2 (the whole day): ...", "Day 3 10:00, you thought: "..."". */
+    /** "Day 2 08:00-14:30: I sketched ...", "Day 2 (the whole day): ...", "Day 3 10:00, on your mind: "..."". */
     fun render(): String = when (kind) {
         Kind.Memory -> if (label.isEmpty()) text else "$label$at: $text"
         Kind.Day -> if (label.isEmpty()) text else "$label (the whole day): $text"
-        Kind.Thought -> (if (label.isEmpty()) "You thought" else "$label$at, you thought") + ": \"$text\""
+        Kind.Thought -> (if (label.isEmpty()) "On your mind" else "$label$at, on your mind") + ": \"$text\""
         Kind.Reflection -> (if (label.isEmpty()) "Stepping back, you concluded" else "$label, stepping back, you concluded") + ": \"$text\""
     }
 
