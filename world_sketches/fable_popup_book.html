@@ -1,0 +1,1061 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lil Guy · the pop-up book</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Nunito:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root { --bg: #fbf4ea; --card: #fffaf3; --ink: #4a3a4f; --muted: #8b7b8d; --line: #ece0d3; --accent: #e46f7a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 Nunito, system-ui, sans-serif; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 24px 56px; }
+  h1, h2, h3 { font-family: Gaegu, cursive; font-weight: 700; line-height: 1.1; margin: 0; }
+  h1 { font-size: 56px; padding-top: 36px; }
+  h1 span { color: var(--accent); }
+  .lede { max-width: 760px; color: var(--muted); font-size: 17px; margin: 10px 0 20px; }
+  .card { background: var(--card); border: 1.5px solid var(--line); border-radius: 22px; padding: 20px; }
+  #stage { position: relative; aspect-ratio: 16 / 9; border: 2px solid var(--ink); border-radius: 14px; overflow: hidden; background: #2a2233; user-select: none; }
+  #stage canvas.gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+  #stage canvas.gl:active { cursor: grabbing; }
+  .vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 45%, rgba(30,18,40,0) 55%, rgba(30,18,40,.42) 100%); }
+  #scribble { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  #bubble { position: absolute; left: 0; top: 0; pointer-events: none; font: 700 21px/1.05 Gaegu, cursive; color: var(--ink); background: #fffdf8;
+    border: 2px solid var(--ink); border-radius: 16px; padding: 6px 13px 8px; white-space: nowrap; opacity: 0; transition: opacity .18s; box-shadow: 2px 3px 0 rgba(74,58,79,.18); }
+  #bubble::after { content: ""; position: absolute; left: 50%; bottom: -8px; width: 12px; height: 12px; margin-left: -6px; background: #fffdf8;
+    border-right: 2px solid var(--ink); border-bottom: 2px solid var(--ink); transform: rotate(45deg); }
+  .hud { position: absolute; bottom: 12px; display: flex; gap: 8px; align-items: center; }
+  .hud.l { left: 12px; } .hud.r { right: 12px; }
+  .btn { font: 700 19px/1 Gaegu, cursive; color: var(--ink); background: #fffdf8; border: 2px solid var(--ink); border-radius: 999px; padding: 6px 14px 8px;
+    cursor: pointer; box-shadow: 2px 3px 0 rgba(30,18,40,.35); transition: transform .08s; }
+  .btn:hover { transform: translateY(-1px) rotate(-1deg); } .btn:active { transform: translateY(1px); }
+  #where { font: 700 22px/1 Gaegu, cursive; color: #fffdf8; text-shadow: 0 1px 6px rgba(30,18,40,.8); padding: 0 6px; min-width: 150px; }
+  #buy { position: absolute; left: 50%; top: 16px; transform: translateX(-50%) rotate(-3deg); background: #ffe3a1; font-size: 24px; padding: 9px 20px 12px; display: none; }
+  #buy small { display: block; font: 600 12px/1.2 Nunito, sans-serif; color: #7a6a52; margin-top: 3px; }
+  #loading { position: absolute; inset: 0; display: grid; place-items: center; color: #fffdf8; font: 700 28px Gaegu, cursive; }
+  .try { margin: 8px 2px 0; font-size: 14px; color: var(--muted); } .try::before { content: "▸ "; color: var(--accent); }
+  #stats { float: right; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .notes { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-top: 20px; }
+  .notes h3 { font-size: 34px; } .notes h4 { font-family: Gaegu, cursive; font-size: 23px; margin: 0 0 4px; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; padding: 0; margin: 8px 0 10px; }
+  .tags li { font-size: 12px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; background: var(--bg); border-radius: 6px; padding: 2px 8px; color: var(--muted); }
+  .swatches { display: flex; gap: 6px; margin-bottom: 12px; } .swatches i { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--ink); }
+  .notes p { margin: 0 0 12px; } .notes ul { padding-left: 18px; margin: 0 0 14px; } .notes li { margin-bottom: 6px; font-size: 15px; }
+  code { font-size: 12px; background: var(--line); padding: 1px 5px; border-radius: 4px; }
+  footer { color: var(--muted); font-size: 13px; padding-top: 18px; }
+  @media (max-width: 760px) { .notes { grid-template-columns: 1fr; } h1 { font-size: 40px; } #where { display: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>lil guy <span>·</span> the pop-up book</h1>
+  <p class="lede">A third sketch, by Fable. His world is one book lying open on a desk. Every room is a spread, every wall is a paper fold,
+    and turning the page is how you go somewhere else.</p>
+
+  <div class="card">
+    <div id="stage">
+      <div id="loading">folding paper…</div>
+      <div class="vignette"></div>
+      <canvas id="scribble"></canvas>
+      <div id="bubble"></div>
+      <button id="buy" class="btn">print this page · $120<small>the library is only pencilled in</small></button>
+      <div class="hud l"><button class="btn" id="prev">◂</button><button class="btn" id="next">▸</button><span id="where"></span></div>
+      <div class="hud r"><button class="btn" id="tod">☀ day</button></div>
+    </div>
+    <p class="try"><span id="stats"></span>Click a tab on the book's edge, or use ← and →. Drag to look around, scroll to lean in. The last page isn't printed yet: turn to it and buy it.</p>
+
+    <div class="notes">
+      <div>
+        <h3>The pop-up book</h3>
+        <ul class="tags"><li>three.js</li><li>paper engineering</li><li>crayon print</li><li>one room at a time</li><li>pages you buy</li></ul>
+        <div class="swatches"><i style="background:#fbf6ec"></i><i style="background:#f8bfd0"></i><i style="background:#ffe3a1"></i><i style="background:#b5e5cd"></i><i style="background:#cdbaf0"></i><i style="background:#e46f7a"></i><i style="background:#4a3a4f"></i></div>
+        <p>Round two found that one room standing with its neighbours flattened was the view that worked. A pop-up book is that idea with a
+          physical reason behind it: the room you leave folds flat because the page is closing on it, and the next one stands up because its page is opening.
+          The diamond floor of an isometric room is what a V-fold makes when the corner sits on the spine.</p>
+        <p>It also answers clay or crayon without choosing. The paper is the clay: flat card, real shadows, three tones from one light. The crayon is the
+          printing on it. He stays round and soft, the one thing in the book that isn't paper.</p>
+        <h4>What's real and what's faked</h4>
+        <ul>
+          <li>The walls are a true V-fold: two glue lines at 45° to the spine, crease along their cross product. They fold the way card would.</li>
+          <li>Furniture cheats. Each piece shears flat backward on its own page, timed off the same opening angle.</li>
+          <li>Everything printed is a canvas drawn once at load. The diary and the needs are canned, and nothing here talks to the sim.</li>
+          <li>He walks in straight lines through furniture. Not tried on the TV or in a headless browser.</li>
+        </ul>
+      </div>
+      <div>
+        <h4>How it could plug in</h4>
+        <ul>
+          <li><b>A spread is data</b>: a floor print, two wall prints and furniture on room tiles, the same shape as <code>house.js</code>. Furniture only adds which page it sits on.</li>
+          <li><b>Snap-on rooms become page order.</b> There's no floor plan to solve and no adjacency rules, and outdoors is more spreads in the same book. Where to go is a closed choice of tabs, which suits Jev and a D-pad.</li>
+          <li><b>Rooms he can't afford are already in the book</b> as pencil pages. Buying one prints it. "Saving for the library" is a page he can turn to and look at.</li>
+          <li><b>The margins are the HUD.</b> The day's diary line is the level-2 day memory in his handwriting, and the needs are crayon bars. On the TV there's no overlay left to design.</li>
+          <li><b>A day could be a page.</b> At bedtime the leaf turns, and the left-hand stack is literally his past. Replay is flipping back.</li>
+          <li><b>His paintings hang in the print.</b> The frames on the bedroom wall are slots for the pieces <code>ArtStudio</code> saves.</li>
+          <li><b>Night is a desk lamp.</b> One light does the whole mood, so day and night cost nothing extra to author.</li>
+        </ul>
+        <h4>What I'd try next</h4>
+        <ul>
+          <li>Pull tabs and wheels as the verbs: a paper wheel that turns the window from sun to moon, a tab that slides him into bed.</li>
+          <li>Him choosing where a new piece of furniture goes, then watching it get glued in.</li>
+          <li>A town spread built from layered folds, so the outdoors gets depth without a heightfield.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <footer>One file, no build: three.js 0.160 from jsDelivr, the same version as <code>world3d.js</code>. Every texture is drawn in code.</footer>
+</div>
+
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }</script>
+<script type="module">
+import * as THREE from 'three';
+
+// ------------------------------------------------------------------------------------------------
+// Units: 1 = one room tile. The book lies on the table with its spine along z (toward the viewer).
+// A page is PW wide and 2*PD deep. A room is a 5x5 diamond whose back corner sits on the spine at Z0.
+// ------------------------------------------------------------------------------------------------
+const TAU = Math.PI * 2, S = Math.SQRT1_2, PW = 6.4, PD = 4.8, T = 0.035, Z0 = -2.9, WH = 2.6, PPU = 128, TABLE_Y = -0.56;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v)), lerp = (a, b, u) => a + (b - a) * u;
+const backOut = u => { u = clamp(u, 0, 1) - 1; return 1 + 2.4 * u * u * u + 1.4 * u * u; };
+const C = { ink: '#4a3a4f', paper: '#fbf6ec', butter: '#ffe3a1', blush: '#ff9fb4', rose: '#f8bfd0', coral: '#e46f7a', lav: '#cdbaf0', sky: '#b8d7f4',
+  mint: '#b5e5cd', apricot: '#ffd8c0', leaf: '#8ec79c', leafL: '#b4e0b6', woodL: '#e6c39b', wood: '#c9a27e', woodD: '#a87a5a', night: '#3a3866',
+  cream: '#fff3df', white: '#fffdf8', muted: '#8b7b8d' };
+/** Room tiles to the table: i runs along the left wall, j along the right, both from the back corner. */
+const RC = (i, j) => [(j - i) * S, Z0 + (i + j) * S];
+
+function mulberry(a) { return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+function hexRgb(h) { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+function mix(a, b, u) { const A = hexRgb(a), B = hexRgb(b); return '#' + A.map((v, i) => Math.round(lerp(v, B[i], clamp(u, 0, 1))).toString(16).padStart(2, '0')).join(''); }
+const shade = (c, amt) => amt < 0 ? mix(c, '#2a2030', -amt) : mix(c, '#ffffff', amt);
+
+// --- the crayon kit: everything printed in the book is drawn with this ---------------------------
+let PENCIL = false, SEED = 1;
+
+function makeKit(ctx, pencil, seed, yUp) {
+  const R = mulberry((seed * 7919 + 13) | 0), INK = pencil ? '#a7a1b4' : C.ink, K = { ctx, pencil, R, INK };
+  const wob = (pts, closed, j) => {
+    const out = [], n = pts.length, m = closed ? n : n - 1;
+    for (let i = 0; i < m; i++) {
+      const a = pts[i], b = pts[(i + 1) % n], k = Math.max(1, Math.round(Math.hypot(b[0] - a[0], b[1] - a[1]) / .22));
+      for (let q = 0; q < k; q++) { const u = q / k; out.push([a[0] + (b[0] - a[0]) * u + (R() - .5) * 2 * j, a[1] + (b[1] - a[1]) * u + (R() - .5) * 2 * j]); }
+    }
+    if (!closed) out.push(pts[n - 1]);
+    return out;
+  };
+  const trace = (P, closed, smooth) => {
+    const n = P.length;
+    ctx.beginPath();
+    if (smooth && closed) {
+      const mid = i => [(P[i % n][0] + P[(i + 1) % n][0]) / 2, (P[i % n][1] + P[(i + 1) % n][1]) / 2], s = mid(0);
+      ctx.moveTo(s[0], s[1]);
+      for (let i = 1; i <= n; i++) { const p = P[i % n], q = mid(i); ctx.quadraticCurveTo(p[0], p[1], q[0], q[1]); }
+      ctx.closePath();
+    } else { P.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); if (closed) ctx.closePath(); }
+  };
+  /** Fill, hatch, wobbly ink outline. In pencil mode fills go to bare paper and lines to graphite. */
+  K.shape = (pts, fill, o = {}) => {
+    const closed = o.closed !== false, P = o.raw ? pts : wob(pts, closed, o.j ?? .012);
+    ctx.save(); ctx.lineJoin = ctx.lineCap = 'round';
+    if (o.alpha != null) ctx.globalAlpha = o.alpha;
+    if (closed && fill) {
+      trace(P, true, o.smooth); ctx.fillStyle = pencil ? C.paper : fill; ctx.fill();
+      if (o.hatch !== false) {
+        let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+        for (const p of P) { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); }
+        ctx.save(); trace(P, true, o.smooth); ctx.clip();
+        ctx.strokeStyle = pencil ? '#cdc8d6' : (typeof o.hatch === 'string' ? o.hatch : shade(fill, -.13));
+        ctx.globalAlpha *= pencil ? .7 : (o.ha ?? .45); ctx.lineWidth = .022;
+        const gap = (o.gap || .075) * (pencil ? 1.6 : 1), hh = y1 - y0;
+        ctx.beginPath();
+        for (let d = x0 - hh; d < x1; d += gap) { const jt = (R() - .5) * gap * .7; ctx.moveTo(d + jt, y0); ctx.lineTo(d + hh + jt + (R() - .5) * .04, y1); }
+        ctx.stroke(); ctx.restore();
+      }
+    }
+    if (o.stroke !== false) { trace(P, closed, o.smooth); ctx.strokeStyle = pencil ? INK : (o.stroke || INK); ctx.lineWidth = o.lw || .032; ctx.stroke(); }
+    ctx.restore();
+  };
+  K.rect = (x, y, w, h, fill, o) => K.shape([[x, y], [x + w, y], [x + w, y + h], [x, y + h]], fill, o);
+  K.ell = (cx, cy, rx, ry, fill, o = {}) => {
+    const n = o.n || 16, pts = [], cr = Math.cos(o.rot || 0), sr = Math.sin(o.rot || 0);
+    for (let i = 0; i < n; i++) {
+      const a = i / n * TAU, k = 1 + (R() - .5) * 2 * (o.wobble ?? .04), ex = Math.cos(a) * rx * k, ey = Math.sin(a) * ry * k;
+      pts.push([cx + ex * cr - ey * sr, cy + ex * sr + ey * cr]);
+    }
+    K.shape(pts, fill, { ...o, raw: true, smooth: true });
+  };
+  K.pl = (pts, o = {}) => K.shape(pts, null, { ...o, closed: false });
+  K.line = (x1, y1, x2, y2, o) => K.pl([[x1, y1], [x2, y2]], o);
+  K.text = (s, x, y, o = {}) => {
+    ctx.save(); ctx.translate(x, y); ctx.scale(.01, yUp ? -.01 : .01); if (o.rot) ctx.rotate(o.rot);
+    ctx.font = `700 ${(o.size || .3) * 100}px Gaegu, "Comic Sans MS", cursive`;
+    ctx.fillStyle = pencil ? INK : (o.color || C.ink); ctx.textAlign = o.align || 'left'; ctx.textBaseline = o.base || 'alphabetic';
+    ctx.fillText(s, 0, 0); ctx.restore();
+  };
+  return K;
+}
+
+/** A canvas w by h units with a kit on it. yUp puts the origin bottom-left, for walls and stand-up cards. */
+function canvasKit(w, h, yUp, pad = 0, seed = SEED++) {
+  const cv = document.createElement('canvas');
+  cv.width = Math.round((w + pad * 2) * PPU); cv.height = Math.round((h + pad * 2) * PPU);
+  const ctx = cv.getContext('2d');
+  ctx.scale(PPU, PPU);
+  if (yUp) { ctx.translate(pad, h + pad); ctx.scale(1, -1); } else ctx.translate(pad, pad);
+  return { cv, ctx, K: makeKit(ctx, PENCIL, seed, yUp) };
+}
+let _grain = null;
+/** Wax gaps and paper tooth over whatever is already drawn. */
+function grain(cv) {
+  if (!_grain) {
+    _grain = document.createElement('canvas'); _grain.width = _grain.height = 128;
+    const g = _grain.getContext('2d'), im = g.createImageData(128, 128), r = mulberry(7);
+    for (let i = 0; i < im.data.length; i += 4) {
+      const light = r() < .7; im.data[i] = im.data[i + 1] = im.data[i + 2] = light ? 255 : 60;
+      im.data[i + 3] = r() < .4 ? Math.floor(r() * (light ? 46 : 20)) : 0;
+    }
+    g.putImageData(im, 0, 0);
+  }
+  const g = cv.getContext('2d');
+  g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-atop';
+  g.fillStyle = g.createPattern(_grain, 'repeat'); g.fillRect(0, 0, cv.width, cv.height); g.restore();
+}
+/** The white cut edge around a paper cut-out. */
+function sticker(cv, px = 5) {
+  const out = document.createElement('canvas'); out.width = cv.width; out.height = cv.height;
+  const g = out.getContext('2d');
+  for (let k = 0; k < 16; k++) g.drawImage(cv, Math.cos(k / 16 * TAU) * px, Math.sin(k / 16 * TAU) * px);
+  g.globalCompositeOperation = 'source-in'; g.fillStyle = PENCIL ? '#f1ece2' : C.white; g.fillRect(0, 0, out.width, out.height);
+  g.globalCompositeOperation = 'source-over'; g.drawImage(cv, 0, 0);
+  return out;
+}
+function tex(cv) { const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; }
+
+// --- drawings: wall prints ------------------------------------------------------------------------
+function wallBase(K, len, col, wains) {
+  K.rect(0, 0, len, WH, col, { ha: .3 });
+  if (wains) { K.rect(0, 0, len, .78, wains, { ha: .3 }); K.line(0, .78, len, .78); }
+  K.rect(0, 0, len, .12, C.woodL, { hatch: false });
+}
+function door(K, x, col = C.woodL) {
+  K.rect(x - .08, 0, .96, 2.02, C.wood, { hatch: false });
+  K.rect(x, 0, .8, 1.94, col);
+  for (const y of [.15, 1.05]) K.rect(x + .1, y, .6, .72, shade(col, .14), { lw: .018 });
+  K.ell(x + .68, .98, .05, .05, C.butter, { hatch: false });
+}
+function windowP(K, x, y, w, h, curtain) {
+  K.rect(x - .07, y - .07, w + .14, h + .14, C.white, { hatch: false });
+  K.rect(x, y, w, h, '#bfe0f7', { hatch: '#ffffff', ha: .7, gap: .12 });
+  K.ell(x + w * .3, y + h * .7, w * .17, h * .09, C.white, { stroke: false, hatch: false });
+  K.ell(x + w * .72, y + h * .3, w * .13, h * .07, C.white, { stroke: false, hatch: false });
+  K.line(x + w / 2, y, x + w / 2, y + h); K.line(x, y + h / 2, x + w, y + h / 2);
+  K.rect(x - .12, y - .14, w + .24, .08, C.woodL, { hatch: false });
+  if (curtain) {
+    for (const s of [0, 1]) { const cx = s ? x + w + .1 : x - .4; K.shape([[cx, y - .26], [cx + .3, y - .26], [cx + .35, y + h + .15], [cx - .05, y + h + .15]], curtain, { gap: .05 }); }
+    K.line(x - .55, y + h + .17, x + w + .55, y + h + .17, { lw: .045 });
+  }
+}
+/** One of his paintings: a little mirrored pixel piece in a frame. */
+function pixelArt(K, x, y, s, seed, frame = C.woodD) {
+  const R = mulberry(seed), n = 7, c = s / n, pal = [C.coral, C.sky, C.butter, C.leaf, C.lav, C.blush, C.night], g = K.ctx;
+  K.rect(x - .07, y - .07, s + .14, s + .14, frame, { hatch: false });
+  K.rect(x, y, s, s, C.white, { hatch: false, lw: .015 });
+  if (K.pencil) return;
+  const bg = pal[Math.floor(R() * 5)], fg = pal[Math.floor(R() * 7)], fg2 = pal[Math.floor(R() * 7)];
+  g.fillStyle = shade(bg, .5); g.fillRect(x, y, s, s);
+  for (let r = 0; r < n; r++) for (let q = 0; q < 4; q++) {
+    if (R() > .5) continue;
+    g.fillStyle = R() < .7 ? fg : fg2;
+    g.fillRect(x + q * c, y + r * c, c + .004, c + .004); g.fillRect(x + (n - 1 - q) * c, y + r * c, c + .004, c + .004);
+  }
+  K.rect(x, y, s, s, null, { lw: .02 });
+}
+function books(K, x, y, w, h, seed) {
+  const R = mulberry(seed), pal = [C.rose, C.sky, C.butter, C.lav, C.coral, C.mint, C.apricot];
+  for (let cx = x; cx < x + w - .06;) {
+    const bw = .07 + R() * .09, bh = h * (.68 + R() * .32);
+    if (R() > .1) K.rect(cx, y, Math.min(bw, x + w - cx), bh, pal[Math.floor(R() * pal.length)], { hatch: false, lw: .014, j: .004 });
+    cx += bw;
+  }
+}
+
+// --- drawings: stand-up cards and printed box faces -----------------------------------------------
+const D = {
+  plant(K, w, h) {
+    for (const [a, l, c] of [[-1.0, .5, C.leaf], [1.0, .5, C.leaf], [-.45, .62, C.leafL], [.45, .62, C.leafL], [0, .7, C.leaf]])
+      K.ell(w / 2 + Math.sin(a) * h * l * .5, h * .34 + Math.cos(a) * h * l * .5, h * .12, h * l * .52, c, { rot: -a, n: 10 });
+    K.shape([[w * .26, 0], [w * .74, 0], [w * .82, h * .36], [w * .18, h * .36]], '#e8957a');
+  },
+  lamp(K, w, h) {
+    K.rect(w * .3, 0, w * .4, .05, C.night, { hatch: false }); K.line(w / 2, .05, w / 2, h * .55, { lw: .04 });
+    K.shape([[w * .1, h * .5], [w * .9, h * .5], [w * .7, h], [w * .3, h]], C.butter);
+  },
+  floorLamp(K, w, h) {
+    K.ell(w / 2, .05, w * .3, .05, C.night, { hatch: false }); K.line(w / 2, .05, w / 2, h - .4, { lw: .05 });
+    K.shape([[w * .08, h - .45], [w * .92, h - .45], [w * .72, h], [w * .28, h]], C.butter);
+  },
+  easel(K, w, h) {
+    const o = { lw: .06, stroke: C.woodD };
+    K.line(w * .18, 0, w * .42, h * .97, o); K.line(w * .82, 0, w * .58, h * .97, o); K.line(w * .5, .25, w * .5, h, o);
+    const cx = w * .12, cy = h * .37, cw = w * .76, ch = h * .5;
+    K.rect(w * .06, cy - .07, w * .88, .07, C.woodL, { hatch: false });
+    K.rect(cx, cy, cw, ch, C.white, { hatch: false });
+    K.rect(cx + .05, cy + ch * .46, cw - .1, ch * .47, C.sky, { stroke: false, j: .02, ha: .8, hatch: '#ffffff' });
+    K.ell(cx + cw * .7, cy + ch * .72, .1, .1, C.butter, { stroke: false, hatch: false });
+    K.shape([[cx + .05, cy + .06], [cx + cw * .6, cy + .06], [cx + cw * .42, cy + ch * .4], [cx + .05, cy + ch * .3]], C.leafL, { stroke: false, j: .03 });
+  },
+  guitar(K, w, h) {
+    K.rect(w / 2 - .045, h * .45, .09, h * .44, C.woodD, { hatch: false }); K.rect(w / 2 - .075, h * .88, .15, h * .11, C.woodD, { hatch: false });
+    K.ell(w / 2, h * .2, w * .46, h * .2, '#e8a86a'); K.ell(w / 2, h * .42, w * .35, h * .14, '#e8a86a', { stroke: false });
+    K.ell(w / 2, h * .34, .075, .075, C.night, { hatch: false });
+    K.line(w / 2, h * .12, w / 2, h * .9, { lw: .012 });
+  },
+  tree(K, w, h) {
+    K.shape([[w * .43, 0], [w * .57, 0], [w * .55, h * .5], [w * .45, h * .5]], C.woodD);
+    K.ell(w / 2, h * .66, w * .46, h * .32, C.leaf, { wobble: .09, n: 14 });
+    K.ell(w * .4, h * .75, w * .2, h * .12, C.leafL, { stroke: false, hatch: false });
+    for (const [x, y] of [[.3, .58], [.66, .7], [.56, .5], [.38, .86]]) K.ell(w * x, h * y, .06, .06, C.coral, { hatch: false, lw: .018 });
+  },
+  pine(K, w, h) {
+    K.rect(w * .44, 0, w * .12, h * .25, C.woodD, { hatch: false });
+    for (let k = 0; k < 3; k++) { const y = h * (.18 + k * .24), ww = w * (.5 - k * .1); K.shape([[w / 2 - ww, y], [w / 2 + ww, y], [w / 2, y + h * .36]], k % 2 ? C.leafL : C.leaf); }
+  },
+  bush(K, w, h) { K.ell(w / 2, h * .5, w * .48, h * .48, C.leaf, { wobble: .1 }); K.ell(w * .38, h * .62, w * .16, h * .16, C.leafL, { stroke: false, hatch: false }); },
+  cloud(K, w, h) {
+    K.rect(w / 2 - .05, 0, .1, h - .5, C.white, { hatch: false, lw: .02 });
+    const pts = [];
+    for (let i = 0; i < 18; i++) { const a = i / 18 * TAU, k = Math.sin(a) > 0 ? 1 + .3 * Math.abs(Math.sin(a * 2.5)) : .9; pts.push([w / 2 + Math.cos(a) * w * .42 * k, h - .42 + Math.sin(a) * .26 * k]); }
+    K.shape(pts, C.white, { raw: true, smooth: true, hatch: C.sky, ha: .3 });
+  },
+  windmill(K, w, h) {
+    K.shape([[w * .26, 0], [w * .74, 0], [w * .62, h * .84], [w * .38, h * .84]], C.cream);
+    K.shape([[w * .32, h * .84], [w * .68, h * .84], [w * .5, h]], C.coral);
+    K.rect(w * .43, 0, w * .14, .4, C.woodD, { hatch: false }); K.ell(w / 2, h * .5, .09, .11, C.sky, { hatch: false });
+  },
+  blades(K, w) {
+    const c = w / 2;
+    for (let k = 0; k < 4; k++) {
+      const a = k * TAU / 4 + .3, d = [Math.cos(a), Math.sin(a)], n = [-d[1], d[0]], p = (u, v) => [c + d[0] * u + n[0] * v, c + d[1] * u + n[1] * v];
+      K.line(...p(0, 0), ...p(w * .46, 0), { lw: .045 });
+      K.shape([p(w * .14, .02), p(w * .46, .02), p(w * .46, .25), p(w * .14, .25)], C.white, { hatch: C.lav, ha: .8, gap: .06 });
+    }
+    K.ell(c, c, .1, .1, C.coral, { hatch: false });
+  },
+  stall(K, w, h) {
+    for (const x of [.08, w - .16]) K.rect(x, 0, .08, h * .8, C.woodD, { hatch: false });
+    K.rect(.03, 0, w - .06, .58, C.woodL);
+    K.text('shop', w / 2, .16, { size: .34, align: 'center' });
+    for (const [x, c] of [[.35, C.coral], [.6, C.butter], [.85, C.leaf], [1.15, C.coral], [1.42, C.lav]]) K.ell(x, .68, .1, .1, c, { hatch: false, lw: .02 });
+    for (let k = 0; k < 6; k++) { const x = k * w / 6, c = k % 2 ? C.white : C.coral; K.rect(x, h * .74, w / 6, h * .26, c, { hatch: false }); K.ell(x + w / 12, h * .74, w / 12, .08, c, { hatch: false }); }
+  },
+  sign(K, w, h) {
+    K.rect(w / 2 - .05, 0, .1, h, C.woodD, { hatch: false });
+    K.shape([[.12, h - .36], [w - .2, h - .36], [w - .03, h - .21], [w - .2, h - .06], [.12, h - .06]], C.cream, { hatch: false });
+    K.text('town', w * .46, h - .29, { size: .24, align: 'center' });
+    K.shape([[w - .12, h - .74], [.2, h - .74], [.03, h - .59], [.2, h - .44], [w - .12, h - .44]], C.cream, { hatch: false });
+    K.text('home', w * .54, h - .67, { size: .24, align: 'center' });
+  },
+  bench(K, w, h) {
+    for (const x of [.1, w - .18]) K.rect(x, 0, .08, h, C.woodD, { hatch: false });
+    K.rect(0, h * .42, w, .1, C.woodL, { hatch: false }); K.rect(.04, h * .72, w - .08, .09, C.woodL, { hatch: false }); K.rect(.04, h * .9, w - .08, .09, C.woodL, { hatch: false });
+  },
+  mailbox(K, w, h) {
+    K.rect(w / 2 - .04, 0, .08, h * .6, C.woodD, { hatch: false });
+    K.shape([[.04, h * .58], [w - .04, h * .58], [w - .04, h * .86], [w * .7, h], [w * .3, h], [.04, h * .86]], C.coral);
+    K.rect(w - .1, h * .8, .05, .2, C.butter, { hatch: false, lw: .018 });
+  },
+  globe(K, w, h) {
+    K.ell(w / 2, .05, w * .3, .05, C.woodD, { hatch: false }); K.line(w / 2, .05, w / 2, h * .45, { lw: .05, stroke: C.woodD });
+    K.ell(w / 2, h * .68, w * .42, w * .42, C.sky);
+    K.ell(w * .4, h * .74, w * .16, w * .12, C.leaf, { stroke: false, hatch: false, wobble: .2 }); K.ell(w * .62, h * .58, w * .12, w * .15, C.leaf, { stroke: false, hatch: false, wobble: .2 });
+  },
+  cupboards(K, w, h) {
+    K.rect(0, 0, w, h, C.white, { ha: .25 });
+    for (let k = 0; k < 4; k++) { const x = .08 + k * (w - .08) / 4; K.rect(x, .1, (w - .08) / 4 - .08, h - .34, '#fdf2dc', { lw: .02 }); K.ell(x + .1, h * .48, .035, .035, C.coral, { hatch: false, lw: .014 }); }
+    K.line(0, h - .16, w, h - .16, { lw: .02 });
+  },
+  fridge(K, w, h) {
+    K.rect(0, 0, w, h, '#dff0f6', { ha: .3 });
+    K.line(0, h * .62, w, h * .62); K.line(w * .14, h * .68, w * .14, h * .9, { lw: .05 }); K.line(w * .14, h * .3, w * .14, h * .54, { lw: .05 });
+    pixelArt(K, w * .46, h * .2, .3, 71, C.white);
+    for (const [x, y, c] of [[.5, .78, C.coral], [.7, .86, C.butter], [.62, .7, C.leaf]]) K.rect(w * x, h * y, .1, .08, c, { hatch: false, lw: .014 });
+  },
+  bookcase(K, w, h) {
+    K.rect(0, 0, w, h, C.woodD, { ha: .3 });
+    for (let r = 0; r < 4; r++) { const y = .1 + r * (h - .1) / 4; K.rect(.1, y, w - .2, (h - .1) / 4 - .1, shade(C.woodD, -.25), { hatch: false, lw: .018 }); books(K, .13, y, w - .26, (h - .1) / 4 - .16, 90 + r * 7); }
+  },
+  /** The house from outside: gable end on the left card, long side on the right, corner on the spine. */
+  house(K, len) {
+    K.shape([[.25, 0], [len, 0], [len, 1.95], [1.78, 3.1], [.25, 1.95]], C.cream, { ha: .3 });
+    K.shape([[.06, 1.84], [1.78, 3.22], [len, 2.05], [len, 1.8], [1.78, 2.94], [.2, 1.68]], C.coral);
+    K.ell(1.78, 2.25, .22, .22, C.sky, { hatch: false });
+    windowP(K, 1.25, .72, .95, .8);
+    K.rect(1.15, .5, 1.15, .14, C.woodL, { hatch: false });
+    for (const [x, c] of [[1.3, C.coral], [1.6, C.butter], [1.9, C.blush], [2.15, C.coral]]) K.ell(x, .7, .07, .07, c, { hatch: false, lw: .016 });
+    const x0 = len;
+    K.rect(x0, 0, len - .25, 1.95, shade(C.cream, -.04), { ha: .35 });
+    K.rect(x0 + 1.95, 2.8, .36, .46, C.cream, { ha: .3 });
+    K.shape([[x0, 1.8], [x0 + len - .08, 1.8], [x0 + len - .42, 2.95], [x0 + .7, 2.95], [x0, 2.05]], C.coral);
+    for (const y of [2.1, 2.4, 2.7]) K.line(x0 + .25, y, x0 + len - .2 - (y - 1.8) * .3, y, { lw: .016 });
+    door(K, x0 + 1.05, C.coral);
+    windowP(K, x0 + 2.2, .8, .65, .75);
+  },
+  ridge(K, len) {
+    const W = len * 2;
+    K.ell(9.9, 2.3, .52, .52, C.butter, { hatch: '#ffffff', ha: .8 });
+    K.shape([[0, 0], [0, 1.1], [1.2, 1.8], [2.3, 1.25], [3.6, 2.3], [4.7, 1.6], [5.8, 2.7], [6.8, 2.15], [7.9, 2.8], [9.2, 1.7], [10.3, 2.3], [11.6, 1.3], [12.6, 1.9], [W, 1.0], [W, 0]], C.lav, { ha: .5 });
+    for (const [x, y] of [[3.6, 2.3], [5.8, 2.7], [7.9, 2.8], [10.3, 2.3]]) K.shape([[x - .32, y - .38], [x, y], [x + .32, y - .4], [x + .1, y - .3], [x - .08, y - .42]], C.white, { hatch: false, lw: .02 });
+    K.shape([[0, 0], [0, .7], [2, 1.0], [4.5, .62], [6.8, 1.05], [9, .66], [11.5, 1.0], [W, .6], [W, 0]], C.leafL, { ha: .5 });
+    for (const [x, y, c] of [[2.6, .92, C.rose], [3.05, .86, C.butter], [3.5, .78, C.sky], [10.6, .9, C.apricot], [11.1, .96, C.rose]]) {
+      K.rect(x, y - .04, .32, .26, c, { hatch: false, lw: .018 }); K.shape([[x - .05, y + .22], [x + .37, y + .22], [x + .16, y + .42]], C.coral, { hatch: false, lw: .018 });
+    }
+  },
+};
+
+// --- drawings: page prints (table coordinates, x right, y toward the viewer) -----------------------
+const diamond = () => [RC(0, 0), RC(5, 0), RC(5, 5), RC(0, 5)];
+const quad = (i0, j0, i1, j1) => [RC(i0, j0), RC(i1, j0), RC(i1, j1), RC(i0, j1)];
+function planks(K, col, alongI) {
+  K.shape(diamond(), col, { ha: .3 });
+  const R = mulberry(31);
+  for (let a = .5; a < 5; a += .5) K.line(...(alongI ? RC(0, a) : RC(a, 0)), ...(alongI ? RC(5, a) : RC(a, 5)), { lw: .014 });
+  for (let a = 0; a < 5; a += .5) for (let k = 0; k < 2; k++) { const b = .4 + R() * 4.2; K.line(...(alongI ? RC(b, a) : RC(a, b)), ...(alongI ? RC(b, a + .5) : RC(a + .5, b)), { lw: .014 }); }
+}
+/** The HUD, printed: chapter title, his diary for the day, his needs, the money jar, page numbers. */
+function margins(K, o) {
+  K.text(o.title, -6.05, -4.0, { size: .64 }); K.text(o.chapter, -6.0, -3.58, { size: .28, color: C.muted });
+  K.text(o.day, -6.05, 2.72, { size: .36, color: C.coral });
+  o.lines.forEach((s, k) => K.text(s, -6.05, 3.18 + k * .37, { size: .29 }));
+  const tint = [C.butter, '#f6b98a', C.rose, C.sky, C.lav];
+  Object.entries(o.needs).forEach(([name, v], k) => {
+    const y = 2.86 + k * .36;
+    K.text(name, 3.95, y + .13, { size: .25, align: 'right' });
+    K.rect(4.05, y - .04, 1.9, .18, C.white, { hatch: false, lw: .02, j: .006 });
+    if (v) K.rect(4.07, y - .02, 1.86 * v, .14, tint[k], { stroke: false, gap: .04, ha: .8, j: .006 });
+  });
+  K.text(o.money, 5.95, -4.0, { size: .52, align: 'right' }); K.text('in the jar', 5.95, -3.6, { size: .26, align: 'right', color: C.muted });
+  K.text(String(o.no * 2), -6.05, 4.62, { size: .22, color: C.muted }); K.text(String(o.no * 2 + 1), 6.05, 4.62, { size: .22, align: 'right', color: C.muted });
+}
+function road(K, pts, w, col) {
+  const c = K.ctx, tr = () => {
+    c.beginPath(); c.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length - 1; i++) c.quadraticCurveTo(pts[i][0], pts[i][1], (pts[i][0] + pts[i + 1][0]) / 2, (pts[i][1] + pts[i + 1][1]) / 2);
+    c.lineTo(pts.at(-1)[0], pts.at(-1)[1]);
+  };
+  c.save(); c.lineCap = c.lineJoin = 'round';
+  tr(); c.strokeStyle = K.INK; c.lineWidth = w + .07; c.stroke();
+  tr(); c.strokeStyle = col; c.lineWidth = w; c.stroke(); c.restore();
+}
+function flowers(K, seed, n, x0, y0, x1, y1) {
+  const R = mulberry(seed);
+  for (let k = 0; k < n; k++) K.ell(lerp(x0, x1, R()), lerp(y0, y1, R()), .05, .05, [C.white, C.rose, C.butter, C.coral][k % 4], { hatch: false, lw: .014, n: 7 });
+}
+/** A word in crayon colours, one per letter. */
+function crayonWord(K, word, x, y, size, cols) {
+  const c = K.ctx; c.save(); c.font = `700 ${size * 100}px Gaegu, cursive`;
+  let cx = x;
+  [...word].forEach((ch, k) => { K.text(ch, cx + .035, y + .04, { size, color: C.ink }); K.text(ch, cx, y, { size, color: cols[k % cols.length] }); cx += c.measureText(ch).width / 100; });
+  c.restore();
+}
+
+const PRINT = {
+  title(K) {
+    K.ell(0, -.3, 4.6, 2.5, '#cfe8c0', { ha: .5, wobble: .06, n: 22 });
+    road(K, [[1.3, .1], [2.6, 1.3], [4.6, 1.0], [6.5, 1.5]], .55, '#f2dcb3');
+    flowers(K, 5, 26, -4, -2.2, 4, 1.6);
+    crayonWord(K, 'the lil guy', -6.0, 3.25, 1.02, [C.coral, '#e8a86a', '#6fb586', '#6f9fd0', '#9a7fd0']);
+    crayonWord(K, 'machine', -6.0, 4.3, 1.02, ['#6f9fd0', '#9a7fd0', C.coral, '#e8a86a', '#6fb586']);
+    K.text('a pop-up life', .7, 2.95, { size: .66, color: C.coral });
+    ['every room is a spread.', 'every day is a page.', 'blank pages are rooms he\'s saving for.'].forEach((s, k) => K.text(s, .72, 3.42 + k * .38, { size: .3 }));
+    K.text('this book belongs to:  him', -6.0, -4.05, { size: .32, color: C.muted });
+  },
+  bedroom(K) {
+    planks(K, '#f0d6b0', true);
+    K.shape(quad(1.9, 1.75, 4.0, 3.55), C.lav, { gap: .05 }); K.shape(quad(2.15, 2.0, 3.75, 3.3), C.rose, { lw: .02 });
+    margins(K, { title: 'the bedroom', chapter: 'chapter one · where he wakes up', day: 'day 12 · tuesday', no: 1, money: '$41',
+      lines: ['woke up late. the light was nice so', 'i painted the window. sold it for $14!!', 'bought a folk record. no regrets.'],
+      needs: { energy: .7, fullness: .45, mood: .85, stimulation: .6, frustration: .12 } });
+  },
+  kitchen(K) {
+    for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) K.shape(quad(i, j, i + 1, j + 1), (i + j) % 2 ? '#fdf3dc' : '#bfe5d2', { lw: .014, ha: .3, j: .006 });
+    K.shape(diamond(), null);
+    margins(K, { title: 'the kitchen', chapter: 'chapter two · toast, mostly', day: 'day 12 · 1:10 pm', no: 2, money: '$41',
+      lines: ['tea first. then toast. then i stood', 'at the fridge for a while thinking', 'about cheese. good lunch.'],
+      needs: { energy: .62, fullness: .95, mood: .8, stimulation: .4, frustration: .1 } });
+  },
+  outside(K) {
+    K.shape([[-6.1, -4.5], [6.1, -4.5], [6.1, 2.2], [1.5, 2.6], [0, 4.5], [-1.6, 2.5], [-6.1, 2.2]], '#cfe8c0', { ha: .45, j: .03 });
+    K.ell(4.3, -1.5, 1.6, .8, C.leafL, { stroke: false, hatch: false });
+    road(K, [[.3, 4.9], [.2, 3.4], [-1.4, 2.2], [.8, .9], [-.6, -.8], [0, -2.4]], .6, '#f2dcb3');
+    K.ell(3.5, .75, 1.55, .8, C.sky, { hatch: '#ffffff', ha: .8, gap: .1 });
+    K.pl([[2.9, .6], [3.3, .52], [3.7, .62]], { lw: .016 }); K.pl([[3.6, 1.0], [4.0, .92], [4.4, 1.02]], { lw: .016 });
+    flowers(K, 9, 44, -5.8, -2.6, 5.8, 2.0);
+    K.text('outside', -6.0, 3.3, { size: .64 }); K.text('chapter three · out the front door', -5.98, 3.72, { size: .28, color: C.muted });
+    K.text('the windmill really spins. i checked twice.', -5.98, 4.2, { size: .29 });
+    K.text('more pages go here:', 2.5, 3.3, { size: .3, color: C.muted });
+    ['the town', 'the lake', 'the hill'].forEach((s, k) => K.text('· ' + s, 2.7, 3.68 + k * .34, { size: .29 }));
+    K.text('6', -6.05, 4.62, { size: .22, color: C.muted }); K.text('7', 6.05, 4.62, { size: .22, align: 'right', color: C.muted });
+  },
+  library(K) {
+    planks(K, '#dcc6a2', false);
+    K.ell(...RC(2.9, 2.9), 1.3, .92, C.mint, { gap: .05 }); K.ell(...RC(2.9, 2.9), .95, .64, '#d9f0e2', { lw: .02 });
+    const blank = K.pencil;
+    margins(K, { title: 'the library', chapter: blank ? 'chapter four · not printed yet' : 'chapter four · so many books', day: blank ? 'someday' : 'day 12 · 4:40 pm', no: 4, money: blank ? '$120' : '$0',
+      lines: blank ? ['this page is still pencil.', 'it costs $120 to print.', 'i have $41. i\'m saving.'] : ['i own a LIBRARY now.', 'i have read none of these.', 'starting tomorrow.'],
+      needs: blank ? { energy: 0, fullness: 0, mood: 0, stimulation: 0, frustration: 0 } : { energy: .5, fullness: .6, mood: 1, stimulation: .9, frustration: .05 } });
+    if (blank) K.text('to print', 5.95, -3.6 + .34, { size: .26, align: 'right' });
+  },
+};
+
+// --- three: scene, light, table -------------------------------------------------------------------
+const stage = document.getElementById('stage');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.domElement.className = 'gl';
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#2a2233');
+const camera = new THREE.PerspectiveCamera(30, 16 / 9, 1, 140);
+const hemi = new THREE.HemisphereLight('#ffffff', '#e8d5c0', 2);
+const spot = new THREE.SpotLight('#fff4e0', 1.5, 0, .6, .5, 0);
+spot.castShadow = true; spot.shadow.mapSize.set(2048, 2048); spot.shadow.bias = -.0004; spot.shadow.normalBias = .03; spot.shadow.camera.near = 6; spot.shadow.camera.far = 50;
+const bulb = new THREE.PointLight('#ffd08a', 0, 7, 1.6);
+scene.add(hemi, spot, spot.target, bulb);
+
+let hatchTex = null;
+const lam = (color, o = {}) => new THREE.MeshLambertMaterial({ color, map: hatchTex, ...o });
+const lineInk = new THREE.LineBasicMaterial({ color: C.ink, transparent: true, opacity: .6 }), linePencil = new THREE.LineBasicMaterial({ color: '#a7a1b4' });
+
+function makeHatchTex() {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 128;
+  const g = cv.getContext('2d'), r = mulberry(3);
+  g.fillStyle = '#fff'; g.fillRect(0, 0, 128, 128); g.strokeStyle = 'rgba(110,80,100,.13)'; g.lineWidth = 1.6; g.lineCap = 'round';
+  for (let d = -128; d < 128; d += 7) { const j = (r() - .5) * 3; g.beginPath(); g.moveTo(d + j, 128); g.lineTo(d + 128 + j, 0); g.stroke(); }
+  grain(cv);
+  const t = tex(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+}
+function buildTable() {
+  const { cv, K } = canvasKit(8, 8, false, 0, 501), R = mulberry(12), tones = ['#a8805f', '#b0886a', '#a17858', '#b48d6e'];
+  for (let r = 0; r < 5; r++) {
+    let x = -R() * 2;
+    while (x < 8) { const w = 2.2 + R() * 2.4; K.rect(x, r * 1.6, w, 1.6, tones[Math.floor(R() * 4)], { lw: .02, stroke: '#7a5a48', ha: .5, gap: .09, j: .004 }); x += w; }
+  }
+  grain(cv);
+  const t = tex(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(8, 8);
+  const table = new THREE.Mesh(new THREE.PlaneGeometry(64, 64), new THREE.MeshLambertMaterial({ map: t }));
+  table.rotation.x = -Math.PI / 2; table.position.y = TABLE_Y; table.receiveShadow = true; scene.add(table);
+
+  // the book's body: a cover board, and the two stacks of pages that aren't open
+  const cover = new THREE.Mesh(new THREE.BoxGeometry(PW * 2 + .5, .09, PD * 2 + .4), lam(C.coral));
+  cover.position.y = TABLE_Y + .045; cover.castShadow = cover.receiveShadow = true; scene.add(cover);
+  const ec = document.createElement('canvas'); ec.width = 8; ec.height = 64;
+  const eg = ec.getContext('2d'); eg.fillStyle = '#f6eede'; eg.fillRect(0, 0, 8, 64); eg.fillStyle = 'rgba(120,95,110,.35)';
+  for (let y = 3; y < 64; y += 7) eg.fillRect(0, y, 8, 1.4);
+  const edge = new THREE.MeshLambertMaterial({ map: tex(ec) }), h = -TABLE_Y - .09;
+  for (const s of [-1, 1]) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(PW + .03, h, PD * 2 + .06), edge);
+    m.position.set(s * (PW + .03) / 2, -h / 2, 0); m.castShadow = m.receiveShadow = true; scene.add(m);
+  }
+  const ribbon = new THREE.Mesh(new THREE.BoxGeometry(.26, .012, 2.2), lam('#6f9fd0')); ribbon.position.set(.5, TABLE_Y + .01, PD + .9); ribbon.rotation.y = .12; ribbon.receiveShadow = true; scene.add(ribbon);
+
+  // crayons left out on the desk
+  const crayons = [[C.coral, 4.6, 6.5, .2], ['#6f9fd0', 6.3, 6.1, -.5], ['#6fb586', -8.6, 2.2, 1.3], ['#f0c27a', -8.2, 3.6, .9], ['#9a7fd0', 8.5, -1.5, 1.9], [C.blush, -5.5, 6.4, -.15]];
+  for (const [c, x, z, rot] of crayons) {
+    const g = new THREE.Group(), body = new THREE.Mesh(new THREE.CylinderGeometry(.11, .11, 1.3, 14), lam(c)), tip = new THREE.Mesh(new THREE.ConeGeometry(.1, .3, 14), lam(c));
+    const wrap = new THREE.Mesh(new THREE.CylinderGeometry(.117, .117, .7, 14), lam(shade(c, .55)));
+    body.rotation.z = wrap.rotation.z = Math.PI / 2; tip.rotation.z = -Math.PI / 2; tip.position.x = .8; wrap.position.x = -.1;
+    g.add(body, tip, wrap); g.position.set(x, TABLE_Y + .11, z); g.rotation.y = rot;
+    g.traverse(m => { m.castShadow = true; }); scene.add(g);
+  }
+}
+
+// --- paper parts ----------------------------------------------------------------------------------
+/** A flat cut-out standing on its bottom edge, centred on x. draw(K, w, h) with the origin bottom-left. */
+function card(w, h, draw) {
+  const m = .08, { cv, K } = canvasKit(w, h, true, m);
+  draw(K, w, h); grain(cv);
+  const t = tex(sticker(cv)), geo = new THREE.PlaneGeometry(w + m * 2, h + m * 2);
+  geo.translate(0, h / 2, 0);
+  const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: t, alphaTest: .5, side: THREE.DoubleSide }));
+  mesh.customDepthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: t, alphaTest: .5 });
+  mesh.castShadow = mesh.receiveShadow = true;
+  return mesh;
+}
+function printMat(w, h, draw) { const { cv, K } = canvasKit(w, h, true); draw(K, w, h); grain(cv); return new THREE.MeshLambertMaterial({ map: tex(cv) }); }
+/** A paper box: x centred, back face at z = 0, sitting on y = 0 (or o.y). front and top can be printed. */
+function box(w, h, d, color, o = {}) {
+  const geo = new THREE.BoxGeometry(w, h, d); geo.translate(o.x || 0, h / 2 + (o.y || 0), d / 2 + (o.z || 0));
+  const side = lam(PENCIL ? '#f6f1e7' : color);
+  const mats = (o.front || o.top) ? [side, side, o.top ? printMat(w, d, o.top) : side, side, o.front ? printMat(w, h, o.front) : side, side] : side;
+  const mesh = new THREE.Mesh(geo, mats); mesh.castShadow = mesh.receiveShadow = true;
+  mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), PENCIL ? linePencil : lineInk));
+  return mesh;
+}
+/** A page: a thin board hinged on the spine, printed on top. */
+function pageMesh(side, print, seed) {
+  const cv = document.createElement('canvas'); cv.width = Math.round(PW * PPU); cv.height = Math.round(PD * 2 * PPU);
+  const ctx = cv.getContext('2d'); ctx.scale(PPU, PPU); ctx.translate(side === 'L' ? PW : 0, PD);
+  const K = makeKit(ctx, PENCIL, seed, false);
+  ctx.fillStyle = C.paper; ctx.fillRect(-PW, -PD, PW * 2, PD * 2);
+  print(K);
+  const g = ctx.createLinearGradient(-.8, 0, .8, 0);
+  g.addColorStop(0, 'rgba(90,60,80,0)'); g.addColorStop(.5, 'rgba(90,60,80,.2)'); g.addColorStop(1, 'rgba(90,60,80,0)');
+  ctx.fillStyle = g; ctx.fillRect(-.8, -PD, 1.6, PD * 2);
+  grain(cv);
+  const geo = new THREE.BoxGeometry(PW, T, PD * 2); geo.translate(side === 'L' ? -PW / 2 : PW / 2, T / 2, 0);
+  const e = lam('#f3ead9'), mesh = new THREE.Mesh(geo, [e, e, new THREE.MeshLambertMaterial({ map: tex(cv) }), e, e, e]);
+  mesh.castShadow = mesh.receiveShadow = true;
+  return mesh;
+}
+/**
+ * A V-fold: two cards glued to the pages along lines at `gamma` to the spine, meeting on the spine at z0.
+ * draw(K, len) paints both on one strip 2*len wide: the left card is x in [0, len], the corner is x = len.
+ */
+function vfold(sp, o) {
+  const { cv, K } = canvasKit(o.len * 2, o.h, true);
+  o.draw(K, o.len); grain(cv);
+  const t = tex(o.alpha ? sticker(cv) : cv), f = { z0: o.z0, gamma: o.gamma * Math.PI / 180, len: o.len };
+  for (const s of ['L', 'R']) {
+    const geo = new THREE.PlaneGeometry(o.len, o.h); geo.translate(s === 'L' ? -o.len / 2 : o.len / 2, o.h / 2, 0);
+    const uv = geo.attributes.uv; for (let k = 0; k < uv.count; k++) uv.setX(k, uv.getX(k) / 2 + (s === 'R' ? .5 : 0));
+    const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: t, side: THREE.DoubleSide, alphaTest: o.alpha ? .5 : 0 }));
+    if (o.alpha) mesh.customDepthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: t, alphaTest: .5 });
+    mesh.castShadow = mesh.receiveShadow = true; mesh.matrixAutoUpdate = false; f[s] = mesh;
+  }
+  sp.folds.push(f); return f;
+}
+const roomWalls = (sp, drawL, drawR) => vfold(sp, { z0: Z0, gamma: 45, len: 5, h: WH, draw: K => { drawL(K); K.ctx.translate(5, 0); drawR(K); } });
+let _night = null;
+/** A window's night view, laid over the printed day one and faded in after dark. u is measured from the corner. */
+function nightGlass(sp, wall, u, v, w, h) {
+  if (!_night) {
+    const cv = document.createElement('canvas'); cv.width = 128; cv.height = 112;
+    const g = cv.getContext('2d'), r = mulberry(4); g.fillStyle = '#34315e'; g.fillRect(0, 0, 128, 112);
+    g.fillStyle = '#fff3c4'; for (let k = 0; k < 16; k++) g.fillRect(r() * 124, r() * 108, 2.5, 2.5);
+    g.beginPath(); g.arc(92, 34, 13, 0, TAU); g.fill(); g.fillStyle = '#34315e'; g.beginPath(); g.arc(86, 30, 12, 0, TAU); g.fill();
+    g.strokeStyle = C.ink; g.lineWidth = 4; g.strokeRect(0, 0, 128, 112); g.beginPath(); g.moveTo(64, 0); g.lineTo(64, 112); g.moveTo(0, 56); g.lineTo(128, 56); g.stroke();
+    _night = tex(cv);
+  }
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: _night, transparent: true, opacity: 0, depthWrite: false }));
+  m.position.set(u + w / 2, v + h / 2, .012); wall.add(m); sp.glass.push(m);
+}
+/** Furniture: a group on one page that shears flat backward as the spread closes. yaw 0 faces the viewer. */
+function item(sp, x, z, yawDeg, build, o = {}) {
+  const g = new THREE.Group(); g.matrixAutoUpdate = false; build(g);
+  (x < 0 ? sp.L : sp.R).add(g);
+  const it = { g, x, z, yaw: yawDeg * Math.PI / 180, delay: (sp.items.length * .37) % 1 * .3, dir: o.fwd ? 1 : -1 };
+  sp.items.push(it); return it;
+}
+/** Furniture by room tile. 'L' backs onto the left wall, 'R' onto the right. */
+const at = (sp, i, j, side, build, o) => item(sp, ...RC(i, j), side === 'L' ? 45 : side === 'R' ? -45 : side, build, o);
+const toWorld = (it, lx, ly, lz) => new THREE.Vector3(it.x + lx * Math.cos(it.yaw) + lz * Math.sin(it.yaw), T + ly, it.z - lx * Math.sin(it.yaw) + lz * Math.cos(it.yaw));
+function glowBall(sp, g, x, y, z) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(.1, 12, 8), new THREE.MeshBasicMaterial({ color: '#fff0c0', transparent: true, opacity: 0 }));
+  m.position.set(x, y, z); g.add(m); sp.glows.push(m);
+}
+
+// --- the spreads ----------------------------------------------------------------------------------
+const BUILD = {
+  title(sp) {
+    vfold(sp, { z0: .9, gamma: 135, len: 3.3, h: 3.35, alpha: true, draw: D.house });
+    item(sp, -4.5, -.5, 10, g => g.add(card(1.7, 2.6, D.tree)));
+    item(sp, 4.4, -1.3, -8, g => g.add(card(1.2, 2.1, D.pine)));
+    item(sp, 5.4, -.2, -6, g => g.add(card(.9, .7, D.bush)));
+    item(sp, 2.7, .55, -10, g => g.add(card(.5, 1.0, D.mailbox)));
+    item(sp, -2.6, -2.9, 0, g => g.add(card(1.7, 3.5, D.cloud)), { fwd: true });
+    item(sp, 3.1, -3.3, 0, g => g.add(card(1.4, 3.9, D.cloud)), { fwd: true });
+  },
+  bedroom(sp) {
+    const f = roomWalls(sp, K => {
+      wallBase(K, 5, C.rose, '#f6dfd0');
+      pixelArt(K, .5, 1.3, .64, 11); pixelArt(K, 1.45, 1.62, .5, 23, C.coral); pixelArt(K, 1.42, 1.0, .4, 37, C.wood);
+      K.ell(4.15, 1.95, .27, .27, C.white, { hatch: false, lw: .045, wobble: .02 }); K.line(4.15, 1.95, 4.15, 2.13, { lw: .025 }); K.line(4.15, 1.95, 4.27, 1.9, { lw: .025 });
+    }, K => {
+      wallBase(K, 5, C.cream, '#f6dfd0');
+      windowP(K, 1.75, 1.1, 1.3, 1.05, C.rose);
+      K.rect(.3, 1.62, 1.0, .07, C.woodL, { hatch: false }); books(K, .36, 1.69, .58, .34, 5);
+      K.ell(1.12, 1.85, .15, .15, C.night, { hatch: false }); K.ell(1.12, 1.85, .045, .045, C.coral, { hatch: false, lw: .012 });
+      door(K, 3.95);
+    });
+    nightGlass(sp, f.R, 1.75, 1.1, 1.3, 1.05);
+    at(sp, 2.85, .06, 'L', g => g.add(
+      box(2.3, .36, 1.4, C.woodL), box(2.24, .17, 1.34, '#a9cdee', { y: .36, z: .03 }), box(.55, .18, 1.36, C.coral, { x: -.35, y: .36, z: .02 }),
+      box(.5, .11, .8, C.white, { x: .78, y: .53, z: .3 }), box(.1, .95, 1.4, C.wood, { x: 1.2 })));
+    const desk = at(sp, .06, 2.75, 'R', g => {
+      g.add(box(1.7, .07, .82, C.woodL, { y: .6 }));
+      for (const x of [-.78, .78]) for (const z of [.03, .7]) g.add(box(.08, .6, .08, C.wood, { x, z }));
+      g.add(box(.42, .02, .3, C.white, { x: .12, y: .67, z: .36 }), box(.14, .16, .14, C.coral, { x: .62, y: .67, z: .2 }));
+      const l = card(.5, .72, D.lamp); l.position.set(-.55, .67, .3); g.add(l); glowBall(sp, g, -.55, 1.2, .32);
+    });
+    sp.lamp = toWorld(desk, -.55, 1.25, .45);
+    at(sp, 1.0, 2.75, 'R', g => g.add(box(.5, .4, .5, C.coral)));
+    at(sp, 4.0, 2.2, -12, g => g.add(card(1.0, 1.75, D.easel)));
+    at(sp, .12, 1.35, 'R', g => { const c = card(.55, 1.35, D.guitar); c.rotation.x = -.1; g.add(c); });
+    at(sp, 4.6, .35, 'L', g => g.add(card(.7, 1.15, D.plant)));
+  },
+  kitchen(sp) {
+    const f = roomWalls(sp, K => {
+      wallBase(K, 5, '#ffe9b8');
+      K.rect(0, .85, 5, .62, C.white, { hatch: false, lw: .02 });
+      for (let x = .31; x < 5; x += .31) K.line(x, .85, x, 1.47, { lw: .012 }); K.line(0, 1.16, 5, 1.16, { lw: .012 });
+      windowP(K, 1.3, 1.62, 1.1, .78);
+      K.line(3.1, 2.25, 4.6, 2.25, { lw: .04 });
+      for (const [x, r, c] of [[3.35, .2, '#9aa7c7'], [3.85, .16, C.coral], [4.3, .22, '#9aa7c7']]) { K.line(x, 2.25, x, 2.25 - .2, { lw: .02 }); K.ell(x, 2.05 - r, r, r, c, { ha: .5 }); }
+    }, K => {
+      wallBase(K, 5, C.cream);
+      for (const y of [1.45, 1.95]) { K.rect(.35, y, 1.2, .06, C.woodL, { hatch: false }); for (const [x, c] of [[.5, C.coral], [.8, C.butter], [1.1, C.mint], [1.35, C.lav]]) K.rect(x - .09, y + .06, .18, .26 + (x * 7 % .1), c, { lw: .016, j: .005 }); }
+      pixelArt(K, 3.0, 1.35, .5, 53, C.woodL);
+      door(K, 3.95, '#bfe5d2');
+    });
+    nightGlass(sp, f.L, 1.3 - 5, 1.62, 1.1, .78);
+    const counter = at(sp, 3.0, .06, 'L', g => g.add(
+      box(2.7, .85, .8, C.white, { front: D.cupboards, top: (K, w, h) => K.rect(0, 0, w, h, C.woodL, { ha: .4 }) }),
+      box(.62, .03, .5, '#5a556e', { x: .75, y: .85, z: .15 }), box(.26, .24, .26, C.coral, { x: .75, y: .88, z: .27 }),
+      box(.6, .02, .45, '#cfe6f2', { x: -.55, y: .85, z: .18 }), box(.3, .2, .22, C.butter, { x: -1.1, y: .85, z: .3 })));
+    sp.lamp = toWorld(counter, .3, 1.7, .5);
+    sp.steamAt = toWorld(counter, .75, 1.2, .4);
+    at(sp, .06, 2.3, 'R', g => g.add(box(.95, 1.95, .85, '#dff0f6', { front: D.fridge })));
+    at(sp, 1.9, 3.5, -45, g => {
+      g.add(box(1.3, .07, .9, C.woodL, { y: .58, z: -.45 }));
+      for (const x of [-.58, .58]) for (const z of [-.42, .34]) g.add(box(.08, .58, .08, C.wood, { x, z }));
+      g.add(box(.34, .03, .34, C.white, { y: .65, z: -.2 }), box(.18, .06, .18, '#e8b48a', { y: .68, z: -.12 }), box(.12, .14, .12, C.sky, { x: .4, y: .65, z: -.05 }));
+    });
+    at(sp, 1.95, 4.45, -45, g => g.add(box(.42, .36, .42, C.coral, { z: -.21 })));
+    at(sp, 4.55, .3, 'L', g => g.add(card(.6, 1.0, D.plant)));
+  },
+  outside(sp) {
+    vfold(sp, { z0: -2.2, gamma: 110, len: 6.8, h: 2.95, alpha: true, draw: D.ridge });
+    item(sp, -4.9, -1.3, 8, g => g.add(card(1.8, 2.7, D.tree)));
+    item(sp, -2.3, -2.0, 4, g => g.add(card(1.1, 1.9, D.pine)));
+    item(sp, 1.9, -2.5, -4, g => g.add(card(1.0, 1.6, D.pine)));
+    item(sp, 5.5, .5, -10, g => g.add(card(1.4, 2.1, D.tree)));
+    item(sp, 4.3, -1.6, -8, g => {
+      g.add(card(1.3, 2.3, D.windmill));
+      const pivot = new THREE.Group(), b = card(1.9, 1.9, D.blades); b.position.y = -.95; pivot.add(b); pivot.position.set(0, 1.95, .06); g.add(pivot); sp.spin.push(pivot);
+    });
+    item(sp, -3.5, 1.1, 14, g => g.add(card(1.8, 1.6, D.stall)));
+    item(sp, 1.3, 3.5, -6, g => g.add(card(.9, 1.2, D.sign)));
+    item(sp, 2.3, -.35, -14, g => g.add(card(1.1, .6, D.bench)));
+    item(sp, -5.6, .6, 6, g => g.add(card(.9, .65, D.bush)));
+    item(sp, -1.4, -.9, 0, g => g.add(card(.7, .5, D.bush)));
+    item(sp, -4.4, -3.3, 0, g => g.add(card(1.8, 3.9, D.cloud)), { fwd: true });
+    item(sp, 3.2, -3.1, 0, g => g.add(card(1.5, 3.6, D.cloud)), { fwd: true });
+  },
+  library(sp) {
+    const f = roomWalls(sp, K => {
+      wallBase(K, 5, C.lav, '#e6dcf4');
+      K.rect(.35, 1.2, .9, .7, C.cream, { hatch: false }); K.pl([[.45, 1.4], [.65, 1.7], [.85, 1.45], [1.15, 1.75]], { lw: .02 });
+    }, K => {
+      wallBase(K, 5, C.mint, '#dff2e6');
+      windowP(K, 1.5, 1.0, 1.4, 1.2, C.lav);
+      door(K, 3.95);
+    });
+    nightGlass(sp, f.R, 1.5, 1.0, 1.4, 1.2);
+    at(sp, 3.0, .06, 'L', g => g.add(box(2.6, 2.25, .45, C.woodD, { front: D.bookcase })));
+    const lamp = at(sp, .1, .95, 'R', g => { g.add(card(.6, 1.9, D.floorLamp)); glowBall(sp, g, 0, 1.6, .05); });
+    sp.lamp = toWorld(lamp, 0, 1.7, .4);
+    at(sp, 1.1, 3.1, -25, g => g.add(box(.95, .4, .85, C.coral), box(.95, .62, .2, C.coral, { y: .4 }), box(.16, .22, .85, C.coral, { x: -.4, y: .4 }), box(.16, .22, .85, C.coral, { x: .4, y: .4 })));
+    at(sp, 4.2, 2.7, -15, g => g.add(card(.6, 1.1, D.globe)));
+    at(sp, 2.3, 4.2, -30, g => g.add(box(.5, .09, .36, C.coral), box(.44, .08, .32, C.sky, { y: .09, x: .02 }), box(.4, .08, .3, C.butter, { y: .17, x: -.02 })));
+  },
+};
+
+/** [x, z, what he says there, face]. The first is where he comes in. */
+const rc = (i, j, say, face) => [...RC(i, j), say, face];
+const SPREADS = [
+  { id: 'title', name: 'the cover', color: C.coral, spots: [[1.0, 1.75, 'hi!!', 'happy'], [-1.3, 1.6, 'this is my book.', 'happy'], [2.2, 1.9, 'no mail. that\'s ok.', 'neutral']] },
+  { id: 'bedroom', name: 'bedroom', color: C.rose, spots: [rc(.75, 4.3, 'home.', 'happy'), rc(4.35, 3.1, 'a little more blue…', 'happy'), rc(1.75, 2.75, 'dear diary,', 'neutral'), rc(3.0, 2.1, '…five more minutes', 'sleep'), rc(2.9, 3.6, 'hmm.', 'neutral')] },
+  { id: 'kitchen', name: 'kitchen', color: C.butter, spots: [rc(.75, 4.3, 'what\'s for lunch', 'neutral'), rc(3.2, 1.45, 'tea first.', 'happy'), rc(1.5, 2.2, 'there is cheese!!', 'wow'), rc(3.1, 3.2, 'toast again. good.', 'happy')] },
+  { id: 'outside', name: 'outside', color: C.mint, spots: [[.5, 3.9, 'oh, it\'s bright', 'wow'], [-3.1, 2.2, 'just looking.', 'neutral'], [1.6, 1.4, 'hello, fish', 'happy'], [3.3, -.5, 'whoa. it really spins', 'wow'], [-.9, .2, 'nice out here.', 'happy']] },
+  { id: 'library', name: 'library', color: C.lav, price: 120, owned: false, spots: [rc(.75, 4.3, 'someday…', 'neutral'), rc(2.7, 1.25, 'it\'s only pencil', 'neutral'), rc(2.9, 2.9, '$120. i have $41.', 'sleep')],
+    ownedSpots: [rc(2.9, 2.9, '!!!', 'wow'), rc(2.7, 1.25, 'so many i haven\'t read', 'happy'), rc(2.2, 3.6, 'mine. all mine.', 'happy'), rc(.75, 4.3, 'i live here now', 'happy')] },
+];
+const N = SPREADS.length, spreads = [];
+
+function buildSpread(def, idx) {
+  PENCIL = !!def.price && !def.owned; SEED = idx * 1000 + 1;
+  const sp = { def, idx, L: new THREE.Group(), R: new THREE.Group(), items: [], folds: [], glass: [], glows: [], spin: [], lamp: null, steam: [] };
+  sp.L.add(pageMesh('L', PRINT[def.id], idx * 77 + 5)); sp.R.add(pageMesh('R', PRINT[def.id], idx * 77 + 5));
+  BUILD[def.id](sp);
+  if (sp.steamAt) for (let k = 0; k < 3; k++) {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(.09, 10, 8), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: .8, depthWrite: false }));
+    (sp.steamAt.x < 0 ? sp.L : sp.R).add(m); sp.steam.push(m);
+  }
+  scene.add(sp.L, sp.R); for (const f of sp.folds) scene.add(f.L, f.R);
+  PENCIL = false;
+  return sp;
+}
+function dropSpread(sp) { scene.remove(sp.L, sp.R); for (const f of sp.folds) scene.remove(f.L, f.R); }
+
+const gL = new THREE.Vector3(), gR = new THREE.Vector3(), cr = new THREE.Vector3(), nn = new THREE.Vector3(), mSh = new THREE.Matrix4();
+/** Pose a spread whose left page is lifted by a and right page by b (radians off the table). */
+function poseSpread(sp, a, b, vis, t, night) {
+  sp.L.visible = sp.R.visible = vis;
+  for (const f of sp.folds) f.L.visible = f.R.visible = false;
+  if (!vis) return;
+  sp.L.rotation.z = -a; sp.R.rotation.z = b;
+  const th = Math.PI - a - b;
+  for (const it of sp.items) {
+    const psi = Math.max(.03, backOut((th - 1.15 - it.delay) / (Math.PI - 1.3 - it.delay)) * Math.PI / 2);
+    it.g.matrix.makeRotationY(it.yaw).multiply(mSh.set(1, 0, 0, 0, 0, Math.sin(psi), 0, 0, 0, it.dir * Math.cos(psi), 1, 0, 0, 0, 0, 1)).setPosition(it.x, T, it.z);
+  }
+  for (const f of sp.folds) {
+    // the glue lines ride on their pages; the crease is the one direction square to both
+    const sg = Math.sin(f.gamma), cg = Math.cos(f.gamma);
+    gL.set(-Math.cos(a) * sg, Math.sin(a) * sg, cg); gR.set(Math.cos(b) * sg, Math.sin(b) * sg, cg);
+    cr.crossVectors(gL, gR);
+    const l = cr.length();
+    if (l < .03) continue;
+    cr.multiplyScalar(Math.sign(cg) / l);
+    f.L.visible = f.R.visible = true;
+    nn.crossVectors(gR, cr); f.R.matrix.makeBasis(gR, cr, nn).setPosition(0, T, f.z0);
+    gL.negate(); nn.crossVectors(gL, cr); f.L.matrix.makeBasis(gL, cr, nn).setPosition(0, T, f.z0);
+    f.L.matrixWorldNeedsUpdate = f.R.matrixWorldNeedsUpdate = true;
+  }
+  const open = clamp((th - 2.9) / .2, 0, 1);
+  for (const m of sp.glass) m.material.opacity = night;
+  for (const m of sp.glows) m.material.opacity = night * open;
+  for (const p of sp.spin) p.rotation.z = -t * .9;
+  sp.steam.forEach((m, k) => {
+    const u = (t * .45 + k / 3) % 1;
+    m.visible = open > .9; m.position.set(sp.steamAt.x + Math.sin(t * 2 + k * 2) * .06, sp.steamAt.y + u * .7, sp.steamAt.z); m.scale.setScalar(.6 + u); m.material.opacity = .75 * (1 - u);
+  });
+}
+
+// --- tabs -----------------------------------------------------------------------------------------
+const tabs = [];
+function tabMats(def) {
+  const blank = def.price && !def.owned, cv = document.createElement('canvas'); cv.width = 80; cv.height = 160;
+  const g = cv.getContext('2d'); g.fillStyle = blank ? '#f6f1e7' : def.color; g.fillRect(0, 0, 80, 160);
+  if (blank) { g.setLineDash([7, 6]); g.strokeStyle = '#a7a1b4'; g.lineWidth = 3; g.strokeRect(5, 5, 70, 150); }
+  g.translate(40, 80); g.rotate(-Math.PI / 2); g.font = '700 31px Gaegu, cursive'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = blank ? '#8f899c' : C.ink; g.fillText(blank ? `${def.name} $${def.price}` : def.name, 0, 2);
+  grain(cv);
+  const face = new THREE.MeshLambertMaterial({ map: tex(cv) }), e = lam(blank ? '#f6f1e7' : def.color);
+  return [e, e, face, face, e, e];
+}
+function buildTabs() {
+  for (let k = 1; k < N; k++) {
+    const pivot = new THREE.Group(), geo = new THREE.BoxGeometry(.66, T * 1.4, 1.3); geo.translate(PW + .3, T * .7, -3.3 + (k - 1) * 1.75);
+    const mesh = new THREE.Mesh(geo, tabMats(SPREADS[k])); mesh.castShadow = mesh.receiveShadow = true; mesh.userData.leaf = k;
+    pivot.add(mesh); scene.add(pivot); tabs.push({ pivot, mesh, k });
+  }
+}
+
+// --- him ------------------------------------------------------------------------------------------
+function faceTex(kind) {
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 144;
+  const g = cv.getContext('2d'); g.lineCap = 'round';
+  for (const x of [48, 208]) {
+    g.fillStyle = 'rgba(255,150,175,.85)'; g.beginPath(); g.ellipse(x, 98, 24, 14, 0, 0, TAU); g.fill();
+    g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 3; for (const d of [-9, 0, 9]) { g.beginPath(); g.moveTo(x + d - 5, 106); g.lineTo(x + d + 5, 90); g.stroke(); }
+  }
+  g.strokeStyle = g.fillStyle = C.ink; g.lineWidth = 7;
+  for (const x of [84, 172]) {
+    if (kind === 'happy') { g.beginPath(); g.arc(x, 70, 14, Math.PI * 1.12, Math.PI * 1.88); g.stroke(); }
+    else if (kind === 'sleep') { g.beginPath(); g.arc(x, 56, 13, Math.PI * .15, Math.PI * .85); g.stroke(); }
+    else { const r = kind === 'wow' ? 11 : 9; g.beginPath(); g.ellipse(x, 62, r, r * 1.2, 0, 0, TAU); g.fill(); g.fillStyle = '#fff'; g.beginPath(); g.arc(x + 3, 58, 3.2, 0, TAU); g.fill(); g.fillStyle = C.ink; }
+  }
+  g.lineWidth = 5;
+  if (kind === 'happy') { g.beginPath(); g.moveTo(108, 90); g.arc(128, 90, 20, Math.PI, 0, true); g.closePath(); g.fillStyle = '#7a3b4a'; g.fill(); g.stroke(); g.fillStyle = '#ff9fb4'; g.beginPath(); g.ellipse(128, 104, 9, 4.5, 0, 0, TAU); g.fill(); }
+  else if (kind === 'wow') { g.beginPath(); g.ellipse(128, 98, 9, 11, 0, 0, TAU); g.fillStyle = '#7a3b4a'; g.fill(); g.stroke(); }
+  else if (kind === 'sleep') { g.beginPath(); g.ellipse(128, 96, 5, 5, 0, 0, TAU); g.stroke(); }
+  else { g.beginPath(); g.arc(128, 88, 11, Math.PI * .2, Math.PI * .8); g.stroke(); }
+  return tex(cv);
+}
+const guy = { g: new THREE.Group(), x: 0, z: 0, tx: 0, tz: 0, h: 0, show: 0, want: 0, wait: 1, cur: 0, say: '', walking: false, spots: [] };
+function buildGuy() {
+  const body = new THREE.Group(), ink = new THREE.MeshBasicMaterial({ color: C.ink, side: THREE.BackSide }), skin = lam(C.butter, { emissive: '#5a4420' });
+  const ball = (rx, ry, rz, x, y, z) => {
+    const g = new THREE.Group(), m = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 20), skin), o = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), ink);
+    m.scale.set(rx, ry, rz); o.scale.set(rx + .028, ry + .028, rz + .028); m.castShadow = true; g.add(m, o); g.position.set(x, y, z); body.add(g); return g;
+  };
+  guy.feet = [ball(.15, .1, .18, -.2, .09, .1), ball(.15, .1, .18, .2, .09, .1)];
+  guy.hands = [ball(.11, .13, .11, -.53, .42, .06), ball(.11, .13, .11, .53, .42, .06)];
+  guy.torso = ball(.52, .43, .46, 0, .52, 0);
+  guy.faces = Object.fromEntries(['happy', 'neutral', 'sleep', 'wow'].map(k => [k, faceTex(k)]));
+  guy.face = new THREE.Mesh(new THREE.SphereGeometry(1.012, 20, 12, Math.PI / 2 - .78, 1.56, .82, .88),
+    new THREE.MeshBasicMaterial({ map: guy.faces.neutral, transparent: true, depthWrite: false }));
+  guy.face.scale.set(.52, .43, .46); guy.torso.add(guy.face);
+  guy.body = body; guy.g.add(body); guy.g.visible = false; scene.add(guy.g);
+}
+const bubble = document.getElementById('bubble'), v3 = new THREE.Vector3();
+function guyEnter(def) {
+  guy.spots = def.owned && def.ownedSpots ? def.ownedSpots : def.spots;
+  const e = guy.spots[0];
+  guy.x = guy.tx = e[0]; guy.z = guy.tz = e[1]; guy.cur = 0; guy.want = 1; guy.wait = 2.6; guy.say = e[2]; guy.face.material.map = guy.faces[e[3]];
+}
+function guyStep(dt, t) {
+  guy.show = lerp(guy.show, guy.want, 1 - Math.exp(-dt * (guy.want ? 7 : 16)));
+  const dx = guy.tx - guy.x, dz = guy.tz - guy.z, d = Math.hypot(dx, dz), walking = d > .03 && guy.want === 1;
+  if (walking) { const st = Math.min(d, 1.5 * dt); guy.x += dx / d * st; guy.z += dz / d * st; }
+  else if (guy.walking) { const s = guy.spots[guy.cur]; guy.say = s[2]; guy.face.material.map = guy.faces[s[3]]; guy.wait = 3.2 + Math.random() * 2; }
+  else if (guy.want && (guy.wait -= dt) <= 0) {
+    let n = guy.cur; while (n === guy.cur) n = Math.floor(Math.random() * guy.spots.length);
+    guy.cur = n; guy.tx = guy.spots[n][0]; guy.tz = guy.spots[n][1]; guy.say = ''; guy.face.material.map = guy.faces.neutral;
+  }
+  guy.walking = walking;
+  guy.h = lerp(guy.h, walking ? clamp(Math.atan2(dx, dz), -1.1, 1.1) : 0, 1 - Math.exp(-dt * 8));
+  const ph = t * 10, hop = walking ? Math.abs(Math.sin(ph)) * .13 : 0, sq = walking ? 1 + .07 * Math.cos(ph * 2) : 1 + .025 * Math.sin(t * 2.2), s = Math.max(.001, backOut(guy.show));
+  guy.g.visible = guy.show > .02; guy.g.position.set(guy.x, T + hop, guy.z); guy.g.scale.setScalar(s); guy.g.rotation.y = guy.h;
+  guy.torso.scale.set(1 / Math.sqrt(sq), sq, 1 / Math.sqrt(sq)); guy.torso.rotation.x = -.3; guy.body.rotation.z = walking ? Math.sin(ph) * .07 : 0;
+  guy.feet.forEach((f, k) => { f.position.y = .09 + (walking ? Math.max(0, Math.sin(ph + k * Math.PI)) * .1 : 0) - hop * .6; });
+  guy.hands.forEach((h, k) => { h.position.y = .42 + (walking ? Math.sin(ph + k * Math.PI) * .06 : Math.sin(t * 2.2 + k) * .012); });
+  // his words, as a paper label that follows him
+  const on = guy.say && guy.show > .9 && !walking;
+  bubble.style.opacity = on ? 1 : 0;
+  if (on) {
+    bubble.textContent = guy.say;
+    v3.set(guy.x, T + 1.2, guy.z).project(camera);
+    const w = stage.clientWidth, h = stage.clientHeight;
+    bubble.style.transform = `translate(${(v3.x * .5 + .5) * w}px, ${(-v3.y * .5 + .5) * h}px) translate(-50%, -100%) translateY(-12px)`;
+  }
+}
+
+// --- turning pages --------------------------------------------------------------------------------
+let pos = 0, vel = 0, target = 0, settled = true, todT = 0, tod = 0;
+const where = document.getElementById('where'), buyBtn = document.getElementById('buy');
+function go(n) {
+  n = clamp(n, 0, N - 1);
+  if (n === target) return;
+  target = n; guy.want = 0; guy.say = ''; buyBtn.style.display = 'none';
+  where.textContent = `→ ${SPREADS[n].name}`;
+}
+function arrive() {
+  const def = SPREADS[target];
+  where.textContent = target ? `${target} · ${def.name}` : def.name;
+  buyBtn.style.display = def.price && !def.owned ? 'block' : 'none';
+  guyEnter(def);
+}
+/** How far leaf k has turned: 0 lying on the right, pi lying on the left. Leaf k carries spread k on its back. */
+const leafAngle = k => clamp(pos - (k - 1), 0, 1) * Math.PI;
+
+// buying a page: a crayon scribbles over everything, and the page underneath comes back printed
+const scr = document.getElementById('scribble');
+let wipe = null;
+function buy() {
+  if (wipe) return;
+  const w = scr.width = stage.clientWidth, h = scr.height = stage.clientHeight, pts = [], r = mulberry(99);
+  for (let y = -40, k = 0; y < h + 80; y += 46, k++) pts.push([k % 2 ? w + 60 : -60, y + r() * 30]);
+  wipe = { t: 0, pts, done: false }; buyBtn.style.display = 'none'; guy.say = '';
+}
+function wipeStep(dt) {
+  if (!wipe) return;
+  wipe.t += dt;
+  const g = scr.getContext('2d'), u = wipe.t / .75, n = wipe.pts.length - 1;
+  g.clearRect(0, 0, scr.width, scr.height);
+  scr.style.opacity = u < 1.15 ? 1 : clamp(1 - (u - 1.15) / .5, 0, 1);
+  g.lineCap = g.lineJoin = 'round';
+  for (const [col, lw, lag] of [[C.lav, 78, 0], [C.butter, 40, .12], [C.rose, 22, .2]]) {
+    const p = clamp(u - lag, 0, 1) * n;
+    g.strokeStyle = col; g.lineWidth = lw; g.beginPath();
+    for (let k = 0; k <= Math.floor(p); k++) g[k ? 'lineTo' : 'moveTo'](wipe.pts[k][0], wipe.pts[k][1] + lag * 90);
+    if (p < n) { const a = wipe.pts[Math.floor(p)], b = wipe.pts[Math.floor(p) + 1], f = p % 1; g.lineTo(lerp(a[0], b[0], f), lerp(a[1], b[1], f) + lag * 90); }
+    g.stroke();
+  }
+  if (u >= 1.1 && !wipe.done) {
+    wipe.done = true;
+    const def = SPREADS[N - 1]; def.owned = true;
+    dropSpread(spreads[N - 1]); spreads[N - 1] = buildSpread(def, N - 1);
+    tabs[N - 2].mesh.material = tabMats(def);
+    if (target === N - 1 && settled) arrive();
+  }
+  if (u > 1.7) { wipe = null; g.clearRect(0, 0, scr.width, scr.height); }
+}
+
+// --- camera, light, input -------------------------------------------------------------------------
+const cam = { yaw: 0, pitch: .84, yawT: 0, pitchT: .84, zoom: 1, zoomT: 1 }, look = new THREE.Vector3(0, .6, .75);
+const LIGHTS = [ // day, dusk, night
+  { spot: '#fff4e0', si: 1.55, pos: [-7, 17, 9], ang: .62, sky: '#ffffff', ground: '#ecd9c6', hi: 2.05 },
+  { spot: '#ffb277', si: 1.9, pos: [-14, 9, 7], ang: .62, sky: '#d9bfe0', ground: '#c79a92', hi: 1.6 },
+  { spot: '#ffd9a0', si: 2.3, pos: [-4.5, 13, 4], ang: .5, sky: '#5d5a9a', ground: '#2a2547', hi: .78 },
+];
+const ca = new THREE.Color(), cb = new THREE.Color();
+function lightStep(dt) {
+  tod = lerp(tod, todT, 1 - Math.exp(-dt * 1.6));
+  const k = Math.min(1, Math.floor(tod)), u = tod - k, A = LIGHTS[k], B = LIGHTS[k + 1];
+  spot.color.copy(ca.set(A.spot)).lerp(cb.set(B.spot), u); spot.intensity = lerp(A.si, B.si, u); spot.angle = lerp(A.ang, B.ang, u);
+  spot.position.set(lerp(A.pos[0], B.pos[0], u), lerp(A.pos[1], B.pos[1], u), lerp(A.pos[2], B.pos[2], u));
+  hemi.color.copy(ca.set(A.sky)).lerp(cb.set(B.sky), u); hemi.groundColor.copy(ca.set(A.ground)).lerp(cb.set(B.ground), u); hemi.intensity = lerp(A.hi, B.hi, u);
+  const sp = spreads[Math.round(pos)], night = clamp(tod - 1, 0, 1);
+  if (sp && sp.lamp && settled) { bulb.position.copy(sp.lamp); bulb.intensity = lerp(bulb.intensity, night * 5, 1 - Math.exp(-dt * 5)); } else bulb.intensity = lerp(bulb.intensity, 0, 1 - Math.exp(-dt * 12));
+  return night;
+}
+function resize() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+const ray = new THREE.Raycaster(), ptr = new THREE.Vector2();
+function tabUnder(e) {
+  const r = renderer.domElement.getBoundingClientRect();
+  ptr.set((e.clientX - r.left) / r.width * 2 - 1, -(e.clientY - r.top) / r.height * 2 + 1);
+  ray.setFromCamera(ptr, camera);
+  const hit = ray.intersectObjects(tabs.map(t => t.mesh), false)[0];
+  return hit ? hit.object.userData.leaf : 0;
+}
+function wireInput() {
+  const el = renderer.domElement; let drag = null;
+  el.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, yaw: cam.yawT, pitch: cam.pitchT, moved: 0 }; el.setPointerCapture(e.pointerId); });
+  el.addEventListener('pointermove', e => {
+    if (!drag) { el.style.cursor = tabUnder(e) ? 'pointer' : ''; return; }
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.moved = Math.max(drag.moved, Math.hypot(dx, dy));
+    cam.yawT = clamp(drag.yaw - dx * .004, -.7, .7); cam.pitchT = clamp(drag.pitch + dy * .004, .42, 1.25);
+  });
+  el.addEventListener('pointerup', e => {
+    if (drag && drag.moved < 5) { const k = tabUnder(e); if (k) go(target >= k ? k - 1 : k); }
+    drag = null;
+  });
+  el.addEventListener('wheel', e => { e.preventDefault(); cam.zoomT = clamp(cam.zoomT * Math.exp(e.deltaY * .0012), .5, 1.15); }, { passive: false });
+  window.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight') { go(target + 1); e.preventDefault(); }
+    if (e.key === 'ArrowLeft') { go(target - 1); e.preventDefault(); }
+  });
+  document.getElementById('prev').onclick = () => go(target - 1);
+  document.getElementById('next').onclick = () => go(target + 1);
+  buyBtn.onclick = buy;
+  const todBtn = document.getElementById('tod'), names = ['☀ day', '◐ dusk', '☾ night'];
+  todBtn.onclick = () => { todT = (todT + 1) % 3; todBtn.textContent = names[todT]; };
+  new ResizeObserver(resize).observe(stage);
+}
+
+// --- go -------------------------------------------------------------------------------------------
+const stats = document.getElementById('stats');
+let last = 0, statT = 0;
+function frame(ms) {
+  const t = ms / 1000, dt = Math.min(.05, t - last || .016); last = t;
+  const d = target - pos;
+  vel = lerp(vel, clamp(d * 4.2, -1.1, 1.1), 1 - Math.exp(-dt * 7)); pos = clamp(pos + vel * dt, 0, N - 1);
+  if (Math.abs(d) < .004 && Math.abs(vel) < .08) { pos = target; vel = 0; }
+  const now = pos === target; if (now && !settled) arrive(); settled = now;
+
+  const night = lightStep(dt);
+  spreads.forEach((sp, s) => poseSpread(sp, Math.PI - leafAngle(s), leafAngle(s + 1), pos > s - 1 && pos < s + 1, t, night));
+  for (const tb of tabs) tb.pivot.rotation.z = leafAngle(tb.k);
+  guyStep(dt, t); wipeStep(dt);
+
+  const k = 1 - Math.exp(-dt * 6);
+  cam.yaw = lerp(cam.yaw, cam.yawT, k); cam.pitch = lerp(cam.pitch, cam.pitchT, k); cam.zoom = lerp(cam.zoom, cam.zoomT, k);
+  const yaw = cam.yaw + Math.sin(t * .23) * .025, r = 19.6 * cam.zoom * Math.max(1, (16 / 9) / camera.aspect);
+  camera.position.set(look.x + Math.sin(yaw) * Math.cos(cam.pitch) * r, look.y + Math.sin(cam.pitch) * r, look.z + Math.cos(yaw) * Math.cos(cam.pitch) * r);
+  camera.lookAt(look);
+  renderer.render(scene, camera);
+  if ((statT -= dt) < 0) { statT = 1; stats.textContent = `${renderer.info.render.calls} draw calls · ${Math.round(renderer.info.render.triangles / 1000)}k triangles`; }
+  requestAnimationFrame(frame);
+}
+async function main() {
+  await Promise.race([Promise.all([document.fonts.load('700 40px Gaegu'), document.fonts.load('600 16px Nunito')]), new Promise(r => setTimeout(r, 2500))]);
+  hatchTex = makeHatchTex();
+  buildTable();
+  SPREADS.forEach((def, i) => spreads.push(buildSpread(def, i)));
+  buildTabs(); buildGuy(); wireInput(); resize();
+  document.getElementById('loading').remove();
+  stage.prepend(renderer.domElement);
+  arrive();
+  setTimeout(() => { if (target === 0) go(1); }, 2600);
+  window.BOOK = { go, buy, spreads, guy, cam, get pos() { return pos; } };
+  requestAnimationFrame(frame);
+}
+main();
+</script>
+</body>
+</html>

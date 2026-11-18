@@ -113,4 +113,5 @@ these hold the outcome. Skim this index before related changes.
 - 2026-11-15 [Wares sell for less the more of one kind he sells, and recover over days; one rule for every way of selling, and he's told the going price](2026-11-15-wares-sell-for-less-the-more-he-sells.md)
 - 2026-11-15 [Inventions are built from bought materials; a new thing goes to any free spot, and he can take his things apart (`dismantle`)](2026-11-15-inventions-are-built-from-bought-materials.md)
 - 2026-11-16 [Materials sell back for about half; his stock shows under the workbench; copper parts are drawn as wire; anything he invented can be taken apart](2026-11-16-materials-sell-back-and-show-under-the-workbench.md)
+- 2026-11-17 [He reads the game's docs himself (search_docs, read_docs), and the hand-written guide covers every mechanic](2026-11-17-he-reads-the-game-guide-himself.md)
 - 2026-11-17 [The bored lock reads how much he has done a verb lately, not what it's like; familiar things cost half as much fun](2026-11-17-the-bored-lock-reads-what-he-has-done-lately.md)
