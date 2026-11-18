@@ -59,6 +59,18 @@
         "LILGUY_SCRIPT=sketch,sell_art,invent"
       ],
       "port": 8792
+    },
+    {
+      "name": "world-sketches",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "--with", "flask", "python", "world_sketches/app.py"],
+      "port": 5057
+    },
+    {
+      "name": "fable-sketches",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8738", "--bind", "127.0.0.1", "--directory", "world_sketches"],
+      "port": 8738
     }
   ]
 }
