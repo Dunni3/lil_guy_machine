@@ -22,14 +22,16 @@ class LightTest {
         error("$intent still ${handle.status}")
     }
 
-    private fun BedroomWorld.locked(verb: String) = observe(agentId).activities!!.first { it.id == verb }.locked
+    private fun BedroomWorld.activities() = observe(agentId).activities!!
+
+    private fun BedroomWorld.locked(verb: String) = activities().first { it.id == verb }.locked
 
     @Test
     fun `at night it's too dark to read until a lamp lights the bed, and he reads where it's lit`() {
         val day = world("12:00", "novel")
         assertNull(day.locked("read"), "by day the room is lit")
         val night = world("22:00", "novel")
-        assertTrue(night.locked("read")!!.startsWith("too dark to read at the bed or the chair"), night.locked("read"))
+        assertTrue(night.activities().filter { it.id == "read" }.all { it.locked!!.startsWith("too dark to read at the ") }, night.locked("read"))
         assertNull(night.locked("sketch"), "the desk's own lamp lights the desk")
         // The sunroom lamp stands by the bed: the bed is lit, the chair across the room still isn't.
         // (21:30, so the hour below ends before its timer puts it out at midnight.)

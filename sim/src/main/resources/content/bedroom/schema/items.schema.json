@@ -65,7 +65,9 @@
                 "lamp",
                 "lure",
                 "growable",
-                "ware"
+                "ware",
+                "seat",
+                "bench"
               ]
             },
             "additionalProperties": {

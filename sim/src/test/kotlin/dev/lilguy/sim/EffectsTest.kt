@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
 
 /** Warmth, sound, sun and water, visitors, and what his code gives off (Surroundings.kt). */
 class EffectsTest {
-    private val shipped = BedroomContent.default()
+    private val shipped = BedroomContent.default().nothingWaits()
 
     /** Always clear, [mean] degrees on average. */
     private fun content(time: String, mean: Double = 12.0, vararg items: String): BedroomContent {

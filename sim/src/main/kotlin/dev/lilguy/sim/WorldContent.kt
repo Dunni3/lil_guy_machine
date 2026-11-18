@@ -124,7 +124,12 @@ data class SiteSpec(
 
 /** Game minutes to lift a thing where it stands and to set it down where it goes. */
 @Serializable
-data class CarrySpec(val lift: Int = 2, @SerialName("set_down") val setDown: Int = 3)
+data class CarrySpec(
+    val lift: Int = 2,
+    @SerialName("set_down") val setDown: Int = 3,
+    /** A new thing that stands somewhere (bought, or built at the workbench) waits where it arrived until he puts it somewhere. */
+    val wait: Boolean = false,
+)
 
 /** A patch ([patch], an item on a lot slot) that [yields] an item when he collects there, then is bare for [regrowHours]. */
 @Serializable

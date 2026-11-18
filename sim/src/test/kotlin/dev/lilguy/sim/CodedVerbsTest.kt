@@ -7,7 +7,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class CodedVerbsTest {
-    private val content = BedroomContent.default().let { it.copy(start = it.start.copy(money = 100, items = it.start.items + mapOf("workbench" to 1, "wood" to 30, "metal" to 10, "copper_wire" to 10, "glass" to 10))) }
+    private val content = BedroomContent.default().nothingWaits().let { it.copy(start = it.start.copy(money = 100, items = it.start.items + mapOf("workbench" to 1, "wood" to 30, "metal" to 10, "copper_wire" to 10, "glass" to 10))) }
 
     private val musicBox = Design(
         name = "music box", use = "viewable", qualities = mapOf("calm" to 1.0, "pretty" to 1.0), place = "floor",

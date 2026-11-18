@@ -79,7 +79,9 @@ world:
     by_clearing_log: [30, 19]
     trailside: [23, 15]
   # Putting a thing somewhere else: game minutes to lift it and to set it down, besides the walks.
-  carry: { lift: 2, set_down: 3 }
+  # `wait`: a new thing that stands somewhere (bought, or built at the workbench) waits by the mail
+  # hatch or the workbench, counting for nothing, until he chooses where it goes and puts it there.
+  carry: { lift: 2, set_down: 3, wait: true }
   # What grows on the land. A patch is hidden until he explores its place (the `survey` op); then
   # `collect` takes what it yields (the `gather` op), and it's bare for `regrow_hours`.
   finds:
@@ -129,16 +131,18 @@ world:
       name: the lab
       says: a small lab with a bench and a tall shelf
       qualities: { strange: 1, bright: 1 }
+      # Lower-case letters are free spots, for his things (the `put` intent). None is beside a doorway
+      # (the sites' `door`, row 5 here), so nothing he puts down can shut a room off.
       rows:
         - "########"
-        - "#L....S#"
+        - "#La...S#"
+        - "#......#"
+        - "#.....b#"
         - "#......#"
         - "#......#"
-        - "#......#"
-        - "#......#"
-        - "#......#"
+        - "#..c...#"
         - "########"
-      slots: { L: lab_bench, S: lab_shelf }
+      slots: { L: lab_bench, S: lab_shelf, a: by_lab_bench, b: lab_east_wall, c: lab_south_wall }
       items: [lab_bench, lab_shelf]
       windows: [[3, 0]]
     - id: sunroom
@@ -148,22 +152,23 @@ world:
       qualities: { cozy: 2, bright: 1, calm: 1 }
       rows:
         - "########"
-        - "#A....F#"
+        - "#Aa...F#"
         - "#......#"
         - "#......#"
+        - "#.....b#"
         - "#......#"
-        - "#......#"
-        - "#......#"
+        - "#..c...#"
         - "########"
-      slots: { A: armchair, F: floor_lamp }
+      slots: { A: armchair, F: floor_lamp, a: by_armchair, b: sunroom_east_wall, c: sunroom_south_wall }
       items: [armchair, floor_lamp]
       windows: [[2, 0], [5, 0], [0, 4]]
   # Where a room can stand: its top-left tile on the lot, and the doorway into the room it joins
   # (`next_to`: a site whose room must stand first; none means the bedroom). Rooms share the wall
-  # they meet at, so a site's left column is its neighbour's right wall.
+  # they meet at, so a site's left column is its neighbour's right wall. Nothing may stand in a slot
+  # beside a doorway (Layout checks): a fern pot there once shut the lab and the sunroom off for good.
   sites:
-    - { id: site_east, name: east of your bedroom, at: [20, 5], door: [20, 8] }
-    - { id: site_far_east, name: "east again, next to that room", at: [27, 5], door: [27, 8], next_to: site_east }
+    - { id: site_east, name: east of your bedroom, at: [20, 5], door: [20, 10] }
+    - { id: site_far_east, name: "east again, next to that room", at: [27, 5], door: [27, 10], next_to: site_east }
   # Named places outdoors, the first whose rects hold a tile wins; rooms come before all of them.
   # A rect is [x0, y0, x1, y1], tiles inclusive. `says` is the line his map gives the place.
   places:

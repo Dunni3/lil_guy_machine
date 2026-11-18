@@ -211,6 +211,13 @@ class BedroomWorld private constructor(
     /** What his code changed about his things (where they stand, their names and colours), to put back on a restore. */
     private val custom = linkedMapOf<String, BedroomState.Custom>()
 
+    /**
+     * New things that stand somewhere, waiting to be put somewhere (world.yaml `carry.wait`): item
+     * id to the thing it waits by, the mail hatch for what he bought and the workbench for what he
+     * built. Until he puts one down ([Intent.Put]) it stands nowhere: no comfort, no light, nothing done at it.
+     */
+    private val waiting = linkedMapOf<String, String>()
+
     /** What a verb's code did as it last finished, by verb id, until [ScriptOp.finish] reports it. */
     private val scriptRuns = mutableMapOf<String, List<String>>()
 
@@ -531,11 +538,13 @@ class BedroomWorld private constructor(
                 "used " + bill.entries.joinToString { (m, n) -> quantity(m, n) } + " ($${made.cost} of materials)"
             }
             add(spec.id, 1)
+            val bench = verb.at.firstOrNull { it != VerbSpec.HERE && it !in verb.args }
+            val waits = bench?.let { arrive(spec, it) }.orEmpty()
             val like = spec.qualities.entries.joinToString { (q, s) -> "$q ${s.toInt()}" }
-            val comfortNote = if (comfortOf(spec) != 0) comfortText() else null
+            val comfortNote = if (waits.isNotEmpty()) waits else if (comfortOf(spec) != 0) comfortText() else null
             val newNote = newThingRate(spec).takeIf { it > 0 }?.let { newThings[spec.id] = ticks; "new: ${newThingText(it)}" }
             return listOfNotNull(
-                "built the ${spec.name}, ${article(spec.group)} of your own design" + (if (like.isEmpty()) "" else " ($like)") + (spec.slot?.let { " at $it" } ?: ""),
+                "built the ${spec.name}, ${article(spec.group)} of your own design" + (if (like.isEmpty()) "" else " ($like)") + (spec.slot?.takeIf { waits.isEmpty() }?.let { " at $it" } ?: ""),
                 paid,
                 spec.price?.let { "the shop will send more for $$it" },
                 spec.sellPrice?.let { "it sells for $$it" },
@@ -690,6 +699,7 @@ class BedroomWorld private constructor(
 
     /** Owned items that sit in a slot, with their tiles. */
     private fun placed(): List<Pair<ItemSpec, Cell>> = owned.keys.mapNotNull { id ->
+        if (id in waiting) return@mapNotNull null
         val spec = item(id)
         spec.slot?.let { layout.slotCells[it] }?.let { spec to it }
     }
@@ -1025,7 +1035,7 @@ class BedroomWorld private constructor(
             version++
         }
         // A recorder he's carrying somewhere else logs nothing until it's set down.
-        owned.keys.filter { RECORDER in item(it).affords && item(it).slot != null && it != carrying }.forEach { id ->
+        owned.keys.filter { RECORDER in item(it).affords && item(it).slot != null && it != carrying && it !in waiting }.forEach { id ->
             val c = w.at(clock.minutes(ticks), outdoors(cellOf(id)))
             records.record(id, StationLog.TEMPERATURE, ticks, Weather.round1(warmthField()[cellOf(id)]))
             records.record(id, StationLog.RAIN, ticks, Weather.round1(c.rain))
@@ -1092,7 +1102,27 @@ class BedroomWorld private constructor(
     }
 
     /** Where his things stand and could go, by the current content and map. */
-    private fun spots() = Spots(content, layout) { count(it) > 0 }
+    private fun spots() = Spots(content, layout, waiting.mapValues { (_, by) -> "by the ${item(by).name}" }) { count(it) > 0 }
+
+    /**
+     * A new [spec] that stands somewhere waits by [by] (a thing of his that stands, the mail hatch or the
+     * workbench) for him to choose where it goes, when the content says so; or "" when it went straight to its spot.
+     */
+    private fun arrive(spec: ItemSpec, by: String): String {
+        val wait = content.world?.carry?.wait == true && spec.group != Spots.FIXTURE && spec.slot in layout.slotCells &&
+            count(by) > 0 && by !in waiting && item(by).slot in layout.slotCells
+        if (!wait) return ""
+        waiting[spec.id] = by
+        version++
+        return "it waits by the ${item(by).name} until you choose where it goes and put it there"
+    }
+
+    /** "the easel is waiting by the mail hatch; put it somewhere first", when everything of his [ids] answer to is new and waiting. */
+    private fun waitingLock(ids: List<String>): String? {
+        val mine = owned.keys.filter { id -> ids.any { answers(id, it) } && item(id).slot != null }
+        val w = mine.takeIf { it.isNotEmpty() && it.all { id -> id in waiting } }?.first() ?: return null
+        return "the ${item(w).name} is new and waiting by the ${item(waiting.getValue(w)).name}; put it somewhere first (place)"
+    }
 
     /**
      * Where a new thing of [place] (`floor` or `wall`) he invents goes: the room's first free spare
@@ -1105,7 +1135,9 @@ class BedroomWorld private constructor(
     fun inventSpots(place: String): List<String> {
         val s = spots()
         val wall = place == InventRules.WALL
-        val free = s.free().filter { s.isWall(it) == wall }
+        // A spot kept for a new thing that's waiting is free to put things in, but it's still that thing's own.
+        val kept = waiting.keys.mapNotNull { item(it).slot }.toSet()
+        val free = s.free().filter { s.isWall(it) == wall && it !in kept }
         val spare = (if (wall) content.room.spots.wall else content.room.spots.floor).filter { it in free }
         val bench = content.verbs.firstOrNull { v -> v.ops<BuildOp>().isNotEmpty() }?.at?.firstNotNullOfOrNull { content.item(it)?.slot?.let(layout.slotCells::get) } ?: guy.cell
         return spare + (free - spare.toSet()).mapNotNull { spot -> layout.distance(bench, layout.slotCells.getValue(spot))?.let { spot to it } }.sortedBy { it.second }.map { it.first }
@@ -1181,7 +1213,7 @@ class BedroomWorld private constructor(
      */
     private fun relocate(id: String, spot: String): ItemSpec? {
         val from = item(id).slot!!
-        val other = content.items.firstOrNull { it.slot == spot }
+        val other = content.items.firstOrNull { it.slot == spot && it.id != id }
         content = content.mapItems { when (it.id) { id -> it.copy(slot = spot); other?.id -> it.copy(slot = from); else -> it } }
         custom[id] = (custom[id] ?: BedroomState.Custom()).copy(slot = spot)
         other?.let { custom[it.id] = (custom[it.id] ?: BedroomState.Custom()).copy(slot = from) }
@@ -1776,6 +1808,11 @@ class BedroomWorld private constructor(
         if (!isKnown(a.id)) return "you don't know how yet"
         if (places.isNotEmpty() && a.at.none { it == VerbSpec.HERE || it in a.args } && places.none { countTag(it, extra) > 0 }) return "needs ${wanted(places.first())}"
         a.requires.firstOrNull { countTag(it, extra) == 0 }?.let { return "needs ${wanted(it)}" }
+        // Where it happens is new and waiting to be put somewhere: the place, or the thing an argument it happens at names.
+        if (extra == null && waiting.isNotEmpty()) {
+            waitingLock(places)?.let { return it }
+            a.at.filter { it in a.args }.firstNotNullOfOrNull { slot -> args?.get(slot)?.let { waitingLock(listOf(it)) } ?: if (args == null) waitingLock(listOf(a.args.getValue(slot))) else null }?.let { return it }
+        }
         // The thing it happens at first (the record player before a record), since the shop holds the rest back until he has it.
         if (args == null) a.args.entries.sortedBy { it.key !in a.at }.firstOrNull { countTag(it.value, extra) == 0 }?.let { return "needs ${wanted(it.value)}" }
         if (a.noRepeat && (justDid as? Intent.Do)?.activity == a.id) return "you just did; do something else first"
@@ -1894,12 +1931,14 @@ class BedroomWorld private constructor(
     private fun planPut(intent: Intent.Put): Work {
         spots().lock(intent.item, intent.spot)?.let { reject("can't put ${intent.item} at ${intent.spot}: $it") }
         val spec = item(intent.item)
-        val from = layout.slotCells.getValue(spec.slot!!)
+        // A new thing is fetched from where it waits; one that stands, from its spot, which he leaves clear as he lifts it.
+        val by = waiting[intent.item]
+        val from = layout.slotCells.getValue(by?.let { item(it).slot } ?: spec.slot!!)
         val to = layout.slotCells.getValue(intent.spot)
         val fetch = pathToward(from) ?: reject("there's no way to reach the ${spec.name}")
         val lifted = fetch.cells.lastOrNull() ?: guy.cell
         // Beside the spot, round what blocks; the thing he carries no longer stands in the way.
-        val clear = { x: Int, y: Int -> (x == from.x && y == from.y && map.isFloor(x, y)) || passable(x, y) }
+        val clear = { x: Int, y: Int -> (by == null && x == from.x && y == from.y && map.isFloor(x, y)) || passable(x, y) }
         val carry = NEXT_TO.map { (dx, dy) -> Cell(to.x + dx, to.y + dy) }
             .filter { clear(it.x, it.y) }
             .mapNotNull { Pathfinder.find(map.width, map.height, lifted, it, clear) }
@@ -1926,7 +1965,8 @@ class BedroomWorld private constructor(
                 carrying = null
                 version++
                 spots().lock(intent.item, intent.spot)?.let { return@step "couldn't put the ${spec.name} down at ${intent.spot}: $it" }
-                val swapped = relocate(intent.item, intent.spot)
+                val swapped = relocate(intent.item, intent.spot)?.takeIf { it.id !in waiting }
+                waiting.remove(intent.item)
                 outcome("put the ${spec.name} at ${intent.spot}" + (place?.let { ", in $it" }.orEmpty()) + (swapped?.let { ", and the ${it.name} where it was" }.orEmpty()) +
                     " (${GameClock.duration((walked + minutes.lift + minutes.setDown).coerceAtLeast(1))} with the walks)")
                 null
@@ -1980,13 +2020,25 @@ class BedroomWorld private constructor(
         return Work.Walk(ArrayDeque(best.cells)) to cell
     }
 
+    /**
+     * For [a]'s argument [slot], where it happens: the owned thing answering to [type] that's the
+     * shortest walk away, among those light and warm enough for it when any are. One that stands
+     * nowhere, or none reachable, the first.
+     */
+    private fun nearestOwned(a: VerbSpec, slot: String, type: String): String {
+        val ids = owned.keys.filter { answers(it, type) }
+        val near = ids.filter { it !in waiting }.mapNotNull { id -> item(id).slot?.let { layout.slotCells[it] }?.let(::pathToward)?.let { id to it.cost } }.sortedBy { it.second }.map { it.first }
+        return near.firstOrNull { id -> mapOf(slot to id).let { darkLock(a, it) == null && coldLock(a, it) == null } } ?: near.firstOrNull() ?: ids.first()
+    }
+
     private fun planDo(intent: Intent.Do): Work {
         val a = content.verb(intent.activity)?.takeIf { isKnown(it.id) } ?: reject("there's no activity called '${intent.activity}'; the activities are ${content.verbs.filter { isKnown(it.id) }.joinToString { it.id }}")
         val given = mapOf("what" to intent.what, "on" to intent.on).filterValues { it != null }.mapValues { it.value!! }
         (given.keys - a.args.keys).firstOrNull()?.let { reject("${a.id} takes no `$it`" + if (a.args.isEmpty()) "" else "; it takes ${a.args.keys.joinToString(" and ")}") }
         lockReason(a)?.let { reject("can't ${a.id}: $it") }
         val args = a.args.mapValues { (slot, type) ->
-            val id = given[slot] ?: return@mapValues owned.keys.first { answers(it, type) }
+            // Unnamed, the argument it happens at (a seat) is the nearest he can reach, as `at` lists are.
+            val id = given[slot] ?: return@mapValues if (slot in a.at) nearestOwned(a, slot, type) else owned.keys.first { answers(it, type) }
             val spec = content.item(id)
             if (spec == null || count(id) == 0) reject("you don't have '$id'")
             if (!answers(spec.id, type)) reject("${a.id} takes ${article(noun(type))} as `$slot`, and the ${spec.name} isn't one")
@@ -2283,8 +2335,10 @@ class BedroomWorld private constructor(
     private fun bought(spec: ItemSpec, price: Int): String {
         val what = quantity(spec.id, spec.pack)
         ledger.debit(ticks, price, "bought $what")
+        val had = count(spec.id) > 0
         add(spec.id, spec.pack)
-        val comfortNote = if (comfortOf(spec) != 0) "; ${comfortText()}" else ""
+        val waits = if (had) "" else arrive(spec, HATCH)
+        val comfortNote = if (waits.isNotEmpty()) "; $waits" else if (comfortOf(spec) != 0) "; ${comfortText()}" else ""
         val newNote = newThingRate(spec).takeIf { it > 0 }?.let { newThings[spec.id] = ticks; "; new: ${newThingText(it)}" } ?: ""
         return "bought $what for $$price (money $${ledger.balance})$comfortNote$newNote"
     }
@@ -2446,6 +2500,7 @@ class BedroomWorld private constructor(
             coded = coded,
             thingState = thingState.mapValues { LinkedHashMap(it.value) },
             custom = LinkedHashMap(custom),
+            waiting = waiting.filterKeys { count(it) > 0 },
             behaviors = behaviors,
             records = records.export(),
             machines = machines.export(),
@@ -2531,6 +2586,8 @@ class BedroomWorld private constructor(
                 .onSuccess { custom[id] = c }
                 .onFailure { custom[id] = c.copy(slot = null); dropped += "the ${item(id).name} couldn't go back to ${c.slot}: ${it.message}" }
         }
+        waiting.clear()
+        s.waiting.forEach { (id, by) -> if (content.item(id) != null && content.item(by) != null && count(id) > 0) waiting[id] = by }
         behaviors = s.behaviors.filterKeys { content.item(it) != null }
         records.restore(s.records) { content.item(it) != null }
         machines.restore(s.machines) { content.item(it) != null }
@@ -2967,6 +3024,8 @@ class BedroomWorld private constructor(
         private const val OUTDOOR_MAP = 16
         /** The prefix of a drawn subject in [tried]. */
         private const val SUBJECT = "subject:"
+        /** Where what he buys is delivered, and waits to be put somewhere. */
+        private const val HATCH = "mail_hatch"
         private const val SNAPSHOT_TRANSACTIONS = 8
         /** Authored ops kept in the observation: enough for any the agent hasn't settled yet. */
         private const val AUTHORED_KEPT = 16

@@ -159,11 +159,12 @@ so a new record is fresh even when the player isn't. Numbers: rules:sound, verb:
 verb:listen.
 
 ## guide:guitar: playing the guitar [when: play_guitar]
-Playing the guitar in your chair practises music and lifts your mood and interest; the more music
+Playing the guitar where you choose to sit (your bed, your chair, or a room's armchair) practises music and lifts your mood and interest; the more music
 skill you have, the more it pays. Numbers: verb:play_guitar.
 
 ## guide:reading: books and what they teach
-You read a book a chapter a session, in bed or in your chair, where there's light enough to read. Each
+You read a book a chapter a session, sitting where you choose (in bed, in your chair, or in the armchair
+of a room you've built), where there's light enough to read; somewhere you rarely sit feels fresher. Each
 new chapter raises the book's skills and you remember what happened in it. Finishing the last chapter
 of some books teaches you things that weren't in your world before: new verbs and the things they use,
 which then appear in the shop. A book's section says what it teaches. Reading wears as a whole, so a
@@ -189,7 +190,7 @@ light. Numbers: verb:explore, verb:collect, world:visitors.
 
 ## guide:samples: samples and your collection
 Samples you collect outdoors, and what visitors leave behind (feathers, moths, fireflies), are kept: each kind you have adds comfort
-from its shelf in your room, up to a few kinds. Studied under a microscope, a sample practises nature.
+from its shelf in your room, up to a few kinds. Studied under a microscope or at the lab's bench, a sample practises nature.
 Sold at the hatch, it fetches its price; selling art leaves your samples alone. Numbers:
 rules:collection, verb:study_sample, verb:sell_sample.
 
@@ -265,13 +266,17 @@ your code can use is in rules:code. Numbers: rules:code, verb:devise.
 ## guide:rooms: building rooms onto the house
 The house can grow. A room's plan is bought on a shopping trip; then you build it on a site next to the
 house, which takes a few hours' work. A room comes with its own furniture, and its qualities count
-toward your comfort while you're in it. Some sites need another room to stand first. Building a plan
+toward your comfort while you're in it. You walk in through a doorway from the room it joins, and it has
+free spots for your things. The lab's bench is somewhere to study samples, and the sunroom's armchair
+somewhere to read, play or listen. Some sites need another room to stand first. Building a plan
 that already stands moves it to the new site. Numbers: verb:build_room, item:lab_plan,
 item:sunroom_plan.
 
 ## guide:placing: moving your things
-You can put one of your things somewhere else, indoors or out, in any free spot: you walk to it, carry
-it there and set it down, which takes a few minutes besides the walks. Some things only go in a wall
+Where a new thing goes is yours to choose. Something you buy waits by the mail hatch, and something you
+build waits by the workbench; it does nothing (no comfort, no light, nothing done at it) until you put
+it down in a free spot, in any room or outdoors. You can put one of your things somewhere else too: you
+walk to it, carry it there and set it down, which takes a few minutes besides the walks. Some things only go in a wall
 spot. Where a thing stands matters: comfort counts what you can see lit from where you stand, a planter
 needs sun, a lure decides where visitors come, a heater warms only round it, and a weather station logs
 the weather where it is.

@@ -79,6 +79,8 @@ data class BedroomState(
     @SerialName("thing_state") val thingState: Map<String, Map<String, kotlinx.serialization.json.JsonPrimitive>> = emptyMap(),
     /** What his code changed about his things: where they stand, what they're called, their colour. */
     val custom: Map<String, Custom> = emptyMap(),
+    /** New things waiting to be put somewhere: item id to the thing it waits by (the mail hatch, the workbench). */
+    val waiting: Map<String, String> = emptyMap(),
     /** What his things do by themselves: item id to its code. */
     val behaviors: Map<String, ThingCode> = emptyMap(),
     /** What his recorders logged: thing id to key to its latest readings, oldest first ([Records]). */

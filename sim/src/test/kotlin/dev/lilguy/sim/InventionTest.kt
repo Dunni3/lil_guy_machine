@@ -6,7 +6,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class InventionTest {
-    private val content = BedroomContent.default().let { it.copy(start = it.start.copy(money = 100, items = it.start.items + mapOf("workbench" to 1, "wood" to 10, "glass" to 3))) }
+    private val content = BedroomContent.default().nothingWaits().let { it.copy(start = it.start.copy(money = 100, items = it.start.items + mapOf("workbench" to 1, "wood" to 10, "glass" to 3))) }
     private val rules = content.invent!!
     private val lamp = Design(
         name = "pebble lamp",

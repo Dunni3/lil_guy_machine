@@ -117,3 +117,4 @@ these hold the outcome. Skim this index before related changes.
 - 2026-11-17 [He reads the game's docs himself (search_docs, read_docs), and the hand-written guide covers every mechanic](2026-11-17-he-reads-the-game-guide-himself.md)
 - 2026-11-17 [The bored lock reads how much he has done a verb lately, not what it's like; familiar things cost half as much fun](2026-11-17-the-bored-lock-reads-what-he-has-done-lately.md)
 - 2026-11-17 [No commissions: he draws what he likes, when he likes; and what he couldn't do reaches what he writes looking back](2026-11-17-no-commissions.md)
+- 2026-11-17 [The rooms he adds are reachable, have free spots, and are somewhere to do things: no slot beside a doorway, where he sits is his pick](2026-11-17-the-rooms-he-adds-are-reachable-have-spots-and-are-somewhere-to-sit.md)

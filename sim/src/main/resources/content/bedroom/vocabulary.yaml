@@ -13,7 +13,10 @@ vocabulary:
   # `lamp`: a light he can switch (it needs a `light`); on its timer until he does.
   # `lure`: a thing visitors come to (its `lure`, world.yaml `visitors`), watched there. `growable`: a planter.
   # `ware`: something a machine makes to sell, with a price at the hatch like sellable's (verbs.yaml `sell_wares`).
-  affords: [readable, playable, edible, sellable, hangable, viewable, combinable, wearable, drawable, staple, explorable, forageable, specimen, buildable, site, recorder, lamp, lure, growable, ware]
+  # `seat`: where he sits to read, play the guitar or listen (the bed, the chair, the sunroom's armchair);
+  # which one is his pick, so a room he adds is somewhere to do them. `bench`: where he studies a sample
+  # (the microscope, or the lab's bench with its lenses).
+  affords: [readable, playable, edible, sellable, hangable, viewable, combinable, wearable, drawable, staple, explorable, forageable, specimen, buildable, site, recorder, lamp, lure, growable, ware, seat, bench]
   # What an item is like to him, each with a strength from 0 to 3, scored by his affinities.
   qualities: [cozy, calm, warm, soft, bright, pretty, natural, lively, strange, loud]
   # What he can get better at, each a number from 0 with no cap: `practice` ops and reading a
