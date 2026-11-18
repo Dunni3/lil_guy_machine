@@ -293,23 +293,6 @@ class BedroomWorldTest {
     }
 
     @Test
-    fun `a commission pays only for a piece that drew its noun, whatever the title says`() {
-        val w = world(time = "08:59", needs = NeedLevels(80, 70, 80))
-        while (w.obs().commission == null) w.step()
-        val (adjective, noun) = w.obs().commission!!.wants.split(' ').drop(1)
-        val title = "$adjective $noun"
-        // Two sketches for the request, both titled for it; only the second drew the noun's shape.
-        repeat(2) { assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("sketch")).status) }
-        val (first, second) = w.obs().authored.filter { it.handler == "draw" }
-        w.deliver(first.id, AuthoredResult.Drawn(title, listOf(adjective, noun)))
-        w.deliver(second.id, AuthoredResult.Drawn(title, listOf(adjective, noun), shows = noun))
-        w.step()
-        val notes = w.obs().art!!.associate { it.id to it.commission }
-        assertEquals("doesn't match the request: there's no $noun drawn in it", notes[first.piece])
-        assertEquals("matches the request: +$5 when sold", notes[second.piece])
-    }
-
-    @Test
     fun `drawing a subject for the first time is new to him, once`() {
         val w = world(needs = NeedLevels(80, 70, 80))
         repeat(2) { assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("sketch")).status) }
@@ -325,6 +308,22 @@ class BedroomWorldTest {
         assertTrue(w.needs[Need.Stimulation] <= before)
         // It's kept with the run.
         assertEquals(setOf("whale"), BedroomWorld.restore(w.exportState(), w.content, strict = true).world.subjectsDrawn)
+    }
+
+    @Test
+    fun `going under the bored lock is news that names what it refuses, and so is coming back over`() {
+        // Money for something new, or sketching (work) stays open however bored he is.
+        val w = world(money = 2000, needs = NeedLevels(90, 90, 80))
+        repeat(6) { w.run(Intent.Do("sketch")) }
+        fun nextMinute() { val m = w.clock.minutes(w.tick); while (w.clock.minutes(w.tick) == m) w.step() }
+        nextMinute()
+        w.needs.change(w.tick, Need.Stimulation, 30 - w.needs[Need.Stimulation], "test")
+        nextMinute()
+        val bored = w.obs().recentEvents.single { "you've grown bored" in it }
+        assertTrue("sketch" in bored, bored)
+        w.needs.change(w.tick, Need.Stimulation, 60 - w.needs[Need.Stimulation], "test")
+        nextMinute()
+        assertTrue(w.obs().recentEvents.any { "you're less bored" in it }, w.obs().recentEvents.toString())
     }
 
     @Test

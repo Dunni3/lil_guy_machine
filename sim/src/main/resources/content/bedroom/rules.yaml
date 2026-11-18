@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=schema/rules.schema.json
-# How his needs move, and the rules around what he does: variety, the shop, thinking, commissions
+# How his needs move, and the rules around what he does: variety, the shop, thinking, art
 # and the gallery. Rates are per game hour, times are game minutes, money is whole dollars.
 
 needs:
@@ -150,13 +150,10 @@ reflection:
   verb: think
   every: 4
 
-# Art is drawn: a verb with a `draw` op has a text model draw the piece it makes (agent/.../art/). A request for a piece comes through the hatch each day at `arrive`, replacing
-# the day before's: an adjective and a noun from these lists. A piece he finishes while it's open
-# is drawn for it, and the first one sold whose drawing matches (its title or tags name both words)
-# earns `reward` on top of its price.
-commissions:
-  arrive: "09:00"
-  reward: 5
+# Art is drawn: a verb with a `draw` op has a model draw the piece it makes (agent/.../art/). He picks
+# its subject himself, an adjective and a noun from these lists; the first time he draws a noun it's
+# new to him (novelty). Nobody asks him for a piece (docs/decisions/2026-11-17-no-commissions.md).
+subjects:
   adjectives: [sleepy, stormy, tiny, golden, lonely, cheerful, ancient, frozen, glowing, secret, upside-down, rainy, busy, quiet, wild, striped]
   nouns: [lighthouse, cat, mountain, teapot, garden, whale, rocket, fox, castle, bicycle, moon, sailboat, owl, cactus, bridge, forest]
 

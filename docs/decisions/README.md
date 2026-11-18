@@ -62,7 +62,7 @@ these hold the outcome. Skim this index before related changes.
 - 2026-10-31 [Knowledge and skill: books are read a chapter a session and teach what they hide; named skills pay off](2026-10-31-knowledge-and-skill-books-teach-skills-pay.md)
 - 2026-10-31 [Night and day: verbs change by day through `by_day`; the clock holds while a `before` call is out](2026-10-31-night-and-day-and-the-clock-holds-for-before-calls.md)
 - 2026-10-31 [Music starts with a record; listen hears whatever is playing (the `hear` op)](2026-10-31-listen-hears-what-is-playing.md)
-- 2026-10-31 [A commission pays for a piece that drew its noun's shape; the drawing reports what it shows](2026-10-31-commissions-are-judged-by-the-shape-drawn.md)
+- 2026-10-31 [A commission pays for a piece that drew its noun's shape; the drawing reports what it shows](2026-10-31-commissions-are-judged-by-the-shape-drawn.md) (superseded)
 - 2026-10-31 [No dead ends: a free floor under hunger, and a verb isn't offered when it would stop at once](2026-10-31-no-dead-ends-there-is-always-a-way-back-to-food.md)
 - 2026-10-31 [The world is discovered as he goes: the shop holds back what he can't use yet, and he can ask how things work](2026-10-31-the-world-is-discovered-by-asking-and-the-shop-holds-back.md)
 - 2026-10-31 [Watchability: books wear as one habit; the app runs quiet stretches faster](2026-10-31-watchability-books-wear-as-one-quiet-stretches-run-faster.md)
@@ -115,3 +115,4 @@ these hold the outcome. Skim this index before related changes.
 - 2026-11-16 [Materials sell back for about half; his stock shows under the workbench; copper parts are drawn as wire; anything he invented can be taken apart](2026-11-16-materials-sell-back-and-show-under-the-workbench.md)
 - 2026-11-17 [He reads the game's docs himself (search_docs, read_docs), and the hand-written guide covers every mechanic](2026-11-17-he-reads-the-game-guide-himself.md)
 - 2026-11-17 [The bored lock reads how much he has done a verb lately, not what it's like; familiar things cost half as much fun](2026-11-17-the-bored-lock-reads-what-he-has-done-lately.md)
+- 2026-11-17 [No commissions: he draws what he likes, when he likes; and what he couldn't do reaches what he writes looking back](2026-11-17-no-commissions.md)

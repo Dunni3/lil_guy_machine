@@ -331,13 +331,10 @@ data class BookView(val id: String, val title: String, val read: Int, val chapte
 data class Tally(val count: Int, @SerialName("first_tick") val firstTick: Long)
 
 @Serializable
-data class Gallery(val art: List<PieceView>, val commission: CommissionView?)
+data class Gallery(val art: List<PieceView>)
 
 @Serializable
-data class PieceView(val id: Int, val item: String, val title: String?, val hung: Boolean, @SerialName("sells_for") val sellsFor: Int?, val commission: String?)
-
-@Serializable
-data class CommissionView(val id: Int, val wants: String, val request: String?, val reward: Int, val until: String)
+data class PieceView(val id: Int, val item: String, val title: String?, val hung: Boolean, @SerialName("sells_for") val sellsFor: Int?)
 
 /** What changes about the catalog and the verbs as he lives; the rest of them is in [Content]. */
 @Serializable
@@ -702,7 +699,6 @@ data class DrawingView(
     val item: String,
     val title: String?,
     val tags: List<String>,
-    val commission: String?,
     val shows: String?,
     val palette: List<Int>,
     val size: Int,

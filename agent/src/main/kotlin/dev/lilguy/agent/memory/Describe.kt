@@ -77,6 +77,17 @@ object Describe {
         }
     }.joinToString("; ")
 
+    /**
+     * What's out of his reach now, as his options show it to the deciding model: each reason that
+     * locks more than one verb, with those verbs ("- you're bored, and it's all familiar to you:
+     * sketch, paint"), so what he writes stepping back knows what he couldn't do. Null when no
+     * reason locks more than one.
+     */
+    fun outOfReach(obs: Observation): String? =
+        obs.activities.orEmpty().mapNotNull { a -> a.locked?.let { it.substringBefore(" (").trim() to a.id } }
+            .groupBy({ it.first }, { it.second }).mapValues { it.value.distinct() }.filterValues { it.size > 1 }
+            .entries.joinToString("\n") { (why, ids) -> "- $why: ${ids.joinToString()}" }.ifEmpty { null }
+
     /** Minutes from [from] to [to] ("HH:MM" on game days), or null when either has no clock. */
     fun minutesBetween(fromDay: Int?, fromTime: String?, toDay: Int?, toTime: String?): Int? {
         if (fromDay == null || fromTime == null || toDay == null || toTime == null) return null

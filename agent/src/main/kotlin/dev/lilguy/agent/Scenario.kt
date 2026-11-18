@@ -50,7 +50,7 @@ fun bedroomScenario(
     content: BedroomContent = BedroomContent.default(),
     longTerm: AgentMemory? = null,
     granted: Set<String> = emptySet(),
-    /** Picks the commissions. */
+    /** Seeds the weather. */
     seed: Long = 0,
     /** A checkpoint to carry on from, in place of a fresh room; what the content no longer has goes to [dropped]. */
     from: BedroomState? = null,

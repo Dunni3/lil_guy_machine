@@ -123,7 +123,6 @@ object WorldDocs {
         content.familiarity?.let { add(DocSection("rules:familiarity", "what makes something fresh or familiar: features of what it's like (verb, kind, place, thing, group, quality, skill, makes, sky), each fading by half every half_life_days", enc(it))) }
         content.frustration?.let { add(DocSection("rules:frustration", "frustration", enc(it))) }
         add(DocSection("rules:skills", "what skills do", enc(content.skills)))
-        content.commissions?.let { c -> add(DocSection("rules:commissions", "requests for a piece of art", "A request comes each day at ${c.arrive}: an adjective and a noun. The first piece sold that matches it (the adjective in its title or tags, a shape of the noun drawn in it) earns $${c.reward} on top of its price.")) }
         add(DocSection("rules:gallery", "hanging art", enc(content.gallery)))
         add(DocSection("rules:qualities", "what items are worth to him", enc(content.qualityValue)))
         content.comfort?.let { add(DocSection("rules:comfort", "comfort: what he can see from where he stands", "A thing counts toward comfort in full within `near` tiles of him and fades out by `far`; it counts in full at `lit` light, less when dimmer, none in the dark. Only the place he's in counts. Asleep, what's round him counts lit or not. ${enc(it)}")) }

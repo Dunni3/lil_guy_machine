@@ -35,7 +35,7 @@ enum class TokenPurpose {
     @SerialName("ask") Ask,
     /** A memory: a stretch of events (level 1) or a day (level 2). */
     @SerialName("summary") Summary,
-    /** A drawing, or the day's commission. */
+    /** A drawing. */
     @SerialName("art") Art,
     /** The nightly revision of his self-model. */
     @SerialName("self") SelfModel,

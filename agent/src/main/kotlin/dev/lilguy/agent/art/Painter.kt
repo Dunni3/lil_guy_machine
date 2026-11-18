@@ -1,16 +1,11 @@
 package dev.lilguy.agent.art
 
 import dev.lilguy.agent.Menu
-import dev.lilguy.decision.ActionSchema
 import dev.lilguy.decision.DecisionFailed
 import dev.lilguy.decision.DecisionModel
-import dev.lilguy.decision.DecisionRequest
-import dev.lilguy.decision.Message
-import dev.lilguy.decision.SchemaHints
 import dev.lilguy.decision.Usage
 import dev.lilguy.sim.CanvasSpec
-import dev.lilguy.sim.CommissionRules
-import dev.lilguy.sim.CommissionView
+import dev.lilguy.sim.SubjectRules
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
@@ -25,7 +20,6 @@ import kotlinx.serialization.json.putJsonObject
 import kotlin.random.Random
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
-import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
 /**
@@ -41,8 +35,6 @@ data class Drawing(
     val artist: String,
     /** The item made, such as "sketch". */
     val item: String,
-    /** What the open request asked for, if there was one. */
-    val commission: String?,
     val title: String?,
     val tags: List<String>,
     val artwork: Artwork?,
@@ -82,13 +74,13 @@ data class Underway(
 /**
  * How his art gets made: a run of closed choices on the model that decides for him, so the cheap
  * picking model (TypeSafe's Jev) draws, and nothing has to write text. First he picks the piece's
- * subject (the customer's request, or something of his own), then a box of crayons ([Palettes]),
+ * subject (from the content's `subjects`, of his own choosing), then a box of crayons ([Palettes]),
  * then stroke by stroke which part of the drawing spec to invoke next ([Strokes]) and which crayon
  * to draw it in, seeing the picture so far as letters, until the canvas's strokes are spent: two
  * calls a stroke, and every call adds to the picture. The strokes
  * become [DrawOp]s that [Artwork.draw] rasterizes; the model never writes code or coordinates. The
  * title and tags are the subject's words, and [Drawing.shows] says whether a shape for its noun was
- * drawn, so a piece drawn for a request is matched on what it shows.
+ * drawn, which is what makes a new subject new to him.
  *
  * Any [DecisionModel] will do ([Menu]): a text model gets the same options in a prompt.
  */
@@ -97,10 +89,10 @@ class Painter(
     /** For the whole piece, every call included. */
     private val timeout: Duration = 3.minutes,
 ) {
-    /** The words a subject of his own is made from; the content's commission lists, normally. */
+    /** The words a subject of his own is made from; the content's `subjects` lists, normally. */
     class Subjects(val adjectives: List<String>, val nouns: List<String>) {
         companion object {
-            fun of(rules: CommissionRules?): Subjects = rules?.let { Subjects(it.adjectives, it.nouns) } ?: DEFAULT
+            fun of(rules: SubjectRules?): Subjects = rules?.let { Subjects(it.adjectives, it.nouns) } ?: DEFAULT
 
             val DEFAULT = Subjects(
                 listOf("quiet", "tiny", "golden", "lonely", "cheerful", "stormy", "sleepy", "wild"),
@@ -109,7 +101,7 @@ class Painter(
         }
     }
 
-    private class Subject(val adjective: String, val noun: String, val forRequest: Boolean) {
+    private class Subject(val adjective: String, val noun: String) {
         val wants: String get() = "${article(adjective)} $adjective $noun"
         val title: String get() = titleOf(adjective, noun)
         val tags: List<String> get() = listOf(adjective, noun)
@@ -132,7 +124,6 @@ class Painter(
         situation: String,
         item: String,
         canvas: CanvasSpec,
-        commission: CommissionView?,
         subjects: Subjects,
         tick: Long,
         day: Int?,
@@ -142,11 +133,10 @@ class Painter(
         onProgress: (Underway) -> Unit = {},
     ): Drawing {
         val started = TimeSource.Monotonic.markNow()
-        val asked = commission?.let { it.request ?: "I'd like ${it.wants}." }
         var usage = Usage()
         var calls = 0
         val picks = mutableListOf<String>()
-        fun failed(error: String) = Drawing(tick, day, time, model.id, item, asked, null, emptyList(), null, 0, calls, picks.joinToString(" ").ifEmpty { null }, usage, started.elapsedNow(), error)
+        fun failed(error: String) = Drawing(tick, day, time, model.id, item, null, emptyList(), null, 0, calls, picks.joinToString(" ").ifEmpty { null }, usage, started.elapsedNow(), error)
 
         val pick: suspend (String, JsonObject, List<Menu.Option>) -> String = { instructions, state, options ->
             val d = Menu.pick(model, instructions, state, options, timeout, TEMPERATURE)
@@ -159,7 +149,7 @@ class Painter(
         return try {
             withTimeout(timeout) {
                 val random = Random(tick)
-                val subject = pickSubject(pick, persona, situation, item, commission, subjects, drawn.toSet(), nounsDrawn, random)
+                val subject = pickSubject(pick, persona, situation, item, subjects, drawn.toSet(), nounsDrawn, random)
                 val palette = pickPalette(pick, item, subject, canvas, random)
                 // The subject stage's shapes are drawn in front of everything else, whenever they were made.
                 val back = mutableListOf<DrawOp>()
@@ -210,7 +200,7 @@ class Painter(
                 val ops = back + front
                 val art = Artwork.draw(canvas.size, palette.rgb, ops)
                 if (art.blank()) failed("the piece came out one solid color")
-                else Drawing(tick, day, time, model.id, item, asked, subject.title, subject.tags, art, ops.size, calls, picks.joinToString(" "), usage, started.elapsedNow(), shows = shows)
+                else Drawing(tick, day, time, model.id, item, subject.title, subject.tags, art, ops.size, calls, picks.joinToString(" "), usage, started.elapsedNow(), shows = shows)
             }
         } catch (e: TimeoutCancellationException) {
             failed("timed out after $timeout")
@@ -244,35 +234,26 @@ class Painter(
         persona: String,
         situation: String,
         item: String,
-        commission: CommissionView?,
         subjects: Subjects,
         drawn: Set<String>,
         nounsDrawn: Set<String>,
         random: Random,
     ): Subject {
-        // The request first (he's offered it plainly), then a handful of his own, seeded by the piece,
-        // leaving out what he has drawn before. Half of his own have nouns new to him while there are any.
+        // A handful of subjects of his own, seeded by the piece, leaving out what he has drawn before. Half of his own have nouns new to him while there are any.
         val all = subjects.adjectives.flatMap { a -> subjects.nouns.map { n -> a to n } }
         val pool = all.filter { (a, n) -> titleOf(a, n) !in drawn }.ifEmpty { all }.shuffled(random)
         val fresh = pool.filter { it.second !in nounsDrawn }.distinctBy { it.second }.take(OWN_SUBJECTS / 2)
-        val own = (fresh + (pool - fresh.toSet()).take(OWN_SUBJECTS - fresh.size)).shuffled(random).map { (a, n) -> Subject(a, n, forRequest = false) }
+        val own = (fresh + (pool - fresh.toSet()).take(OWN_SUBJECTS - fresh.size)).shuffled(random).map { (a, n) -> Subject(a, n) }
         fun mark(noun: String) = if (noun in nounsDrawn) "" else " He has never drawn ${article(noun)} $noun: something new to him."
 
-        val request = commission?.let { c ->
-            val words = c.wants.split(' ').filter { it !in setOf("a", "an", "the") }
-            if (words.size >= 2) Subject(words.dropLast(1).joinToString(" "), words.last(), forRequest = true) else null
-        }
-        val options = buildList {
-            request?.let { add(Menu.Option("request", "What the customer asked for: \"${commission!!.request ?: "I'd like ${commission.wants}."}\" It pays $${commission.reward} more if the piece is what they asked for, until ${commission.until}.${mark(it.noun)}")) }
-            own.forEachIndexed { i, s -> add(Menu.Option("own:$i", "A subject of his own: ${s.wants}.${mark(s.noun)}")) }
-        }
+        val options = own.mapIndexed { i, s -> Menu.Option("own:$i", "A subject of his own: ${s.wants}.${mark(s.noun)}") }
         val state = buildJsonObject {
             put("making", "a $item: a small picture he draws himself")
             put("who", persona)
             put("situation", situation)
         }
         val chosen = pick(SUBJECT_INSTRUCTIONS, state, options)
-        return if (chosen == "request") request!! else own[chosen.removePrefix("own:").toInt()]
+        return own[chosen.removePrefix("own:").toInt()]
     }
 
     private suspend fun pickPalette(pick: suspend (String, JsonObject, List<Menu.Option>) -> String, item: String, subject: Subject, canvas: CanvasSpec, random: Random): Palette {
@@ -298,7 +279,7 @@ class Painter(
 
         val SUBJECT_INSTRUCTIONS = "The character in `state.who` is sitting down to make `state.making`. `state.situation` is his life right now: what he sees, " +
             "what he remembers, the thoughts he had and what he planned the last time he stopped to think. Which subject should the picture be? " +
-            "The customer's request earns him money he may need; a subject of his own should fit what's on his mind. Drawing something he has never drawn " +
+            "It should fit what's on his mind. Drawing something he has never drawn " +
             "lifts his stimulation, which matters most when he's bored."
 
         val PALETTE_INSTRUCTIONS = "The character is about to draw `state.subject`. Which box of crayons suits it best?"
@@ -312,48 +293,5 @@ class Painter(
         val CRAYON_INSTRUCTIONS = "The character is drawing `state.subject` on a small square grid. `state.canvas` is the picture so far, one row per " +
             "line, the top row first, one letter per cell, and `state.palette` says which crayon each letter is (the first is the paper). He has chosen " +
             "his next stroke, `state.stroke`. Which crayon should he draw it in, so that the picture comes to show its subject?"
-    }
-}
-
-@Serializable
-@SerialName("request")
-data class RequestReply(val request: String)
-
-/** Words each day's commission in the customer's voice. Needs a model that writes text; null from [word] when it can't. */
-class CommissionVoice(
-    private val model: DecisionModel,
-    private val timeout: Duration = 60.seconds,
-) {
-    init {
-        require(!model.capabilities.closedChoice) { "wording a request needs a model that writes text; '${model.id}' only picks from options" }
-    }
-
-    private val schema = ActionSchema.of(
-        "request",
-        RequestReply.serializer(),
-        SchemaHints(descriptions = mapOf("request.request" to "The customer's request, one or two sentences.")),
-    )
-
-    /** [commission] in a customer's own words, naming what it wants; null when the model fails. */
-    suspend fun word(commission: CommissionView): String? = try {
-        val request = DecisionRequest(
-            system = WORDING,
-            messages = listOf(Message(Message.Role.User, "The customer wants ${commission.wants}. Write their request.")),
-            temperature = Painter.TEMPERATURE,
-            timeout = timeout,
-        )
-        withTimeout(timeout) { model.decide(request, schema) }.value.request.trim().ifEmpty { null }
-    } catch (e: CancellationException) {
-        if (e is TimeoutCancellationException) null else throw e
-    } catch (e: Exception) {
-        null
-    }
-
-    companion object {
-        val WORDING = """
-            |You write requests from customers who buy small pictures from an artist. Given what a customer wants, write their request in one or two sentences, in their own voice, saying who it's for or why they want it. Name what they want plainly, using its words.
-            |
-            |Reply with a JSON object {"request": "..."} and nothing else.
-        """.trimMargin()
     }
 }

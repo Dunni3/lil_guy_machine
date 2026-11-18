@@ -1,5 +1,5 @@
 /* Generated from schema/protocol.schema.json (protocol/.../*.kt) by gen_types.sh. Don't edit; run `make protocol-types`.
- * schema sha256: d810e62f5395e020f927c6a4f8bc1cc9068bf60b3360ef9fde47ee7507a8a786
+ * schema sha256: 2f89a7793b5f427d2acc8f0b8f54c1b5ddd483a2fa98a36f96b017144f9546e2
  */
 
 /**
@@ -385,7 +385,6 @@ export interface Tally {
  */
 export interface Gallery {
   art: PieceView[];
-  commission: CommissionView | null;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -397,18 +396,6 @@ export interface PieceView {
   title: string | null;
   hung: boolean;
   sells_for: number | null;
-  commission: string | null;
-}
-/**
- * This interface was referenced by `Protocol`'s JSON-Schema
- * via the `definition` "CommissionView".
- */
-export interface CommissionView {
-  id: number;
-  wants: string;
-  request: string | null;
-  reward: number;
-  until: string;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -697,7 +684,6 @@ export interface DrawingView {
   item: string;
   title: string | null;
   tags: string[];
-  commission: string | null;
   shows: string | null;
   palette: number[];
   size: number;

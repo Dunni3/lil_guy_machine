@@ -41,7 +41,7 @@ class ModelSetup(
     val memoryModel: (() -> DecisionModel)? = null,
     /** Bedroom: game days a run lasts before it ends, null for no end: the first run's; the Run page changes it. */
     val days: Int? = DEFAULT_DAYS,
-    /** A fresh model for each run that writes his thoughts, his self-model and each day's commission; null and he isn't offered think. */
+    /** A fresh model for each run that writes his thoughts and his self-model; null and he isn't offered think. */
     val writerModel: (() -> DecisionModel)? = null,
     /** What each model costs, for the token report; null for free or unknown. */
     val prices: Prices = Prices(),
@@ -105,7 +105,7 @@ class ModelSetup(
          * endpoint chosen, or no key. [env] is the only place keys come from. Logs go in a new
          * timestamped directory under [logRoot]. Memories are written by [memoryEndpoint] (or the
          * config's `memory_endpoint`; "none" turns it off), whichever model decides; his thoughts,
-         * self-model and commissions by [writerEndpoint] (or `writer_endpoint`) the same way; and
+         * self-model by [writerEndpoint] (or `writer_endpoint`) the same way; and
          * recall is scored by [recallEndpoint] (or `recall_endpoint`, else the deciding endpoint when
          * it's typesafe; "none" for keywords). [beam] overrides the deciding endpoint's `beam` (0 for
          * the flat list). His art is drawn by [painterEndpoint] (or `painter_endpoint`), else the deciding endpoint.

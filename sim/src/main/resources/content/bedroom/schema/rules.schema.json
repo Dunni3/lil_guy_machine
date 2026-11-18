@@ -342,17 +342,11 @@
         }
       ]
     },
-    "commissions": {
+    "subjects": {
       "anyOf": [
         {
           "type": "object",
           "properties": {
-            "arrive": {
-              "type": "string"
-            },
-            "reward": {
-              "type": "integer"
-            },
             "adjectives": {
               "type": "array",
               "items": {
@@ -367,8 +361,6 @@
             }
           },
           "required": [
-            "arrive",
-            "reward",
             "adjectives",
             "nouns"
           ],

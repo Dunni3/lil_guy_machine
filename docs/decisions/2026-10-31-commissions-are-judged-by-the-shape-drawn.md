@@ -1,7 +1,7 @@
 ---
 title: "A commission pays for a piece that drew its noun's shape; the drawing reports what it shows"
 date: 2026-10-31
-status: active
+status: superseded
 ---
 
 # A commission pays for a piece that drew its noun's shape

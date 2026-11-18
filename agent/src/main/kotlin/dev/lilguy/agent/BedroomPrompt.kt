@@ -92,12 +92,9 @@ object BedroomPrompt {
         return (effects + blocks).joinToString(" ").ifEmpty { null }
     }
 
-    /** The art line of the prompt: commissions and hanging, or null when the content has neither. */
+    /** The art line of the prompt: hanging, or null when the content has no way to hang a piece. */
     private fun artHint(content: BedroomContent): String? {
         val parts = buildList {
-            content.commissions?.let { c ->
-                add("A request for a piece comes in every day at ${c.arrive} (`commission`) and stays open until the next. The first piece you finish while it's open that shows what it asks for earns $${c.reward} more when you sell it; it's yours to take or leave.")
-            }
             content.verbs.firstOrNull { it.ops<SetStateOp>().isNotEmpty() }?.let { h ->
                 add("${h.id} puts your newest piece on your wall instead of selling it: each one hung adds ${content.gallery.comfortEach} comfort, up to ${content.gallery.max}.")
             }
@@ -412,7 +409,7 @@ object BedroomPrompt {
             |The observation is JSON:
             |- clock: day and time. money: dollars. needs: ${needNames(content).let { it.dropLast(1).joinToString(", ") + " and " + it.last() }}, 0 to 100.
             |- holding: art you're carrying, to sell. owns: everything else you own, id to count.$music${if (content.vocabulary.skills.isNotEmpty()) "\n            |- skills: your skills, name to level." else ""}${if (content.books.isNotEmpty()) "\n            |- books: the books you own, how many chapters you've read of how many, what studying one raises, and what finishing it would teach you." else ""}
-            |- art: the pieces you have made and still have, held to sell or hung on your wall, with their titles. commission: today's request for a piece, if one is open.
+            |- art: the pieces you have made and still have, held to sell or hung on your wall, with their titles.
             |- $options: your options, as above.
             |- ${if (map != null) "place: where you are, and places: where else you could go, with the walk there. put: your things you could move, and the free spots by place. " else ""}${if (content.light != null) "light: how lit it is round you, when anything near you is too dark for something. " else ""}${sensesDoc(content)?.let { "$it " }.orEmpty()}self and nearby: where you are and the furniture around you, with tile x and y${if (content.light != null) " (remembered: too dark to see, but you know it's there)" else ""}. localMap: ${if (map != null) "the room you're in, or the land round you, one string per row, north at the top; localMapAt is its top-left tile" else "the room, one string per row, north at the top"}.
             |- lastIntent and lastResult: your previous action and how it ended (succeeded, failed with a reason, or interrupted).
@@ -438,7 +435,7 @@ ${lookText(looks)}
         |Your earlier calls are your recent actions; each result says when it started and how it ended. Then comes how things stand now, as JSON:
         |- clock: day and time. money: dollars. needs: ${needNames(content).let { it.dropLast(1).joinToString(", ") + " and " + it.last() }}, 0 to 100.
         |- holding: art you're carrying, to sell. owns: everything else you own, id to count.$music${if (content.vocabulary.skills.isNotEmpty()) "\n        |- skills: your skills, name to level." else ""}${if (content.books.isNotEmpty()) "\n        |- books: the books you own, how many chapters you've read of how many, what studying one raises, and what finishing it would teach you." else ""}
-        |- art: the pieces you have made and still have, held to sell or hung on your wall, with their titles. commission: today's request for a piece, if one is open.
+        |- art: the pieces you have made and still have, held to sell or hung on your wall, with their titles.
         |- place: where you are. here: the things round you in this place, nearest first, which way and how far${if (content.light != null) " (too dark to see: you know it's there but can't make it out)" else ""}; walk_to takes you over to one, and look_around tells you more.${if (content.light != null) " light: how lit it is round you, when anything near you is too dark for something." else ""}${sensesDoc(content)?.let { " $it" }.orEmpty()}
         |- activities: what you can't do right now, and why.${if (trips(content)) "" else " shop: what the shop will sell you now: its price, whether you can afford it, and what it's for."}
         |- recentEvents: the last few things that happened besides what you did, stamped with day and time.
@@ -563,11 +560,10 @@ ${lookText(looks)}
             putJsonArray("holding") { obs.holding.orEmpty().forEach { add(it) } }
             putJsonObject("owns") { obs.owns.orEmpty().forEach { (id, n) -> put(id, n) } }
             obs.music?.let { put("music", it) }
-            obs.commission?.let { c -> put("commission", "${c.request ?: "wants ${c.wants}"} ($${c.reward} more for the first piece that matches, until ${c.until})") }
             obs.art?.takeIf { it.isNotEmpty() }?.let { art ->
                 putJsonArray("art") {
                     art.forEach { p ->
-                        add("${p.item} ${p.id}" + (p.title?.let { " \"$it\"" } ?: "") + if (p.hung) ", on the wall" else ", held (sells for $${p.sellsFor})" + (p.commission?.let { "; $it" } ?: ""))
+                        add("${p.item} ${p.id}" + (p.title?.let { " \"$it\"" } ?: "") + if (p.hung) ", on the wall" else ", held (sells for $${p.sellsFor})")
                     }
                 }
             }

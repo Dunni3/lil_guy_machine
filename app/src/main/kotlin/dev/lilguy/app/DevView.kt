@@ -806,9 +806,6 @@ class DevView(private val art: ArtTextures) : Disposable {
         heading(if (pieces.isEmpty()) "ART" else if (artPick == null) "ART · ${pieces.size} · following the newest" else "ART · ${sel + 1} of ${pieces.size}")
         line(status, SMALL_SCALE * 0.9f, MUTED, maxLines = 2)
         studio?.lastError?.let { line("last drawing failed: $it", SMALL_SCALE * 0.9f, FAILED, maxLines = 2) }
-        session.current.life?.commission?.let { c ->
-            line("request: ${c.request ?: c.wants} (+$${c.reward} until ${c.until})", SMALL_SCALE * 0.9f, CODE, maxLines = 2)
-        }
         if (pieces.isEmpty()) return line("(nothing drawn yet)", BODY_SCALE * 0.8f, MUTED)
         art.sync(session)
 
@@ -843,9 +840,7 @@ class DevView(private val art: ArtTextures) : Disposable {
         }
         line(d.title ?: "untitled", BODY_SCALE, TEXT, maxLines = 3, gapAfter = 0.2f, indent = indent)
         line("${d.item} ${d.piece} · ${if (d.day != null) "day ${d.day} ${d.time}" else "t ${d.tick}"} · $where", SMALL_SCALE * 0.9f, MUTED, maxLines = 2, gapAfter = 0.3f, indent = indent)
-        shown?.commission?.let { line(it, SMALL_SCALE * 0.9f, CODE, maxLines = 2, gapAfter = 0.3f, indent = indent) }
         if (d.tags.isNotEmpty()) line("tags: ${d.tags.joinToString()}", SMALL_SCALE * 0.9f, TEXT, maxLines = 3, gapAfter = 0.3f, indent = indent)
-        d.commission?.let { line("asked: $it", SMALL_SCALE * 0.85f, MUTED, maxLines = 4, gapAfter = 0.3f, indent = indent) }
         line("${d.ops} ops in ${d.calls} picks · ${d.artist}", SMALL_SCALE * 0.85f, MUTED, maxLines = 2, indent = indent)
         cursor = min(cursor, imageTop - big - 12f)
     }

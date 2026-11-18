@@ -134,13 +134,12 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   `BedroomWorld`'s `ScriptView`, `putCode` and `runBehaviors`. `devise` writes code at his desk; `invent` writes each thing's
   function with it. The coder: `agent/.../code/Coder.kt` (deciding model if it's a text model, else the writer).
 - Art: `agent/.../art/`: `Painter.kt` (the deciding model draws each piece as a run of closed picks:
-  subject, crayon box, then a stroke a call; `CommissionVoice` words each day's commission on a text
-  model), `Strokes.kt` (the drawing spec as menus of strokes by stage: background, subject,
+  subject of his own from rules.yaml `subjects`, crayon box, then a stroke a call; nobody commissions
+  pieces: `docs/decisions/2026-11-17-no-commissions.md`), `Strokes.kt` (the drawing spec as menus of strokes by stage: background, subject,
   details), `Shapes.kt` (stencils for each subject noun and the scenery), `Palettes.kt` (named crayon boxes),
   `Artwork.kt` (ops rasterized to a grid, and a PNG encoder with no ImageIO), `ArtStudio.kt` (the `draw`
-  handler: saves `art-NN/piece-NNN.png`, delivers title and tags to the piece; commission wording goes
-  through `BedroomWorld.annotate`). `agent/.../Menu.kt` puts one pick to any model (a choice set
-  for Jev, a prompt plus enum schema for a text model). The sim's pieces, commissions and
+  handler: saves `art-NN/piece-NNN.png`, delivers title and tags to the piece). `agent/.../Menu.kt` puts one pick to any model (a choice set
+  for Jev, a prompt plus enum schema for a text model). The sim's pieces and
   hanging are in `BedroomWorld.kt`. The app's textures for them are in `ArtTextures.kt`. The piece
   under way is reported stroke by stroke (`Underway`, `ArtStudio.underway`) and played out in the room
   by `app/.../PaintScene.kt` (brush on the real cells, dips, stepping back, a flourish), fed stroke by stroke at the pace

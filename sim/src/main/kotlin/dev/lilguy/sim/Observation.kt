@@ -61,8 +61,6 @@ data class Observation(
     @EncodeDefault(EncodeDefault.Mode.NEVER) val activities: List<ActivityOption>? = null,
     /** Everything for sale he doesn't already have. */
     @EncodeDefault(EncodeDefault.Mode.NEVER) val shop: List<ShopOption>? = null,
-    /** Today's request for a piece, if one is open. */
-    @EncodeDefault(EncodeDefault.Mode.NEVER) val commission: CommissionView? = null,
     /** The art he has made and still has, held or hung, oldest first. */
     @EncodeDefault(EncodeDefault.Mode.NEVER) val art: List<PieceView>? = null,
     /** His skills, name to level (0 up, one decimal). */
@@ -97,23 +95,8 @@ data class Observation(
 data class PlaceOption(val id: String, val name: String, val says: String, val walk: Int)
 
 /**
- * A request for a piece: [wants] is the adjective and noun ("a sleepy lighthouse"), [request] the
- * customer's words once a model has written them. Open until [until] ("d2 09:00").
- */
-@OptIn(ExperimentalSerializationApi::class)
-@Serializable
-data class CommissionView(
-    val id: Int,
-    val wants: String,
-    @EncodeDefault(EncodeDefault.Mode.NEVER) val request: String? = null,
-    val reward: Int,
-    val until: String,
-)
-
-/**
  * A piece of art he made and hasn't sold: [hung] on the wall, or held to sell for [sellsFor].
- * [title] is null until it has been drawn (or when drawing failed). [commission] says how it
- * stands against the open request, if it was made for one.
+ * [title] is null until it has been drawn (or when drawing failed).
  */
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
@@ -123,7 +106,6 @@ data class PieceView(
     @EncodeDefault(EncodeDefault.Mode.NEVER) val title: String? = null,
     val hung: Boolean = false,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val sellsFor: Int? = null,
-    @EncodeDefault(EncodeDefault.Mode.NEVER) val commission: String? = null,
 )
 
 /**
@@ -282,7 +264,6 @@ data class LifeSnapshot(
     val transactions: List<Transaction>,
     /** The clock that turns this world's ticks into game time, for stamping events. */
     val clockScale: GameClock,
-    val commission: CommissionView? = null,
     /** Held and hung art, oldest first. */
     val art: List<PieceView> = emptyList(),
     /** Everything the shop sells, in file order, including what a book has yet to teach. */

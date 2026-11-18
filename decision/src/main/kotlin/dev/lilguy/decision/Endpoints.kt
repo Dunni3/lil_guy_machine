@@ -25,7 +25,7 @@ data class EndpointsFile(
     /** The endpoint that writes the first character's memories, if any. */
     val defaultMemoryEndpoint: String? get() = agents.firstOrNull()?.memoryEndpoint
 
-    /** The endpoint that writes the first character's thoughts, self-model and commissions: `writer_endpoint`, else `memory_endpoint`. */
+    /** The endpoint that writes the first character's thoughts and self-model: `writer_endpoint`, else `memory_endpoint`. */
     val defaultWriterEndpoint: String? get() = agents.firstOrNull()?.let { it.writer ?: it.memoryEndpoint }
 
     /** The endpoint that scores the first character's recall and event significance, if any. */
@@ -107,8 +107,7 @@ data class AgentConfig(
     /** Writes long-term memories from the event stream; must write text, so not a closed-choice model. */
     @SerialName("memory_endpoint") val memoryEndpoint: String? = null,
     /**
-     * Writes his thoughts (the think verb), his self-model each night and the words of each day's
-     * commission; must write text. Defaults to [memoryEndpoint]; "none" turns them off, and then
+     * Writes his thoughts (the think verb) and his self-model each night; must write text. Defaults to [memoryEndpoint]; "none" turns them off, and then
      * he isn't offered think.
      */
     @SerialName("writer_endpoint") val writerEndpoint: String? = null,

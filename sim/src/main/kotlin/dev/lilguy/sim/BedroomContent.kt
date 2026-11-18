@@ -35,8 +35,8 @@ data class BedroomContent(
     val verbs: List<VerbSpec>,
     /** A verb the agent loop makes him do every so often; null for none. */
     val reflection: Reflection? = null,
-    /** A daily request for a piece; null for none. */
-    val commissions: CommissionRules? = null,
+    /** What his art can show: the words a drawing's subject is made from; null for the painter's own. */
+    val subjects: SubjectRules? = null,
     val gallery: GalleryRules = GalleryRules(),
     /** Repeating an activity pays less; null turns it off. */
     val habituation: HabituationRules? = null,
@@ -180,7 +180,7 @@ data class BedroomContent(
         /** The content's files, each with the top-level keys it holds. */
         val FILES: Map<String, List<String>> = linkedMapOf(
             "room" to listOf("room", "start"),
-            "rules" to listOf("needs", "night", "habituation", "novelty", "familiarity", "frustration", "skills", "shop", "reflection", "commissions", "gallery", "quality_value", "invent", "collection", "comfort", "light", "letters", "sound", "sleep", "growing", "machines", "market"),
+            "rules" to listOf("needs", "night", "habituation", "novelty", "familiarity", "frustration", "skills", "shop", "reflection", "subjects", "gallery", "quality_value", "invent", "collection", "comfort", "light", "letters", "sound", "sleep", "growing", "machines", "market"),
             "vocabulary" to listOf("vocabulary"),
             "personality" to listOf("personality"),
             "items" to listOf("items"),
@@ -343,10 +343,7 @@ data class BedroomContent(
         require(personality.curiosity > 0) { "personality: curiosity must be positive" }
         require(qualityValue.inView >= 0 && qualityValue.inUse >= 0) { "quality_value: in_view and in_use can't be negative" }
         items.forEach { item -> item.canvas?.let { require(item.carried) { "item ${item.id}: only a carried item can be drawable" } } }
-        commissions?.let { c ->
-            GameClock.parseHhmm(c.arrive)
-            require(c.reward > 0 && c.adjectives.isNotEmpty() && c.nouns.isNotEmpty()) { "commissions need a positive reward and at least one adjective and noun" }
-        }
+        subjects?.let { s -> require(s.adjectives.isNotEmpty() && s.nouns.isNotEmpty()) { "subjects need at least one adjective and noun" } }
         require(gallery.max >= 1 && gallery.comfortEach >= 0) { "gallery.max must be at least 1" }
         val nodes = mutableSetOf<String>()
         val placed = mutableSetOf<String>()
@@ -634,15 +631,11 @@ data class NeedBlock(
 data class ShopRules(val at: String, val minutes: Int)
 
 /**
- * A request for a piece that arrives each day at [arrive] and stays open until the next one: an
- * adjective and a noun picked from the lists. The first piece made while it's open, drawn to match
- * (the adjective in its title or tags, a shape drawn for the noun), and sold earns [reward] on top
- * of its price.
+ * What his art can show: a drawing's subject is an adjective and a noun from these lists, of his own
+ * choosing. The first time he draws a noun it's new to him (novelty).
  */
 @Serializable
-data class CommissionRules(
-    val arrive: String,
-    val reward: Int,
+data class SubjectRules(
     val adjectives: List<String>,
     val nouns: List<String>,
 )

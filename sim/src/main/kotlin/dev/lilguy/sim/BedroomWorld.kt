@@ -10,7 +10,6 @@ import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 import kotlin.math.sign
 import kotlin.math.sin
-import kotlin.random.Random
 
 /**
  * Milestone 4 world: a bedroom where the guy makes art, sells it, and spends the money on food,
@@ -24,9 +23,8 @@ import kotlin.random.Random
  * with the first owned match. Decisions happen when a verb ends.
  *
  * Art is a count like any item, and each carried one is also a numbered piece, so it can be drawn,
- * hung or sold on its own. A drawing model's title and tags arrive later through [deliver]; a
- * daily commission ([CommissionRules]) pays extra for the first sold piece whose drawing matches it:
- * the adjective in its title or tags, and a shape drawn for the noun.
+ * hung or sold on its own. A drawing model's title and tags arrive later through [deliver]; the
+ * first time he draws a subject ([SubjectRules]) is new to him.
  *
  * Doing the same thing again pays less ([HabituationRules]) and the first time pays more
  * ([NoveltyRules]); both feed stimulation, and low stimulation lowers the mood he settles to.
@@ -44,7 +42,7 @@ class BedroomWorld private constructor(
     guy: Character,
     startContent: BedroomContent,
     val clock: GameClock,
-    /** Picks the commissions. */
+    /** Seeds the weather. */
     private val seed: Long,
 ) : GridWorld(startLayout.map, guy) {
     /** The house on its land: the map, the places on it, where each slot is. Replaced when a room is built or moved. */
@@ -97,7 +95,7 @@ class BedroomWorld private constructor(
     /** Item id to the tick he first had it, for comfort's `adapt`. */
     private val ownedSince = LinkedHashMap<String, Long>()
 
-    /** The commission nouns he has drawn a piece of, so a drawing model can tell him which are new. Readable from any thread. */
+    /** The subject nouns he has drawn a piece of, so a drawing model can tell him which are new. Readable from any thread. */
     @Volatile var subjectsDrawn: Set<String> = emptySet()
         private set
 
@@ -157,24 +155,16 @@ class BedroomWorld private constructor(
 
     private enum class PieceState { Held, Hung, Sold }
 
-    /** One piece of art. [commission]: the request open when it was finished, if any. [skill]: his level in the skill its price grows with, when he made it. */
-    private class Piece(val id: Int, val item: String, val commission: Int?, val skill: Double) {
+    /** One piece of art. [skill]: his level in the skill its price grows with, when he made it. */
+    private class Piece(val id: Int, val item: String, val skill: Double) {
         var state = PieceState.Held
         var title: String? = null
         var tags: List<String> = emptyList()
         var shows: String? = null
     }
 
-    private class Commission(val id: Int, val adjective: String, val noun: String, val wants: String, val until: Long) {
-        var request: String? = null
-        var fulfilled = false
-    }
-
     /** Every piece he has made, oldest first; the held ones match the counts of carried items. */
     private val pieces = mutableListOf<Piece>()
-    private var commission: Commission? = null
-    private var commissions = 0
-    private val notes = ConcurrentLinkedQueue<ArtNote>()
     /** Letters on their way in ([post]), the ones waiting at the mail hatch, oldest first, and the ids of those he has opened. */
     private val posted = ConcurrentLinkedQueue<Letter>()
     private val mailbox = ArrayDeque<Letter>()
@@ -260,7 +250,7 @@ class BedroomWorld private constructor(
 
     /**
      * The world as [Op]s see it. The art and music parts are here rather than in the ops because
-     * pieces, commissions and what's playing are this world's state.
+     * pieces and what's playing are this world's state.
      */
     private val ops = object : OpWorld {
         override val content get() = this@BedroomWorld.content
@@ -288,8 +278,7 @@ class BedroomWorld private constructor(
         override fun saleText(tag: String): String {
             val counts = owned.filter { (id, _) -> tag in item(id).names }
             val sale = saleOf(held(tag))
-            val bonus = if (winner(sale.map { it.first }) != null) ", $${content.commissions!!.reward} of it for the request" else ""
-            return "$${sale.sumOf { it.second } + counts.entries.sumOf { (id, n) -> quote(id, n) }} for the ${counts.entries.joinToString(" and ") { (id, n) -> quantity(id, n) }} you hold$bonus" +
+            return "$${sale.sumOf { it.second } + counts.entries.sumOf { (id, n) -> quote(id, n) }} for the ${counts.entries.joinToString(" and ") { (id, n) -> quantity(id, n) }} you hold" +
                 counts.keys.mapNotNull(::lowNote).joinToString("") { "; $it" }
         }
 
@@ -666,7 +655,7 @@ class BedroomWorld private constructor(
 
     private fun add(id: String, n: Int) {
         version++
-        if (item(id).carried) repeat(n) { pieces += Piece(pieces.size + 1, id, openCommission()?.id, item(id).sellSkill?.let(::skill) ?: 0.0) }
+        if (item(id).carried) repeat(n) { pieces += Piece(pieces.size + 1, id, item(id).sellSkill?.let(::skill) ?: 0.0) }
         owned[id] = count(id) + n
         syncHolding()
     }
@@ -2084,14 +2073,8 @@ class BedroomWorld private constructor(
         val total = sale.sumOf { it.second } + sold.entries.sumOf { (id, n) -> sellPlain(id, n) }
         val what = sold.entries.joinToString(" and ") { (id, n) -> quantity(id, n) }
         val low = sold.keys.mapNotNull(::lowNote)
-        val winner = winner(sale.map { it.first })
-        val bonus = winner?.let {
-            commission!!.fulfilled = true
-            version++
-            " (${pieceName(it)} met the request for ${commission!!.wants}: +$${content.commissions!!.reward})"
-        }.orEmpty()
-        if (total > 0) ledger.credit(ticks, total, "sold $what" + if (winner != null) " (one for a commission)" else "")
-        return "sold $what for $$total$bonus (money $${ledger.balance})" + low.joinToString("") { "; $it" }
+        if (total > 0) ledger.credit(ticks, total, "sold $what")
+        return "sold $what for $$total (money $${ledger.balance})" + low.joinToString("") { "; $it" }
     }
 
     /** What one [id] sells for when it's a plain thing he owns and not a piece of art, which is priced as a piece; 0 otherwise. A ware's is its going price. */
@@ -2164,14 +2147,6 @@ class BedroomWorld private constructor(
     // --- art -------------------------------------------------------------------------------------
 
     /**
-     * Hands over a commission's wording: applied at the start of the next tick. Safe from any
-     * thread; a note for a commission that isn't open is dropped.
-     */
-    fun annotate(note: ArtNote) {
-        notes.add(note)
-    }
-
-    /**
      * Puts [letter] through the mail hatch: it arrives at the start of the next tick and waits there
      * until he opens it. Safe from any thread; one already waiting or opened is dropped.
      */
@@ -2241,11 +2216,6 @@ class BedroomWorld private constructor(
             event("a letter from ${l.from} came through the mail hatch")
         }
         while (true) {
-            when (val note = notes.poll() ?: break) {
-                is ArtNote.CommissionWorded -> commission?.takeIf { it.id == note.commission }?.let { it.request = note.request }
-            }
-        }
-        while (true) {
             val (id, result) = deliveries.poll() ?: return
             val i = authored.indexOfFirst { it.id == id && !it.delivered }
             if (i < 0) continue
@@ -2260,23 +2230,17 @@ class BedroomWorld private constructor(
         p.title = d.title
         p.tags = d.tags
         p.shows = d.shows
-        val c = commission?.takeIf { it.id == p.commission && !it.fulfilled }
-        val verdict = when {
-            c == null -> ""
-            matches(p, c) -> ": it matches the request for ${c.wants}, so it earns $${content.commissions!!.reward} more when sold"
-            else -> ": it doesn't match the request for ${c.wants}: ${unmet(p, c)}"
-        }
-        event("${item(p.item).name} ${p.id} is drawn, \"${d.title}\"$verdict")
+        event("${item(p.item).name} ${p.id} is drawn, \"${d.title}\"")
         subjectNovelty(d)
     }
 
     /**
-     * Pays the novelty bonus the first time he draws a subject: the commission noun the drawing showed,
+     * Pays the novelty bonus the first time he draws a subject: the subject noun the drawing showed,
      * or the one its tags name. Subjects are the novelty a broke guy can always reach.
      */
     private fun subjectNovelty(d: AuthoredResult.Drawn) {
         if (content.novelty == null) return
-        val nouns = content.commissions?.nouns ?: return
+        val nouns = content.subjects?.nouns ?: return
         val noun = (listOfNotNull(d.shows) + d.tags).firstNotNullOfOrNull { w -> nouns.firstOrNull { it.equals(w, ignoreCase = true) } } ?: return
         if (!tried.add("$SUBJECT$noun")) return
         subjectsDrawn = subjectsDrawn + noun
@@ -2288,61 +2252,15 @@ class BedroomWorld private constructor(
 
     private fun hung(): List<Piece> = pieces.filter { it.state == PieceState.Hung }
 
-    private fun openCommission(): Commission? = commission?.takeIf { !it.fulfilled && ticks < it.until }
-
-    /**
-     * Why [p] doesn't meet request [c], or null when it does: it was made for it, its title or tags
-     * name the adjective, and it drew a subject shape for the noun ([AuthoredResult.Drawn.shows]).
-     */
-    private fun unmet(p: Piece, c: Commission): String? {
-        if (p.commission != c.id) return "it wasn't made for it"
-        if (p.title == null) return "it isn't drawn yet"
-        val text = (p.title + " " + p.tags.joinToString(" ")).lowercase()
-        if (c.adjective.lowercase() !in text) return "it isn't ${c.adjective}"
-        if (!c.noun.equals(p.shows, ignoreCase = true)) return "there's no ${c.noun} drawn in it"
-        return null
-    }
-
-    private fun matches(p: Piece, c: Commission): Boolean = unmet(p, c) == null
-
-    /** The first of [selling] that meets the open request, if any: only one is paid for it. */
-    private fun winner(selling: List<Piece>): Piece? = openCommission()?.let { c -> selling.firstOrNull { matches(it, c) } }
-
-    /** Each piece with what it sells for, the request's reward included. */
-    private fun saleOf(selling: List<Piece>): List<Pair<Piece, Int>> {
-        val w = winner(selling)
-        return selling.map { p -> p to piecePrice(p) + if (p === w) content.commissions!!.reward else 0 }
-    }
+    /** Each piece with what it sells for. */
+    private fun saleOf(selling: List<Piece>): List<Pair<Piece, Int>> = selling.map { p -> p to piecePrice(p) }
 
     /** "sketch 3" or "sketch 3, \"Sleepy lighthouse\"". */
     private fun pieceName(p: Piece): String = "${item(p.item).name} ${p.id}" + (p.title?.let { ", \"$it\"" } ?: "")
 
-    private fun newCommission(rules: CommissionRules) {
-        openCommission()?.let { event("the request for ${it.wants} lapsed") }
-        val n = ++commissions
-        val random = Random(seed * 1_000_003 + n)
-        val adjective = rules.adjectives.random(random)
-        val noun = rules.nouns.random(random)
-        val c = Commission(n, adjective, noun, article(adjective) + " " + noun, ticks + clock.ticks(GameClock.MINUTES_PER_DAY))
-        commission = c
-        version++
-        event("a request came in: ${c.wants}. The first piece you finish from now that matches it earns $${rules.reward} more when sold, until ${stamp(c.until)}")
-    }
-
-    private fun commissionView(): CommissionView? = openCommission()?.let { CommissionView(it.id, it.wants, it.request, content.commissions!!.reward, stamp(it.until)) }
-
     private fun artViews(): List<PieceView> {
         val prices = saleOf(pieces.filter { it.state == PieceState.Held }).associate { (p, price) -> p.id to price }
-        val c = openCommission()
-        return pieces.filter { it.state != PieceState.Sold }.map { p ->
-            val note = when {
-                c == null || p.commission != c.id || p.state != PieceState.Held -> null
-                p.title == null -> "made for the request; not drawn yet"
-                matches(p, c) -> "matches the request: +$${content.commissions!!.reward} when sold"
-                else -> "doesn't match the request: ${unmet(p, c)}"
-            }
-            PieceView(p.id, p.item, p.title, p.state == PieceState.Hung, prices[p.id], note)
-        }
+        return pieces.filter { it.state != PieceState.Sold }.map { p -> PieceView(p.id, p.item, p.title, p.state == PieceState.Hung, prices[p.id]) }
     }
 
     private fun purchase(spec: ItemSpec, price: Int): String? {
@@ -2394,12 +2312,40 @@ class BedroomWorld private constructor(
         if (minute % 60 == 0) needs.flush(ticks)
         if (minute % 60 == 0) weatherHour()
         if (minute % 60 == 0) effectsHour(minute / 60)
-        content.commissions?.let { if (minute == GameClock.parseHhmm(it.arrive)) newCommission(it) }
+        boredNews()
         if (minute == 0) {
             event("day ${clock.day(ticks)} begins")
             correspond()
         }
         machines.afterTick(machineHost)
+    }
+
+    /** Whether he was below the bored lock's line at the last minute; null until the first minute (and after a restore), which says so only if he's under it. */
+    private var wasBored: Boolean? = null
+
+    /** Whether the last crossing below it was news, so the way back out is too. */
+    private var toldBored = false
+
+    /**
+     * News when he crosses the bored lock's line, naming what it refuses him, so what's written
+     * looking back (stretches, reflections, the self-model) knows why he didn't do something he
+     * meant to, as the deciding model did from his options (docs/decisions/2026-11-17-no-commissions.md).
+     */
+    private fun boredNews() {
+        val lock = content.habituation?.boredLock ?: return
+        val bored = needs[Need.Stimulation] < lock.below
+        val was = wasBored
+        wasBored = bored
+        if (was == bored || (was == null && !bored)) return
+        val stimulation = needs.level(Need.Stimulation)
+        if (!bored) {
+            if (toldBored) event("you're less bored (stimulation $stimulation): what you'd done a lot lately is open to you again")
+            toldBored = false
+            return
+        }
+        val refused = content.verbs.filter { isKnown(it.id) }.filter { a -> boredLock(a, null)?.let { it == lockReason(a) } == true }.map { it.id }
+        toldBored = refused.isNotEmpty()
+        if (toldBored) event("you've grown bored (stimulation $stimulation, under ${lock.below.toInt()}): what you've done a lot lately is refused until something fresh lifts you: ${refused.joinToString()}")
     }
 
     /** What stimulation loses an awake hour now: flat, or scaled by his level when the rules say where it's full ([NeedRules.stimulationDrainAt]). */
@@ -2460,12 +2406,12 @@ class BedroomWorld private constructor(
 
     /**
      * True when the world can be saved: nothing running or queued, no activity, no authored result,
-     * basket or commission wording on its way in. A decision point after waking is such a moment.
+     * or basket on its way in. A decision point after waking is such a moment.
      * Authored views still waiting are saved as they are: whether a result is still coming is the
      * agent side's to say (with no handler for an op, none ever is).
      */
     val canExport: Boolean
-        get() = atRest && doing == null && notes.isEmpty() && posted.isEmpty() && deliveries.isEmpty() && staging.isEmpty() && baskets.isEmpty() && designs.isEmpty() && drafts.isEmpty()
+        get() = atRest && doing == null && posted.isEmpty() && deliveries.isEmpty() && staging.isEmpty() && baskets.isEmpty() && designs.isEmpty() && drafts.isEmpty()
 
     /** Everything a [restore] needs to carry on from here. Only when [canExport]; call on the sim thread. */
     fun exportState(): BedroomState {
@@ -2485,9 +2431,7 @@ class BedroomWorld private constructor(
             done = done,
             music = music?.let { BedroomState.Music(it.itemId, it.on, it.spec.name, it.endTick, it.fresh) },
             savingFor = savingFor,
-            pieces = pieces.map { BedroomState.Piece(it.id, it.item, it.commission, it.skill, it.state.name.lowercase(), it.title, it.tags, it.shows) },
-            commission = commission?.let { BedroomState.Commission(it.id, it.adjective, it.noun, it.wants, it.until, it.request, it.fulfilled) },
-            commissions = commissions,
+            pieces = pieces.map { BedroomState.Piece(it.id, it.item, it.skill, it.state.name.lowercase(), it.title, it.tags, it.shows) },
             authored = authored.toList(),
             authoredCount = authoredCount,
             inventions = inventions,
@@ -2542,7 +2486,7 @@ class BedroomWorld private constructor(
         bareUntil.clear(); s.bare.forEach { (id, t) -> if (content.item(id) != null) bareUntil[id] = t }
         lampModes.clear(); s.lamps.forEach { (id, m) -> if (content.item(id)?.affords?.containsKey(LAMP) == true) lampModes[id] = LampMode.of(m) else dropped += "lamp '$id' is no longer a lamp in the content" }
         s.pieces.forEach { p ->
-            if (has(p.item, "piece ${p.id}'s item")) pieces += Piece(p.id, p.item, p.commission, p.skill).also {
+            if (has(p.item, "piece ${p.id}'s item")) pieces += Piece(p.id, p.item, p.skill).also {
                 it.state = PieceState.valueOf(p.state.replaceFirstChar(Char::uppercase))
                 it.title = p.title
                 it.tags = p.tags
@@ -2571,8 +2515,6 @@ class BedroomWorld private constructor(
             else Music(m.item, m.on, op, m.endTick, m.fresh)
         }
         savingFor = s.savingFor?.takeIf { has(it, "saving for") }
-        commission = s.commission?.let { Commission(it.id, it.adjective, it.noun, it.wants, it.until).also { c -> c.request = it.request; c.fulfilled = it.fulfilled } }
-        commissions = s.commissions
         authored.clear(); authored.addAll(s.authored)
         mailbox.clear(); mailbox.addAll(s.mail)
         opened.clear(); opened.addAll(s.opened)
@@ -2826,7 +2768,6 @@ class BedroomWorld private constructor(
             owns = ownsMap(),
             transactions = ledger.transactions.takeLast(SNAPSHOT_TRANSACTIONS),
             clockScale = clock,
-            commission = commissionView(),
             art = artViews(),
             catalog = current.catalog,
             inventions = invented,
@@ -2884,7 +2825,6 @@ class BedroomWorld private constructor(
             music = musicText(),
             activities = current.activities,
             shop = current.shop,
-            commission = content.commissions?.let { commissionView() },
             art = if (pieces.isEmpty()) null else artViews(),
             skills = content.vocabulary.skills.takeIf { it.isNotEmpty() }?.let { skillView() },
             books = bookViews().ifEmpty { null },
@@ -3097,7 +3037,7 @@ class BedroomWorld private constructor(
             ticksPerMinute: Int = GameClock.DEFAULT_TICKS_PER_MINUTE,
             characterId: String = "guy",
             granted: Set<String> = emptySet(),
-            /** Picks the commissions; the same seed gives the same requests. */
+            /** Seeds the weather; the same seed gives the same skies. */
             seed: Long = 0,
         ): BedroomWorld = build(content.unlocked(granted), ticksPerMinute, characterId, seed)
 
