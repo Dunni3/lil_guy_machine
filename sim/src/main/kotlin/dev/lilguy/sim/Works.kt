@@ -352,14 +352,14 @@ class Works {
 
     /**
      * What an empty [id] waits on, for the inspector: "a batch takes 1 compost brick, which the compost bin
-     * beside it makes" (or "which he puts in"); null for a machine without recipes.
+     * beside it makes" (or "which it gathers from his things", or "which he puts in"); null for a machine without recipes.
      */
     fun wants(h: WorksHost, id: String): String? {
         val near = machines(h).filter { it != id && h.content.item(it)?.machine != null && near(h, id, it) }
         return recipes(h, id).takeIf { it.isNotEmpty() }?.joinToString("; or ") { r ->
             "a batch takes " + r.takes.entries.joinToString(" and ") { (item, n) ->
                 val maker = near.firstOrNull { other -> recipes(h, other).any { item in it.makes } }
-                h.quantity(item, n) + (maker?.let { ", which the ${name(h, it)} beside it makes" } ?: ", which he puts in")
+                h.quantity(item, n) + (maker?.let { ", which the ${name(h, it)} beside it makes" } ?: if (item in h.content.item(id)?.machine?.collects.orEmpty()) ", which it gathers from his things" else ", which he puts in")
             }
         }
     }
