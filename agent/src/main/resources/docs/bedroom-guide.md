@@ -111,8 +111,9 @@ meet one of these it gets more familiar, and familiarity fades by half every few
 pays its mood and stimulation at how fresh it is, a fresh finish pays a little extra, and a stale one
 drains stimulation a little. So the same thing every day stays familiar, and a fourth warm lamp is
 hardly new: to have fun, change what you do, where you do it and what you do it with. Upkeep (eating,
-sleeping, selling, hanging, shopping) doesn't count either way. When you're bored, something worn thin
-is refused until you're less bored or it has worn off; what feeds you or rests you never is, nor
+sleeping, selling, hanging, shopping) doesn't count either way. When you're bored, what you've done a lot
+in the last few days is refused until you're less bored or a day or two has passed since you last did
+it (so a daily habit waits, but every other day is fine); what feeds you or rests you never is, nor
 anything you've never done, and work stays open while you need money for food. A new thing for your
 room interests you for a few days, while you can see it. Your status says what you've done most lately
 and what you haven't done for days or ever. Numbers: rules:familiarity, rules:novelty,

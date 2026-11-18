@@ -275,7 +275,7 @@ object BedroomPrompt {
                 )
                 val routine = content.verbs.filter { it.isRoutine }.map { it.phrase ?: it.id }
                 if (routine.isNotEmpty()) add("Routine things (${routine.joinToString(", ")}) don't count.")
-                content.habituation?.boredLock?.let { add("While you're bored (stimulation below ${num(it.below)}), anything ${num((1 - it.worn) * 100)}% fresh or less is off limits, what it pays included, unless you've never done it.") }
+                content.habituation?.boredLock?.let { add("While you're bored (stimulation below ${num(it.below)}), what you've done a lot in the last few days is off limits, what it pays included, until a day or two has passed since you last did it; what you've never done never is.") }
                 content.novelty?.things?.let { add("Something new for your room that you like lifts your stimulation for ${num(it.days)} days, fading as you get used to it.") }
                 content.comfort?.adapt?.let { add("You get used to what you have: a thing's comfort falls to ${num(it.floor * 100)}% of it over ${num(it.days)} days.") }
             }

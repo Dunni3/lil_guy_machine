@@ -1667,14 +1667,28 @@ class BedroomWorld private constructor(
     /** Looking after his body, which isn't an experience ([familiar] leaves it out): routine, or it feeds energy or fullness (the oats). */
     private fun upkeep(a: VerbSpec): Boolean = a.isRoutine || gains(a, Need.Energy) || gains(a, Need.Fullness)
 
-    /** [a]'s freshness when he's bored and it's worn past [BoredLock.worn], or null. Unbound (null [args]), a verb that wears per item leaves it to each binding. */
+    /** [a]'s freshness for the bored lock ([repetition]) when he's bored and it's worn past [BoredLock.worn], or null. Unbound (null [args]), a verb that wears per item leaves it to each binding. */
     private fun boredOf(a: VerbSpec, args: Map<String, String>?): Double? {
         val lock = content.habituation?.boredLock ?: return null
         if (needs[Need.Stimulation] >= lock.below || !boring(a)) return null
         if (args == null && a.args.isNotEmpty() && a.wear != Wear.Verb) return null
         // What he's never done is new, even when it wears with something he's tired of (a new book, read worn thin).
         if (isNew(a, args.orEmpty())) return null
-        return freshness(a, args.orEmpty()).takeIf { 1 - it >= lock.worn }
+        return repetition(a, args.orEmpty()).takeIf { 1 - it >= lock.worn }
+    }
+
+    /**
+     * How fresh [a] is for the bored lock: with [familiar], by how much he has done this lately, its own
+     * `verb:` feature (or, for a verb that wears per item, the `thing:` features of what's bound), not by
+     * what it's like. What it's like shares the place, groups and kind with everything else he does at
+     * home, which never fade, so judged by that, anything at home he had done once stayed locked
+     * (docs/decisions/2026-11-17-the-bored-lock-reads-what-he-has-done-lately.md). Pay still reads [freshness].
+     */
+    private fun repetition(a: VerbSpec, args: Map<String, String>): Double {
+        val f = familiar ?: return freshness(a, args)
+        if (a.isRoutine || fixing(a) || upkeep(a)) return 1.0
+        val keys = if (a.wear == Wear.Verb || args.isEmpty()) listOf("verb:${a.id}") else args.values.distinct().map { "thing:$it" }
+        return keys.map { 1.0 / (1.0 + f.level(it, ticks)) }.average()
     }
 
     /**
@@ -1684,8 +1698,8 @@ class BedroomWorld private constructor(
     private fun boredLock(a: VerbSpec, args: Map<String, String>?): String? {
         val fresh = boredOf(a, args) ?: return null
         if (a.work && !canAffordNew()) return null
-        val why = if (familiar != null) "it's all familiar to you" else "you've done it a lot lately"
-        return "you're bored, and $why (gains at ${percent(fresh)}, stimulation ${needs.level(Need.Stimulation)})"
+        val gains = if (familiar != null) "" else "gains at ${percent(fresh)}, "
+        return "you're bored, and you've done it a lot lately (${gains}stimulation ${needs.level(Need.Stimulation)})"
     }
 
     /**

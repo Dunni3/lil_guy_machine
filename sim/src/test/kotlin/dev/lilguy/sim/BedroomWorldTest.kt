@@ -281,7 +281,7 @@ class BedroomWorldTest {
         assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("play_record", what = "jazz_record")).status)
         assertTrue(w.obs().music!!.startsWith("jazz_record, 4"), w.obs().music)
         assertEquals("playing jazz_record", w.obs().nearby.first { it.id == "record_player" }.state)
-        assertEquals(ActivityOption("listen", null, null, "30 min", "the jazz record that's playing: you like it: mood +1; mood +3; stimulation +8; fresh to you (gains at 70%), stimulation +4, mood +2"), w.activity("listen"))
+        assertEquals(ActivityOption("listen", null, null, "30 min", "the jazz record that's playing: you like it: mood +1; mood +3; stimulation +8; fresh to you (gains at 70%), stimulation +5, mood +2"), w.activity("listen"))
         assertTrue("takes no `what`" in failure(w.run(Intent.Do("listen", what = "jazz_record"))))
 
         // Music plays while he does something else, and its mood shows in the need log.
@@ -353,7 +353,7 @@ class BedroomWorldTest {
         w.run(Intent.Do("sketch"))
         assertTrue("fresh to you (gains at 50%)" in w.obs().recentEvents.last(), w.obs().recentEvents.last())
         w.run(Intent.Do("sketch"))
-        assertTrue(w.activity("sketch").gives!!.endsWith("familiar (gains at 30%), stimulation -2, mood +1"), w.activity("sketch").gives)
+        assertTrue(w.activity("sketch").gives!!.endsWith("familiar (gains at 30%), mood +1"), w.activity("sketch").gives)
         // He has never doodled, but only its name is new: barely fresher than sketching.
         val doodles = w.activity("doodle").gives!!
         val percent = Regex("""familiar \(gains at (\d+)%\)""").find(doodles)?.groupValues?.get(1)?.toInt()
@@ -366,11 +366,18 @@ class BedroomWorldTest {
     }
 
     @Test
-    fun `bored, what is familiar is refused until it fades`() {
-        val w = world(money = 100, needs = NeedLevels(80, 70, 50, stimulation = 10))
-        repeat(3) { assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("sketch")).status) }
+    fun `bored, what he has done a lot lately is refused until it fades, however familiar the rest is`() {
+        // Doodling is sketching under another name: everything sketching is like grows familiar but the verb.
+        val doodle = content.verb("sketch")!!.copy(id = "doodle", phrase = "doodle in the sketchbook")
+        val w = BedroomWorld.create(content.copy(verbs = content.verbs + doodle, start = content.start.copy(money = 100)), granted = content.gated)
+        repeat(4) { assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("doodle")).status) }
+        w.needs.change(w.tick, Need.Stimulation, 10 - w.needs[Need.Stimulation], "bored")
+        // Sketched once, with all it's like worn thin: still open, since he hasn't done it a lot.
+        w.run(Intent.Do("sketch"))
+        assertNull(w.activity("sketch").locked)
+        repeat(2) { assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("sketch")).status) }
         val locked = w.activity("sketch").locked
-        assertTrue(locked!!.startsWith("you're bored, and it's all familiar to you"), locked)
+        assertTrue(locked!!.startsWith("you're bored, and you've done it a lot lately"), locked)
         assertTrue(failure(w.run(Intent.Do("sketch"))).startsWith("can't sketch: you're bored"))
         // Upkeep and the oats never lock, and sketching fades back to fresh enough within two days.
         assertNull(w.activity("eat").locked)
