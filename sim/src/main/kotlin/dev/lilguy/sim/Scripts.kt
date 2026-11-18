@@ -186,7 +186,7 @@ object ScriptApi {
             1 -> "; material is ${materials[0]}"
             else -> "; material is ${materials.dropLast(1).joinToString()} or ${materials.last()}"
         }
-        return "makes a new kind of thing and gives you one; returns its id. $uses; qualities like { cozy: 2 }; place is floor or wall for a viewable thing; " +
+        return "makes a new kind of thing and gives you one; returns its id. A name you've made before makes another of it for what the first took (one of a kind if it stands in a spot). $uses; qualities like { cozy: 2 }; place is floor or wall for a viewable thing; " +
             "look is a list of shapes, each like { shape: \"box\", w: 0.3, h: 0.2, d: 0.3, x: 0, y: 0, z: 0, color: \"#8a5a3c\"$example } " +
             "(shape is box, cylinder, sphere or capsule; metres, y up from the floor$made), or leave it out for a plain one; " +
             "book, for a readable thing, is { title, blurb, chapters: [a sentence each], skill }. It takes the materials from what you own, as the workbench does, and money for food or a book"

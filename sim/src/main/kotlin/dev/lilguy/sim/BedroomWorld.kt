@@ -1370,6 +1370,10 @@ class BedroomWorld private constructor(
             val rules = content.invent ?: throw ScriptProblem("this world has no rules for making things")
             val missing = listOf("name", "use").filter { (design[it] as? String).isNullOrBlank() }
             if (missing.isNotEmpty()) throw ScriptProblem("the design needs ${missing.joinToString(" and ")} as text")
+            // A name he's made before makes another of it, at the same price: a verb that paints or builds something runs more than once.
+            val name = (design["name"] as String).trim().replace(Regex("\\s+"), " ")
+            val mine = inventions.map { it.item.id }.toSet()
+            content.items.firstOrNull { it.id in mine && it.name.equals(name, ignoreCase = true) }?.let { return again(it.id) }
             // A look in words can't be built; the thing is made plain rather than not at all, and he's told what a look is.
             val look = design["look"]
             val worded = look != null && (look !is List<*> || look.any { it !is Map<*, *> })
@@ -1396,6 +1400,24 @@ class BedroomWorld private constructor(
             did += "made ${article(made.item.name)}" +
                 if (worded) " (plain to look at: a look is a list of shapes like { shape: \"box\", w: 0.3, h: 0.2, d: 0.3, color: \"#8a5a3c\" }, not words)" else ""
             return made.item.id
+        }
+
+        /** Another of [id], a thing he invented, for what the first took. A thing that stands in a spot is one of a kind while he has it. */
+        private fun again(id: String): String {
+            val spec = item(id)
+            val made = inventions.last { it.item.id == id }
+            if (spec.slot != null && count(id) > 0) throw ScriptProblem("you already have the ${spec.name} (id \"$id\"), and a thing that stands in a spot is one of a kind")
+            if (made.bill.isNotEmpty()) {
+                shortOf(made.bill, "another ${spec.name}")?.let { throw ScriptProblem(it) }
+                takeBill(made.bill)
+                did += "used " + made.bill.entries.joinToString { (m, n) -> quantity(m, n) }
+            } else {
+                if (!ledger.canAfford(made.cost)) throw ScriptProblem("another ${spec.name} costs $${made.cost}, and you have $${ledger.balance}")
+                if (made.cost > 0) ledger.debit(ticks, made.cost, "materials for another ${spec.name}")
+            }
+            add(id, 1)
+            did += "made another ${spec.name}"
+            return id
         }
 
         override fun setState(id: String, key: String, value: Any?) {
