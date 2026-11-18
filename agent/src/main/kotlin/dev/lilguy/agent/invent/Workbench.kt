@@ -7,8 +7,11 @@ import dev.lilguy.decision.ToolSet
 import dev.lilguy.sim.BookDesign
 import dev.lilguy.sim.BedroomContent
 import dev.lilguy.sim.Design
+import dev.lilguy.sim.Footprint
 import dev.lilguy.sim.InventRules
 import dev.lilguy.sim.LookPart
+import dev.lilguy.sim.ProductDesign
+import dev.lilguy.sim.Structure
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -33,6 +36,14 @@ data class BuildArgs(
     val why: String,
     val variants: List<VariantPick> = emptyList(),
     val runs: List<String> = emptyList(),
+    val footprint: Footprint? = null,
+    val door: String? = null,
+    val windows: List<String> = emptyList(),
+    val where: String? = null,
+    val recipes: List<RecipePick> = emptyList(),
+    val products: List<ProductDesign> = emptyList(),
+    @SerialName("send_to") val sendTo: String? = null,
+    @SerialName("take_from") val takeFrom: List<String> = emptyList(),
 )
 
 /**
@@ -65,6 +76,22 @@ class Workbench(
                 shape,
             ) { args -> add(decode(args)) },
             ToolSet.Look(
+                "add_parts",
+                "Put several shapes on the thing at once, in order: for something big, a wall or a roof's worth at a time. Answered with what the thing is so far.",
+                buildJsonObject {
+                    put("type", "object")
+                    putJsonObject("properties") {
+                        putJsonObject("shapes") {
+                            put("type", "array")
+                            put("items", shape)
+                            put("description", "The shapes, each as add_part takes one.")
+                        }
+                    }
+                    putJsonArray("required") { add(kotlinx.serialization.json.JsonPrimitive("shapes")) }
+                    put("additionalProperties", false)
+                },
+            ) { args -> (args["shapes"] as kotlinx.serialization.json.JsonArray).map { decode(it as JsonObject) }.let(::addAll) },
+            ToolSet.Look(
                 "redo_part",
                 "Make shape n (1 is the first you added) over again, as this shape.",
                 numbered(shape),
@@ -89,19 +116,44 @@ class Workbench(
             "Build the thing with the shapes on the bench, once they're all there: what it's called, what it's for, what it's like and why you made it. Call it on its own, not beside other tools.",
             JsonSchemaGenerator.generate(BuildArgs.serializer().descriptor, buildHints(rules, content)),
         ) { args -> build(args) }
-        return ToolSet(listOf(build), looks, maxSteps = rules.lookParts * 3)
+        return ToolSet(listOf(build), looks, maxSteps = maxOf(rules.lookParts * 3, MOST_STEPS))
     }
 
+    /** The most shapes the bench holds: a thing on the land's. Whether a thing in a spot has too many is said at build. */
+    private val most get() = maxOf(rules.lookParts, rules.land.lookParts)
+
+    /** Why [p] can't be part of anything: it fits neither one tile nor the biggest footprint on the land. Whether it fits the thing's own is said at build. */
+    private fun problem(p: LookPart): String? {
+        val tile = rules.partProblem(p) ?: return null
+        return rules.partProblem(p, Footprint(rules.land.most, rules.land.most))?.let { tile }
+    }
+
+    /** Bigger than one tile: only a thing on the land can have it. */
+    private fun bigger(p: LookPart) = rules.partProblem(p) != null
+
     private fun add(p: LookPart): String {
-        if (parts.size >= rules.lookParts) return "Not added: it has ${rules.lookParts} shapes, the most it can have. Redo or remove one instead."
-        rules.partProblem(p)?.let { return "Not added: $it." }
+        if (parts.size >= most) return "Not added: it has $most shapes, the most it can have. Redo or remove one instead."
+        problem(p)?.let { return "Not added: $it." }
         parts += p
-        return "Added shape ${parts.size}${label(p)}. ${Inventor.lookNotes(parts, null)}"
+        return "Added shape ${parts.size}${label(p)}.${if (bigger(p)) " It's bigger than one tile, so build it with place land and a footprint that holds it." else ""} ${Inventor.lookNotes(parts, null)}"
+    }
+
+    private fun addAll(ps: List<LookPart>): String {
+        val said = mutableListOf<String>()
+        for ((i, p) in ps.withIndex()) {
+            if (parts.size >= most) {
+                said += "stopped at shape ${i + 1}: it has $most shapes, the most it can have"
+                break
+            }
+            val wrong = problem(p)
+            if (wrong != null) said += "shape ${i + 1}${label(p)} not added: $wrong" else parts += p
+        }
+        return "Added ${ps.size - said.count { "not added" in it }} shape(s); it has ${parts.size}." + (if (said.isEmpty()) "" else " " + said.joinToString("; ") + ".") + " ${Inventor.lookNotes(parts, null)}"
     }
 
     private fun redo(n: Int, p: LookPart): String {
         if (n !in 1..parts.size) return "There's no shape $n; there are ${parts.size}."
-        rules.partProblem(p)?.let { return "Not changed: $it." }
+        problem(p)?.let { return "Not changed: $it." }
         parts[n - 1] = p
         return "Shape $n is now the ${p.part.trim().ifEmpty { p.shape }}. ${Inventor.lookNotes(parts, null)}"
     }
@@ -130,7 +182,7 @@ class Workbench(
     private fun build(args: JsonObject): JsonObject {
         if (parts.isEmpty()) throw ActionSchema.InvalidReply("there's nothing on the bench yet: add its shapes with add_part first, then build")
         val b = JSON.decodeFromJsonElement(BuildArgs.serializer(), args)
-        val reply = DesignReply(b.name, b.use, b.qualities, b.place, parts.toList(), b.book, b.why, b.variants, b.runs)
+        val reply = DesignReply(b.name, b.use, b.qualities, b.place, parts.toList(), b.book, b.why, b.variants, b.runs, b.footprint, b.door, b.windows, b.where, b.recipes, b.products, b.sendTo, b.takeFrom)
         val design = reply.design()
         val wrong = problems(design)
         if (wrong.isNotEmpty()) throw ActionSchema.InvalidReply("that can't be built: ${wrong.joinToString("; ")}")
@@ -168,18 +220,21 @@ class Workbench(
     companion object {
         private val JSON = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
+        /** Steps the bench allows at least, so a big thing's many shapes fit. */
+        private const val MOST_STEPS = 120
+
         private fun num(v: Double) = String.format(Locale.ROOT, "%.2f", v).trimEnd('0').trimEnd('.')
 
         /** What each field of a shape means, for its schema: the one-call design's and the workbench's. */
         fun partHints(rules: InventRules) = SchemaHints(
             descriptions = mapOf(
                 "look_part.part" to "What this shape is of the thing: \"rim\", \"handle\", \"leaf\".",
-                "look_part.w" to "Width across, 0.02 to 1.5.",
-                "look_part.h" to "Height, 0.02 to 1.5.",
-                "look_part.d" to "Depth front to back, 0.02 to 1.5.",
-                "look_part.x" to "Its bottom centre, -0.5 (left) to 0.5.",
-                "look_part.y" to "Its bottom centre's height, 0 at the floor, to 1.5.",
-                "look_part.z" to "Its bottom centre, -0.5 (back) to 0.5 (front).",
+                "look_part.w" to "Width across, 0.02 to 1.5 (on the land, up to its footprint).",
+                "look_part.h" to "Height, 0.02 to ${rules.tallest.toInt()} (on the land, up to ${rules.land.height.toInt()}).",
+                "look_part.d" to "Depth front to back, 0.02 to 1.5 (on the land, up to its footprint).",
+                "look_part.x" to "Its bottom centre, -0.5 (left) to 0.5; on the land, -w/2 to w/2 of its footprint.",
+                "look_part.y" to "Its bottom centre's height, 0 at the floor, up.",
+                "look_part.z" to "Its bottom centre, -0.5 (back) to 0.5 (front); on the land, -d/2 to d/2 of its footprint.",
                 "look_part.color" to "Hex, like #c96f4a.",
                 "look_part.taper" to "Cylinders: the top's width as a fraction of the bottom's, 0 to ${LookPart.MAX_TAPER}; 1 for straight.",
                 "look_part.cut" to "Spheres: how much of it there is from the top, ${LookPart.MIN_CUT} to 1; 0.5 for a dome, 1 for whole.",
@@ -209,17 +264,19 @@ class Workbench(
                 "build_args.name" to "What it's called, a few plain words, lower case: \"pebble lamp\".",
                 "build_args.use" to "The one thing it's for.",
                 "build_args.qualities" to "What it's like to you: up to ${rules.qualities.most} qualities, each once.",
-                "build_args.place" to "Only for a viewable thing: floor or wall. Null otherwise.",
+                "build_args.place" to "Only for a viewable thing: floor, wall, or land for something big that stands out on the land. Null otherwise.",
                 "build_args.book" to "Only for a readable thing: the book it is. Null otherwise.",
                 "build_args.why" to "Why you're making it, first person, under ${Inventor.WHY_CAP} words.",
                 "build_args.variants" to Inventor.VARIANTS_HINT,
                 "build_args.runs" to Inventor.runsHint(content),
+            ) + Inventor.landHints("build_args", rules) + mapOf(
                 "book_design.chapters" to "${rules.book.minChapters} to ${rules.book.maxChapters} chapters, one sentence each of what's in it.",
                 "book_design.skill" to "The one skill reading it raises, or null.",
             ) + variantHints,
             enums = mapOf(
                 "build_args.use" to rules.uses.keys.toList(),
-                "build_args.place" to listOf(InventRules.FLOOR, InventRules.WALL),
+                "build_args.place" to listOf(InventRules.FLOOR, InventRules.WALL, InventRules.LAND),
+                "build_args.door" to Structure.SIDES,
                 "quality_pick.quality" to content.vocabulary.qualities,
                 "book_design.skill" to content.vocabulary.skills,
             ),

@@ -128,6 +128,13 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   `invent`, `Invention`; `BedroomContent.plus`). `BedroomWorld.content` grows during a run, so read it when needed. Inventions
   are saved in `BedroomState.inventions`, go to viewers in the protocol's `shop.inventions`, and the web renderer builds their
   models from the look (`web/src/room/parts.ts`; copper wire parts are drawn as wire, `clay/geometry.ts` `wire`, and his materials pile on the workbench's lower shelf, `stockParts`). Things to look at stand in room.yaml's spare `spots`. Materials sell back at rules.yaml `invent.sell_back` (`sell_materials`; the `material` tag, `ItemSpec.resale`).
+- Big things, his own recipes, links (`docs/decisions/2026-11-18-he-builds-big-things-*`): a design with `place: land` and a
+  `footprint` is a `Structure` (`sim/.../Structures.kt`; `BedroomContent.structures`, stamped by `Layout.of`): with a `door` a
+  building (`PlaceKind.Building`, its own place and spots), else solid; sited by `BedroomWorld.inventSite`, on the land
+  (the meadow is east). A design's `recipes` and `products` are priced by what the machine is worth an hour
+  (`InventRules.recipes`, rules.yaml `machines.earning`). Machines connect over the air (`Link` in `Works.kt`; verbs `connect`,
+  `sell_by_itself`, `feed_by_itself`, `disconnect`; `world.link`); the web draws links (`room/links.ts`) and cuts a building
+  away while he's in it (`room/parts.ts` `cutAway`). `INVENTOR=build` (launch config `host-builder`) builds a shed and a lathe.
 - Code he writes (`docs/decisions/2026-11-15-he-writes-his-verbs-and-what-his-things-do-as-code.md`): `sim/.../Scripts.kt`
   (the Rhino sandbox and the world API table, `ScriptApi.FUNCTIONS`, which the coder's brief and the oracle are made from),
   `sim/.../CodedVerbs.kt` (verb and behavior designs, `CodeRules`, the `script` and `define` ops); the world side is

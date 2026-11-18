@@ -347,6 +347,41 @@ verbs:
       - consume: { spare_parts: 1 }
       - practice: { tinkering: 0.2 }
       - need: { energy: -3, stimulation: 4 }
+  # His machines talk to each other over the air (sim/.../Works.kt `Link`): connected, what one makes
+  # goes into the other by itself however far apart they stand, or is sold by itself at the going
+  # price. He sets it up from wherever he is; his code does the same with world.link.
+  - id: connect
+    kind: upkeep
+    phrase: connect one machine to another, so what the first makes goes into the second by itself, wherever they stand
+    args: { what: machine, on: machine }
+    at: [here]
+    minutes: 5
+    effects:
+      - connect: { from: what, to: on }
+  - id: sell_by_itself
+    kind: upkeep
+    phrase: connect a machine to the market, so what it makes is sold by itself at the going price
+    args: { what: machine }
+    at: [here]
+    minutes: 5
+    effects:
+      - connect: { from: what, to: market }
+  - id: feed_by_itself
+    kind: upkeep
+    phrase: connect a machine to your things, so it takes what it needs from what you have by itself
+    args: { what: machine }
+    at: [here]
+    minutes: 5
+    effects:
+      - connect: { from: you, to: what }
+  - id: disconnect
+    kind: upkeep
+    phrase: take away a machine's connections
+    args: { on: machine }
+    at: [here]
+    minutes: 3
+    effects:
+      - disconnect: on
   # Taking apart a thing he invented (rules.yaml `invent.salvage`): he gets back half its materials,
   # its code stops, what its machine held comes to him, and its spot, if it stands somewhere, is free
   # for something else. A record or a ware he holds is taken apart where he is. Bought things and the house stay.

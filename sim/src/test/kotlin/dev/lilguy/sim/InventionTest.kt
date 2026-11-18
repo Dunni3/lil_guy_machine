@@ -36,7 +36,7 @@ class InventionTest {
         assertTrue("takes 8 wood planks and 2 glass panes; you have no glass panes" in refused && "The shop sells glass panes (3 for $9)" in refused, refused)
         assertEquals(10, short.count("wood"))
 
-        val w = BedroomWorld.create(content)
+        val w = BedroomWorld.create(content.copy(invent = rules.copy(perDay = 1)))
         w.stage("invent", AuthoredResult.Designed(lamp))
         assertIs<IntentStatus.Succeeded>(w.finish(Intent.Do("invent")))
 

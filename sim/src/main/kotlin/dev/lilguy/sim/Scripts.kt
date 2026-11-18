@@ -89,6 +89,12 @@ interface ScriptWorld {
     fun machine(id: String): Map<String, Any?> = throw ScriptProblem("there are no machines here")
     /** Moves [n] of [item] from [from] to [to] (a machine of his, or `self`); how many moved. */
     fun transfer(from: String, to: String, item: String, n: Int): Int = throw ScriptProblem("nothing moves here")
+
+    fun link(from: String, to: String, item: String?): Boolean = throw ScriptProblem("there are no machines here")
+
+    fun unlink(from: String, to: String?): Int = throw ScriptProblem("there are no machines here")
+
+    fun links(): List<Map<String, Any?>> = emptyList()
     /** Sells [n] of something of his that sells; the dollars it fetched. */
     fun sell(id: String, n: Int): Int = throw ScriptProblem("nothing sells here")
     /** What one [id] sells for now and usually: { now, usual }; null when nobody buys it. */
@@ -161,7 +167,10 @@ object ScriptApi {
         Fn("after", "world.after(minutes, key, id)", "in that many game minutes (1 to ${Machines.MOST_TIMER}), runs onTimer(world, thing, key) of a thing of yours (id; this thing when left out); the same key again resets it", true) { w, a -> w.after(a.int(0, "minutes"), a.str(1, "key"), a.optStr(2)) },
         // Machines: what they take and make.
         Fn("machine", "world.machine(id)", "a machine of yours: { runs: [{ id, takes, makes, hours, needs }], holds, in, out, wear (0 to 100; it slows past ${MachineRules().slowAt.toInt()} and jams at 100), broken, making, done (%), stuck }", false) { w, a -> w.machine(a.str(0, "id")) },
-        Fn("transfer", "world.transfer(from, to, item, n)", "moves n of a thing between a machine and you (\"self\") or two machines within a few tiles of each other: out of a machine comes what it made, into one only what it takes; returns how many moved", true) { w, a -> w.transfer(a.str(0, "from"), a.str(1, "to"), a.str(2, "item"), a.optInt(3) ?: 1) },
+        Fn("transfer", "world.transfer(from, to, item, n)", "moves n of a thing between a machine and you (\"self\") or two machines, wherever they stand (your machines talk over the air): out of a machine comes what it made, into one only what it takes; returns how many moved", true) { w, a -> w.transfer(a.str(0, "from"), a.str(1, "to"), a.str(2, "item"), a.optInt(3) ?: 1) },
+        Fn("link", "world.link(from, to, item)", "connects two of your machines for good, wherever they stand: every 10 minutes what from makes goes into to by itself. to may be \"market\" (what it makes is sold by itself at the going price) or \"you\" (it comes into your things), and from may be \"you\" (it takes what it needs from your things); item (optional) for only that; returns true", true) { w, a -> w.link(a.str(0, "from"), a.str(1, "to"), a.optStr(2)) },
+        Fn("unlink", "world.unlink(from, to)", "takes away the connections between from and to (to left out: all of from's); returns how many went", true) { w, a -> w.unlink(a.str(0, "from"), a.optStr(1)) },
+        Fn("links", "world.links()", "every connection between your machines: [{ from, to, item }]", false) { w, _ -> w.links() },
         Fn("sell", "world.sell(id, n)", "sells n of something you own that sells (samples, not art: that's sold at the mail hatch); returns the dollars", true) { w, a -> w.sell(a.str(0, "id"), a.optInt(1) ?: 1) },
         Fn("price", "world.price(id)", "what one of something sells for: { now, usual }, or null if nobody buys it; a ware fetches less after you sell a lot of it, and recovers over days", false) { w, a -> w.price(a.str(0, "id")) },
     )

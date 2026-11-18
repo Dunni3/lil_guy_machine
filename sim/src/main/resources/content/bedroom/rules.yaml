@@ -119,7 +119,7 @@ shop:
 # A book he writes raises one skill `skill_gain` a chapter. `dismantle` takes one of his things
 # apart and gives back `salvage` of its bill, each material rounded down.
 invent:
-  per_day: 1
+  per_day: 4
   qualities: { most: 3, total: 6 }
   uses:
     viewable: { group: decor, built: true }
@@ -129,7 +129,14 @@ invent:
     sellable: { group: ware, built: true }
   book: { min_chapters: 3, max_chapters: 5, skill_gain: 0.25 }
   wage_per_hour: 40
-  look_parts: 12
+  look_parts: 40
+  # A thing in a spot is at most this many metres tall.
+  tallest: 3
+  # Big things on the land (place `land`, with a footprint in tiles): a building he can go into (a door),
+  # or a solid one (a tower, a big machine). Up to `most` tiles each way, `height` metres tall and
+  # `look_parts` shapes; a unit of material makes `unit` cubic metres of them (building timber), so a
+  # small cabin's walls, floor and roof come to a hundred or so planks.
+  land: { most: 16, height: 12, look_parts: 240, unit: 0.1 }
   materials:
     wood: { for: "bodies, boxes, frames, legs, shelves and handles: warm, easy, the cheapest" }
     metal: { for: "casings, gears, pipes, stands and anything that turns or takes heat; a machine's mechanism" }
@@ -251,6 +258,12 @@ letters:
 # (`wear_per_run`). Past `slow_at` it works slower, up to half speed at 100, where it jams and stops
 # until it's mended: `repair` takes off `restores` plus `per_level` a level of `skill`, from `worn_at`.
 machines:
+  # A machine he designs earns: each hour it works it adds `per_hour` of what its materials are worth in
+  # value, and `per_level` more of that a level of `skill` he had when he built it. His own recipes take
+  # as long as the value they add takes at that rate, and a new ware he designs is priced at what goes
+  # into it plus those hours (Invention.kt `recipes`). So a bigger, finer machine earns more an hour, and
+  # what holds it back is the market: each kind of ware fetches less the more of it is sold (`market`).
+  earning: { per_hour: 0.03, per_level: 0.5, skill: tinkering, least_hours: 0.25, default_hours: 2 }
   holds: 6
   reach: 3
   wear_per_batch: 10

@@ -18,7 +18,12 @@ import dev.lilguy.sim.AuthoredView
 import dev.lilguy.sim.BedroomContent
 import dev.lilguy.sim.BedroomWorld
 import dev.lilguy.sim.Design
+import dev.lilguy.sim.Footprint
 import dev.lilguy.sim.InventRules
+import dev.lilguy.sim.Link
+import dev.lilguy.sim.ProductDesign
+import dev.lilguy.sim.RecipeDesign
+import dev.lilguy.sim.Structure
 import dev.lilguy.sim.LookPart
 import dev.lilguy.sim.Observation
 import dev.lilguy.agent.code.Coded
@@ -57,9 +62,36 @@ data class DesignReply(
     val variants: List<VariantPick> = emptyList(),
     /** The recipes it runs as a machine; empty for a thing that isn't one. */
     val runs: List<String> = emptyList(),
+    /** For a big thing on the land: its footprint in tiles; null otherwise. */
+    val footprint: Footprint? = null,
+    /** For a building on the land: the side its door is in; null for a solid thing, or one not on the land. */
+    val door: String? = null,
+    val windows: List<String> = emptyList(),
+    /** For a thing on the land: the place it goes in, or null for nearest the workbench. */
+    val where: String? = null,
+    /** Recipes of its own, as a list a strict schema can hold. */
+    val recipes: List<RecipePick> = emptyList(),
+    val products: List<ProductDesign> = emptyList(),
+    @SerialName("send_to") val sendTo: String? = null,
+    @SerialName("take_from") val takeFrom: List<String> = emptyList(),
 ) {
-    fun design() = Design(name, use, qualities.associate { it.quality to it.strength.toDouble() }, place, look, book, why, variants.associate { it.name.trim() to it.changes }, runs)
+    fun design() = Design(
+        name, use, qualities.associate { it.quality to it.strength.toDouble() }, place, look, book, why, variants.associate { it.name.trim() to it.changes }, runs,
+        footprint, door, windows, where, recipes.map { it.design() }, products, sendTo, takeFrom,
+    )
 }
+
+/** A recipe as the model writes it: what it takes and makes as lists of picks, which a strict schema can hold. */
+@Serializable
+@SerialName("recipe_pick")
+data class RecipePick(val says: String, val takes: List<CountPick>, val makes: List<CountPick>, val hours: Double?) {
+    fun design() = RecipeDesign(says, takes.associate { it.item to it.count }, makes.associate { it.item to it.count }, hours)
+}
+
+/** So many of a thing, by item id or a product's name. */
+@Serializable
+@SerialName("count_pick")
+data class CountPick(val item: String, val count: Int)
 
 /** A variant of a look as the model writes it: its [name] and the [changes] it makes to named parts. */
 @Serializable
@@ -133,18 +165,20 @@ class Inventor(private val model: DecisionModel, private val timeout: Duration =
                     "design_reply.name" to "What it's called, a few plain words, lower case: \"pebble lamp\".",
                     "design_reply.use" to "The one thing it's for.",
                     "design_reply.qualities" to "What it's like to you: up to ${rules.qualities.most} qualities, each once.",
-                    "design_reply.place" to "Only for a viewable thing: floor or wall. Null otherwise.",
-                    "design_reply.look" to "Its shapes, up to ${rules.lookParts}, one per part of the thing.",
+                    "design_reply.place" to "Only for a viewable thing: floor, wall, or land for something big that stands out on the land (a building, a tower, a big machine). Null otherwise.",
+                    "design_reply.look" to "Its shapes, up to ${rules.lookParts} (${rules.land.lookParts} for a thing on the land), one per part of the thing.",
                     "design_reply.book" to "Only for a readable thing: the book it is. Null otherwise.",
                     "design_reply.why" to "Why you're making it, first person, under $WHY_CAP words.",
                     "design_reply.variants" to VARIANTS_HINT,
                     "design_reply.runs" to runsHint(content),
+                ) + landHints("design_reply", rules) + mapOf(
                     "book_design.chapters" to "${rules.book.minChapters} to ${rules.book.maxChapters} chapters, one sentence each of what's in it.",
                     "book_design.skill" to "The one skill reading it raises, or null.",
                 ) + Workbench.partHints(rules).descriptions + Workbench.variantHints,
                 enums = mapOf(
                     "design_reply.use" to rules.uses.keys.toList(),
-                    "design_reply.place" to listOf(InventRules.FLOOR, InventRules.WALL),
+                    "design_reply.place" to listOf(InventRules.FLOOR, InventRules.WALL, InventRules.LAND),
+                    "design_reply.door" to Structure.SIDES,
                     "quality_pick.quality" to content.vocabulary.qualities,
                     "look_part.shape" to LookPart.SHAPES,
                     "book_design.skill" to content.vocabulary.skills,
@@ -156,7 +190,9 @@ class Inventor(private val model: DecisionModel, private val timeout: Duration =
         val spots: (String) -> List<String> = { place -> w?.inventSpots(place) ?: rules.freeSpots(content, place) }
         val messages = mutableListOf(Message(Message.Role.User, call.situation.trimEnd() + "\n\n" + brief(content, rules, obs, call.verb.minutes ?: 0, spots)))
         val system = call.system.trimEnd() + "\n\n" + INSTRUCTIONS
-        fun problems(design: Design) = when (val checked = rules.check(design, content, call.verb.minutes ?: 0) { spots(it).firstOrNull() }) {
+        val skill = content.machines?.earning?.skill?.let { obs.skills.orEmpty()[it] } ?: 0.0
+        val site: (Design) -> InventRules.Sited = { d -> w?.inventSite(d) ?: InventRules.Sited.Nowhere("there's no land here to build on") }
+        fun problems(design: Design) = when (val checked = rules.check(design, content, call.verb.minutes ?: 0, { spots(it).firstOrNull() }, site, skill)) {
             is InventRules.Checked.Ok -> listOfNotNull(
                 if (checked.invention.bill.isNotEmpty()) short(checked.invention.bill, obs.owns.orEmpty(), content)
                 else unaffordable(checked.invention.cost, obs.money ?: 0),
@@ -267,8 +303,45 @@ class Inventor(private val model: DecisionModel, private val timeout: Duration =
         val INSTRUCTIONS = """
             |Right now you are not choosing an action: you are at your workbench, inventing. Design one new thing of your own that you'd like to have, and that isn't like what you already own. Make it yours: what you like, how you feel, what your room or your days are missing.
             |
-            |For this reply only, ignore the reply format above: reply with a JSON object {"name": ..., "use": ..., "qualities": [{"quality": ..., "strength": ...}], "place": ..., "look": [{"shape": ..., "w": ..., "h": ..., "d": ..., "x": ..., "y": ..., "z": ..., "rot_x": ..., "rot_y": ..., "rot_z": ..., "color": ..., "part": ..., "taper": ..., "cut": ..., "hole": ..., "arc": ..., "glow": ..., "opacity": ..., "material": ...}], "book": ..., "why": ..., "variants": [{"name": ..., "changes": [{"part": ..., ...}]}], "runs": [...]} and nothing else.
+            |For this reply only, ignore the reply format above: reply with a JSON object {"name": ..., "use": ..., "qualities": [{"quality": ..., "strength": ...}], "place": ..., "look": [{"shape": ..., "w": ..., "h": ..., "d": ..., "x": ..., "y": ..., "z": ..., "rot_x": ..., "rot_y": ..., "rot_z": ..., "color": ..., "part": ..., "taper": ..., "cut": ..., "hole": ..., "arc": ..., "glow": ..., "opacity": ..., "material": ...}], "book": ..., "why": ..., "variants": [{"name": ..., "changes": [{"part": ..., ...}]}], "runs": [...], "footprint": {"w": ..., "d": ...} or null, "door": ..., "windows": [...], "where": ..., "recipes": [{"says": ..., "takes": [{"item": ..., "count": ...}], "makes": [...], "hours": ...}], "products": [{"name": ..., "says": ...}], "send_to": ..., "take_from": [...]} and nothing else.
         """.trimMargin()
+
+        /** What the land, recipe and link fields mean, for the design's schema ([owner] `design_reply`) and the workbench's `build` (`build_args`). */
+        fun landHints(owner: String, rules: InventRules) = mapOf(
+            "$owner.footprint" to "Only for place land: the tiles it covers, w across (east-west) and d front to back (north-south), 1 to ${rules.land.most} each. Null otherwise.",
+            "$owner.door" to "Only for place land: the side its door is in (north, south, east or west), so you can go inside; its edge tiles are its walls. Null for a solid thing you don't go into.",
+            "$owner.windows" to "Only for a building with a door: the sides with a window, for daylight inside. Empty otherwise.",
+            "$owner.where" to "Only for place land: the id of the place on the land it goes in (like meadow), or null for open ground nearest your workbench.",
+            "$owner.recipes" to "For a machine: recipes of your own. Each takes some things you keep (item ids) and makes others (item ids, or the name of one of its products), in hours, or null hours for the fewest it needs. Empty for none.",
+            "$owner.products" to "For a machine: new wares its recipes make, by name, each with a line of what it is. They sell at the hatch and by themselves through send_to market. Empty for none.",
+            "$owner.send_to" to "For a machine: where what it makes goes by itself: market (sold at the going price), you (into your things), or the id of a machine of yours. Null to keep it in the machine until you take it out.",
+            "$owner.take_from" to "For a machine: where it takes what it needs from by itself: you (your things), or ids of machines of yours. Empty to fill it by hand.",
+            "recipe_pick.says" to "What it's doing while it works, a word or two: \"pressing\".",
+            "recipe_pick.hours" to "How long a batch takes, or null for the fewest the machine needs.",
+            "count_pick.item" to "An item id you keep (wood, clay, food_scrap...) or one of its products' names.",
+        )
+
+        /** The brief's paragraph on building big, out on the land; empty where there's no land. */
+        internal fun land(content: BedroomContent, rules: InventRules): String {
+            val places = content.world?.places.orEmpty()
+            if (places.isEmpty()) return ""
+            return """
+                |
+                |Something big can stand out on the land instead (place land): a cabin, a shed, a tower, a windmill, a big machine. Give it a footprint, the tiles it covers (1 by 1 to ${rules.land.most} by ${rules.land.most}), and its look covers that: x from -w/2 to w/2, z from -d/2 (back, north) to d/2 (front, south), with up to ${InventRules.OVERHANG} more each way for eaves, y from 0 up to ${rules.land.height.toInt()} metres, up to ${rules.land.lookParts} shapes. Out there a unit of material makes ${rules.land.unit} cubic metres, so a small cabin's floor, walls and roof take a hundred or so planks. With a door (a side: north, south, east or west) it's a building you can walk into: its edge tiles are its walls, but for the door in the middle of that side, so draw walls along its edges with a gap there, a floor, and a roof; inside it's a place of its own, where you can put things down, and windows (other sides) let the day in. Without a door it's solid, every tile of it in the way. It goes on open ground nearest your workbench, or in the place you name (where): ${places.joinToString { it.id }}. It can be a machine too, and run recipes.
+            """.trimMargin()
+        }
+
+        /** The brief's paragraph on machines of his own design: recipes he writes, the wares they make, how they're timed and priced, and connecting them. */
+        internal fun machines(content: BedroomContent, rules: InventRules, obs: Observation): String {
+            val m = content.machines ?: return ""
+            val e = m.earning
+            val level = e.skill?.let { obs.skills.orEmpty()[it] } ?: 0.0
+            val per = e.perHour * (1 + e.perLevel * level) * 100
+            return """
+                |
+                |A thing to look at can be a machine of your own design: give it recipes. Each batch takes things you keep (item ids, like wood, clay or food_scrap) and makes others, existing things or new wares of your own (its products, by name). A machine you build adds ${String.format(java.util.Locale.ROOT, "%.1f", per)}% of what its materials are worth in value each hour it works${e.skill?.let { " (more as your $it grows)" }.orEmpty()}, so a bigger, finer machine earns more: a recipe takes as long as the value it adds needs at that rate, and a product sells for what goes into it plus those hours. What holds a ware back is the market: each kind fetches less the more of it is sold, and climbs back over days, so new kinds pay. Your machines talk to each other over the air: take_from you and it fills itself from your things; send_to market and what it makes is sold by itself; send_to another machine and it goes in there, however far apart they stand. A machine needs a mechanism (in its bill) and wears with each batch.
+            """.trimMargin()
+        }
 
         /** What `runs` is, with the world's recipes: for the design's schema and the workbench's `build`. */
         fun runsHint(content: BedroomContent): String = "For a machine that makes things (it stands somewhere, so it's viewable): the recipes it runs, " +
@@ -301,7 +374,7 @@ class Inventor(private val model: DecisionModel, private val timeout: Duration =
                 |
                 |Size it for the room: a floor tile is 1 by 1, the bed is about 0.55 tall, the desk 0.75, and you stand about 0.7. A thing on the floor needs to be 0.3 to 1.2 tall to be seen from across the room; a thing in a wall, 0.3 to 0.8 across. Parts rest on or touch each other; none floats.
                 |
-                |Each shape: shape (${LookPart.SHAPES.joinToString()}); w across, h up, d front to back, each 0.02 to 1.5; x, y, z for the bottom centre of the shape: x from -0.5 (left) to 0.5, y up from 0 at the floor to 1.5, z from -0.5 (back) to 0.5 (front); rot_x, rot_y, rot_z turn it about its bottom centre, in degrees; color is hex, like #c96f4a. A thing in a wall hangs flat against it, its back at z = -0.5. These shape it further, and leave it plain at the values in brackets:
+                |Each shape: shape (${LookPart.SHAPES.joinToString()}); w across and d front to back, 0.02 to 1.5, and h up, 0.02 to 3; x, y, z for the bottom centre of the shape: x from -0.5 (left) to 0.5, y up from 0 at the floor to 3, z from -0.5 (back) to 0.5 (front) (a thing on the land is bigger: see below); rot_x, rot_y, rot_z turn it about its bottom centre, in degrees; color is hex, like #c96f4a. A thing in a wall hangs flat against it, its back at z = -0.5. These shape it further, and leave it plain at the values in brackets:
                 |- taper (cylinders, [1]): the top's width as a fraction of the bottom's: 0.6 for a vase's neck or a lampshade, 0 for a cone.
                 |- cut (spheres, [1]): how much of it there is, from the top: 0.5 for a dome, a mound of soil or a mushroom cap.
                 |- hole (cylinders, [0]): the hole's width as a fraction of the outside's: 0.85 for a flowerpot or a bowl, 0.7 for a ring.
@@ -398,6 +471,8 @@ class Inventor(private val model: DecisionModel, private val timeout: Duration =
                 |${materials(content, rules, obs)}
                 |
                 |${look(rules.lookParts)}
+                |${land(content, rules)}
+                |${machines(content, rules, obs)}
                 |
                 |${if (things.isEmpty()) "You own nothing with qualities yet." else "What you own that has qualities: $things."}
                 |
@@ -478,10 +553,51 @@ class CannedInventor(private val designs: List<Design> = DESIGNS, private val co
          * filling his spots. Anything else: [DESIGNS], which only sit there.
          */
         fun of(which: String): CannedInventor = when (which) {
+            "build", "land" -> CannedInventor(listOf(SHED, BOWL_LATHE))
             "machines" -> CannedInventor(listOf(SPRINKLER), mapOf(SPRINKLER.name to SPRINKLER_CODE))
             "workshop" -> CannedInventor(listOf(SPRINKLER) + DESIGNS.filter { it.place == InventRules.FLOOR }, mapOf(SPRINKLER.name to SPRINKLER_CODE))
             else -> CannedInventor()
         }
+
+        private fun plank(part: String, w: Double, h: Double, d: Double, x: Double = 0.0, y: Double = 0.0, z: Double = 0.0, color: String = "#b08356", rotY: Double = 0.0) =
+            LookPart("box", w, h, d, x, y, z, rotY = rotY, color = color, part = part, material = "wood")
+
+        /** A 5 by 4 shed out on the land, its door on the south side and a window east: a floor, walls with a gap for the door, a stepped roof and a chimney. */
+        val SHED = Design(
+            name = "garden shed", use = "viewable", qualities = mapOf("cozy" to 2.0, "natural" to 1.0), place = InventRules.LAND,
+            footprint = Footprint(5, 4), door = Structure.SOUTH, windows = listOf(Structure.EAST),
+            look = listOf(
+                plank("floor", 5.0, 0.1, 4.0, color = "#c9a477"),
+                plank("back wall", 5.0, 2.4, 0.15, z = -1.925),
+                plank("front wall", 2.0, 2.4, 0.15, x = -1.5, z = 1.925),
+                plank("front wall", 2.0, 2.4, 0.15, x = 1.5, z = 1.925),
+                plank("lintel", 1.0, 0.4, 0.15, y = 2.0, z = 1.925),
+                plank("door", 0.9, 2.0, 0.06, x = 0.9, z = 2.3, rotY = 75.0, color = "#7f5a3a"),
+                plank("side wall", 0.15, 2.4, 3.7, x = -2.425),
+                plank("side wall", 0.15, 2.4, 3.7, x = 2.425),
+                LookPart("box", 0.04, 0.7, 1.0, x = 2.52, y = 1.0, color = "#d9eef0", part = "window", opacity = 0.45, material = "glass"),
+                plank("roof", 5.4, 0.15, 4.4, y = 2.4, color = "#6e4f3a"),
+                plank("roof", 4.0, 0.15, 3.0, y = 2.55, color = "#7a5940"),
+                plank("roof", 2.6, 0.15, 1.6, y = 2.7, color = "#86634a"),
+                LookPart("cylinder", 0.3, 1.0, 0.3, x = 1.6, y = 2.4, z = -1.0, color = "#5c6266", part = "chimney", material = "metal"),
+            ),
+            why = "a place of my own out on the grass, to keep my things and get away from the house",
+        )
+
+        /** A lathe that turns planks into bowls: it fills itself from his wood and sells what it turns. */
+        val BOWL_LATHE = Design(
+            name = "bowl lathe", use = "viewable", qualities = mapOf("lively" to 1.0), place = InventRules.FLOOR,
+            look = listOf(
+                LookPart("box", 0.8, 0.45, 0.45, color = "#6f7b82", part = "bed", material = "metal"),
+                LookPart("cylinder", 0.08, 0.25, 0.08, x = -0.3, y = 0.45, color = "#9aa3a8", part = "headstock", material = "metal"),
+                LookPart("cylinder", 0.22, 0.1, 0.22, x = 0.05, y = 0.5, rotZ = 90.0, color = "#c69a6b", part = "bowl", material = "wood"),
+                LookPart("cylinder", 0.08, 0.25, 0.08, x = 0.3, y = 0.45, color = "#9aa3a8", part = "tailstock", material = "metal"),
+            ),
+            recipes = listOf(RecipeDesign("turning", takes = mapOf("wood" to 2), makes = mapOf("wooden bowl" to 1))),
+            products = listOf(ProductDesign("wooden bowl", "a bowl turned from one of my planks")),
+            takeFrom = listOf(Link.YOU), sendTo = Link.MARKET,
+            why = "so my planks turn into bowls and money while I do other things",
+        )
 
         /** A garden sprinkler: a spinning head over a mist dome, which swells and glows in its `spraying` variant. */
         val SPRINKLER = Design(

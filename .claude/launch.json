@@ -61,6 +61,19 @@
       "port": 8792
     },
     {
+      "name": "host-builder",
+      "runtimeExecutable": "make",
+      "runtimeArgs": [
+        "host",
+        "PORT=8793",
+        "INVENTOR=build",
+        "LILGUY_DB=none",
+        "LILGUY_START_ITEMS=workbench,wood=300,metal=80,glass=6,meal=4",
+        "LILGUY_SCRIPT=invent,invent"
+      ],
+      "port": 8793
+    },
+    {
       "name": "world-sketches",
       "runtimeExecutable": "uv",
       "runtimeArgs": ["run", "--with", "flask", "python", "world_sketches/app.py"],

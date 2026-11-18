@@ -83,7 +83,7 @@ class WorksTest {
     }
 
     @Test
-    fun `his code can't print money, and takes out what a machine made only from beside it`() {
+    fun `his code can't print money, and reaches his machines from wherever he is`() {
         val w = BedroomWorld.create(content("compost_bin" to 1))
         fun write(called: String, code: String) {
             w.stage("devise", AuthoredResult.Coded(CodeDesign(verbs = listOf(VerbDesign(called, called, "tries something", 5, code = code)))))
@@ -95,10 +95,10 @@ class WorksTest {
         assertTrue("money doesn't come from nothing" in printed, printed)
         assertEquals(money, w.observe(w.agentId).money)
 
-        // From the desk the bin is out of reach.
+        // From the desk the bin answers over the air: what stops it is that it has made nothing yet.
         write("empty_bin", "function finish(world) { return 'took ' + world.transfer('compost_bin', 'self', 'compost_brick', 1); }")
-        val far = assertIs<IntentStatus.Failed>(w.finish(Intent.Do("empty_bin"))).reason
-        assertTrue("too far apart" in far, far)
+        val empty = assertIs<IntentStatus.Failed>(w.finish(Intent.Do("empty_bin"))).reason
+        assertTrue("has no compost brick" in empty, empty)
     }
 
     @Test

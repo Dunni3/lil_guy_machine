@@ -235,6 +235,16 @@ little worn). Mending practises tinkering, so each mend takes off more. Anything
 yours with code is a machine too and wears as its code runs. Numbers: rules:machines, verb:tend,
 verb:repair.
 
+## guide:connecting: connecting machines so they run by themselves
+Your machines talk to each other over the air, however far apart they stand. Connect one to another
+(connect) and what the first makes goes into the second by itself, every few minutes. Connect one to
+the market (sell_by_itself) and what it makes is sold by itself at the going price, the money coming to
+you. Connect one to your things (feed_by_itself) and it takes what it needs from what you have. So a
+chain can run with no one tending it: you buy what goes in, and it turns that into money while you do
+something else. disconnect takes a machine's connections away. A machine you design can be built
+already connected (send_to, take_from), and your code can connect them too. Numbers: verb:connect,
+verb:sell_by_itself, verb:feed_by_itself, verb:disconnect.
+
 ## guide:wares: the kiln, wares and the market
 A kiln fires clay you buy into pots that sell at the hatch for far more than the clay cost: it's how you
 get ahead, as long as you keep it fed with clay, empty it and mend it. What machines make to sell
@@ -242,6 +252,17 @@ get ahead, as long as you keep it fed with clay, empty it and mend it. What mach
 below a floor, and the price climbs back day by day. So a second kiln earns less than the first, and a
 new kind of ware pays. Art and samples aren't wares. Numbers: rules:market, rules:machines, item:kiln,
 item:clay_pot.
+
+## guide:own-machines: machines of your own design, and what they earn
+A thing you invent can be a machine with recipes you write yourself: what a batch takes (things you
+keep: wood, clay, scraps, what another machine makes) and what it makes (things there already, or new
+wares of your own that you name). You don't set the price: a machine you build adds a share of what its
+materials are worth in value every hour it works, more as your tinkering grows, so a bigger, finer
+machine earns more. A recipe takes as long as the value it adds needs at that rate, and a ware of your
+own sells for what goes into it plus those hours. What limits a ware is the market, which wants less
+of one kind the more you sell; a new kind of ware has a fresh price. So the way up is a machine that
+earns, then more and bigger machines, and new wares. Numbers: rules:machines, rules:market,
+verb:invent.
 
 ## guide:inventing: inventing at the workbench
 At the workbench you design one new thing of your own and build it, once a day: what it's for (one
@@ -253,7 +274,7 @@ instead. Code in a thing needs copper wire for its wiring, and code that moves a
 needs metal for a mechanism. The build takes the materials from what you have; without them nothing is
 built. A design outside the rules isn't built, costs only the time, and frustrates you. A thing to look
 at takes one of the room's few spare spots, else the free spot nearest the workbench. A thing made to
-sell sells once, for its materials and good money for your time, far more than art pays. You can take apart a thing you invented for half its materials back, which frees its
+sell sells once, for its materials and good money for your time, far more than art pays. You can build several things a day. You can take apart a thing you invented for half its materials back, which frees its
 spot; materials you don't need sell back to the shop for about half what they cost. Numbers:
 rules:invent, verb:invent, verb:dismantle, verb:sell_materials.
 
@@ -261,8 +282,8 @@ rules:invent, verb:invent, verb:dismantle, verb:sell_materials.
 At your desk you can write code: new verbs of your own, and what your things do by themselves. A verb
 is a function that runs when you finish it (and one that says why it can't be done); a thing's
 behavior is functions run while you own it, at certain moments (each game hour, every so many minutes,
-when you arrive or leave, finish a verb, sleep or wake, or on a timer). A thing's code reaches only its own place, and what it does where you aren't you hear
-of when you next go there. Code makes nothing from nothing: money comes from selling things, things
+when you arrive or leave, finish a verb, sleep or wake, or on a timer). On the land a thing's code reaches what's in its own place, and what it does where you aren't you hear
+of when you next go there; but your machines talk over the air, so code moves things between them, and connects them, wherever they stand. Code makes nothing from nothing: money comes from selling things, things
 from machines fed with what their recipes take, and code that runs wears the thing it's in. Code that
 throws an error fails the verb with that error. Naming one of your verbs rewrites it. The world API
 your code can use is in rules:code. Numbers: rules:code, verb:devise.
@@ -275,6 +296,17 @@ free spots for your things. The lab's bench is somewhere to study samples, and t
 somewhere to read, play or listen. Some sites need another room to stand first. Building a plan
 that already stands moves it to the new site. Numbers: verb:build_room, item:lab_plan,
 item:sunroom_plan.
+
+## guide:building-big: building big things out on the land
+At the workbench you can design something big that stands out on the land instead of in a spot: a
+cabin, a shed, a workshop, a tower, a windmill, a big machine. You give it a footprint (how many tiles
+it covers each way) and a look made of shapes over that ground, up to several metres tall, and build it
+from materials, which out there go much further than in a small thing. With a door it's a building you
+walk into: its edge tiles are its walls but for the doorway, inside it's a place of your own with spots
+for your things, and windows let the day in. Without a door it's solid, standing in the way. It goes up
+on open ground nearest your workbench, or in the place you name; the meadow east past the forest is wide
+open for it. You can take one apart for half its materials, once nothing of yours stands inside.
+Numbers: rules:invent, verb:invent, verb:dismantle.
 
 ## guide:placing: moving your things
 Where a new thing goes is yours to choose. Something you buy waits by the mail hatch, and something you

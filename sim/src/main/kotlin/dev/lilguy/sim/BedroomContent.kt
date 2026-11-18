@@ -82,6 +82,8 @@ data class BedroomContent(
     val sleep: SleepRules? = null,
     /** How planters grow ([GrowingRules]); null and nothing grows. */
     val growing: GrowingRules? = null,
+    /** What he built on the land ([Structure]): set by his inventions ([plus]), never by the content's files. */
+    @Transient val structures: List<Structure> = emptyList(),
 ) {
     @Transient private val byId = items.associateBy { it.id }
 
@@ -119,16 +121,30 @@ data class BedroomContent(
 
     /** The content with [invention] in it: its item, and its book when it is one. Checked like any content. */
     fun plus(invention: Invention): BedroomContent =
-        copy(items = items + invention.item, books = books + listOfNotNull(invention.book)).also { it.validate() }
+        copy(
+            items = items + invention.item + invention.products,
+            books = books + listOfNotNull(invention.book),
+            structures = structures + listOfNotNull(invention.structure),
+            machines = if (invention.recipes.isEmpty()) machines else (machines ?: MachineRules()).let { m -> m.copy(recipes = m.recipes + invention.recipes) },
+        ).also { it.validate() }
+
+    /** The content with [wares] (products whose machine is gone) in it, those it hasn't already. Checked like any content. */
+    fun plusWares(wares: List<ItemSpec>): BedroomContent =
+        if (wares.all { byId[it.id] != null }) this else copy(items = items + wares.filter { byId[it.id] == null }).also { it.validate() }
+
+    /** What he built on the land called [id], or null. */
+    fun structure(id: String): Structure? = structures.firstOrNull { it.id == id }
 
     /**
      * The content without [id], a thing he invented and took apart: its item, its book, and the
      * verbs he wrote that are done with it or at it. Checked like any content.
      */
-    fun minus(id: String): BedroomContent = copy(
-        items = items.filter { it.id != id },
+    fun minus(id: String, products: Set<String> = emptySet(), recipes: Set<String> = emptySet()): BedroomContent = copy(
+        items = items.filter { it.id != id && it.id !in products },
         books = books.filter { it.id != id },
         verbs = verbs.filter { v -> v.code == null || (id !in v.at && id !in v.args.values) },
+        structures = structures.filter { it.id != id },
+        machines = machines?.let { m -> m.copy(recipes = m.recipes.filter { it.id !in recipes }) },
     ).also { it.validate() }
 
     /** The content with [verb], one he wrote, in it, in place of his verb of the same id if there is one. Checked like any content. */
@@ -232,7 +248,11 @@ data class BedroomContent(
         val ids = items.map { it.id }
         require(ids.size == ids.toSet().size) { "item ids must be unique: ${ids.groupBy { it }.filterValues { it.size > 1 }.keys}" }
         val tags = items.flatMap { it.names }.toSet()
-        val slots = room.slots.values.toSet() + world?.slots?.keys.orEmpty() + world?.rooms?.flatMap { it.slots.values }.orEmpty()
+        val slots = room.slots.values.toSet() + world?.slots?.keys.orEmpty() + world?.rooms?.flatMap { it.slots.values }.orEmpty() + structures.flatMap { it.slotNames }
+        structures.forEach { st ->
+            st.problem()?.let { throw IllegalArgumentException(it) }
+            require(byId[st.id]?.slot == st.id) { "structure ${st.id}: its item must stand in its own slot" }
+        }
         world?.rooms?.forEach { r ->
             require(byId[r.plan] != null) { "room ${r.id}: its plan '${r.plan}' isn't an item" }
             r.items.forEach { require(byId[it]?.slot in r.slots.values) { "room ${r.id}: '$it' must be an item standing in one of its slots" } }

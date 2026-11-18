@@ -587,6 +587,16 @@ internal interface OpWorld {
     fun dismantleText(id: String): String
     /** Takes thing [id] apart; the event's parts. */
     fun dismantle(id: String): List<String>
+
+    // Connecting his machines ([Link]).
+    /** Why [from] can't be connected to [to] (machines, `you` or `market`), or null. */
+    fun connectLock(from: String, to: String): String?
+    fun connectText(from: String, to: String): String
+    fun connect(from: String, to: String): List<String>
+    /** Why machine [id] has nothing to disconnect, or null. */
+    fun disconnectLock(id: String): String?
+    fun disconnectText(id: String): String
+    fun disconnect(id: String): List<String>
 }
 
 /**
@@ -783,7 +793,14 @@ internal data class OpEntry(
     val harvest: String? = null,
     val watch: String? = null,
     val dismantle: String? = null,
+    val connect: Connect? = null,
+    val disconnect: String? = null,
 ) {
+    /** `connect: { from: what, to: on }`: each an argument slot, or `you` or `market`. */
+    @Serializable
+    @SerialName("connect")
+    data class Connect(val from: String, val to: String)
+
     /** `switch: { target: on, to: off }`: to is on, off or timer. */
     @Serializable
     @SerialName("switch")
@@ -827,6 +844,7 @@ internal data class OpEntry(
             survey?.let(::SurveyOp), gather?.let(::GatherOp), placeRoom?.let { PlaceRoomOp(it.room, it.site) }, openMail?.let { OpenMailOp }, postLetter?.let { PostLetterOp },
             script?.let { ScriptOp }, define?.let { DefineOp }, readLog?.let(::ReadLogOp), switch?.let { SwitchOp(it.target, LampMode.of(it.to)) }, tend?.let(::TendOp), repair?.let(::RepairOp),
             water?.let(::WaterOp), harvest?.let(::HarvestOp), watch?.let(::WatchOp), dismantle?.let(::DismantleOp),
+            connect?.let { ConnectOp(it.from, it.to) }, disconnect?.let(::DisconnectOp),
         )
         require(set.size == 1) { "an effect is one op, such as `- need: { mood: 2 }`; this one has ${if (set.isEmpty()) "none" else set.joinToString { it.key }}" }
         return set.single()
@@ -865,6 +883,8 @@ internal data class OpEntry(
             is HarvestOp -> OpEntry(harvest = op.on)
             is WatchOp -> OpEntry(watch = op.on)
             is DismantleOp -> OpEntry(dismantle = op.on)
+            is ConnectOp -> OpEntry(connect = Connect(op.from, op.to))
+            is DisconnectOp -> OpEntry(disconnect = op.on)
         }
     }
 }
@@ -875,4 +895,46 @@ internal object OpSerializer : KSerializer<Op> {
     override fun deserialize(decoder: Decoder): Op = decoder.decodeSerializableValue(OpEntry.serializer()).toOp()
 
     override fun serialize(encoder: Encoder, value: Op) = encoder.encodeSerializableValue(OpEntry.serializer(), OpEntry.of(value))
+}
+
+/**
+ * Connects machine [from] to [to] ([Link]): each an argument slot bound to a machine of his, or the
+ * words `you` (his things) or `market` (sold). From then on what [from] makes goes there by itself.
+ */
+data class ConnectOp(val from: String, val to: String) : Op() {
+    override val key get() = "connect"
+
+    override fun problems(c: BedroomContent, verb: VerbSpec) = listOfNotNull(
+        if (c.machines == null) "connects machines, but rules.yaml has no `machines`" else null,
+        if (verb.args[from] == null && from != Link.YOU) "connect's from must be an argument slot or `you`" else null,
+        if (verb.args[to] == null && to != Link.YOU && to != Link.MARKET) "connect's to must be an argument slot, `you` or `market`" else null,
+    )
+
+    private fun ends(b: Bound) = b.resolve(from) to b.resolve(to)
+
+    /** Unbound, an end is still its tag: nothing to say yet. */
+    private fun bound(b: Bound) = (from !in b.verb.args || from in b.args) && (to !in b.verb.args || to in b.args)
+
+    override fun lockReason(w: OpWorld, b: Bound) = if (bound(b)) ends(b).let { (f, t) -> w.connectLock(f, t) } else null
+
+    override fun gone(w: OpWorld, b: Bound) = ends(b).let { (f, t) -> w.connectLock(f, t) }
+
+    override fun finish(w: OpWorld, b: Bound) = ends(b).let { (f, t) -> w.connect(f, t) }
+
+    override fun describe(w: OpWorld, b: Bound, forSale: Boolean) = if (forSale || !bound(b)) emptyList() else listOf(ends(b).let { (f, t) -> w.connectText(f, t) })
+}
+
+/** Takes away every connection the machine bound to [on] has, to and from it. */
+data class DisconnectOp(val on: String) : Op() {
+    override val key get() = "disconnect"
+
+    override fun problems(c: BedroomContent, verb: VerbSpec) = listOfNotNull(if (verb.args[on] == null) "disconnect's machine must be an argument slot (`on`)" else null)
+
+    override fun lockReason(w: OpWorld, b: Bound) = b.args[on]?.let(w::disconnectLock)
+
+    override fun gone(w: OpWorld, b: Bound) = w.disconnectLock(b.resolve(on))
+
+    override fun finish(w: OpWorld, b: Bound) = w.disconnect(b.resolve(on))
+
+    override fun describe(w: OpWorld, b: Bound, forSale: Boolean) = if (forSale) emptyList() else listOfNotNull(b.args[on]?.let(w::disconnectText))
 }

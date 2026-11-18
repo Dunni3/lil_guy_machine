@@ -76,6 +76,9 @@ class BedroomWorld private constructor(
         }
     private var invented: List<InventedView> = emptyList()
 
+    /** Wares he designed whose machine he took apart ([Invention.products]): they stay in his world while they're his. */
+    private var wares: List<ItemSpec> = emptyList()
+
     val ledger = Ledger(content.start.money, clock)
     val needs = Needs(content.start.needs, clock)
 
@@ -344,7 +347,7 @@ class BedroomWorld private constructor(
         private fun unbuildable(verb: VerbSpec): String? {
             val staged = designs[verb.id] ?: return "you couldn't settle on a design, so nothing got built"
             val design = staged.design ?: return "you couldn't settle on a design, so nothing got built"
-            return when (val checked = content.invent!!.check(design, content, verb.minutes!!, ::inventSpot)) {
+            return when (val checked = content.invent!!.check(design, content, verb.minutes!!, ::inventSpot, ::inventSite, earningSkill())) {
                 is InventRules.Checked.Refused -> "the ${design.name.ifBlank { "design" }} didn't work: " + checked.problems.joinToString("; ")
                 is InventRules.Checked.Ok -> checked.invention.let { made ->
                     if (made.bill.isNotEmpty()) shortOf(made.bill, "the ${made.item.name}")
@@ -506,6 +509,11 @@ class BedroomWorld private constructor(
             val spec = content.item(id) ?: return null
             if (inventions.none { it.item.id == id }) return "the ${spec.name} isn't something you invented; only your own inventions can be taken apart"
             if (count(id) == 0) return "you don't have the ${spec.name}"
+            content.structure(id)?.let { st ->
+                val spots = st.spots.map { it.first }.toSet()
+                val inside = content.items.filter { it.slot in spots && count(it.id) > 0 && it.id !in waiting }
+                if (inside.isNotEmpty()) return "your " + inside.joinToString(" and ") { it.name } + (if (inside.size == 1) " stands" else " stand") + " in ${st.name}; put ${if (inside.size == 1) "it" else "them"} somewhere else first"
+            }
             return null
         }
 
@@ -518,11 +526,21 @@ class BedroomWorld private constructor(
 
         override fun dismantle(id: String) = this@BedroomWorld.dismantle(id)
 
+        override fun connectLock(from: String, to: String) = works.linkLock(worksHost, from, to)
+        override fun connectText(from: String, to: String) = "connect ${end(from)} to ${end(to)}: " + works.linkSays(worksHost, Link(from, to))
+        override fun connect(from: String, to: String) = listOf(works.link(worksHost, from, to))
+        override fun disconnectLock(id: String) = if (works.links().none { it.from == id || it.to == id }) "the ${content.item(id)?.name ?: id} isn't connected to anything" else null
+        override fun disconnectText(id: String) = "take away the ${item(id).name}'s connections (" + works.linkText(worksHost, id).orEmpty() + ")"
+        override fun disconnect(id: String): List<String> {
+            val n = works.unlink(worksHost, id)
+            return listOf("took away the ${item(id).name}'s $n connection${if (n == 1) "" else "s"}")
+        }
+
         override fun build(verb: VerbSpec): List<String> {
             val staged = designs.remove(verb.id)!!
             val design = staged.design!!
             val rules = content.invent!!
-            val body = (rules.check(design, content, verb.minutes!!, ::inventSpot) as InventRules.Checked.Ok).invention.copy(tick = ticks)
+            val body = (rules.check(design, content, verb.minutes!!, ::inventSpot, ::inventSite, earningSkill()) as InventRules.Checked.Ok).invention.copy(tick = ticks)
             // Its workings (the wiring its code needs, a mechanism for moving parts) go in only if he has them too.
             val code = staged.code?.takeIf { !it.isEmpty }
             val workings = rules.workings(design, code)
@@ -533,6 +551,7 @@ class BedroomWorld private constructor(
             this@BedroomWorld.content = content.plus(made)
             inventions = inventions + made
             knownCache = null
+            if (made.structure != null) relayout()
             val paid = if (bill.isEmpty()) {
                 ledger.debit(ticks, made.cost, "materials for the ${spec.name}")
                 "materials $${made.cost} (money $${ledger.balance})"
@@ -542,13 +561,18 @@ class BedroomWorld private constructor(
             }
             add(spec.id, 1)
             val bench = verb.at.firstOrNull { it != VerbSpec.HERE && it !in verb.args }
-            val waits = bench?.let { arrive(spec, it) }.orEmpty()
+            // Something on the land goes up where it stands; a thing for a spot waits to be put down.
+            val waits = if (made.structure != null) "" else bench?.let { arrive(spec, it) }.orEmpty()
+            val linked = made.links.mapNotNull { l -> if (works.linkLock(worksHost, l.from, l.to) == null) works.link(worksHost, l.from, l.to) else null }
             val like = spec.qualities.entries.joinToString { (q, s) -> "$q ${s.toInt()}" }
             val comfortNote = if (waits.isNotEmpty()) waits else if (comfortOf(spec) != 0) comfortText() else null
             val newNote = newThingRate(spec).takeIf { it > 0 }?.let { newThings[spec.id] = ticks; "new: ${newThingText(it)}" }
             return listOfNotNull(
-                "built the ${spec.name}, ${article(spec.group)} of your own design" + (if (like.isEmpty()) "" else " ($like)") + (spec.slot?.takeIf { waits.isEmpty() }?.let { " at $it" } ?: ""),
+                "built the ${spec.name}, ${article(spec.group)} of your own design" + (if (like.isEmpty()) "" else " ($like)") +
+                    (made.structure?.let { st -> " " + standsText(st) } ?: spec.slot?.takeIf { waits.isEmpty() }?.let { " at $it" } ?: ""),
                 paid,
+                made.notes.takeIf { it.isNotEmpty() }?.joinToString("; "),
+                linked.takeIf { it.isNotEmpty() }?.joinToString("; "),
                 spec.price?.let { "the shop will send more for $$it" },
                 spec.sellPrice?.let { "it sells for $$it" },
                 comfortNote,
@@ -839,7 +863,7 @@ class BedroomWorld private constructor(
     }
 
     /** Whether he knows [e] is there without seeing it: his house's things, and what's in a place he has explored. */
-    private fun knownThere(e: EntitySnapshot): Boolean = layout.place(e.place ?: "")?.kind == PlaceKind.Room || e.place in explored
+    private fun knownThere(e: EntitySnapshot): Boolean = layout.place(e.place ?: "")?.kind?.indoors == true || e.place in explored
 
     /** What room [id] is like to him while he's in it: its qualities, by his affinities, as decor's are. */
     private fun roomComfort(id: String): Double {
@@ -1013,6 +1037,11 @@ class BedroomWorld private constructor(
         override fun changed() {
             version++
         }
+        override fun sell(id: String, n: Int): Int {
+            val got = sellPlain(id, n)
+            if (got > 0) ledger.credit(ticks, got, "your machines sold ${quantity(id, n)}")
+            return got
+        }
     }
 
     /** How fresh what wears by [key] is: 1 when fresh, down to 0 when worn out (`thing:<id>` for a thing's code). */
@@ -1097,6 +1126,103 @@ class BedroomWorld private constructor(
     /** `world.args`: each of the verb's argument slots as bound, or before binding what it asks for. */
     private fun scriptArgs(b: Bound): Map<String, String> = b.verb.args.keys.associateWith { b.resolve(it) }
 
+    /** His skill at what makes his machines earn more (rules.yaml `machines.earning.skill`). */
+    private fun earningSkill(): Double = content.machines?.earning?.skill?.let(::skill) ?: 0.0
+
+    /** "on the land in the meadow, 6 by 4 tiles, its door on the south side": where a thing he built on the land stands. */
+    private fun standsText(st: Structure): String {
+        val (cx, cy) = st.centre
+        val around = layout.places.firstOrNull { it.kind == PlaceKind.Outdoor && it.rects.any { r -> Cell(cx.toInt(), cy.toInt()) in r } }
+        return "on the land" + (around?.let { " in ${it.name}" } ?: "") + ", ${st.w} by ${st.d} tiles" +
+            (st.door?.let { ", its door on the $it side: you can go into ${st.name}" + if (st.spots.isEmpty()) "" else " and put things there (${st.spots.size} spots)" } ?: "")
+    }
+
+    /** "your things", "the market" or "the kiln": one end of a [Link], in words. */
+    private fun end(id: String) = when (id) {
+        Link.YOU -> "your things"
+        Link.MARKET -> "the market"
+        else -> "the ${item(id).name}"
+    }
+
+    /** The map again from the content: after something he built on the land went up or came down. */
+    private fun relayout() {
+        layout = Layout.of(content, house)
+        map = layout.map
+        mapCache = null
+        placesCache = null
+        version++
+    }
+
+    /**
+     * Where a thing on the land with [design]'s footprint would stand (its top-left tile): on open ground
+     * outdoors, a tile clear all round it of walls, water, trees, doorways and spots, in [Design.where]
+     * when it names a place, nearest the workbench, and only where building it would leave every place
+     * and spot on the land still reachable from the front door.
+     */
+    fun inventSite(design: Design): InventRules.Sited {
+        val f = design.footprint ?: return InventRules.Sited.Nowhere("a thing on the land needs a footprint")
+        if (content.world == null) return InventRules.Sited.Nowhere("there's no land here to build on")
+        val where = design.where?.trim()?.takeIf { it.isNotEmpty() }?.let { w -> layout.place(w) ?: return InventRules.Sited.Nowhere("there's no place '$w'") }
+        val door = design.door?.trim()?.lowercase()
+        val m = layout.map
+        val taken = layout.slotCells.values.toSet() + layout.doors.map { it.cell } + guy.cell
+        val bench = content.verbs.firstOrNull { v -> v.ops<BuildOp>().isNotEmpty() }?.at?.firstNotNullOfOrNull { content.item(it)?.slot?.let(layout.slotCells::get) } ?: guy.cell
+        fun clear(x: Int, y: Int): Boolean {
+            if (!m.isFloor(x, y)) return false
+            val c = Cell(x, y)
+            return c !in taken && layout.placeOf(c)?.kind == PlaceKind.Outdoor
+        }
+        val candidates = mutableListOf<Pair<Cell, Int>>()
+        for (y in 1..m.height - f.d - 1) for (x in 1..m.width - f.w - 1) {
+            if (where != null && layout.placeOf(Cell(x + f.w / 2, y + f.d / 2)) != where) continue
+            var ok = true
+            loop@ for (yy in y - 1..y + f.d) for (xx in x - 1..x + f.w) if (!clear(xx, yy)) { ok = false; break@loop }
+            if (!ok) continue
+            val dx = x + f.w / 2 - bench.x
+            val dy = y + f.d / 2 - bench.y
+            candidates += Cell(x, y) to dx * dx + dy * dy
+        }
+        val tried = candidates.sortedBy { it.second }.take(SITES_TRIED).map { it.first }
+        val front = layout.doors.firstOrNull()?.let { d -> listOf(Cell(d.cell.x, d.cell.y + 1), Cell(d.cell.x - 1, d.cell.y), Cell(d.cell.x + 1, d.cell.y), Cell(d.cell.x, d.cell.y - 1)).firstOrNull { m.isFloor(it.x, it.y) && layout.placeOf(it)?.kind == PlaceKind.Outdoor } } ?: guy.cell
+        for (at in tried) {
+            val st = Structure("_trial", "", listOf(at.x, at.y), f.w, f.d, door?.takeIf { it in Structure.SIDES })
+            if (stillReachable(st, front)) return InventRules.Sited.At(at)
+        }
+        val size = "${f.w} by ${f.d} tiles"
+        return InventRules.Sited.Nowhere(
+            "there's no open ground for something $size" + (where?.let { " in ${it.name}" } ?: " on the land") +
+                " (it needs a clear tile all round, away from doors, spots, trees and water); make it smaller" + (if (where != null) ", or build it somewhere else" else ""),
+        )
+    }
+
+    /** Whether, with [st] standing, every outdoor place and every spot outdoors can still be walked to from [from]. */
+    private fun stillReachable(st: Structure, from: Cell): Boolean {
+        val m = layout.map
+        val r = st.rect
+        val door = st.doorCell
+        fun blocked(x: Int, y: Int): Boolean {
+            if (x !in r.x0..r.x1 || y !in r.y0..r.y1) return !m.isFloor(x, y)
+            if (!st.enterable) return true
+            return (x == r.x0 || x == r.x1 || y == r.y0 || y == r.y1) && Cell(x, y) != door
+        }
+        val seen = HashSet<Cell>()
+        val queue = ArrayDeque(listOf(from))
+        seen += from
+        while (queue.isNotEmpty()) {
+            val c = queue.removeFirst()
+            for ((dx, dy) in listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1)) {
+                val n = Cell(c.x + dx, c.y + dy)
+                if (n in seen || n.x !in 0 until m.width || n.y !in 0 until m.height || blocked(n.x, n.y)) continue
+                seen += n
+                queue.addLast(n)
+            }
+        }
+        fun near(c: Cell) = c in seen || listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1).any { (dx, dy) -> Cell(c.x + dx, c.y + dy) in seen }
+        val spots = layout.slotCells.values.filter { layout.placeOf(it)?.kind == PlaceKind.Outdoor }
+        val places = layout.places.filter { it.kind == PlaceKind.Outdoor }.mapNotNull { layout.spot(it) }
+        return spots.all(::near) && places.all(::near) && (door == null || st.outside(st.door!!) in seen)
+    }
+
     /** Content changed under the agent: what he knows and his options are rebuilt. */
     private fun contentChanged() {
         knownCache = null
@@ -1177,7 +1303,12 @@ class BedroomWorld private constructor(
         val held = works.store(id).let { plus(it.inputs, it.outputs) }
         val hadCode = behaviors.containsKey(id)
         val gone = this.coded.filter { v -> id in v.verb.at || id in v.verb.args.values }
+        // Its wares stay his, and sell as they did; its recipes stay in the world for them.
+        wares = wares + made.products.filter { content.item(it.id) != null }
+        val stood = content.structure(id)
         content = content.minus(id)
+        // Where it stood is open ground again.
+        if (stood != null) relayout()
         inventions = inventions.filter { it.item.id != id }
         if (gone.isNotEmpty()) this.coded = this.coded - gone.toSet()
         behaviors = behaviors - id
@@ -1261,6 +1392,7 @@ class BedroomWorld private constructor(
         private val wasMoney = ledger.balance
         private val wasNeeds = Need.entries.associateWith { needs[it] }
         private val wasWorks = works.export()
+        private val wasLinks = works.links()
         private val wasEmitted = surroundings.export()
         private val wasMarket = market.export(null, ticks, dayTicks)
 
@@ -1280,12 +1412,15 @@ class BedroomWorld private constructor(
             thingState.clear(); thingState.putAll(wasState)
             custom.clear(); custom.putAll(wasCustom)
             works.restore(wasWorks) { true }
+            works.restoreLinks(wasLinks) { true }
             surroundings.restore(wasEmitted) { true }
             market.load(wasMarket)
             if (content !== wasContent || inventions !== wasInventions) {
+                val rebuilt = content.structures != wasContent.structures
                 content = wasContent
                 inventions = wasInventions
                 contentChanged()
+                if (rebuilt) relayout()
             }
             version++
             return did.toList()
@@ -1380,7 +1515,7 @@ class BedroomWorld private constructor(
             val given = if (worded) design - "look" else design
             val d = runCatching { DESIGN_JSON.decodeFromJsonElement(Design.serializer(), toJson(given)) }
                 .getOrElse { throw ScriptProblem("the design didn't make sense: ${it.message?.lineSequence()?.firstOrNull()}") }
-            val made = when (val checked = rules.check(d, content, minutes, ::inventSpot)) {
+            val made = when (val checked = rules.check(d, content, minutes, ::inventSpot, ::inventSite, earningSkill())) {
                 is InventRules.Checked.Refused -> throw ScriptProblem("the ${d.name} can't be made: " + checked.problems.joinToString("; "))
                 is InventRules.Checked.Ok -> checked.invention.copy(tick = ticks)
             }
@@ -1396,7 +1531,11 @@ class BedroomWorld private constructor(
             content = content.plus(made)
             inventions = inventions + made
             contentChanged()
+            if (made.structure != null) relayout()
             add(made.item.id, 1)
+            made.links.forEach { l -> if (works.linkLock(worksHost, l.from, l.to) == null) did += works.link(worksHost, l.from, l.to) }
+            made.structure?.let { did += "it stands " + standsText(it) }
+            did += made.notes
             did += "made ${article(made.item.name)}" +
                 if (worded) " (plain to look at: a look is a list of shapes like { shape: \"box\", w: 0.3, h: 0.2, d: 0.3, color: \"#8a5a3c\" }, not words)" else ""
             return made.item.id
@@ -1512,6 +1651,16 @@ class BedroomWorld private constructor(
         }
 
         override fun transfer(from: String, to: String, item: String, n: Int) = works.transfer(worksHost, from, to, item, n, self, did)
+
+        override fun link(from: String, to: String, item: String?): Boolean {
+            works.linkLock(worksHost, from, to, item)?.let { throw ScriptProblem(it) }
+            did += works.link(worksHost, from, to, item)
+            return true
+        }
+
+        override fun unlink(from: String, to: String?): Int = works.unlink(worksHost, from, to).also { if (it > 0) did += "took away $it connection${if (it == 1) "" else "s"}" }
+
+        override fun links(): List<Map<String, Any?>> = works.links().map { mapOf("from" to it.from, "to" to it.to, "item" to it.item) }
 
         override fun sell(id: String, n: Int): Int {
             val s = content.item(id) ?: throw ScriptProblem("there's no thing '$id'; world.owns() lists yours")
@@ -2534,12 +2683,15 @@ class BedroomWorld private constructor(
             works = works.export(),
             surroundings = surroundings.export(),
             market = market.export(content.market, ticks, dayTicks),
+            links = works.links(),
+            wares = wares.filter { content.item(it.id) != null },
         )
     }
 
     /** Overwrites this fresh world with [s]; returns what it had to drop because the content no longer has it. */
     private fun load(s: BedroomState): List<String> {
         val dropped = mutableListOf<String>()
+        runCatching { content = content.plusWares(s.wares) }.onSuccess { wares = s.wares }.onFailure { dropped += "his wares no longer fit the content: ${it.message}" }
         s.inventions.forEach { made ->
             runCatching { content = content.plus(made) }
                 .onSuccess { inventions = inventions + made }
@@ -2558,7 +2710,7 @@ class BedroomWorld private constructor(
         content.start.items.forEach { (id, n) -> if (item(id).group == "fixture" && id !in owned) owned[id] = n }
         house.clear()
         s.house.forEach { (room, site) -> if (content.world?.room(room) != null && content.world?.site(site) != null) house[room] = site else dropped += "room '$room' on '$site' is no longer in the content" }
-        if (house.isNotEmpty()) {
+        if (house.isNotEmpty() || content.structures.isNotEmpty()) {
             layout = Layout.of(content, house)
             map = layout.map
         }
@@ -2617,6 +2769,7 @@ class BedroomWorld private constructor(
         records.restore(s.records) { content.item(it) != null }
         machines.restore(s.machines) { content.item(it) != null }
         works.restore(s.works) { content.item(it) != null }
+        works.restoreLinks(s.links) { content.item(it) != null }
         market.load(s.market.filterKeys { content.item(it) != null })
         surroundings.restore(s.surroundings) { content.item(it) != null }
         thingState.clear()
@@ -2826,9 +2979,13 @@ class BedroomWorld private constructor(
                 }
                 val look = machines.look(spec.id)
                 val light = spec.light?.takeIf { lampLit(spec) }
+                // Something on the land is drawn from its middle, in the place round it.
+                val st = content.structure(spec.id)
+                val (ex, ey) = st?.centre ?: (cell.x + 0.5f to cell.y + 0.5f)
+                val at = st?.let { layout.places.firstOrNull { p -> p.kind == PlaceKind.Outdoor && p.rects.any { r -> Cell(ex.toInt(), ey.toInt()) in r } }?.id } ?: layout.placeOf(cell)?.id
                 add(
                     EntitySnapshot(
-                        EntityId(spec.id), spec.group, cell.x + 0.5f, cell.y + 0.5f, if (spec.blocks) 1f else 0.2f, 0f, state, carriedBy = guy.id.takeIf { spec.id == carrying }, place = layout.placeOf(cell)?.id, color = custom[spec.id]?.color,
+                        EntityId(spec.id), spec.group, ex, ey, if (st != null) 2f else if (spec.blocks) 1f else 0.2f, 0f, state, carriedBy = guy.id.takeIf { spec.id == carrying }, place = at, color = custom[spec.id]?.color,
                         variant = look?.variant, motions = look?.motions.orEmpty(), readout = look?.readout ?: works.readout(worksHost, spec.id), light = light,
                     ),
                 )
@@ -2864,6 +3021,7 @@ class BedroomWorld private constructor(
             custom = LinkedHashMap(custom),
             weather = weatherView(),
             gadgets = gadgets(visited),
+            links = works.links(),
         )
         val snapshot = WorldSnapshot(ticks, map, entities, listOf(agentSnapshot()), eventLog(), life = life, layout = layout)
         return Published(snapshot, observe(entities))
@@ -3105,7 +3263,7 @@ class BedroomWorld private constructor(
 
     private fun mapRect(): Rect {
         val here = layout.placeOf(guy.cell)
-        if (here?.kind == PlaceKind.Room) return here.bounds
+        if (here?.kind?.indoors == true) return here.bounds
         val c = guy.cell
         return Rect(maxOf(0, c.x - OUTDOOR_MAP / 2), maxOf(0, c.y - OUTDOOR_MAP / 3), minOf(map.width - 1, c.x + OUTDOOR_MAP / 2), minOf(map.height - 1, c.y + OUTDOOR_MAP / 3))
     }
@@ -3141,6 +3299,9 @@ class BedroomWorld private constructor(
         }.joinToString() + " (furniture shows only once you own it)"
 
     companion object {
+        /** How many of the open sites nearest the workbench a thing on the land tries before it says there's no room. */
+        private const val SITES_TRIED = 40
+
         /** How many tiles across the map of the land round him is, outdoors. */
         private const val OUTDOOR_MAP = 16
         /** The prefix of a drawn subject in [tried]. */

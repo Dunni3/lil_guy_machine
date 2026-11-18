@@ -44,6 +44,12 @@ object WorldMap {
                         val out = layout.doors.filter { it.inside == p.id }.joinToString(" and ") { d -> "its front door opens onto ${d.outside?.let { layout.place(it)?.name } ?: "the land"}" }
                         add("- ${p.name}: ${p.says}; $what." + (if (out.isNotEmpty()) " ${out.replaceFirstChar { it.uppercase() }}." else ""))
                     }
+                    PlaceKind.Building -> {
+                        val walk = walks[p.id]
+                        val out = layout.doors.firstOrNull { it.inside == p.id }?.outside?.let { layout.place(it)?.name }
+                        add("- ${p.name}: you built it" + (out?.let { ", in $it" }.orEmpty()) + (p.says.takeIf { it.isNotBlank() }?.let { " ($it)" }.orEmpty()) +
+                            (walk?.let { "; ${GameClock.duration(it.coerceAtLeast(1))} walk" }.orEmpty()) + "; $what.")
+                    }
                     PlaceKind.Outdoor -> {
                         val walk = walks[p.id]
                         val looked = if (p.id in explored) " You've explored it." else if (does?.any { it in surveys } == true) " You haven't explored it yet." else ""

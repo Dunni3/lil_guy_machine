@@ -103,6 +103,32 @@ function pivotOf(shapes: { x: number; y: number; z: number; w: number; d: number
  * [made]'s look as its [variant] has it (`Invented.variants`): each change applies to every shape of
  * its part, which takes a colour, a glow or a turn, swells about the part's bottom centre, or goes.
  */
+/** Height, in metres, a building he built is cut down to while he's inside it: the house's sills are about this. */
+export const CUT_AT = 1.1;
+
+/**
+ * A look cut away at [CUT_AT], so the camera sees in: what's wholly above it goes, an upright shape
+ * that rises through it stops there, and a turned one that does goes unless it's mostly below.
+ */
+export function cutAway(look: LookShape[]): LookShape[] {
+  const out: LookShape[] = [];
+  for (const s of look) {
+    if (s.y >= CUT_AT) continue;
+    if (s.y + s.h <= CUT_AT) {
+      out.push(s);
+      continue;
+    }
+    const turned = s.rot_x !== 0 || s.rot_z !== 0;
+    if (turned) {
+      if (s.y + s.h / 2 < CUT_AT) out.push(s);
+      continue;
+    }
+    if (s.shape === "sphere") continue;
+    out.push({ ...s, h: CUT_AT - s.y });
+  }
+  return out;
+}
+
 export function variantLook(made: Invented, variant: string | null): LookShape[] {
   const changes = variant ? made.variants?.[variant] : undefined;
   if (!changes?.length) return made.look;
@@ -173,13 +199,13 @@ export class Models {
    * The model for item [id] (of [kind], for the fallback); a patch that's [state] "bare" has its own, and a lamp that's "off" glows nowhere.
    * [color]: the colour his code painted it, which every part takes on while keeping its light and dark.
    */
-  item(id: string, kind: string, state: string | null = null, color: string | null = null, variant: string | null = null): ClayModel {
-    if (color) return this.cached(`painted/${kind}/${id}/${state ?? ""}/${color}/${variant ?? ""}`, () => this.lists.get(this.item(id, kind, state, null, variant))!.map((p) => ({ ...p, color: tinted(p.color, color) })));
+  item(id: string, kind: string, state: string | null = null, color: string | null = null, variant: string | null = null, cut = false): ClayModel {
+    if (color) return this.cached(`painted/${kind}/${id}/${state ?? ""}/${color}/${variant ?? ""}/${cut}`, () => this.lists.get(this.item(id, kind, state, null, variant, cut))!.map((p) => ({ ...p, color: tinted(p.color, color) })));
     // A lamp that's off (switched off, or its timer's out) is its own model with nothing glowing.
-    if (state === "off") return this.cached(`off/${kind}/${id}/${variant ?? ""}`, () => this.lists.get(this.item(id, kind, null, null, variant))!.map((p) => ({ ...p, glow: 0 })));
+    if (state === "off") return this.cached(`off/${kind}/${id}/${variant ?? ""}/${cut}`, () => this.lists.get(this.item(id, kind, null, null, variant, cut))!.map((p) => ({ ...p, glow: 0 })));
     const made = this.invented.get(id);
-    // Each variant is its own model, built once, as a bare patch's is.
-    if (made && made.look.length > 0) return this.cached(`invented/${id}/${variant ?? ""}`, () => lookParts(made, variantLook(made, variant)));
+    // Each variant is its own model, built once, as a bare patch's is; so is a building cut away round him.
+    if (made && made.look.length > 0) return this.cached(`invented/${id}/${variant ?? ""}/${cut}`, () => lookParts(made, cut ? cutAway(variantLook(made, variant)) : variantLook(made, variant)));
     const bare = state === "bare" ? parts.clay_items[`${id}_bare`] : undefined;
     if (bare) return this.cached(`${kind}/${id}_bare`, () => bare);
     // Visitors round a thing that draws them, or a planter that's ripe: a look of its own, built once.

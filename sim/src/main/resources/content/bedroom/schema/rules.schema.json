@@ -504,6 +504,27 @@
             },
             "sell_back": {
               "type": "number"
+            },
+            "land": {
+              "type": "object",
+              "properties": {
+                "most": {
+                  "type": "integer"
+                },
+                "height": {
+                  "type": "number"
+                },
+                "look_parts": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            },
+            "tallest": {
+              "type": "number"
             }
           },
           "required": [
@@ -850,6 +871,30 @@
                   ]
                 },
                 "worn_at": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            },
+            "earning": {
+              "type": "object",
+              "properties": {
+                "per_hour": {
+                  "type": "number"
+                },
+                "per_level": {
+                  "type": "number"
+                },
+                "skill": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "least_hours": {
+                  "type": "number"
+                },
+                "default_hours": {
                   "type": "number"
                 }
               },

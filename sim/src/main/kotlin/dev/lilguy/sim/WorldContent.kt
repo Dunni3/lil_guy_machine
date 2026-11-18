@@ -177,4 +177,11 @@ data class Rect(val x0: Int, val y0: Int, val x1: Int, val y1: Int) {
 enum class PlaceKind {
     @SerialName("room") Room,
     @SerialName("outdoor") Outdoor,
+
+    /** Inside something he built on the land ([Structure]): indoors as a room is, drawn from his own design rather than the house's. */
+    @SerialName("building") Building,
+    ;
+
+    /** Under a roof: the house's rooms and his buildings. */
+    val indoors: Boolean get() = this != Outdoor
 }

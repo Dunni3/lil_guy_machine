@@ -14,6 +14,7 @@ import dev.lilguy.agent.memory.Thought
 import dev.lilguy.protocol.AgentView
 import dev.lilguy.protocol.AnswerView
 import dev.lilguy.protocol.LightView
+import dev.lilguy.protocol.LinkView
 import dev.lilguy.protocol.SearchView
 import dev.lilguy.protocol.SourceView
 import dev.lilguy.protocol.BookView
@@ -129,7 +130,7 @@ class StateReader(private val dbEvery: Duration = 1.seconds) {
             content = content,
             run = run(s),
             fast = fast(s, now),
-            things = Things(now.entities.filter { !it.isCharacter }.map(::entity)),
+            things = Things(now.entities.filter { !it.isCharacter }.map(::entity), now.life?.links.orEmpty().map { LinkView(it.from, it.to, it.item) }),
             world = world(now),
             easel = easel(s),
             wallet = now.life?.let { Wallet(it.money, it.holding, it.owns) } ?: Wallet(0, emptyList(), emptyMap()),

@@ -97,6 +97,10 @@ data class BedroomState(
     val surroundings: SurroundingsState = SurroundingsState(),
     /** The wares selling below their usual price: kind to its demand (1 is usual) and the tick it was set ([Market]). */
     val market: Map<String, Wear> = emptyMap(),
+    /** His machines' connections ([Link]). */
+    val links: List<Link> = emptyList(),
+    /** Wares he designed whose machine he took apart: they stay in his world while they're his ([Invention.products]). */
+    val wares: List<ItemSpec> = emptyList(),
 ) {
     /** One thing as his code left it: its [slot], [name] and [color], each null when unchanged. */
     @Serializable

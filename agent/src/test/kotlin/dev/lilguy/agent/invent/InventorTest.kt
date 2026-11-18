@@ -77,11 +77,12 @@ private class BenchWorker : DecisionModel {
 }
 
 class InventorTest {
-    private val content = BedroomContent.default().let { it.copy(start = it.start.copy(money = 100, items = it.start.items + mapOf("workbench" to 1, "wood" to 20))) }
+    // One build a day, so the decider's later turns don't invent again.
+    private val content = BedroomContent.default().let { it.copy(start = it.start.copy(money = 100, items = it.start.items + mapOf("workbench" to 1, "wood" to 20)), invent = it.invent!!.copy(perDay = 1)) }
 
     /** A lamp that is calm 2, natural 2 and cozy [cozy]: with cozy 3 it adds up to 7, over the quality budget of 6. */
     private fun design(cozy: Int) =
-        """{"name":"pebble lamp","use":"viewable","qualities":[{"quality":"calm","strength":2},{"quality":"natural","strength":2},{"quality":"cozy","strength":$cozy}],"place":"floor","look":[{"shape":"sphere","w":0.3,"h":0.3,"d":0.3,"x":0,"y":0,"z":0,"rot_x":0,"rot_y":0,"rot_z":0,"color":"#557755","part":"moss","taper":1,"cut":1,"hole":0,"arc":360,"glow":0,"opacity":1,"material":"wood"}],"book":null,"why":"the room needs something green","variants":[],"runs":[]}"""
+        """{"name":"pebble lamp","use":"viewable","qualities":[{"quality":"calm","strength":2},{"quality":"natural","strength":2},{"quality":"cozy","strength":$cozy}],"place":"floor","look":[{"shape":"sphere","w":0.3,"h":0.3,"d":0.3,"x":0,"y":0,"z":0,"rot_x":0,"rot_y":0,"rot_z":0,"color":"#557755","part":"moss","taper":1,"cut":1,"hole":0,"arc":360,"glow":0,"opacity":1,"material":"wood"}],"book":null,"why":"the room needs something green","variants":[],"runs":[],"footprint":null,"door":null,"windows":[],"where":null,"recipes":[],"products":[],"send_to":null,"take_from":[]}"""
 
     @Test
     fun `the writer's design is redone once when it's refused, built by the sim and remembered, and a design that stays refused fails the verb`() {

@@ -1,5 +1,5 @@
 /* Generated from schema/protocol.schema.json (protocol/.../*.kt) by gen_types.sh. Don't edit; run `make protocol-types`.
- * schema sha256: 2ba63c52dabda438b7b43d04ecea1bfa5d63e95ea047b9b90cdf121898f6331f
+ * schema sha256: dbf190cdd27c43e4d9578264ec8a5f3cb905273af7c1e910fa28020a26a4bbca
  */
 
 /**
@@ -265,6 +265,16 @@ export interface Weather {
  */
 export interface Things {
   entities: Entity[];
+  links: LinkView[];
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "LinkView".
+ */
+export interface LinkView {
+  from: string;
+  to: string;
+  item: string | null;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
