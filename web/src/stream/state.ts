@@ -56,6 +56,7 @@ export class StreamState {
       tokens: d.tokens ?? s.tokens,
       logs: d.logs ? mergeLogs(s.logs, d.logs, this.caps) : s.logs,
       code: d.code ?? s.code,
+      gadgets: d.gadgets ?? s.gadgets,
     };
     return "ok";
   }

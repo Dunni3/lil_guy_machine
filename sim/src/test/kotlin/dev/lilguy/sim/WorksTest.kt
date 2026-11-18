@@ -58,6 +58,18 @@ class WorksTest {
     }
 
     @Test
+    fun `the inspector's view of a machine says what it makes, what's in it, how worn it is and that he can tend it`() {
+        val w = BedroomWorld.create(content("compost_bin" to 1, "food_scrap" to 3))
+        fun bin() = w.snapshot().life!!.gadgets.first { it.id == "compost_bin" }
+        assertTrue(bin().uses.any { it.verb == "tend" && it.locked == null }, "${bin().uses}")
+        w.done(Intent.Do("tend", on = "compost_bin"))
+        val g = bin()
+        assertTrue(g.about.any { "food scrap" in it && "compost brick" in it }, "${g.about}")
+        assertEquals(listOf("3 food scraps"), g.holds.map { it.what })
+        assertTrue(g.state.any { it.first == "wear" }, "${g.state}")
+    }
+
+    @Test
     fun `his code can't print money, and takes out what a machine made only from beside it`() {
         val w = BedroomWorld.create(content("compost_bin" to 1))
         fun write(called: String, code: String) {

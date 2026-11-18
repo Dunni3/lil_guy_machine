@@ -1,4 +1,4 @@
-import { Raycaster, Vector2 } from "three";
+import { Raycaster, Vector2, Vector3 } from "three";
 import type { LifeState, Settings } from "../../protocol/ts/protocol";
 import { ClayRenderer } from "./clay/renderer";
 import { ClayTextures } from "./clay/textures";
@@ -10,6 +10,7 @@ import { Track } from "./stream/track";
 import { Admin, SignIn } from "./ui/admin";
 import { Mail } from "./ui/mail";
 import { Hud } from "./ui/hud";
+import { GUY, Inspector } from "./ui/inspector";
 import { lookOf, pressOf } from "./ui/keys";
 import { ThingLabel } from "./ui/label";
 import { Readouts } from "./ui/readout";
@@ -84,6 +85,7 @@ const look = new LookControls(settings.broadcast, {
 });
 const label = new ThingLabel(layer);
 const readouts = new Readouts(layer);
+const inspector = new Inspector();
 
 /** The settings the admin last asked for, shown until the host's match (or the ask fails). */
 let requested: Settings | null = null;
@@ -128,6 +130,13 @@ const KEY_PAN = 0.1;
 /** The remote's keys, as `RemoteInput.kt` lays them out, and the keyboard's for looking round; nothing here moves the guy. */
 window.addEventListener("keydown", (e) => {
   if (settings.broadcast || signIn.open || mail.open) return;
+  // With the inspector open, Escape closes it and [ and ] step through the things; the rest are the room's.
+  if (inspector.open && !menu.open && (e.key === "Escape" || e.key === "[" || e.key === "]")) {
+    e.preventDefault();
+    if (e.key === "Escape") inspector.close();
+    else inspector.stepBy = e.key === "]" ? 1 : -1;
+    return;
+  }
   const step = view && !menu.open ? lookOf(e) : null;
   if (view && step) {
     e.preventDefault();
@@ -188,6 +197,8 @@ const pointer = {
 const DRAG_TURN = 0.3;
 const raycaster = new Raycaster();
 const ndc = new Vector2();
+/** Where the tag over the inspected thing points, kept from frame to frame. */
+const tagTop = new Vector3();
 
 /** What the mouse is over in the room this frame (the camera may have moved under it), for [ThingLabel]. */
 function hovered() {
@@ -195,7 +206,16 @@ function hovered() {
   if (!m || !view || menu.open || signIn.open || mail.open) return null;
   ndc.set((m.x / layer.width) * 2 - 1, 1 - (m.y / layer.height) * 2);
   raycaster.setFromCamera(ndc, renderer.camera);
-  return view.pick(raycaster.ray);
+  return view.pick(raycaster.ray, true);
+}
+
+/** The thing (or him) at the pointer of [e] in the room, for a click to inspect. */
+function pickAt(e: MouseEvent) {
+  if (!view) return null;
+  const r = canvas.getBoundingClientRect();
+  ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, 1 - ((e.clientY - r.top) / r.height) * 2);
+  raycaster.setFromCamera(ndc, renderer.camera);
+  return view.pick(raycaster.ray, true);
 }
 
 function pointerView(): PageView | null {
@@ -246,8 +266,12 @@ if (!settings.broadcast) {
     pressed = true;
     card.mouse = true;
     if (!menu.open) {
-      menu.show(v);
-      pointer.guard = true;
+      // A click on a thing (or him) inspects it; on the floor it closes the inspector, or else opens the menu.
+      const hit = pickAt(e);
+      if (hit) inspector.show(hit.id);
+      else if (inspector.open) inspector.close();
+      else menu.show(v);
+      pointer.guard = !hit;
       return;
     }
     const spot = spotAt(e);
@@ -410,13 +434,20 @@ function draw() {
     if (!open && card.hover) setHover(null, null);
     look.update(view.camera.mode, open || signIn.open || mail.open, delta);
     // Over the room, the hand says it can be dragged; over the menu, the pointer is the card's.
+    const over = open ? null : hovered();
     if (!settings.broadcast && !pointer.room.size) {
+      // Over a thing the pointer says a click inspects it; elsewhere in the room, that it can be dragged.
       const c = canvas.style.cursor;
-      if (!open && c === "") canvas.style.cursor = "grab";
+      if (!open && (c === "" || c === "grab" || c === "pointer")) canvas.style.cursor = over ? "pointer" : "grab";
       else if (open && c === "grab") canvas.style.cursor = "";
     }
-    const over = open ? null : hovered();
-    label.update(over, life, content, renderer.camera, f.u, delta);
+    // The menu and the letters cover the room: the inspector goes while they're up.
+    if (inspector.open && (open || mail.open || signIn.open)) inspector.close();
+    inspector.update(life, content, delta);
+    // The tag over what the mouse rests on, else over what's being inspected.
+    const shown = inspector.showing;
+    const shownTop = shown && shown !== GUY ? view.topOf(shown, tagTop) : null;
+    label.update(over ?? (shown && shownTop ? { id: shown, top: shownTop } : null), life, content, renderer.camera, f.u, delta);
     readouts.update(life, (id, out) => view!.topOf(id, out), renderer.camera, f.u, open || signIn.open || mail.open, over?.id ?? null);
     card.update(menu, v, f, pressed, delta);
     pressed = false;
@@ -463,7 +494,7 @@ function describe(): string {
 }
 
 // What a person or a headless browser checking the page can read from the console.
-(window as unknown as { lilguy: unknown }).lilguy = { grade, stream, track, renderer, stats, menu, card, admin, hud, label, settings, draw, get view() { return view; } };
+(window as unknown as { lilguy: unknown }).lilguy = { grade, stream, track, renderer, stats, menu, card, admin, hud, label, inspector, settings, draw, get view() { return view; } };
 
 stream.start();
 requestAnimationFrame(frame);

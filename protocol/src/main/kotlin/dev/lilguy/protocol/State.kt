@@ -12,7 +12,8 @@ import kotlinx.serialization.Serializable
  * - [world]: the map, the places on it and the doors between them, when the house changes;
  * - [easel]: the piece under way, as far as the screen has got, on every stroke;
  * - the slow sections ([wallet], [growth], [gallery], [shop], [mind], [tokens]), when they change;
- * - [logs]: what only grows (money, news, decisions, thoughts, memories, trips, art), as new entries.
+ * - [logs]: what only grows (money, news, decisions, thoughts, memories, trips, art), as new entries;
+ * - [gadgets]: what each thing on the map does, holds and is for, for an inspector, when any of it changes.
  * The static part is [Content], keyed by [content].
  */
 @Serializable
@@ -35,6 +36,8 @@ data class LifeState(
     val logs: Logs,
     /** What he wrote as code, and what that code changed. */
     val code: CodeState = CodeState(),
+    /** His things as an inspector shows them. */
+    val gadgets: Gadgets = Gadgets(),
 ) {
     /** This state with [d] applied; [d] must be for this life and run, the next in sequence. */
     fun apply(d: Delta): LifeState {
@@ -55,6 +58,7 @@ data class LifeState(
             tokens = d.tokens ?: tokens,
             logs = d.logs?.let(logs::merge) ?: logs,
             code = d.code ?: code,
+            gadgets = d.gadgets ?: gadgets,
         )
     }
 
@@ -77,6 +81,7 @@ data class LifeState(
             tokens = next.tokens.takeIf { it != tokens },
             logs = logs.takeUnless { it.empty },
             code = next.code.takeIf { it != code },
+            gadgets = next.gadgets.takeIf { it != gadgets },
         )
         return d.takeUnless { it == Delta(next.life, seq + 1) }
     }
@@ -463,6 +468,31 @@ data class BehaviorView(
 /** What his code changed about a thing ([id]): the [spot] it moved it to, the [name] it gave it, the [color] it painted it; null where it's the thing's own. */
 @Serializable
 data class ChangedView(val id: String, val spot: String?, val name: String?, val color: String?)
+
+/**
+ * What the sim knows of each thing on the map ([Things]) that a renderer can't see from the rest of
+ * the state, for an inspector: what its content says it does ([GadgetView.about]), what's live in it
+ * ([GadgetView.state]), what's in it ([GadgetView.holds]) and the verbs it's for ([GadgetView.uses]).
+ * Its own section, since a machine's batch moves every game minute while the things stand still.
+ */
+@Serializable
+data class Gadgets(val things: List<GadgetView> = emptyList())
+
+/** One thing, by its item [id] and [name] (what his code called it, else its own): [about] lines ("composting: 3 food scraps make 1 compost brick in 6 hours"), [state] rows, [holds], [uses]. */
+@Serializable
+data class GadgetView(val id: String, val name: String, val about: List<String>, val state: List<FactView>, val holds: List<HeldView>, val uses: List<UseView>)
+
+/** One row of live state: [label] ("wear"), [value] ("20 of 100"). */
+@Serializable
+data class FactView(val label: String, val value: String)
+
+/** Something in a thing: [what] ("3 food scraps") and a [detail] ("put in, to work through"). */
+@Serializable
+data class HeldView(val what: String, val detail: String?)
+
+/** A verb a thing is for: open, with what it [gives] ("12 min: +stimulation"), or [locked] with why. */
+@Serializable
+data class UseView(val verb: String, val phrase: String?, val gives: String?, val locked: String?)
 
 @Serializable
 data class CatalogState(val id: String, val owned: Int, val affordable: Boolean, val gives: String, @SerialName("taught_by") val taughtBy: String?)

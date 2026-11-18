@@ -110,6 +110,7 @@ data class Delta(
     val tokens: Tokens? = null,
     val logs: Logs? = null,
     val code: CodeState? = null,
+    val gadgets: Gadgets? = null,
 ) : ServerMessage
 
 /**
