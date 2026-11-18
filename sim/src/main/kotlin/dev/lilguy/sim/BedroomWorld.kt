@@ -1977,13 +1977,25 @@ class BedroomWorld private constructor(
         return Work.Walk(ArrayDeque(best.cells)) to cell
     }
 
+    /**
+     * For [a]'s argument [slot], where it happens: the owned thing answering to [type] that's the
+     * shortest walk away, among those light and warm enough for it when any are. One that stands
+     * nowhere, or none reachable, the first.
+     */
+    private fun nearestOwned(a: VerbSpec, slot: String, type: String): String {
+        val ids = owned.keys.filter { answers(it, type) }
+        val near = ids.mapNotNull { id -> item(id).slot?.let { layout.slotCells[it] }?.let(::pathToward)?.let { id to it.cost } }.sortedBy { it.second }.map { it.first }
+        return near.firstOrNull { id -> mapOf(slot to id).let { darkLock(a, it) == null && coldLock(a, it) == null } } ?: near.firstOrNull() ?: ids.first()
+    }
+
     private fun planDo(intent: Intent.Do): Work {
         val a = content.verb(intent.activity)?.takeIf { isKnown(it.id) } ?: reject("there's no activity called '${intent.activity}'; the activities are ${content.verbs.filter { isKnown(it.id) }.joinToString { it.id }}")
         val given = mapOf("what" to intent.what, "on" to intent.on).filterValues { it != null }.mapValues { it.value!! }
         (given.keys - a.args.keys).firstOrNull()?.let { reject("${a.id} takes no `$it`" + if (a.args.isEmpty()) "" else "; it takes ${a.args.keys.joinToString(" and ")}") }
         lockReason(a)?.let { reject("can't ${a.id}: $it") }
         val args = a.args.mapValues { (slot, type) ->
-            val id = given[slot] ?: return@mapValues owned.keys.first { answers(it, type) }
+            // Unnamed, the argument it happens at (a seat) is the nearest he can reach, as `at` lists are.
+            val id = given[slot] ?: return@mapValues if (slot in a.at) nearestOwned(a, slot, type) else owned.keys.first { answers(it, type) }
             val spec = content.item(id)
             if (spec == null || count(id) == 0) reject("you don't have '$id'")
             if (!answers(spec.id, type)) reject("${a.id} takes ${article(noun(type))} as `$slot`, and the ${spec.name} isn't one")

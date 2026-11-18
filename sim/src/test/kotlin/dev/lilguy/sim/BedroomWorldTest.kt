@@ -281,7 +281,7 @@ class BedroomWorldTest {
         assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("play_record", what = "jazz_record")).status)
         assertTrue(w.obs().music!!.startsWith("jazz_record, 4"), w.obs().music)
         assertEquals("playing jazz_record", w.obs().nearby.first { it.id == "record_player" }.state)
-        assertEquals(ActivityOption("listen", null, null, "30 min", "the jazz record that's playing: you like it: mood +1; mood +3; stimulation +8; fresh to you (gains at 70%), stimulation +4, mood +2"), w.activity("listen"))
+        assertEquals(ActivityOption("listen", null, "bed", "30 min", "the jazz record that's playing: you like it: mood +1; mood +3; stimulation +8; fresh to you (gains at 70%), stimulation +4, mood +2"), w.activity("listen"))
         assertTrue("takes no `what`" in failure(w.run(Intent.Do("listen", what = "jazz_record"))))
 
         // Music plays while he does something else, and its mood shows in the need log.
@@ -389,10 +389,10 @@ class BedroomWorldTest {
 
         // Reading wears as one habit, but a book he's never opened is new, so it stays open.
         val reader = world(needs = NeedLevels(80, 70, 50, stimulation = 10), items = content.start.items + mapOf("novel" to 1, "poetry_book" to 1))
-        repeat(3) { reader.run(Intent.Do("read", what = "novel")) }
+        repeat(3) { reader.run(Intent.Do("read", what = "novel", on = "bed")) }
         val reads = reader.obs().activities!!.filter { it.id == "read" }
-        assertTrue(reads.none { it.what == "novel" }, "the novel is worn thin: $reads")
-        assertNull(reads.single { it.what == "poetry_book" }.locked)
+        assertTrue(reads.none { it.what == "novel" && it.on == "bed" }, "the novel is worn thin in bed: $reads")
+        assertTrue(reads.filter { it.what == "poetry_book" }.let { p -> p.isNotEmpty() && p.all { it.locked == null } }, reads.toString())
     }
 
     @Test
@@ -417,7 +417,7 @@ class BedroomWorldTest {
         assertTrue("isn't in vocabulary.affords" in broken(withItem("novel") { it.copy(affords = mapOf("edible?" to AffordanceParams())) }))
         assertEquals("item sketch, sellable: needs price from 1 to 10000", broken(withItem("sketch") { it.copy(affords = it.affords + ("sellable" to AffordanceParams())) }))
         assertEquals("verb read: a generative verb needs produce or build or gather or harvest; a generative verb can't progress; a generative verb can't enjoy", broken(withActivity("read") { it.copy(kind = VerbKind.Generative) }))
-        assertEquals("verb listen: a consumptive verb needs an affordance in requires, args or a consume, or a hear", broken(withActivity("listen") { it.copy(requires = listOf("record_player"), effects = it.effects.drop(1)) }))
+        assertEquals("verb listen: a consumptive verb needs an affordance in requires, args or a consume, or a hear", broken(withActivity("listen") { it.copy(args = emptyMap(), at = listOf("chair"), requires = listOf("record_player"), effects = it.effects.drop(1)) }))
         // Kinds list what they allow: an op no kind lists for it is refused.
         assertEquals("verb think: an expressive verb can't produce", broken(withActivity("think") { it.copy(effects = it.effects + ProduceOp(mapOf("sketch" to 1))) }))
 

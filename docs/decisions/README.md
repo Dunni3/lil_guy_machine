@@ -113,3 +113,4 @@ these hold the outcome. Skim this index before related changes.
 - 2026-11-15 [Wares sell for less the more of one kind he sells, and recover over days; one rule for every way of selling, and he's told the going price](2026-11-15-wares-sell-for-less-the-more-he-sells.md)
 - 2026-11-15 [Inventions are built from bought materials; a new thing goes to any free spot, and he can take his things apart (`dismantle`)](2026-11-15-inventions-are-built-from-bought-materials.md)
 - 2026-11-16 [Materials sell back for about half; his stock shows under the workbench; copper parts are drawn as wire; anything he invented can be taken apart](2026-11-16-materials-sell-back-and-show-under-the-workbench.md)
+- 2026-11-17 [The rooms he adds are reachable, have free spots, and are somewhere to do things: no slot beside a doorway, where he sits is his pick](2026-11-17-the-rooms-he-adds-are-reachable-have-spots-and-are-somewhere-to-sit.md)

@@ -212,8 +212,9 @@ verbs:
   - id: read
     kind: consumptive
     phrase: read a chapter
-    args: { what: readable }
-    at: [bed, chair]
+    # Where he sits (`on`) is his pick: the bed, the chair, or a room he has added's armchair.
+    args: { what: readable, on: seat }
+    at: [on]
     minutes: 60
     wear: verb
     needs: { light: 3 }
@@ -226,9 +227,11 @@ verbs:
   - id: play_guitar
     kind: study
     phrase: play the guitar
-    at: [chair]
+    args: { on: seat }
+    at: [on]
     requires: [guitar]
     minutes: 45
+    wear: verb
     effects:
       - practice: { music: 0.3 }
       - need: { energy: -2, mood: 5, stimulation: 10 }
@@ -236,8 +239,10 @@ verbs:
   # of its own and is offered only while there's music with time for it left.
   - id: listen
     kind: consumptive
-    at: [chair]
+    args: { on: seat }
+    at: [on]
     minutes: 30
+    wear: verb
     effects:
       - hear: music
       - need: { mood: 4, stimulation: 12 }
@@ -384,9 +389,9 @@ verbs:
       - need: { mood: 2, stimulation: 3 }
   - id: study_sample
     kind: study
-    phrase: study a sample under the microscope
-    args: { what: specimen }
-    at: [microscope]
+    phrase: study a sample under the microscope or at the lab bench
+    args: { what: specimen, on: bench }
+    at: [on]
     minutes: 45
     needs: { light: 3 }
     effects:

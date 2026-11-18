@@ -7,11 +7,11 @@
 items:
   - { id: mail_hatch, name: mail hatch, group: fixture, slot: hatch, blocks: true }
   - { id: picture_rail, name: picture rail, group: fixture, slot: rail, blocks: true }
-  - { id: bed, name: bed, group: furniture, slot: bed }
+  - { id: bed, name: bed, group: furniture, slot: bed, affords: { seat: {} } }
   # The desk has its own little lamp: enough to work at the desk by, not to read in the chair beside it.
   # It isn't a `lamp` he switches: it's always lit, the floor under his night work, as the oats are under hunger.
   - { id: desk, name: desk, group: furniture, slot: desk, blocks: true, light: { strength: 3.5, radius: 0.8 } }
-  - { id: chair, name: chair, group: furniture, slot: chair }
+  - { id: chair, name: chair, group: furniture, slot: chair, affords: { seat: {} } }
   - { id: sketchbook, name: sketchbook, group: tool }
   # Where he invents: designs a thing of his own and builds it (verbs.yaml `invent`, rules.yaml `invent`).
   - { id: workbench, name: workbench, group: furniture, slot: workbench, blocks: true, price: 30 }
@@ -60,9 +60,11 @@ items:
   - { id: sunroom_plan, name: plans for a sunroom, group: room, affords: { buildable: {} }, price: 150 }
   - { id: site_east, name: the site east of your bedroom, group: fixture, affords: { site: {} } }
   - { id: site_far_east, name: the site further east, group: fixture, affords: { site: {} } }
-  - { id: lab_bench, name: lab bench, group: fixture, slot: lab_bench, blocks: true }
+  # What makes a room worth going to: the lab's bench is somewhere to study a sample, the sunroom's
+  # armchair somewhere to read, play or listen (`bench` and `seat`, verbs.yaml).
+  - { id: lab_bench, name: lab bench, group: fixture, slot: lab_bench, blocks: true, affords: { bench: {} } }
   - { id: lab_shelf, name: tall lab shelf, group: fixture, slot: lab_shelf, blocks: true }
-  - { id: armchair, name: armchair, group: fixture, slot: armchair, qualities: { cozy: 2, soft: 1 } }
+  - { id: armchair, name: armchair, group: fixture, slot: armchair, affords: { seat: {} }, qualities: { cozy: 2, soft: 1 } }
   - { id: floor_lamp, name: floor lamp, group: fixture, slot: floor_lamp, blocks: true, affords: { lamp: {} }, qualities: { warm: 1 }, light: { strength: 6, radius: 5 } }
   # A recorder: it stands outdoors (by the garden bench, and he can put it on any free spot on the land)
   # and logs the weather at its spot each hour (weather.yaml); he
@@ -110,8 +112,8 @@ items:
   - { id: feather, name: feather, group: sample, affords: { specimen: { price: 3 } }, qualities: { soft: 2, pretty: 1 }, stackable: true }
   - { id: silver_moth, name: silver moth, group: sample, affords: { specimen: { price: 7 } }, qualities: { strange: 2, pretty: 1 }, stackable: true }
   - { id: firefly_jar, name: jar of fireflies, group: sample, affords: { specimen: { price: 5 } }, qualities: { bright: 2, strange: 1 }, stackable: true }
-  # Where samples are studied (verbs.yaml `study_sample`).
-  - { id: microscope, name: microscope, group: furniture, slot: microscope, blocks: true, price: 35 }
+  # Where samples are studied (verbs.yaml `study_sample`), as the lab's bench is.
+  - { id: microscope, name: microscope, group: furniture, slot: microscope, blocks: true, price: 35, affords: { bench: {} } }
   # Taught by music_book.
   - { id: guitar, name: guitar, group: instrument, price: 45 }
   # Decor: in view, its qualities raise comfort. `light: { strength, radius }`: it lights round it (rules.yaml `light`).

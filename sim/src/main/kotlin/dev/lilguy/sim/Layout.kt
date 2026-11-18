@@ -168,6 +168,12 @@ class Layout private constructor(
                 val joins = s.nextTo?.let { n -> built.firstOrNull { it.second.id == n }?.first?.id } ?: roomId
                 doors += Door("door_${r.id}", cell, r.id, joins)
             }
+            // Things stand in slots and most block, so a slot beside a doorway could shut a room off
+            // once he owns what stands there (a fern pot did, the lab and the sunroom behind it).
+            for (d in doors) for ((dx, dy) in listOf(0 to 1, 0 to -1, 1 to 0, -1 to 0)) {
+                val beside = Cell(d.cell.x + dx, d.cell.y + dy)
+                slotCells.entries.firstOrNull { it.value == beside }?.let { error("slot '${it.key}' is beside the doorway ${d.id} at (${d.cell.x}, ${d.cell.y})") }
+            }
             return Layout(
                 TileMap(width, height, terrain), letters.map { String(it) }, places, index, slotCells,
                 start ?: error("room has no '@'"), doors, origin,

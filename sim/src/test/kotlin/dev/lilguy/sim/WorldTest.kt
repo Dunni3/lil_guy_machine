@@ -109,6 +109,25 @@ class WorldTest {
     }
 
     @Test
+    fun `with everything he could own standing, every room is reachable, he reads in the sunroom and puts a thing in the lab`() {
+        val shipped = BedroomContent.default()
+        val roomSlots = shipped.world!!.rooms.flatMap { it.slots.values }.toSet()
+        // Everything that stands somewhere, so every slot that blocks is taken (the fern pot by the bedroom's east wall too).
+        val standing = shipped.items.filter { it.slot != null && it.slot !in roomSlots && it.id !in shipped.taught }.associate { it.id to 1 }
+        val content = shipped.copy(start = shipped.start.copy(time = "10:00", items = shipped.start.items + standing + mapOf("lab_plan" to 1, "sunroom_plan" to 1, "novel" to 1)))
+        val w = BedroomWorld.create(content)
+        assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("build_room", what = "lab_plan", on = "site_east")).status)
+        assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("build_room", what = "sunroom_plan", on = "site_far_east")).status)
+        for (p in w.layout.places.drop(1) + w.layout.places.first()) assertIs<IntentStatus.Succeeded>(w.run(Intent.MoveTo(Target.Place(p.id))).status, "he walks to ${p.id}")
+        assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("read", what = "novel", on = "armchair")).status)
+        assertEquals("sunroom", w.guyPlace(), "he reads where he chose to sit")
+        val spots = w.observe(w.agentId).put!!.spots
+        assertTrue(spots.any { it.place == "the lab" && "by_lab_bench" in it.floor }, spots.toString())
+        assertIs<IntentStatus.Succeeded>(w.run(Intent.Put("fern_pot", "by_lab_bench")).status)
+        assertTrue(w.snapshot().entities.any { it.id.value == "fern_pot" && it.place == "lab" })
+    }
+
+    @Test
     fun `after the first day he sees what he has done lately and what he never has`() {
         val w = BedroomWorld.create()
         assertEquals(null, w.observe(w.agentId).lately, "on day 1 everything is new")
