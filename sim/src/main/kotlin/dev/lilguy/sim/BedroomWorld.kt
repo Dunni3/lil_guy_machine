@@ -3021,6 +3021,7 @@ class BedroomWorld private constructor(
             custom = LinkedHashMap(custom),
             weather = weatherView(),
             gadgets = gadgets(visited),
+            links = works.links(),
         )
         val snapshot = WorldSnapshot(ticks, map, entities, listOf(agentSnapshot()), eventLog(), life = life, layout = layout)
         return Published(snapshot, observe(entities))

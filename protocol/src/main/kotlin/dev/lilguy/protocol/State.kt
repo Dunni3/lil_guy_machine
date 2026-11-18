@@ -208,9 +208,16 @@ data class RectView(val x0: Int, val y0: Int, val x1: Int, val y1: Int)
 @Serializable
 data class DoorView(val id: String, val x: Int, val y: Int, val inside: String, val outside: String?)
 
-/** What's on the map besides the characters: it hardly ever changes, so it doesn't travel with [FastState]. */
+/** What's on the map besides the characters: it hardly ever changes, so it doesn't travel with [FastState]. [links]: his machines' connections. */
 @Serializable
-data class Things(val entities: List<Entity>)
+data class Things(val entities: List<Entity>, val links: List<LinkView> = emptyList())
+
+/**
+ * A connection between his machines over the air: what [from] makes goes to [to] by itself. Each is an
+ * entity id, or `you` (his things) or `market` (sold, at the mail hatch). [item]: only that, or null for everything.
+ */
+@Serializable
+data class LinkView(val from: String, val to: String, val item: String? = null)
 
 @Serializable
 data class Clock(val day: Int, val time: String)

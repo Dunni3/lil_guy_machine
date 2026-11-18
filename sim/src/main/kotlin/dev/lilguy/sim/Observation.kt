@@ -291,6 +291,8 @@ data class LifeSnapshot(
     val weather: WeatherView? = null,
     /** Each thing standing on the map as an inspector shows it, in the order they stand. */
     val gadgets: List<GadgetView> = emptyList(),
+    /** His machines' connections ([Link]). */
+    val links: List<Link> = emptyList(),
 )
 
 /**

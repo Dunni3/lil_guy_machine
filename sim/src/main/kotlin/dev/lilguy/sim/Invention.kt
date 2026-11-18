@@ -561,8 +561,9 @@ data class InventRules(
 
     /** What's wrong with one shape of a look, in words he can act on, or null when it's fine. */
     fun partProblem(p: LookPart, footprint: Footprint? = null): String? {
-        val (halfW, halfD, top) = if (footprint == null) Triple(REACH, REACH, tallest) else Triple(footprint.w / 2.0, footprint.d / 2.0, land.height)
-        val widest = if (footprint == null) MAX_SIZE else max(footprint.w, footprint.d).toDouble()
+        // On the land a shape may reach [OVERHANG] past its footprint, as a roof's eaves or an open door do: the tile round it is always clear.
+        val (halfW, halfD, top) = if (footprint == null) Triple(REACH, REACH, tallest) else Triple(footprint.w / 2.0 + OVERHANG, footprint.d / 2.0 + OVERHANG, land.height)
+        val widest = if (footprint == null) MAX_SIZE else max(footprint.w, footprint.d) + 2 * OVERHANG
         return when {
         p.shape !in LookPart.SHAPES -> "'${p.shape}' isn't a shape; they are ${LookPart.SHAPES.joinToString()}"
         listOf(p.w, p.d).any { it.isNaN() || it < MIN_SIZE || it > widest } || p.h.isNaN() || p.h < MIN_SIZE || p.h > top -> "w and d must be from $MIN_SIZE to ${fmt(widest)}, and h from $MIN_SIZE to ${fmt(top)}"
@@ -643,6 +644,8 @@ data class InventRules(
         const val WALL = "wall"
         /** The place of a big thing that stands on the land, with a [Design.footprint]. */
         const val LAND = "land"
+        /** How far, in metres, a shape of a thing on the land may reach past its footprint. */
+        const val OVERHANG = 0.5
         const val MAX_RECIPES = 6
         const val MAX_COUNT = 99
         const val MAX_HOURS = 240.0

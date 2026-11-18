@@ -11,6 +11,7 @@ import { CameraRig, type CameraMode } from "./camera";
 import { Models, SAMPLE_COLORS, constants, stockShown, wallItem } from "./parts";
 import { ADDED_ROOM, BEDROOM } from "./room";
 import { groundTexture, landParts, treeParts } from "./land";
+import { LinkLayer } from "./links";
 import { Terrain, paneParts, shellParts } from "./shell";
 import { Rain } from "./weather";
 import { SKIES } from "../settings";
@@ -99,6 +100,9 @@ export class RoomView {
 
   private readonly things = new Map<string, Thing>();
   private thingsFrom: LifeState["things"] | null = null;
+  /** The place he's in: a building he built is drawn cut away while he's inside it. */
+  private inside: string | null = null;
+  private links: LinkLayer | null = null;
   /** The sim's lights where they shine from, those in the place framed first, then the brightest ([syncThings]). */
   private lamps: PlacedLamp[] = [];
   private lampsFor = "";
@@ -161,6 +165,11 @@ export class RoomView {
     if (!guy) return;
     this.frame(state.world);
     this.framePlace(state.world, guy.place);
+    // Walking into or out of something he built, it's drawn again: cut away while he's inside.
+    if (guy.place !== this.inside) {
+      this.inside = guy.place;
+      this.thingsFrom = null;
+    }
     const weather = this.sky ? { sky: this.sky, daylight: SKIES[this.sky] } : (fast.weather ?? null);
     this.lightFor(fast.clock?.time ?? null, weather);
     this.syncThings(state);
@@ -377,6 +386,7 @@ export class RoomView {
       this.unplace(t);
       this.things.delete(id);
     }
+    (this.links ??= new LinkLayer(this.r)).sync(state.things.links ?? [], state.things.entities);
     // What lights the scene is the sim's lights (its light model, not the models' looks), each shining from its
     // model's brightest glowing part, or from a little above where it stands.
     this.lamps = [];
@@ -405,6 +415,7 @@ export class RoomView {
   /** His things' moving parts, each about its pivot in the thing, as their motions say. */
   private animate(delta: number) {
     this.time += delta;
+    this.links?.animate(delta);
     const t = this.time;
     for (const thing of this.things.values()) {
       for (const m of thing.moving) {
@@ -446,7 +457,9 @@ export class RoomView {
   private place(e: Entity) {
     const motions = e.motions ?? [];
     // Which parts move is part of the model; how fast they go and how isn't, so a change of speed builds nothing.
-    const key = `${e.kind}/${e.x}/${e.y}/${e.state ?? ""}/${e.color ?? ""}/${e.variant ?? ""}/${motions.map((m) => m.part).sort().join(",")}`;
+    // Something he built that he's inside of is drawn cut away, as the house's front walls are.
+    const cut = e.id === this.inside;
+    const key = `${e.kind}/${e.x}/${e.y}/${e.state ?? ""}/${e.color ?? ""}/${e.variant ?? ""}/${motions.map((m) => m.part).sort().join(",")}/${cut}`;
     const was = this.things.get(e.id);
     if (was?.key === key) {
       for (const m of was.moving) m.motion = motions.find((n) => n.part === m.motion.part) ?? m.motion;
@@ -454,8 +467,8 @@ export class RoomView {
     }
     if (was) this.unplace(was);
     const map = this.map!;
-    const split = motions.length ? this.models.moving(e.id, e.variant ?? null, motions.map((m) => m.part), e.color ?? null) : null;
-    const model = split?.still ?? this.models.item(e.id, e.kind, e.state, e.color ?? null, e.variant ?? null);
+    const split = motions.length && !cut ? this.models.moving(e.id, e.variant ?? null, motions.map((m) => m.part), e.color ?? null) : null;
+    const model = split?.still ?? this.models.item(e.id, e.kind, e.state, e.color ?? null, e.variant ?? null, cut);
     const at = new Matrix4();
     const tx = Math.trunc(e.x);
     const ty = Math.trunc(e.y);

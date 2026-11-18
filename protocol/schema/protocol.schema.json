@@ -1813,6 +1813,34 @@
             ],
             "additionalProperties": false
         },
+        "LinkView": {
+            "title": "LinkView",
+            "type": "object",
+            "properties": {
+                "from": {
+                    "type": "string"
+                },
+                "to": {
+                    "type": "string"
+                },
+                "item": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "from",
+                "to",
+                "item"
+            ],
+            "additionalProperties": false
+        },
         "Logs": {
             "title": "Logs",
             "type": "object",
@@ -3152,10 +3180,17 @@
                     "items": {
                         "$ref": "#/$defs/Entity"
                     }
+                },
+                "links": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/LinkView"
+                    }
                 }
             },
             "required": [
-                "entities"
+                "entities",
+                "links"
             ],
             "additionalProperties": false
         },
