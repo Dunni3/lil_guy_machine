@@ -69,6 +69,10 @@ fun Application.host(lives: Map<String, Life>, auth: AdminAuth, accounts: Accoun
         }
         webSocket("/v1/lives/{life}/stream") { stream(lives) }
         if (accounts != null) mail(accounts, lives)
+        get("/v1/lives/{life}/art") {
+            val life = lives[call.parameters["life"]] ?: return@get call.respondText("no such life", status = HttpStatusCode.NotFound)
+            call.respondText(Wire.encode(life.art()), ContentType.Application.Json)
+        }
         get("/v1/lives/{life}/runs") {
             if (!auth.admits(call.request.headers[HttpHeaders.Authorization])) {
                 call.response.header(HttpHeaders.WWWAuthenticate, "Bearer")

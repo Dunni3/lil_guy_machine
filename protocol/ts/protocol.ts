@@ -1,5 +1,5 @@
 /* Generated from schema/protocol.schema.json (protocol/.../*.kt) by gen_types.sh. Don't edit; run `make protocol-types`.
- * schema sha256: af0abfd3db64c01ce6144d8f41095762bcbe52e32cc72e5b8a35c10d088501cb
+ * schema sha256: 2ba63c52dabda438b7b43d04ecea1bfa5d63e95ea047b9b90cdf121898f6331f
  */
 
 /**
@@ -27,6 +27,7 @@ export interface Protocol {
   result: CommandResult;
   viewer: Viewer;
   runs: RunList;
+  art?: ArtList;
   credentials: Credentials;
   signed_in: SignedIn;
   account: Account;
@@ -978,6 +979,14 @@ export interface SavedRun {
   reached: string | null;
   days: number;
   live: boolean;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "ArtList".
+ */
+export interface ArtList {
+  run_id: string | null;
+  pieces: DrawingView[];
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
