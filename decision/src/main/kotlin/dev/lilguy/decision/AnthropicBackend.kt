@@ -115,7 +115,8 @@ class AnthropicBackend(
         fun failed(message: String) = DecisionFailed(message, attempts.toList(), usage, looked = looked.toList(), musings = musings.toList(), steps = steps)
         val toolKey = offered?.joinToString(",") { it.name }
         while (failures <= config.maxRetries) {
-            val strict = config.strict && toolKey !in tooBig
+            // A concurrent set throws on a null lookup, and a call with no tools (reflections, summaries) has no key.
+            val strict = config.strict && (toolKey == null || toolKey !in tooBig)
             val response = try {
                 http.post(url, body(system, schema, turns, offered, strategy, deferred.toSet(), strict), attempts, usage)
             } catch (e: DecisionFailed) {
