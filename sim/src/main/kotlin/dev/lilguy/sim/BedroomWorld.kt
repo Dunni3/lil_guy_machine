@@ -1803,11 +1803,11 @@ class BedroomWorld private constructor(
      */
     private fun freshness(a: VerbSpec, args: Map<String, String> = emptyMap()): Double {
         if (a.isRoutine || fixing(a)) return 1.0
-        familiar?.let { return if (upkeep(a)) 1.0 else it.freshness(features(a, args), ticks) }
+        familiar?.let { return if (upkeep(a)) 1.0 else it.freshness(features(a, args), ticks).coerceAtLeast(a.freshFloor) }
         val h = content.habituation ?: return 1.0
         val (level, since) = wear[wearKey(a, args)] ?: return 1.0
         val hours = (ticks - since).toDouble() / clock.ticks(60)
-        return 1.0 - (level - h.recoverPerHour * hours).coerceIn(0.0, 1.0)
+        return (1.0 - (level - h.recoverPerHour * hours).coerceIn(0.0, 1.0)).coerceAtLeast(a.freshFloor)
     }
 
     /**
@@ -1883,7 +1883,7 @@ class BedroomWorld private constructor(
         val f = familiar ?: return freshness(a, args)
         if (a.isRoutine || fixing(a) || upkeep(a)) return 1.0
         val keys = if (a.wear == Wear.Verb || args.isEmpty()) listOf("verb:${a.id}") else args.values.distinct().map { "thing:$it" }
-        return keys.map { 1.0 / (1.0 + f.level(it, ticks)) }.average()
+        return keys.map { 1.0 / (1.0 + f.level(it, ticks)) }.average().coerceAtLeast(a.freshFloor)
     }
 
     /**

@@ -35,7 +35,7 @@ Your mood drifts each hour toward a level: the baseline plus the comfort of what
 (guide:comfort), less a little for each point you're bored below the boredom line, less a little for
 each point of frustration above its line. Activities also add mood when they finish (reading, music,
 watching visitors, playing guitar), more the more skilled you are at them and the fresher they are to
-you. Being low on energy or fullness pulls mood down every hour until you eat or rest. Making art
+you; inventing something and writing code lift it most of all. Being low on energy or fullness pulls mood down every hour until you eat or rest. Making art
 costs a little mood, and below a certain mood you're too low to make art or invent. Numbers:
 rules:needs, rules:frustration, rules:skills.
 
@@ -102,7 +102,9 @@ and qualities, the skill it practises, what it makes, and the sky when you're ou
 meet one of these it gets more familiar, and familiarity fades by half every few days. What you do
 pays its mood and stimulation at how fresh it is, a fresh finish pays a little extra, and a stale one
 drains stimulation a little. So the same thing every day stays familiar, and a fourth warm lamp is
-hardly new: to have fun, change what you do, where you do it and what you do it with. Upkeep (eating,
+hardly new: to have fun, change what you do, where you do it and what you do it with. Inventing and
+writing code wear thin only a little: what you make is new each time, so they always pay most of
+their mood and fun, more than any hobby, and boredom never refuses them. Upkeep (eating,
 sleeping, selling, hanging, shopping) doesn't count either way. When you're bored, what you've done a lot
 in the last few days is refused until you're less bored or a day or two has passed since you last did
 it (so a daily habit waits, but every other day is fine); what feeds you or rests you never is, nor
@@ -272,7 +274,7 @@ instead. Code in a thing needs copper wire for its wiring, and code that moves a
 needs metal for a mechanism. The build takes the materials from what you have; without them nothing is
 built. A design outside the rules isn't built, costs only the time, and frustrates you. A thing to look
 at takes one of the room's few spare spots, else the free spot nearest the workbench. A thing made to
-sell sells once. You can build several things a day. You can take apart a thing you invented for half its materials back, which frees its
+sell sells once, for its materials and good money for your time, far more than art pays. You can build several things a day. You can take apart a thing you invented for half its materials back, which frees its
 spot; materials you don't need sell back to the shop for about half what they cost. Numbers:
 rules:invent, verb:invent, verb:dismantle, verb:sell_materials.
 

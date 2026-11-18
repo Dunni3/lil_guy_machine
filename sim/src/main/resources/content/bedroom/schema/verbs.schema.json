@@ -763,6 +763,9 @@
             "additionalProperties": {
               "type": "number"
             }
+          },
+          "fresh_floor": {
+            "type": "number"
           }
         },
         "required": [

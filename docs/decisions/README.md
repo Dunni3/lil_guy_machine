@@ -119,4 +119,5 @@ these hold the outcome. Skim this index before related changes.
 - 2026-11-17 [No commissions: he draws what he likes, when he likes; and what he couldn't do reaches what he writes looking back](2026-11-17-no-commissions.md)
 - 2026-11-17 [The rooms he adds are reachable, have free spots, and are somewhere to do things: no slot beside a doorway, where he sits is his pick](2026-11-17-the-rooms-he-adds-are-reachable-have-spots-and-are-somewhere-to-sit.md)
 - 2026-11-17 [The compost bin collects his scraps itself (`collects`), and his observation's `tending` says which machines want him](2026-11-17-the-compost-bin-collects-his-scraps-and-he-is-told-what-wants-tending.md)
+- 2026-11-17 [Inventing and writing code pay the most mood and fun, cost little, and barely wear thin (`fresh_floor`)](2026-11-17-inventing-and-writing-code-pay-most-and-barely-wear-thin.md)
 - 2026-11-18 [He builds big things on the land, designs his own recipes and wares, and connects his machines over the air; fewer caps](2026-11-18-he-builds-big-things-designs-recipes-and-connects-machines.md)

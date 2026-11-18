@@ -32,6 +32,7 @@ object Wire {
     fun result(text: String): CommandResult = json.decodeFromString(CommandResult.serializer(), text)
     fun encode(v: Viewer): String = json.encodeToString(Viewer.serializer(), v)
     fun encode(r: RunList): String = json.encodeToString(RunList.serializer(), r)
+    fun encode(a: ArtList): String = json.encodeToString(ArtList.serializer(), a)
     fun runs(text: String): RunList = json.decodeFromString(RunList.serializer(), text)
     fun <T> encode(serializer: kotlinx.serialization.KSerializer<T>, v: T): String = json.encodeToString(serializer, v)
     fun <T> decode(serializer: kotlinx.serialization.KSerializer<T>, text: String): T = json.decodeFromString(serializer, text)
@@ -153,6 +154,14 @@ data class CommandResult(val ok: Boolean, val error: String? = null, val seq: Lo
  */
 @Serializable
 data class RunList(val runs: List<SavedRun>)
+
+/**
+ * `GET /v1/lives/{life}/art`, for anyone: every piece he has kept in the run the life is on ([runId]), from the host's
+ * run database, in the order he made them. The stream's `logs.drawings` holds only what this session drew; this is the
+ * whole run's. Empty without a database.
+ */
+@Serializable
+data class ArtList(@SerialName("run_id") val runId: String?, val pieces: List<DrawingView>)
 
 /** One recorded run. Game times are "d3 14:20": day 3 (the first is 1), at 14:20. */
 @Serializable

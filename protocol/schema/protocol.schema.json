@@ -20,6 +20,9 @@
         "runs": {
             "$ref": "#/$defs/RunList"
         },
+        "art": {
+            "$ref": "#/$defs/ArtList"
+        },
         "credentials": {
             "$ref": "#/$defs/Credentials"
         },
@@ -155,6 +158,33 @@
                 "question",
                 "opened",
                 "answer"
+            ],
+            "additionalProperties": false
+        },
+        "ArtList": {
+            "title": "ArtList",
+            "type": "object",
+            "properties": {
+                "run_id": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "pieces": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/DrawingView"
+                    }
+                }
+            },
+            "required": [
+                "run_id",
+                "pieces"
             ],
             "additionalProperties": false
         },

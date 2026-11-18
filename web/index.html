@@ -48,13 +48,53 @@
     #look button.on { background: #e07f74; color: #fff8ee; }
     /* On a phone, above the letters button rather than beside it. */
     @media (max-width: 560px) { #look { bottom: 70px; } }
+    /* His art (ui/gallery.ts): every piece of the run, to scroll through, and one shown large. */
+    #art {
+      position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+      width: min(1100px, calc(100vw - 32px)); height: calc(100vh - 32px); box-sizing: border-box;
+      display: flex; flex-direction: column; padding: 20px 24px 0;
+      background: #fff8ee; border: 6px solid #e8cfb2; border-radius: 22px; outline: none;
+      font: 600 17px/1.35 ui-rounded, system-ui, sans-serif; color: #3a2a20;
+    }
+    #art[hidden], #art-big[hidden] { display: none; }
+    #art header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; padding-bottom: 12px; border-bottom: 2px solid #f0dfc8; }
+    #art h2 { margin: 0; color: #8a7464; font-size: 15px; letter-spacing: 0.06em; }
+    #art header .grow { flex: 1; color: #8a7464; font-size: 14px; }
+    #art button { font: inherit; padding: 6px 14px; border-radius: 10px; border: 0; cursor: pointer; background: #e8cfb2; color: #3a2a20; }
+    #art button.link { background: none; padding: 4px 6px; color: #8a7464; text-decoration: underline; }
+    #art-note { margin: 10px 0 0; color: #8a7464; font-size: 14px; }
+    #art-note:empty { display: none; }
+    #art-grid {
+      list-style: none; margin: 0; padding: 16px 2px 24px; overflow-y: auto; flex: 1;
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 18px; align-content: start;
+    }
+    #art-grid li { cursor: pointer; border-radius: 14px; padding: 10px; background: #fdf1dc; outline: none; }
+    #art-grid li:hover, #art-grid li:focus-visible { background: #fde9c6; box-shadow: 0 0 0 4px #e07f74; }
+    #art canvas { position: static; touch-action: auto; display: block; width: 100%; height: auto; aspect-ratio: 1; image-rendering: pixelated; border-radius: 6px; border: 4px solid #8a6a4e; box-sizing: border-box; background: #fff; }
+    #art-grid p { margin: 6px 0 0; }
+    #art .art-title { font-size: 16px; overflow-wrap: anywhere; }
+    #art .art-meta, #art .art-status { color: #8a7464; font-size: 13px; font-weight: 500; }
+    #art-big {
+      position: absolute; inset: 0; border-radius: 16px; background: #fff8ee; padding: 20px 24px; box-sizing: border-box;
+      display: flex; gap: 24px; align-items: center; justify-content: center; flex-wrap: wrap; overflow-y: auto;
+    }
+    #art-big-frame { width: min(640px, calc(100vh - 120px), 100%); }
+    #art-big aside { width: 300px; max-width: 100%; }
+    #art-big h3 { margin: 0 0 6px; font-size: 24px; }
+    #art-big p { margin: 6px 0; }
+    #art-big-shows { font-weight: 500; }
+    #art-big-tags span { display: inline-block; margin: 6px 6px 0 0; padding: 3px 10px; border-radius: 999px; background: #f0dfc8; font-size: 13px; }
+    #art-big .row { display: flex; gap: 10px; align-items: center; margin-top: 18px; }
+    #art-big-close { position: absolute; top: 14px; right: 16px; }
     /* Letters to him (ui/mail.ts): a button in the corner, and the panel it opens over the room. */
-    #mail-open {
-      position: fixed; right: 16px; bottom: 14px; padding: 10px 18px;
+    #corner { position: fixed; right: 16px; bottom: 14px; display: flex; gap: 10px; }
+    #mail-open, #art-open {
+      padding: 10px 18px;
       font: 600 16px/1 ui-rounded, system-ui, sans-serif; color: #3a2a20;
       background: #fff8ee; border: 4px solid #e8cfb2; border-radius: 999px; cursor: pointer;
     }
-    #mail-open:hover { background: #fde9c6; }
+    #mail-open:hover, #art-open:hover { background: #fde9c6; }
+    #art-open[hidden] { display: none; }
     #mail {
       position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
       width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto; box-sizing: border-box; padding: 24px 28px;
@@ -108,7 +148,36 @@
       <button type="button" data-look="follow" title="Follow him (DOWN)">Follow him</button>
     </div>
   </div>
-  <button id="mail-open" type="button" hidden>Write to him</button>
+  <div id="corner">
+    <button id="art-open" type="button" hidden>His art</button>
+    <button id="mail-open" type="button" hidden>Write to him</button>
+  </div>
+  <section id="art" hidden aria-label="His art" tabindex="-1">
+    <header>
+      <h2>HIS ART</h2>
+      <span id="art-count" class="grow"></span>
+      <button id="art-order" type="button">Newest first</button>
+      <button id="art-close" class="link" type="button" aria-label="Close">close</button>
+    </header>
+    <p id="art-note"></p>
+    <ol id="art-grid"></ol>
+    <div id="art-big" hidden>
+      <button id="art-big-close" class="link" type="button">back to all</button>
+      <div id="art-big-frame"></div>
+      <aside>
+        <h3 id="art-big-title"></h3>
+        <p id="art-big-when" class="art-meta"></p>
+        <p id="art-big-status" class="art-status"></p>
+        <p id="art-big-shows"></p>
+        <div id="art-big-tags"></div>
+        <div class="row">
+          <button id="art-prev" type="button" aria-label="Previous piece">&larr;</button>
+          <span id="art-big-place" class="art-meta"></span>
+          <button id="art-next" type="button" aria-label="Next piece">&rarr;</button>
+        </div>
+      </aside>
+    </div>
+  </section>
   <section id="mail" hidden aria-label="Letters">
     <button id="mail-close" class="link" type="button" aria-label="Close">close</button>
     <form id="mail-auth" autocomplete="on">

@@ -91,7 +91,7 @@ class InventionTest {
         // Something to sell: the sim sets what it sells for, its materials plus the wage for a two-hour build.
         val ware = assertIs<InventRules.Checked.Ok>(rules.check(lamp.copy(name = "tin bird", use = "sellable", place = null, qualities = mapOf("pretty" to 2.0)), content, 120)).invention
         assertEquals(7 * 2 + 2 * 3, ware.cost)
-        assertEquals(20 + 8, ware.item.sellPrice)
+        assertEquals(20 + 80, ware.item.sellPrice)
         assertEquals(null, ware.item.price)
 
         // A failed design fails the verb and costs nothing.
