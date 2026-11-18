@@ -37,10 +37,20 @@ he built or put a thing in one. The live snapshot (run `01a1e006`, days 1-49) sh
   takes the nearest reachable one that's lit and warm enough (`nearestOwned`), so the scripted policy and models
   that leave it out behave as the old `at` lists did.
 
+- **He chooses where every new thing goes.** With world.yaml `carry.wait` (on in the shipped content), a thing
+  that stands somewhere arrives unplaced: one he buys waits by the mail hatch, and one he builds by the workbench
+  (`BedroomWorld.waiting`, saved with checkpoints). Until he puts it down it stands nowhere: no comfort, light,
+  sound or lure, nothing blocks, and a verb done at it is locked with "the easel is new and waiting by the mail
+  hatch; put it somewhere first (place)". `put` fetches it from where it waits. It goes only to a free spot (no
+  swap), and the spot the content keeps for it counts as free, so its usual place is one choice among the rest.
+  `Observation.put.waiting` lists what's waiting, and the place tool's description names each with where it waits. The scripted
+  policy puts a new thing at the spot named after it when there is one. Things his code makes (`world.make`)
+  still go straight to a spot; his code moves them with `world.move`. Tests of other mechanics turn `wait` off
+  (`nothingWaits()`).
+
 **Consequences.** More closed choices: read is books x seats and study_sample samples x benches. With 3 seats
 that's 3x the read options at most. Checked on the live day-49 checkpoint: he walks into the lab (9 min), puts
 the fern pot by the lab bench, studies there, and reads and plays in the armchair.
 
-**Not done.** More reasons to be in a room than a seat and a bench (the desk verbs stay at the desk). A new
-invention still goes to the bedroom's spare spots first, then the free spot nearest the workbench
-(`inventSpots`), so one made for a room has to be put there afterwards.
+**Not done.** More reasons to be in a room than a seat and a bench (the desk verbs stay at the desk). The web
+doesn't draw a waiting thing yet (a box by the hatch would show it).

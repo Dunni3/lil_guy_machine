@@ -279,6 +279,9 @@
                 },
                 "set_down": {
                   "type": "integer"
+                },
+                "wait": {
+                  "type": "boolean"
                 }
               },
               "additionalProperties": false

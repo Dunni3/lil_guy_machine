@@ -280,7 +280,9 @@ object BedroomTools {
      */
     private fun place(put: PutOptions): ToolSet.Tool {
         val wall = put.wall.orEmpty()
+        val waiting = put.waiting.orEmpty()
         val description = "Put one of your things somewhere else, indoors or out: you walk to it, carry it there and set it down, which takes a few minutes besides the walks." +
+            (if (waiting.isNotEmpty()) " New and waiting for you to choose where they go (they do nothing until you put them down): " + waiting.entries.joinToString { (id, by) -> "$id ($by)" } + "." else "") +
             (if (wall.isNotEmpty()) " ${wall.joinToString()} go${if (wall.size == 1) "es" else ""} only in a wall spot." else "") +
             " Free spots:\n" + put.spots.joinToString("\n") { g ->
                 "- ${g.place}: " + listOfNotNull(g.floor.takeIf { it.isNotEmpty() }?.joinToString(), g.wall?.let { "in the wall " + it.joinToString() }).joinToString("; ")

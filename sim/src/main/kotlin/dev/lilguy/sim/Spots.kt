@@ -13,9 +13,16 @@ import kotlinx.serialization.Serializable
  * a wall (so nothing goes outdoors that hangs), and a spot holding another thing of his swaps the two.
  *
  * Made per question from the world's current [content] and [layout]; [owns] says whether he has a thing.
+ * [waiting]: new things of his that stand nowhere yet (item id to how it's said where they wait,
+ * "by the mail hatch"). The spot each was made for is free until he chooses, and one goes only to a free spot.
  */
-class Spots(private val content: BedroomContent, private val layout: Layout, private val owns: (String) -> Boolean) {
-    private val standing: Map<String, ItemSpec> = content.items.mapNotNull { s -> s.slot?.let { it to s } }.toMap()
+class Spots(
+    private val content: BedroomContent,
+    private val layout: Layout,
+    private val waiting: Map<String, String> = emptyMap(),
+    private val owns: (String) -> Boolean,
+) {
+    private val standing: Map<String, ItemSpec> = content.items.mapNotNull { s -> s.slot?.takeIf { s.id !in waiting }?.let { it to s } }.toMap()
 
     fun isWall(spot: String) = spot in content.room.wallSlots
 
@@ -34,12 +41,14 @@ class Spots(private val content: BedroomContent, private val layout: Layout, pri
         if (!owns(id)) return "you don't have the ${s.name}"
         if (s.group == FIXTURE) return "the ${s.name} is part of the house or the land, and stays where it is"
         val from = s.slot?.takeIf { it in layout.slotCells } ?: return "the ${s.name} doesn't stand anywhere; only furniture and decor can be put somewhere else"
-        if (spot == from) return "the ${s.name} is already at $spot"
+        val new = id in waiting
+        if (spot == from && !new) return "the ${s.name} is already at $spot"
         if (spot !in layout.slotCells) return "there's no spot called '$spot'"
         if (RECORDER in s.affords && spot !in content.world?.slots.orEmpty()) return "the ${s.name} logs the weather where it stands, so it goes on a spot outdoors"
         if (isWall(spot) != isWall(from)) return "the ${s.name} goes ${if (isWall(from)) "in a wall" else "on the ground"}, and $spot is ${if (isWall(spot)) "in a wall" else "on the ground"}"
         val other = standing[spot]
         if (other != null && (!owns(other.id) || other.group == FIXTURE)) return "$spot is kept for the ${other.name}"
+        if (other != null && new) return "the ${other.name} stands at $spot; the ${s.name} is new, so it goes to a free spot"
         return null
     }
 
@@ -58,7 +67,10 @@ class Spots(private val content: BedroomContent, private val layout: Layout, pri
         val things = movable()
         val spots = freeByPlace()
         if (things.isEmpty() || spots.isEmpty()) return null
-        return PutOptions(things.filter { !isWall(it.slot!!) }.map { it.id }, things.filter { isWall(it.slot!!) }.map { it.id }.ifEmpty { null }, spots)
+        return PutOptions(
+            things.filter { !isWall(it.slot!!) }.map { it.id }, things.filter { isWall(it.slot!!) }.map { it.id }.ifEmpty { null }, spots,
+            waiting.filterKeys { owns(it) }.ifEmpty { null },
+        )
     }
 
     companion object {
@@ -69,7 +81,8 @@ class Spots(private val content: BedroomContent, private val layout: Layout, pri
 /**
  * What he could put where ([Intent.Put]): the things of his on the ground ([things]) and in walls
  * ([wall]), and the free spots by place. A spot holding another thing of his works too (they swap),
- * but only the free ones are listed, to keep the prompt short.
+ * but only the free ones are listed, to keep the prompt short. [waiting]: the new ones among them,
+ * standing nowhere until he puts them somewhere, to where they wait ("by the mail hatch").
  */
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
@@ -77,6 +90,7 @@ data class PutOptions(
     val things: List<String>,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val wall: List<String>? = null,
     val spots: List<FreeSpots>,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val waiting: Map<String, String>? = null,
 )
 
 /** The free spots in one place (its name): on the ground, and in its walls. */

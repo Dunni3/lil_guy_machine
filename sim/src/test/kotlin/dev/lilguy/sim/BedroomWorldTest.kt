@@ -20,7 +20,7 @@ class BedroomWorldTest {
         "wood", "metal", "copper_wire", "glass",
     ) + BedroomContent.default().items.filter { it.group == "decor" || it.group == "room" || (it.group == "food" && it.id !in setOf("meal", "oats")) }.map { it.id }
     /** Books here teach nothing, so painting and the guitar are there from the start; [shipped] is the file as it is. */
-    private val content = BedroomContent.default().let { c ->
+    private val content = BedroomContent.default().nothingWaits().let { c ->
         c.copy(
             items = c.items.map { if (it.id in tier1) it.copy(tier = 1) else it },
             verbs = c.verbs.map { if (it.id in tier1) it.copy(tier = 1) else it },

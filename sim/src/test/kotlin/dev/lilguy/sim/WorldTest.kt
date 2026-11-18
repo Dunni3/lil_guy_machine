@@ -128,6 +128,29 @@ class WorldTest {
     }
 
     @Test
+    fun `a new thing waits by the hatch, doing nothing, until he chooses where it goes, and it waits through a checkpoint`() {
+        val shipped = BedroomContent.default()
+        val w = BedroomWorld.create(shipped.copy(start = shipped.start.copy(money = 500)))
+        w.run(Intent.Buy("plant"))
+        assertTrue(w.observe(w.agentId).recentEvents.any { "it waits by the mail hatch" in it }, w.observe(w.agentId).recentEvents.toString())
+        w.run(Intent.Buy("record_player"))
+        w.run(Intent.Buy("jazz_record"))
+        assertTrue(w.snapshot().entities.none { it.id.value == "plant" || it.id.value == "record_player" }, "they stand nowhere yet")
+        assertEquals(setOf("plant", "record_player"), w.observe(w.agentId).put!!.waiting!!.keys)
+        val play = w.observe(w.agentId).activities!!.first { it.id == "play_record" }
+        assertTrue("record player is new and waiting by the mail hatch" in play.locked!!, play.locked)
+        // A checkpoint keeps them waiting.
+        val back = BedroomWorld.restore(w.exportState(), shipped, strict = true).world
+        assertEquals(setOf("plant", "record_player"), back.observe(back.agentId).put!!.waiting!!.keys)
+        // He chooses: the plant out by the front door, the record player in its own spot on the shelf.
+        assertIs<IntentStatus.Succeeded>(w.run(Intent.Put("plant", "by_front_door")).status)
+        assertEquals("outside", w.snapshot().entities.first { it.id.value == "plant" }.place)
+        assertIs<IntentStatus.Succeeded>(w.run(Intent.Put("record_player", "shelf")).status)
+        assertEquals(null, w.observe(w.agentId).put!!.waiting)
+        assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("play_record", what = "jazz_record", on = "record_player")).status)
+    }
+
+    @Test
     fun `after the first day he sees what he has done lately and what he never has`() {
         val w = BedroomWorld.create()
         assertEquals(null, w.observe(w.agentId).lately, "on day 1 everything is new")

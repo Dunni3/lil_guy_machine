@@ -79,7 +79,9 @@ world:
     by_clearing_log: [30, 19]
     trailside: [23, 15]
   # Putting a thing somewhere else: game minutes to lift it and to set it down, besides the walks.
-  carry: { lift: 2, set_down: 3 }
+  # `wait`: a new thing that stands somewhere (bought, or built at the workbench) waits by the mail
+  # hatch or the workbench, counting for nothing, until he chooses where it goes and puts it there.
+  carry: { lift: 2, set_down: 3, wait: true }
   # What grows on the land. A patch is hidden until he explores its place (the `survey` op); then
   # `collect` takes what it yields (the `gather` op), and it's bare for `regrow_hours`.
   finds:

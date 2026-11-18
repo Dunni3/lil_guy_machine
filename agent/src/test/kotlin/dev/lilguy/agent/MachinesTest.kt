@@ -20,8 +20,12 @@ import kotlin.test.assertTrue
 
 /** The sprinkler of the machines plan: a thing he invents that acts on its own place, shows it, and is remembered there. */
 class MachinesTest {
+    // What he builds goes straight to its spot here (world.yaml `carry.wait` off): this is about what it does there.
     private val content = BedroomContent.default().let { c ->
-        c.copy(start = c.start.copy(money = 100, items = c.start.items + mapOf("workbench" to 1, "metal" to 15, "copper_wire" to 10, "glass" to 10)))
+        c.copy(
+            start = c.start.copy(money = 100, items = c.start.items + mapOf("workbench" to 1, "metal" to 15, "copper_wire" to 10, "glass" to 10)),
+            world = c.world?.let { it.copy(carry = it.carry.copy(wait = false)) },
+        )
     }
 
     private fun BedroomWorld.finish(intent: Intent): IntentStatus {

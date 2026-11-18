@@ -45,6 +45,25 @@ class BedroomPolicy(
         return Decision(value, schema.rationaleOf(value), Usage(), started.elapsedNow(), raw)
     }
 
+    /** Spots tried for a new thing, so one refused (a weather station indoors) isn't tried again. */
+    private val triedSpots = mutableSetOf<Pair<String, String>>()
+
+    /**
+     * A new thing waiting to be put somewhere goes to the free spot named after it if there's one (the spot
+     * the room keeps for it), else the first free spot of its kind he hasn't tried, rooms first.
+     */
+    private fun putAway(obs: Observation): Pair<Intent, String>? {
+        val put = obs.put ?: return null
+        for (thing in put.waiting.orEmpty().keys) {
+            val wall = thing in put.wall.orEmpty()
+            val spots = put.spots.flatMap { if (wall) it.wall.orEmpty() else it.floor }.filter { (thing to it) !in triedSpots }
+            val spot = spots.firstOrNull { it == thing } ?: spots.firstOrNull() ?: continue
+            triedSpots += thing to spot
+            return Intent.Put(thing, spot) to "Scripted: put the new $thing at $spot."
+        }
+        return null
+    }
+
     private fun choose(obs: Observation): Pair<Intent, String> {
         val needs = obs.needs ?: error("not a bedroom observation")
         val money = obs.money ?: 0
@@ -62,6 +81,7 @@ class BedroomPolicy(
                 return Intent.Put(put[1], put[2]) to "Scripted: put the ${put[1]} at ${put[2]}."
             }
         }
+        putAway(obs)?.let { return it }
         val mealPrice = obs.shop.orEmpty().firstOrNull { it.id == "meal" }?.price ?: 0
         val affordable = obs.shop.orEmpty().filter { it.affordable }.map { it.id }.toSet()
         val meals = obs.owns.orEmpty()["meal"] ?: 0

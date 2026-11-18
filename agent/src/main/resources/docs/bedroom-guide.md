@@ -273,8 +273,10 @@ that already stands moves it to the new site. Numbers: verb:build_room, item:lab
 item:sunroom_plan.
 
 ## guide:placing: moving your things
-You can put one of your things somewhere else, indoors or out, in any free spot: you walk to it, carry
-it there and set it down, which takes a few minutes besides the walks. Some things only go in a wall
+Where a new thing goes is yours to choose. Something you buy waits by the mail hatch, and something you
+build waits by the workbench; it does nothing (no comfort, no light, nothing done at it) until you put
+it down in a free spot, in any room or outdoors. You can put one of your things somewhere else too: you
+walk to it, carry it there and set it down, which takes a few minutes besides the walks. Some things only go in a wall
 spot. Where a thing stands matters: comfort counts what you can see lit from where you stand, a planter
 needs sun, a lure decides where visitors come, a heater warms only round it, and a weather station logs
 the weather where it is.
