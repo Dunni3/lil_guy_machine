@@ -67,6 +67,9 @@ class AnthropicBackend(
 
     private val url = config.baseUrl.trimEnd('/') + "/messages"
 
+    /** Tool sets (their names, in order) the API refused as strict because their grammar was too large. */
+    private val tooBig: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
     override suspend fun <A> decide(request: DecisionRequest, schema: ActionSchema<A>): Decision<A> {
         val started = TimeSource.Monotonic.markNow()
         val own = request.tools?.takeIf { capabilities.toolCalls }
@@ -110,8 +113,18 @@ class AnthropicBackend(
             return Decision(value, said.ifEmpty { null }, usage, started.elapsedNow(), said, attempts.toList(), looked.toList(), musings.toList(), pondered = true, steps = steps)
         }
         fun failed(message: String) = DecisionFailed(message, attempts.toList(), usage, looked = looked.toList(), musings = musings.toList(), steps = steps)
+        val toolKey = offered?.joinToString(",") { it.name }
         while (failures <= config.maxRetries) {
-            val response = http.post(url, body(system, schema, turns, offered, strategy, deferred.toSet()), attempts, usage)
+            val strict = config.strict && toolKey !in tooBig
+            val response = try {
+                http.post(url, body(system, schema, turns, offered, strategy, deferred.toSet(), strict), attempts, usage)
+            } catch (e: DecisionFailed) {
+                // Strict tools are compiled into one grammar, and a big enough set (the workbench's) is refused whole:
+                // that set goes unstrict from now on, and the call is sent again.
+                if (!strict || toolKey == null || e.message?.contains(GRAMMAR_TOO_LARGE) != true) throw e
+                tooBig += toolKey
+                continue
+            }
             usage += usageOf(response)
             val content = response["content"] as? JsonArray ?: throw failed("reply has no content: ${response.toString().take(300)}")
             val stop = (response["stop_reason"] as? JsonPrimitive)?.contentOrNull
@@ -208,7 +221,7 @@ class AnthropicBackend(
         return acting.filter { it !in loaded }
     }
 
-    private fun <A> body(system: String, schema: ActionSchema<A>, turns: Turns, tools: List<ActionSchema.Tool>?, strategy: Strategy, deferred: Set<String> = emptySet()) =
+    private fun <A> body(system: String, schema: ActionSchema<A>, turns: Turns, tools: List<ActionSchema.Tool>?, strategy: Strategy, deferred: Set<String> = emptySet(), strict: Boolean = config.strict) =
         buildJsonObject {
             put("model", config.model)
             put("max_tokens", config.maxTokens ?: DEFAULT_MAX_TOKENS)
@@ -228,7 +241,7 @@ class AnthropicBackend(
             if (strategy == Strategy.Tools) {
                 // The API takes at most MAX_STRICT_TOOLS strict tools a request; past that none are strict (replies are validated here anyway).
                 // Deferred tools are never strict, so they don't count toward the limit.
-                val strictAllowed = config.strict && tools!!.count { it.name !in deferred } <= MAX_STRICT_TOOLS
+                val strictAllowed = strict && tools!!.count { it.name !in deferred } <= MAX_STRICT_TOOLS
                 put("tools", buildJsonArray {
                     tools!!.forEach { tool ->
                         add(buildJsonObject {
@@ -305,6 +318,9 @@ class AnthropicBackend(
         const val DEFAULT_MAX_TOKENS = 16_000
         /** Strict tools the API takes in one request. */
         const val MAX_STRICT_TOOLS = 20
+
+        /** What the API's 400 says when strict tools together compile to too big a grammar. */
+        const val GRAMMAR_TOO_LARGE = "grammar is too large"
         /** The API's tool search, by BM25 over the deferred tools' names and descriptions. */
         private const val SEARCH_TOOL_TYPE = "tool_search_tool_bm25_20251119"
         private const val SEARCH_TOOL = "tool_search_tool_bm25"

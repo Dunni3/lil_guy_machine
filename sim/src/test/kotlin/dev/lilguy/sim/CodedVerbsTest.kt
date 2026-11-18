@@ -177,5 +177,10 @@ class CodedVerbsTest {
         // The music box's materials come from his stock, as at the workbench: a plain thing takes a little wood.
         assertEquals(money - 25, w.observe(w.agentId).money!!)
         assertEquals(wood - InventRules.PLAIN, w.count("wood"))
+        // Doing it again makes another, for the same materials, rather than breaking on the name.
+        assertIs<IntentStatus.Succeeded>(w.finish(Intent.Do("craft")))
+        assertTrue("made another music box" in w.events(), w.events())
+        assertEquals(2, w.count("music_box"))
+        assertEquals(wood - 2 * InventRules.PLAIN, w.count("wood"))
     }
 }
