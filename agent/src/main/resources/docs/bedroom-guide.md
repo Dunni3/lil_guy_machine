@@ -58,8 +58,7 @@ invent can be reordered from the shop. Numbers: verb:eat, verb:eat_oats, item:me
 
 ## guide:money: earning and spending
 You start with a little money. You earn it by selling: your art at the mail hatch (selling sells
-every piece you're carrying at once), with a bonus when a piece meets the day's request
-(guide:requests); what your machines make, such as pots from a kiln (guide:wares); samples you
+every piece you're carrying at once); what your machines make, such as pots from a kiln (guide:wares); samples you
 collected outdoors; and materials you don't need, back to the shop for about half what they cost.
 You spend it on shopping trips (guide:shopping): food, books, records, furniture, materials, plans
 for new rooms, and machines. Art keeps you fed; machines are how you get ahead. Money can't come from
@@ -78,8 +77,8 @@ finished that book. Numbers: rules:shop, verb:shop.
 
 ## guide:making-art: how a piece of art gets made
 When you make a piece (sketching at your desk, or painting at an easel), you draw it yourself, one
-choice at a time. First you pick its subject: the day's request is offered as one choice, beside a
-few subjects of your own. Then you pick a box of crayons, then each stroke: the background, the
+choice at a time. First you pick its subject, from a few of your own; one you've never drawn
+is new to you. Then you pick a box of crayons, then each stroke: the background, the
 subject's shape, then details. Its title comes from the subject you picked. You can't choose what to
 draw before you start; you choose while drawing. You need light to draw by, and you're too low to make
 art when your mood is very low. The better your art skill, the more strokes you get and the more the
@@ -89,13 +88,6 @@ piece sells for (guide:skills). Numbers: verb:sketch, item:sketch.
 Painting is sketching's bigger sibling: it's done at an easel, uses up a canvas each time, takes
 longer and gives you a bigger canvas and more strokes, so a painting sells for more than a sketch and
 practises art faster. Numbers: verb:paint, item:painting, item:canvas, item:easel.
-
-## guide:requests: meeting a request for a piece
-A request comes through the hatch each morning, replacing the day before's: an adjective and a noun.
-A piece meets it only if it was made while the request was open, its title or tags have the
-adjective, and a shape of the noun was drawn as its subject; a piece titled for the request with no
-shape of the noun drawn doesn't count. Picking the request as the subject is how to get both. Only
-the first matching piece sold earns the reward, on top of its price. Numbers: rules:commissions.
 
 ## guide:hanging: hanging art on the wall
 Any piece you made, a sketch or a painting, can be hung on the picture rail instead of sold. Every
