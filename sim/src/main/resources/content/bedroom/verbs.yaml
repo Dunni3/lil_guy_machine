@@ -96,17 +96,21 @@ verbs:
   # model writes before he starts (agent/.../invent/Inventor.kt), and `build` checks the design
   # against rules.yaml `invent`, charges its materials and adds it to his world. A design that's
   # refused fails the verb and tells him why.
+  # Inventing and writing code are what we most want him doing, so they're quick, cheap in energy and
+  # pay more mood and fun than any hobby; `fresh_floor` keeps that pay from wearing thin, since what
+  # he makes is new each time though the bench and the desk aren't.
   - id: invent
     kind: generative
     phrase: invent something new and build it
     at: [workbench]
-    minutes: 120
+    minutes: 60
+    fresh_floor: 0.8
     block: [{ need: mood, below: 25, reason: "too low to invent anything" }]
     needs: { light: 3 }
     effects:
       - write: { with: invention, into: [events], timing: before }
       - build: {}
-      - need: { energy: -4, stimulation: 12 }
+      - need: { energy: -1, mood: 12, stimulation: 25 }
   # He writes code at his desk: new verbs of his own, and what his things do by themselves, in
   # JavaScript against the world's API (sim/.../Scripts.kt). A coder model writes it before he starts
   # (agent/.../code/Coder.kt) and `define` checks and puts it in; naming one of his verbs rewrites it.
@@ -115,12 +119,13 @@ verbs:
     kind: expressive
     phrase: write code for a new thing to do, or for what one of your things does
     at: [desk]
-    minutes: 60
+    minutes: 30
+    fresh_floor: 0.8
     needs: { light: 3 }
     effects:
       - write: { with: verb_code, into: [events], timing: before }
       - define: {}
-      - need: { energy: -3, stimulation: 10 }
+      - need: { energy: -1, mood: 10, stimulation: 20 }
   - id: sell_art
     kind: economic
     phrase: sell your art

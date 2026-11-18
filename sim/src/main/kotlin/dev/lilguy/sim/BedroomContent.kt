@@ -278,6 +278,7 @@ data class BedroomContent(
             require(a.effects.isNotEmpty()) { "$where does nothing: give it `effects`" }
             (a.effects.flatMap { it.problems(this, a) } + a.kind.violations(a, affordances)).takeIf { it.isNotEmpty() }?.let { throw IllegalArgumentException("$where: " + it.joinToString("; ")) }
             require((a.minutes != null) != (a.until != null)) { "$where needs exactly one of `minutes` and `until`" }
+            require(a.freshFloor in 0.0..1.0) { "$where: fresh_floor runs 0 to 1" }
             a.until?.let { u ->
                 GameClock.parseHhmm(u.time)
                 require(u.need == null || a.effects.any { it is RateOp && u.need in it.perHour }) { "$where: until ${u.need} needs a rate for ${u.need}" }
@@ -845,6 +846,12 @@ data class VerbSpec(
     val code: VerbCode? = null,
     /** What it needs where it's done, effect kind ([EffectKind]) to the least level: `{ light: 3 }` is too dark to read below 3. */
     val needs: Map<String, Double> = emptyMap(),
+    /**
+     * Its gains are paid at no less than this freshness however familiar it has grown, and the bored lock
+     * passes it over while that's above the lock's line. For making something new (inventing, writing code):
+     * what he makes is new each time, though the bench and the desk aren't. 0: no floor.
+     */
+    @SerialName("fresh_floor") val freshFloor: Double = 0.0,
 ) {
     /** Marked routine, or of a kind that always is (selling, sleeping). */
     val isRoutine: Boolean get() = routine || kind.routine
