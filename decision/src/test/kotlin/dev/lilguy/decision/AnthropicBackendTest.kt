@@ -51,4 +51,26 @@ class AnthropicBackendTest {
             server.stop(0)
         }
     }
+
+    @Test
+    fun `a call with no tools goes through`() {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/") { ex ->
+            ex.requestBody.readAllBytes()
+            val bytes = """{"content":[{"type":"text","text":"{\"n\":3}"}],"stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":2}}""".toByteArray()
+            ex.sendResponseHeaders(200, bytes.size.toLong())
+            ex.responseBody.use { it.write(bytes) }
+            ex.close()
+        }
+        server.start()
+        try {
+            val config = EndpointConfig(kind = "anthropic", baseUrl = "http://127.0.0.1:${server.address.port}/v1", model = "m", structuredOutput = StructuredOutput.JsonSchema)
+            val schema = ActionSchema("pick", Pick.serializer(), JsonObject(emptyMap()))
+            AnthropicBackend(config, "k").use { model ->
+                assertEquals(Pick(3), runBlocking { model.decide(DecisionRequest(system = "pick", messages = emptyList()), schema) }.value)
+            }
+        } finally {
+            server.stop(0)
+        }
+    }
 }
