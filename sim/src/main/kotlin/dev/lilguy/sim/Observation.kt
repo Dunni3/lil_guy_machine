@@ -72,6 +72,11 @@ data class Observation(
      * for two days or more, or ever. So a run of the same few things is something he can see.
      */
     @EncodeDefault(EncodeDefault.Mode.NEVER) val lately: List<String>? = null,
+    /**
+     * His machines that want him, wherever they are: jammed, holding what they made, or empty while he
+     * has what they take ("the kiln (the garden) is empty, and you have 4 clays to put in (tend)"); null when none do.
+     */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val tending: List<String>? = null,
     /** Authored ops waiting for (or given) their results, for the agent layer; never shown to models. */
     @Transient val authored: List<AuthoredView> = emptyList(),
     /**

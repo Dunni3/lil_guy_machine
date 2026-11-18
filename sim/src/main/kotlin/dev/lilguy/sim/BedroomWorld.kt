@@ -2731,13 +2731,16 @@ class BedroomWorld private constructor(
      */
     private fun usesOf(spec: ItemSpec): List<VerbSpec> = memo?.uses?.getOrPut(spec.id) { findUses(spec) } ?: findUses(spec)
 
-    private fun findUses(spec: ItemSpec): List<VerbSpec> = content.verbs.filter { a ->
+    private fun findUses(spec: ItemSpec): List<VerbSpec> = verbsFor(spec).filterNot { a ->
+        a.args.isNotEmpty() && a.args.values.all { it in spec.names } &&
+            a.effects.any { it.lockReason(ops, Bound(a, a.args.mapValues { spec.id }, 1.0, extra = spec.id)) != null }
+    }
+
+    /** The verbs [spec] is where they happen, or what they need or use, refused for it now or not: [usesOf] before it drops those. */
+    private fun verbsFor(spec: ItemSpec): List<VerbSpec> = content.verbs.filter { a ->
         isKnown(a.id) && (spec.id in a.at || (a.requires + a.effects.flatMap { it.asksFor } + a.args.values).any { it in spec.names } ||
             // A material is for building: the shop holds it back until he has a workbench, and says it's for invent.
             (content.invent?.materials?.containsKey(spec.id) == true && a.ops<BuildOp>().isNotEmpty()))
-    }.filterNot { a ->
-        a.args.isNotEmpty() && a.args.values.all { it in spec.names } &&
-            a.effects.any { it.lockReason(ops, Bound(a, a.args.mapValues { spec.id }, 1.0, extra = spec.id)) != null }
     }
 
     /** Where [a] happens, as item ids or affordances (an `on` argument by what fills it); empty for `here`. */
@@ -2912,6 +2915,7 @@ class BedroomWorld private constructor(
             skills = content.vocabulary.skills.takeIf { it.isNotEmpty() }?.let { skillView() },
             books = bookViews().ifEmpty { null },
             lately = lately(),
+            tending = works.tending(worksHost),
             authored = authored.toList(),
             outcome = last?.outcome,
             news = news(),
@@ -3029,6 +3033,7 @@ class BedroomWorld private constructor(
             add("working" to when {
                 s.broken -> "no: jammed until it's mended"
                 recipe != null -> "${recipe.says}, ${(s.progress / (recipe.hours * 60) * 100).roundToInt()}% through a batch" + (s.told?.let { " ($it)" } ?: "")
+                s.told == Works.Stuck.Empty.text -> "no: empty" + works.wants(worksHost, spec.id)?.let { "; $it" }.orEmpty()
                 s.told != null -> "no: ${s.told}"
                 else -> "no"
             })
@@ -3060,11 +3065,12 @@ class BedroomWorld private constructor(
     }
 
     /**
-     * The verbs [spec] is for ([usesOf]), each as it stands for this thing: open with what it takes and
-     * gives, when an open option is for it (or, where it's only the place or tool, any open option is),
-     * else locked with why.
+     * The verbs [spec] is for, each as it stands for this thing: open with what it takes and gives, when
+     * an open option is for it (or, where it's only the place or tool, any open option is), else locked
+     * with why. Unlike [usesOf] it keeps a verb its ops refuse for it now (tending an empty raised bed
+     * with nothing to put in), since why not is what the inspector is for.
      */
-    private fun gadgetUses(spec: ItemSpec): List<UseView> = usesOf(spec).map { a ->
+    private fun gadgetUses(spec: ItemSpec): List<UseView> = verbsFor(spec).map { a ->
         lockReason(a)?.let { return@map UseView(a.id, a.phrase, null, it) }
         val filler = a.args.values.any { answers(spec.id, it) }
         val open = current.activities.filter { it.id == a.id && it.locked == null }

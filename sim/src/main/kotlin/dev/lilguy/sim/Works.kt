@@ -10,14 +10,17 @@ import kotlin.math.roundToInt
 /**
  * What a machine is (items.yaml `machine`, or an invention's `runs`): the [runs] it makes things by
  * (rules.yaml `machines.recipes`), how much it [holds] of each thing it takes and of what it makes,
- * and the [wear] a batch adds. Null fields take the rules'.
- * (`docs/decisions/2026-11-15-machines-are-fed-and-wear-out-instead-of-uncapped.md`)
+ * and the [wear] a batch adds. Null fields take the rules'. [collects]: things it takes that it gathers
+ * from his things by itself, wherever he is, up to what it holds (the compost bin his food scraps).
+ * (`docs/decisions/2026-11-15-machines-are-fed-and-wear-out-instead-of-uncapped.md`,
+ * `docs/decisions/2026-11-17-the-compost-bin-collects-his-scraps-and-he-is-told-what-wants-tending.md`)
  */
 @Serializable
 data class MachineSpec(
     val runs: List<String> = emptyList(),
     val holds: Int? = null,
     val wear: Double? = null,
+    val collects: List<String> = emptyList(),
 )
 
 /**
@@ -83,6 +86,10 @@ data class MachineRules(
         c.items.forEach { item ->
             item.machine?.runs?.forEach { if (recipe(it) == null) p += "item ${item.id} runs '$it', which isn't a recipe in rules.yaml machines" }
             item.machine?.let { m -> if (item.slot == null) p += "item ${item.id} is a machine, so it needs a slot to stand in" else if ((m.holds ?: 1) < 1 || (m.wear ?: 0.0) < 0) p += "item ${item.id}: machine holds at least 1, wear not negative" }
+            item.machine?.let { m ->
+                val takes = m.runs.mapNotNull(::recipe).flatMap { it.takes.keys }
+                m.collects.filter { it !in takes }.forEach { p += "item ${item.id} collects '$it', which none of its recipes takes" }
+            }
         }
         return p
     }
@@ -190,13 +197,21 @@ class Works {
         ids.forEach { work(h, it) }
     }
 
-    /** Takes what [id] needs from what machines within reach of it have made. */
+    /** Takes what [id] collects from his things, and what it needs from what machines within reach of it have made. */
     private fun feed(h: WorksHost, id: String, all: List<String>) {
         val at = h.standing(id) ?: return
         var s = store(id)
         val room = holds(h, id)
         val wants = takes(h, id).filter { (s.inputs[it] ?: 0) < room }
         if (wants.isEmpty()) return
+        // What it collects it gathers quietly: scraps going in the bin aren't news.
+        for (item in h.content.item(id)?.machine?.collects.orEmpty().filter { it in wants }) {
+            val k = h.take(item, min(h.count(item), room - (s.inputs[item] ?: 0)))
+            if (k <= 0) continue
+            s = s.copy(inputs = s.inputs.plusCount(item, k))
+            set(id, s)
+            h.changed()
+        }
         val place = h.layout.placeOf(at)
         val reach = rules(h).reach
         for (other in all) {
@@ -333,6 +348,49 @@ class Works {
         set(id, s.copy(told = s.told.takeIf { it == Stuck.Broken.text }))
         h.changed()
         return parts + listOfNotNull(status(h, id)?.let { "it's $it" })
+    }
+
+    /**
+     * What an empty [id] waits on, for the inspector: "a batch takes 1 compost brick, which the compost bin
+     * beside it makes" (or "which he puts in"); null for a machine without recipes.
+     */
+    fun wants(h: WorksHost, id: String): String? {
+        val near = machines(h).filter { it != id && h.content.item(it)?.machine != null && near(h, id, it) }
+        return recipes(h, id).takeIf { it.isNotEmpty() }?.joinToString("; or ") { r ->
+            "a batch takes " + r.takes.entries.joinToString(" and ") { (item, n) ->
+                val maker = near.firstOrNull { other -> recipes(h, other).any { item in it.makes } }
+                h.quantity(item, n) + (maker?.let { ", which the ${name(h, it)} beside it makes" } ?: ", which he puts in")
+            }
+        }
+    }
+
+    /**
+     * What his machines want of him, a line each, for his observation (`tending`): one jammed until it's
+     * mended, one holding what it made that nothing beside it takes, or one stopped with nothing to work
+     * on while he has what it takes. Null when none does.
+     */
+    fun tending(h: WorksHost): List<String>? {
+        val all = machines(h).filter { h.content.item(it)?.machine != null && h.standing(it) != null }
+        return all.mapNotNull { id ->
+            val s = store(id)
+            val where = h.standing(id)?.let { h.layout.placeOf(it)?.name }?.let { " ($it)" }.orEmpty()
+            val made = s.outputs.filterKeys { item -> all.none { other -> other != id && near(h, id, other) && item in takes(h, other) && (store(other).inputs[item] ?: 0) < holds(h, other) } }
+            when {
+                s.broken -> "the ${name(h, id)}$where is jammed: mend it (repair) before it works again"
+                made.isNotEmpty() -> "the ${name(h, id)}$where has ${made.entries.joinToString(" and ") { (item, n) -> h.quantity(item, n) }} made, waiting to be taken out (tend)" +
+                    if (s.told == Stuck.Full.text) "; it's full, and stopped until you do" else ""
+                recipes(h, id).none { has(s, it) } && loadable(h, id).isNotEmpty() ->
+                    "the ${name(h, id)}$where is empty, and you have ${loadable(h, id).entries.joinToString(" and ") { (item, n) -> h.quantity(item, n) }} to put in (tend)"
+                else -> null
+            }
+        }.ifEmpty { null }
+    }
+
+    /** Whether [a] and [b] stand within reach of each other, in the same place. */
+    private fun near(h: WorksHost, a: String, b: String): Boolean {
+        val x = h.standing(a) ?: return false
+        val y = h.standing(b) ?: return false
+        return h.layout.placeOf(x) == h.layout.placeOf(y) && max(abs(x.x - y.x), abs(x.y - y.y)) <= rules(h).reach
     }
 
     /** "jammed", "worn (wear 60)", or null for a machine in good order. */

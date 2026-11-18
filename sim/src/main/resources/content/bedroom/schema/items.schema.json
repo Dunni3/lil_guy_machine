@@ -222,6 +222,12 @@
                       "number",
                       "null"
                     ]
+                  },
+                  "collects": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
                   }
                 },
                 "additionalProperties": false

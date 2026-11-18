@@ -29,16 +29,23 @@ class WorksTest {
     fun `scraps from a meal become compost, the raised bed beside the bin takes it and grows tomatoes, and the bin wears, jams and is mended`() {
         val w = BedroomWorld.create(content("compost_bin" to 1, "raised_bed" to 1, "food_scrap" to 20, "spare_parts" to 1, "meal" to 1))
         w.done(Intent.Do("eat", what = "meal"))
-        assertEquals(21, w.count("food_scrap"), "eating leaves a scrap")
+        assertEquals(21, w.count("food_scrap") + (w.store("compost_bin").inputs["food_scrap"] ?: 0), "eating leaves a scrap")
 
-        // He carries the scraps over; the bin works through them, and the raised bed within reach takes what it makes.
+        // The bin collects his scraps by itself and works through them, and the raised bed within reach takes what it makes;
+        // he only takes the tomatoes out, when what he sees says the bed wants him.
         var hours = 0
+        var told = false
         while (!w.store("compost_bin").broken && hours < 200) {
-            if (w.open("tend", "compost_bin") && w.count("food_scrap") >= 3) w.done(Intent.Do("tend", on = "compost_bin"))
-            if (w.open("tend", "raised_bed") && "take out" in w.observe(w.agentId).activities!!.first { it.id == "tend" && it.on == "raised_bed" }.gives.orEmpty()) w.done(Intent.Do("tend", on = "raised_bed"))
+            val tending = w.observe(w.agentId).tending.orEmpty()
+            if (tending.any { "raised bed" in it && "cherry tomatoes made" in it }) {
+                told = true
+                w.done(Intent.Do("tend", on = "raised_bed"))
+            }
             repeat(3) { w.finish(Intent.Wait(GridWorld.MAX_WAIT)) }
             hours += 2
         }
+        assertTrue(told, "he was told the raised bed had tomatoes waiting")
+        assertTrue(w.observe(w.agentId).tending.orEmpty().any { "compost bin" in it && "jammed" in it }, "${w.observe(w.agentId).tending}")
         val bin = w.store("compost_bin")
         assertTrue(bin.broken, "the bin jams after enough batches: $bin")
         assertTrue(w.count("cherry_tomatoes") >= 1, "the raised bed grew food from the bin's compost: ${w.exportState().works}")
@@ -59,10 +66,16 @@ class WorksTest {
 
     @Test
     fun `the inspector's view of a machine says what it makes, what's in it, how worn it is and that he can tend it`() {
-        val w = BedroomWorld.create(content("compost_bin" to 1, "food_scrap" to 3))
+        val w = BedroomWorld.create(content("compost_bin" to 1, "raised_bed" to 1, "food_scrap" to 3))
         fun bin() = w.snapshot().life!!.gadgets.first { it.id == "compost_bin" }
         assertTrue(bin().uses.any { it.verb == "tend" && it.locked == null }, "${bin().uses}")
-        w.done(Intent.Do("tend", on = "compost_bin"))
+        // An empty raised bed with nothing of his to put in still shows tend, locked with why, and says where its compost comes from.
+        w.finish(Intent.Wait(GridWorld.MAX_WAIT))
+        val bed = w.snapshot().life!!.gadgets.first { it.id == "raised_bed" }
+        assertTrue(bed.uses.any { it.verb == "tend" && it.locked?.contains("compost brick") == true }, "${bed.uses}")
+        assertTrue(bed.state.any { it.first == "working" && "which the compost bin beside it makes" in it.second }, "${bed.state}")
+        // The bin collected his scraps by itself meanwhile.
+        assertEquals(0, w.count("food_scrap"))
         val g = bin()
         assertTrue(g.about.any { "food scrap" in it && "compost brick" in it }, "${g.about}")
         assertEquals(listOf("3 food scraps"), g.holds.map { it.what })

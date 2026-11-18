@@ -414,7 +414,7 @@ object BedroomPrompt {
             |- ${if (map != null) "place: where you are, and places: where else you could go, with the walk there. put: your things you could move, and the free spots by place. " else ""}${if (content.light != null) "light: how lit it is round you, when anything near you is too dark for something. " else ""}${sensesDoc(content)?.let { "$it " }.orEmpty()}self and nearby: where you are and the furniture around you, with tile x and y${if (content.light != null) " (remembered: too dark to see, but you know it's there)" else ""}. localMap: ${if (map != null) "the room you're in, or the land round you, one string per row, north at the top; localMapAt is its top-left tile" else "the room, one string per row, north at the top"}.
             |- lastIntent and lastResult: your previous action and how it ended (succeeded, failed with a reason, or interrupted).
             |- recentEvents: the last few things that happened, stamped with day and time.
-            |- lately: what you've done most in the last 2 days, what you could do now but haven't for 2 days or more, and what you could do and never have.
+            |- lately: what you've done most in the last 2 days, what you could do now but haven't for 2 days or more, and what you could do and never have.${if (content.machines != null) "\n            |- tending: your machines that want you, wherever they are: jammed, holding what they made, or empty while you have what they take." else ""}
             |
             |Below the observation you may see what you remember from earlier (memories, and what was on your mind), what you concluded the latest times you stepped back from your days, and your plan from the last time you took stock. Those are your own words: let the lessons and plans in them shape what you do with your hours.
         """.trimMargin()
@@ -439,7 +439,7 @@ ${lookText(looks)}
         |- place: where you are. here: the things round you in this place, nearest first, which way and how far${if (content.light != null) " (too dark to see: you know it's there but can't make it out)" else ""}; walk_to takes you over to one, and look_around tells you more.${if (content.light != null) " light: how lit it is round you, when anything near you is too dark for something." else ""}${sensesDoc(content)?.let { " $it" }.orEmpty()}
         |- activities: what you can't do right now, and why.${if (trips(content)) "" else " shop: what the shop will sell you now: its price, whether you can afford it, and what it's for."}
         |- recentEvents: the last few things that happened besides what you did, stamped with day and time.
-        |- lately: what you've done most in the last 2 days, what you could do now but haven't for 2 days or more, and what you could do and never have.
+        |- lately: what you've done most in the last 2 days, what you could do now but haven't for 2 days or more, and what you could do and never have.${if (content.machines != null) "\n        |- tending: your machines that want you, wherever they are: jammed, holding what they made, or empty while you have what they take." else ""}
         |
         |After that you may see what you remember from earlier (memories, and what was on your mind), what you concluded the latest times you stepped back from your days, and your plan from the last time you took stock. Those are your own words: let the lessons and plans in them shape what you do with your hours.
     """.trimMargin()
@@ -557,6 +557,7 @@ ${lookText(looks)}
                     }
                 }
             }
+            obs.tending?.let { t -> putJsonArray("tending") { t.forEach { add(it) } } }
             putJsonArray("holding") { obs.holding.orEmpty().forEach { add(it) } }
             putJsonObject("owns") { obs.owns.orEmpty().forEach { (id, n) -> put(id, n) } }
             obs.music?.let { put("music", it) }

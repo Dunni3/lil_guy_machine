@@ -224,7 +224,9 @@ Nothing comes from nothing. A machine works only while it has what a batch takes
 makes, and what it needs where it stands (a raised bed grows by daylight). A machine takes what it
 needs from what another machine nearby in the same place made; anything else you carry over yourself:
 tending fills a machine with what it takes that you have and takes out what it made. The compost bin
-turns food scraps into compost, and the raised bed beside it grows cherry tomatoes from the compost.
+turns food scraps into compost, gathering the scraps from your things by itself, and the raised bed
+beside it grows cherry tomatoes from the compost; you take the tomatoes out. What you see each turn
+says which of your machines want you (tending).
 Every batch wears a machine; past halfway it works slower, and when fully worn it jams and stops until
 you mend it with a spare part (you can mend one once it's a
 little worn). Mending practises tinkering, so each mend takes off more. Anything of

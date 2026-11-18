@@ -244,7 +244,8 @@ letters:
 # its outputs. Nothing comes from nothing: a machine only works while it has what a batch takes, room
 # for what it makes (`holds` of each), and the effects it `needs` at its tile (a raised bed grows by
 # daylight). A machine takes what it needs from what another made within `reach` tiles in the same
-# place; anything else he carries over (the `tend` verb). Each batch wears it (`wear_per_batch`, or
+# place, or gathers what its item `collects` from his things; anything else he carries over (the `tend`
+# verb). His observation's `tending` says which machines want him. Each batch wears it (`wear_per_batch`, or
 # the item's `wear`), and each run of a thing's code that changes something wears that thing
 # (`wear_per_run`). Past `slow_at` it works slower, up to half speed at 100, where it jams and stops
 # until it's mended: `repair` takes off `restores` plus `per_level` a level of `skill`, from `worn_at`.

@@ -73,10 +73,11 @@ items:
   - { id: weather_station, name: weather station, group: gadget, slot: by_garden_bench, blocks: true, price: 40, affords: { recorder: {} } }
   # Machines (rules.yaml `machines`): each runs recipes, holds what it takes and what it made, wears
   # with each batch (`wear`) and jams at 100 until it's mended (verbs.yaml `tend`, `repair`). The
-  # compost bin turns the scraps left from his meals into compost; the raised bed beside it, within
-  # reach, takes the compost itself and grows cherry tomatoes from each by daylight. He carries the
-  # scraps over and the tomatoes in. (The planter indoors grows by watering instead: rules.yaml `growing`.)
-  - { id: compost_bin, name: compost bin, group: gadget, slot: compost_corner, blocks: true, price: 25, machine: { runs: [compost], holds: 6, wear: 15 } }
+  # compost bin turns the scraps left from his meals into compost, collecting them from his things
+  # itself (`collects`); the raised bed beside it, within reach, takes the compost itself and grows
+  # cherry tomatoes from each by daylight. He takes the tomatoes out. (The planter indoors grows by
+  # watering instead: rules.yaml `growing`.)
+  - { id: compost_bin, name: compost bin, group: gadget, slot: compost_corner, blocks: true, price: 25, machine: { runs: [compost], holds: 6, wear: 15, collects: [food_scrap] } }
   - { id: raised_bed, name: raised bed, group: gadget, slot: garden_bed, blocks: true, price: 20, qualities: { natural: 1 }, machine: { runs: [grow], holds: 3, wear: 8 } }
   # What eating leaves and what the bin makes of it (the raised bed grows cherry tomatoes, below).
   - { id: food_scrap, name: food scrap, group: scrap, stackable: true }
