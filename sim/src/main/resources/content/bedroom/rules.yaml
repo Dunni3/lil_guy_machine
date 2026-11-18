@@ -114,7 +114,8 @@ shop:
 # InventRules.OPEN). A thing to look at takes the first free spare spot of its kind in the room
 # (room.yaml `spots`), else the free spot of its kind nearest the workbench, indoors or out.
 # Food he invents can be reordered from the shop at what it cost. A thing made to sell sells once,
-# for its materials plus `wage_per_hour` an hour of the build, which is less than sketching pays.
+# for its materials plus `wage_per_hour` an hour of the build: real money, more than a day of meals,
+# far more than sketching or painting pays (docs/decisions/2026-11-17-inventing-and-writing-code-*).
 # A book he writes raises one skill `skill_gain` a chapter. `dismantle` takes one of his things
 # apart and gives back `salvage` of its bill, each material rounded down.
 invent:
@@ -127,7 +128,7 @@ invent:
     edible: { group: food, base: 8, per_strength: 2 }
     sellable: { group: ware, built: true }
   book: { min_chapters: 3, max_chapters: 5, skill_gain: 0.25 }
-  wage_per_hour: 4
+  wage_per_hour: 40
   look_parts: 12
   materials:
     wood: { for: "bodies, boxes, frames, legs, shelves and handles: warm, easy, the cheapest" }

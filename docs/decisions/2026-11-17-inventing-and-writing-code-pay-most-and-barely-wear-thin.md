@@ -19,9 +19,11 @@ the best-paying things he can do, not one hobby among many.
   at, and the bored lock passes it over while the floor is above the lock's line. Both verbs use 0.8:
   what he makes is new every time, which the features don't see. Fixing broken code still pays in full.
 - **Kept.** Invent is still once a day (`invent.per_day`) and still refused below mood 25. A refused
-  design or code that fails pays nothing. A ware he invents sells for its materials plus
-  `wage_per_hour` for the build's hours; that wage is unchanged, so the shorter build earns $4
-  instead of $8. Selling wares doesn't become better paid than sketching.
+  design or code that fails pays nothing.
+- **Real money.** A ware he invents sells once for its materials plus `wage_per_hour` (rules.yaml
+  `invent`) for the build's hours. That wage went from 4 to 40, so a ware now earns $40 over its
+  materials: more than a day of meals, and well above a sketch ($4 and up) or a painting ($25 and up,
+  less its $15 canvas, over three hours). Inventing for money is meant to beat making art for money.
 
 Other verbs can use `fresh_floor` later, but it is meant for making something new, not for keeping a
 habit fun.

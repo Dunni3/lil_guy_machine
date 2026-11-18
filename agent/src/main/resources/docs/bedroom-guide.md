@@ -253,7 +253,7 @@ instead. Code in a thing needs copper wire for its wiring, and code that moves a
 needs metal for a mechanism. The build takes the materials from what you have; without them nothing is
 built. A design outside the rules isn't built, costs only the time, and frustrates you. A thing to look
 at takes one of the room's few spare spots, else the free spot nearest the workbench. A thing made to
-sell sells once. You can take apart a thing you invented for half its materials back, which frees its
+sell sells once, for its materials and good money for your time, far more than art pays. You can take apart a thing you invented for half its materials back, which frees its
 spot; materials you don't need sell back to the shop for about half what they cost. Numbers:
 rules:invent, verb:invent, verb:dismantle, verb:sell_materials.
 
