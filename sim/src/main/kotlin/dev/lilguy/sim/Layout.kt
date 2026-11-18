@@ -132,6 +132,18 @@ class Layout private constructor(
                 }
                 r to s
             }
+            // What he built on the land: a building's edge is wall but its doorway, its inside floor; a solid one blocks every tile.
+            content.structures.forEach { st ->
+                val r = st.rect
+                for (y in r.y0..r.y1) for (x in r.x0..r.x1) {
+                    if (x !in 0 until width || y !in 0 until height) continue
+                    val wall = !st.enterable || x == r.x0 || x == r.x1 || y == r.y0 || y == r.y1
+                    terrain[y * width + x] = if (wall) Terrain.Wall else Terrain.Floor
+                    letters[y][x] = if (wall) '#' else '.'
+                }
+                slotCells[st.id] = st.anchor
+                st.spots.forEach { (name, c) -> slotCells[name] = c }
+            }
             val missing = room.slots.values.toSet() - slotCells.keys
             require(missing.isEmpty()) { "slots $missing aren't in the room" }
 
@@ -139,6 +151,7 @@ class Layout private constructor(
             val roomRect = Rect(origin.x, origin.y, origin.x + rw - 1, origin.y + rh - 1)
             val places = mutableListOf(Place(roomId, world?.house?.name ?: "your bedroom", PlaceKind.Room, listOf(roomRect), "where you live"))
             built.forEach { (r, s) -> places += Place(r.id, r.name, PlaceKind.Room, listOf(Rect(s.at[0], s.at[1], s.at[0] + r.rows[0].length - 1, s.at[1] + r.rows.size - 1)), r.says) }
+            content.structures.filter { it.enterable }.forEach { st -> places += Place(st.id, st.name, PlaceKind.Building, listOf(st.rect), st.says) }
             world?.places?.forEach { p -> places += Place(p.id, p.name, PlaceKind.Outdoor, p.rects.map { Rect(it[0], it[1], it[2], it[3]) }, p.says) }
             val index = IntArray(width * height) { -1 }
             for (y in 0 until height) for (x in 0 until width) {
@@ -168,11 +181,21 @@ class Layout private constructor(
                 val joins = s.nextTo?.let { n -> built.firstOrNull { it.second.id == n }?.first?.id } ?: roomId
                 doors += Door("door_${r.id}", cell, r.id, joins)
             }
+            content.structures.filter { it.enterable }.forEach { st ->
+                val cell = st.doorCell!!
+                if (cell.x !in 0 until width || cell.y !in 0 until height) return@forEach
+                terrain[cell.y * width + cell.x] = Terrain.Floor
+                letters[cell.y][cell.x] = '+'
+                val out = st.outside(st.door!!)
+                doors += Door("door_${st.id}", cell, st.id, places.firstOrNull { p -> p.id != st.id && p.rects.any { out in it } }?.id)
+            }
+            // Where a thing he built itself stands doesn't block (its walls do), so it may be beside its own doorway.
+            val own = content.structures.map { it.id }.toSet()
             // Things stand in slots and most block, so a slot beside a doorway could shut a room off
             // once he owns what stands there (a fern pot did, the lab and the sunroom behind it).
             for (d in doors) for ((dx, dy) in listOf(0 to 1, 0 to -1, 1 to 0, -1 to 0)) {
                 val beside = Cell(d.cell.x + dx, d.cell.y + dy)
-                slotCells.entries.firstOrNull { it.value == beside }?.let { error("slot '${it.key}' is beside the doorway ${d.id} at (${d.cell.x}, ${d.cell.y})") }
+                slotCells.entries.firstOrNull { it.value == beside && it.key !in own }?.let { error("slot '${it.key}' is beside the doorway ${d.id} at (${d.cell.x}, ${d.cell.y})") }
             }
             return Layout(
                 TileMap(width, height, terrain), letters.map { String(it) }, places, index, slotCells,

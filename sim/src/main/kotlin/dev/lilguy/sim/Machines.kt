@@ -339,10 +339,10 @@ class Machines(private val sandbox: ScriptSandbox) {
         val MOTIONS = listOf("spin", "bob", "sway", "pulse", "shake")
         const val MIN_SPEED = 0.1
         const val MAX_SPEED = 4.0
-        const val MAX_MOTIONS = 4
-        const val READOUT = 24
-        const val MOST_TIMER = 48 * 60
-        const val MAX_TIMERS = 8
+        const val MAX_MOTIONS = 12
+        const val READOUT = 40
+        const val MOST_TIMER = 7 * 24 * 60
+        const val MAX_TIMERS = 24
 
         /** Steps all of his things' code may take in one tick, between them; each call may take at most [ScriptSandbox.STEPS]. */
         const val TICK_STEPS = 5_000_000L
@@ -464,7 +464,7 @@ class Reach(private val h: MachineHost) {
 
     companion object {
         const val SELF = "self"
-        const val MOST_TILES = 20
+        const val MOST_TILES = 60
         const val MOST_REGROW = 48.0
         private val NEIGHBOURS = listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1)
     }

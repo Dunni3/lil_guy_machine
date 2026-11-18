@@ -53,7 +53,31 @@ data class MachineRules(
     @SerialName("wear_per_run") val wearPerRun: Double = 1.0,
     @SerialName("slow_at") val slowAt: Double = 50.0,
     val repair: RepairRules = RepairRules(),
+    /** What a machine he designs earns an hour, by what it's worth: how his own recipes are timed and his products priced. */
+    val earning: Earning = Earning(),
 ) {
+    /**
+     * A machine of his adds [perHour] of what its materials are worth in value each hour it works, and
+     * [perLevel] more of that for each level of [skill]: so a bigger, finer machine earns more, and a
+     * recipe that turns cheap things into dear ones takes as long as that value takes to add. A batch
+     * takes at least [leastHours]; a product's recipe with no hours given takes [defaultHours].
+     */
+    @Serializable
+    data class Earning(
+        @SerialName("per_hour") val perHour: Double = 0.03,
+        @SerialName("per_level") val perLevel: Double = 0.5,
+        val skill: String? = null,
+        @SerialName("least_hours") val leastHours: Double = 0.25,
+        @SerialName("default_hours") val defaultHours: Double = 2.0,
+    ) {
+        /** Dollars of value a machine worth [worth] adds an hour, built at [level] of [skill]; never under $[LEAST] an hour. */
+        fun perHour(worth: Int, level: Double): Double = max(LEAST, worth * perHour * (1 + perLevel * level))
+
+        companion object {
+            const val LEAST = 0.5
+        }
+    }
+
     /**
      * What a repair takes off: [restores] plus [perLevel] a level of [skill]. Below [wornAt] there's
      * nothing to mend. What it uses and how long it takes is the verb's (verbs.yaml `repair`).
@@ -72,6 +96,8 @@ data class MachineRules(
         val p = mutableListOf<String>()
         if (holds < 1 || reach < 0 || wearPerBatch < 0 || wearPerRun < 0 || slowAt !in 0.0..BROKEN) p += "machines: holds at least 1, reach and wear not negative, slow_at 0 to 100"
         if (repair.restores <= 0 || repair.perLevel < 0 || repair.wornAt !in 0.0..BROKEN) p += "machines.repair: restores positive, per_level not negative, worn_at 0 to 100"
+        if (earning.perHour <= 0 || earning.perLevel < 0 || earning.leastHours <= 0 || earning.defaultHours <= 0) p += "machines.earning: per_hour, least_hours and default_hours above 0, per_level not negative"
+        earning.skill?.let { if (it !in c.vocabulary.skills) p += "machines.earning: skill '$it' isn't in vocabulary.skills" }
         repair.skill?.let { if (it !in c.vocabulary.skills) p += "machines.repair: skill '$it' isn't in vocabulary.skills" }
         if (recipes.map { it.id }.toSet().size != recipes.size) p += "machines: recipe ids must be unique"
         recipes.forEach { r ->
@@ -114,6 +140,21 @@ data class Store(
     val isEmpty: Boolean get() = inputs.isEmpty() && outputs.isEmpty() && wear == 0.0 && progress == 0.0 && told == null
 }
 
+/**
+ * A connection between his machines (`docs/decisions/2026-11-18-he-builds-big-things-*`): every
+ * [Works.FEED_EVERY] minutes what [from] makes goes to [to] by itself, however far apart they stand,
+ * as if they talked over the air. [from] is a machine of his or [YOU] (his own things, what [to]
+ * takes); [to] is a machine of his (what it takes), [YOU] (into his things), or [MARKET] (sold, at
+ * the going price). [item]: only that, or null for everything that fits.
+ */
+@Serializable
+data class Link(val from: String, val to: String, val item: String? = null) {
+    companion object {
+        const val YOU = "you"
+        const val MARKET = "market"
+    }
+}
+
 /** What the [Works] needs of the world. [BedroomWorld] is the one host. */
 interface WorksHost {
     val content: BedroomContent
@@ -134,6 +175,8 @@ interface WorksHost {
     /** An event in [place]: told now when he's there, else when he next walks in. */
     fun tell(text: String, place: String?)
     fun changed()
+    /** Sells [n] of [id] at the going price, as the hatch would; the dollars, 0 when it doesn't sell. */
+    fun sell(id: String, n: Int): Int = 0
 }
 
 /**
@@ -145,12 +188,73 @@ interface WorksHost {
  */
 class Works {
     private val stores = linkedMapOf<String, Store>()
+    private val links = mutableListOf<Link>()
 
     fun export(): Map<String, Store> = LinkedHashMap(stores)
 
     fun restore(s: Map<String, Store>, keep: (String) -> Boolean) {
         stores.clear()
         s.forEach { (id, st) -> if (keep(id)) stores[id] = st }
+        links.removeAll { (it.from != Link.YOU && !keep(it.from)) || (it.to != Link.YOU && it.to != Link.MARKET && !keep(it.to)) }
+    }
+
+    /** His machines' connections ([Link]), oldest first. */
+    fun links(): List<Link> = links.toList()
+
+    fun restoreLinks(saved: List<Link>, keep: (String) -> Boolean) {
+        links.clear()
+        links += saved.filter { (it.from == Link.YOU || keep(it.from)) && (it.to == Link.YOU || it.to == Link.MARKET || keep(it.to)) }.distinct()
+    }
+
+    /** Why [from] can't be connected to [to] (each a machine of his, [Link.YOU] or [Link.MARKET]), or null. */
+    fun linkLock(h: WorksHost, from: String, to: String, item: String? = null): String? {
+        if (from == to) return "a machine is already where its things are"
+        if (from == Link.MARKET) return "the market buys; it doesn't send anything"
+        if (from == Link.YOU && to !in listOf(Link.YOU, Link.MARKET) && !isMachine(h, to)) return "${who(h, to)} isn't a machine"
+        listOf(from, to).filter { it != Link.YOU && it != Link.MARKET }.forEach { id ->
+            val s = h.content.item(id) ?: return "there's no thing '$id'"
+            if (h.count(id) == 0) return "you don't own a ${s.name}"
+            if (!isMachine(h, id)) return "the ${s.name} isn't a machine: it takes and makes nothing"
+        }
+        if (from == Link.YOU && (to == Link.YOU || to == Link.MARKET)) return "that's what selling at the hatch is for"
+        if (links.any { it.from == from && it.to == to && it.item == item }) return "${who(h, from)} is already connected to ${who(h, to)}"
+        if (to != Link.YOU && to != Link.MARKET) {
+            val takes = takes(h, to)
+            if (takes.isEmpty()) return "${who(h, to)} takes nothing, so there's nothing to send it"
+            if (from != Link.YOU && makes(h, from).none { it in takes }) return "${who(h, to)} takes nothing ${who(h, from)} makes (it takes ${takes.joinToString { name(h, it) }})"
+        }
+        if (item != null && h.content.item(item) == null) return "there's no kind of thing '$item'"
+        return null
+    }
+
+    /** Connects [from] to [to] ([linkLock] said yes); the event's text. */
+    fun link(h: WorksHost, from: String, to: String, item: String? = null): String {
+        links += Link(from, to, item)
+        h.changed()
+        return "connected ${who(h, from)} to ${who(h, to)}" + (item?.let { " for ${name(h, it)}" } ?: "") + ": " + linkSays(h, Link(from, to, item))
+    }
+
+    /** What a link does, in words. */
+    fun linkSays(h: WorksHost, l: Link): String = when {
+        l.from == Link.YOU -> "it takes what it needs from your things by itself"
+        l.to == Link.MARKET -> "what it makes is sold by itself, at the going price"
+        l.to == Link.YOU -> "what it makes comes to you by itself"
+        else -> "what it makes goes into ${who(h, l.to)} by itself, wherever they stand"
+    }
+
+    /** Takes away the links between [a] and [b] (either way; null [b]: all of [a]'s); how many went. */
+    fun unlink(h: WorksHost, a: String, b: String? = null): Int {
+        val gone = links.filter { (it.from == a && (b == null || it.to == b)) || (it.to == a && (b == null || it.from == b)) }
+        links.removeAll(gone.toSet())
+        if (gone.isNotEmpty()) h.changed()
+        return gone.size
+    }
+
+    /** "the kiln: to market; from you", for his options and the inspector; null with none. */
+    fun linkText(h: WorksHost, id: String): String? {
+        val out = links.filter { it.from == id }.map { "to " + who(h, it.to).removePrefix("the ") }
+        val inn = links.filter { it.to == id }.map { "from " + who(h, it.from).removePrefix("the ") }
+        return (out + inn).takeIf { it.isNotEmpty() }?.joinToString("; ")
     }
 
     fun store(id: String): Store = stores[id] ?: Store()
@@ -178,6 +282,9 @@ class Works {
     /** Everything each of [id]'s recipes takes, in order. */
     private fun takes(h: WorksHost, id: String): List<String> = recipes(h, id).flatMap { it.takes.keys }.distinct()
 
+    /** Everything each of [id]'s recipes makes, in order. */
+    private fun makes(h: WorksHost, id: String): List<String> = recipes(h, id).flatMap { it.makes.keys }.distinct()
+
     /** How much slower it works at its wear: 1 up to [MachineRules.slowAt], 2 at 100. */
     private fun slowness(h: WorksHost, wear: Double): Double {
         val r = rules(h)
@@ -193,8 +300,43 @@ class Works {
     fun minute(h: WorksHost, minute: Long) {
         val ids = machines(h).filter { h.content.item(it)?.machine != null }
         if (ids.isEmpty()) return
-        if (minute % FEED_EVERY == 0L) ids.forEach { feed(h, it, ids) }
+        if (minute % FEED_EVERY == 0L) {
+            ids.forEach { feed(h, it, ids) }
+            flow(h)
+        }
         ids.forEach { work(h, it) }
+    }
+
+    /** What each link carries now: from a machine what it made (or from him what the other takes), to a machine, to him, or sold. */
+    private fun flow(h: WorksHost) {
+        for (l in links.toList()) {
+            if (l.from != Link.YOU && (h.count(l.from) == 0 || h.content.item(l.from) == null)) continue
+            if (l.to != Link.YOU && l.to != Link.MARKET && (h.count(l.to) == 0 || h.content.item(l.to) == null)) continue
+            val have: Map<String, Int> = if (l.from == Link.YOU) takes(h, l.to).associateWith { h.count(it) } else store(l.from).outputs
+            for ((item, n0) in have.filterKeys { l.item == null || it == l.item }) {
+                if (n0 <= 0) continue
+                val n = when (l.to) {
+                    Link.YOU -> n0
+                    Link.MARKET -> if (h.content.item(item)?.sellPrice != null) n0 else 0
+                    else -> if (item in takes(h, l.to) && !store(l.to).broken) min(n0, holds(h, l.to) - (store(l.to).inputs[item] ?: 0)) else 0
+                }
+                if (n <= 0) continue
+                if (l.from == Link.YOU) h.take(item, n) else store(l.from).let { set(l.from, it.copy(outputs = it.outputs.minusCount(item, n), told = it.told.takeIf { t -> t != Stuck.Full.text })) }
+                when (l.to) {
+                    Link.YOU -> {
+                        h.add(item, n)
+                        h.tell("the ${name(h, l.from)} sent you ${h.quantity(item, n)}", placeOf(h, l.from))
+                    }
+                    Link.MARKET -> {
+                        val got = h.sell(item, n)
+                        h.tell("the ${name(h, l.from)} sold ${h.quantity(item, n)} for $$got", placeOf(h, l.from))
+                    }
+                    // Machine to machine is quiet, as a neighbour's taking is not: it's what they're for.
+                    else -> store(l.to).let { set(l.to, it.copy(inputs = it.inputs.plusCount(item, n), told = null)) }
+                }
+                h.changed()
+            }
+        }
     }
 
     /** Takes what [id] collects from his things, and what it needs from what machines within reach of it have made. */
@@ -374,7 +516,10 @@ class Works {
         return all.mapNotNull { id ->
             val s = store(id)
             val where = h.standing(id)?.let { h.layout.placeOf(it)?.name }?.let { " ($it)" }.orEmpty()
-            val made = s.outputs.filterKeys { item -> all.none { other -> other != id && near(h, id, other) && item in takes(h, other) && (store(other).inputs[item] ?: 0) < holds(h, other) } }
+            val made = s.outputs.filterKeys { item ->
+                all.none { other -> other != id && near(h, id, other) && item in takes(h, other) && (store(other).inputs[item] ?: 0) < holds(h, other) } &&
+                    links.none { it.from == id && (it.item == null || it.item == item) }
+            }
             when {
                 s.broken -> "the ${name(h, id)}$where is jammed: mend it (repair) before it works again"
                 made.isNotEmpty() -> "the ${name(h, id)}$where has ${made.entries.joinToString(" and ") { (item, n) -> h.quantity(item, n) }} made, waiting to be taken out (tend)" +
@@ -441,6 +586,7 @@ class Works {
             "wear" to (s.wear * 10).roundToInt() / 10.0, "broken" to s.broken,
             "making" to recipe?.id, "done" to (recipe?.let { (s.progress / (it.hours * 60) * 100).roundToInt() } ?: 0),
             "stuck" to s.told,
+            "links" to links.filter { it.from == id || it.to == id }.map { mapOf("from" to it.from, "to" to it.to, "item" to it.item) },
         )
     }
 
@@ -460,12 +606,9 @@ class Works {
             if (!isMachine(h, id)) throw ScriptProblem("the ${s.name} isn't a machine: it takes and makes nothing")
             return h.standing(id) ?: throw ScriptProblem("the ${s.name} isn't standing anywhere")
         }
-        val a = if (from == Reach.SELF) h.hisCell() else machine(from)
-        val b = if (to == Reach.SELF) h.hisCell() else machine(to)
-        val reach = rules(h).reach
-        fun near(x: Cell, y: Cell) = h.layout.placeOf(x) == h.layout.placeOf(y) && max(abs(x.x - y.x), abs(x.y - y.y)) <= reach
-        if (!near(a, b)) throw ScriptProblem("${who(h, from)} and ${who(h, to)} are too far apart: things only pass between what's within $reach tiles, in the same place")
-        self?.let { me -> h.standing(me)?.let { c -> if (me != from && me != to && !near(c, a)) throw ScriptProblem("your ${name(h, me)} is too far from ${who(h, from)} to move anything") } }
+        // His machines talk to each other over the air: where they stand doesn't matter.
+        if (from != Reach.SELF) machine(from)
+        if (to != Reach.SELF) machine(to)
         val have = if (from == Reach.SELF) h.count(item) else store(from).let { (it.outputs[item] ?: 0) + (it.inputs[item] ?: 0) }
         if (have == 0) throw ScriptProblem("${who(h, from)} has no ${spec.name}")
         var k = min(n, have)
@@ -485,7 +628,11 @@ class Works {
         return k
     }
 
-    private fun who(h: WorksHost, id: String) = if (id == Reach.SELF) "you" else "the ${name(h, id)}"
+    private fun who(h: WorksHost, id: String) = when (id) {
+        Reach.SELF, Link.YOU -> "you"
+        Link.MARKET -> "the market"
+        else -> "the ${name(h, id)}"
+    }
 
     // --- how it shows ------------------------------------------------------------------------------
 
@@ -520,7 +667,17 @@ class Works {
     companion object {
         /** Minutes between machines taking from their neighbours. */
         const val FEED_EVERY = 10
-        const val MOST_MOVED = 20
+        const val MOST_MOVED = 200
+
+        /**
+         * What one of [id] is worth in dollars, for pricing what a machine of his makes: what the shop asks
+         * for one (so a plank is what he pays for it, not what it sells back for), else what it sells for,
+         * else $1 (scraps and the like).
+         */
+        fun worth(c: BedroomContent, id: String): Double {
+            val s = c.item(id) ?: return 1.0
+            return s.price?.let { it.toDouble() / s.pack } ?: s.sellPrice?.toDouble() ?: 1.0
+        }
         const val MACHINE = "machine"
 
         private fun Map<String, Int>.plusCount(item: String, n: Int) = LinkedHashMap(this).also { it[item] = (it[item] ?: 0) + n }

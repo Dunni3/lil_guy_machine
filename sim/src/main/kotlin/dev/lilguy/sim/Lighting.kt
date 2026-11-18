@@ -134,7 +134,7 @@ class Lighting(private val effects: Effects = Effects()) {
         val day = daylight(rules, minuteOfDay, sky)
         val windows = windows(content, layout, house).map { (id, cell) -> Emitter(id, "the window", EffectKind.Light, cell, day * rules.window.share, rules.window.radius) }
         return effects.field(EffectKind.Light, layout, windows + lights, day) { _, place ->
-            if (place?.kind == PlaceKind.Room) day * rules.indoors else day
+            if (place?.kind?.indoors == true) day * rules.indoors else day
         }
     }
 
@@ -150,6 +150,7 @@ class Lighting(private val effects: Effects = Effects()) {
                 val site = content.world.site(siteId) ?: return@forEach
                 room.windows.forEachIndexed { i, (x, y) -> add("window_${roomId}_$i" to Cell(site.at[0] + x, site.at[1] + y)) }
             }
+            content.structures.forEach { s -> s.windowCells.forEachIndexed { i, c -> add("window_${s.id}_$i" to c) } }
         }
 
         /** "4", "0.5": a light level as the prompt says it; [down] rounds down, so a level short of a need never reads as the need. */

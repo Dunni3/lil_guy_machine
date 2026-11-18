@@ -46,8 +46,8 @@ menu:
     verbs: [invent, dismantle, sell_materials, devise]
   - id: machines
     under: workshop
-    says: look after his machines - fill one and take out what it made, sell what they made, or mend one that's worn or jammed
-    verbs: [tend, sell_wares, repair]
+    says: look after his machines - fill one and take out what it made, sell what they made, mend one that's worn or jammed, or connect them so they feed each other, feed from his things and sell by themselves
+    verbs: [tend, sell_wares, repair, connect, sell_by_itself, feed_by_itself, disconnect]
   - id: shopping
     says: go through the shop's catalog and buy food, supplies or things to own - furniture, decor, books, records - or see what to save for
     verbs: [shop]

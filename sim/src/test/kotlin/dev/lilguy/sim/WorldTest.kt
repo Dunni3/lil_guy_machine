@@ -95,7 +95,7 @@ class WorldTest {
         val w = BedroomWorld.create(content)
         assertTrue("it needs a room east of your bedroom first" in failure(w.run(Intent.Do("build_room", what = "lab_plan", on = "site_far_east"))))
         val mood = w.snapshot().life!!.moodTarget
-        assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("build_room", what = "lab_plan", on = "site_east")).status)
+        w.run(Intent.Do("build_room", what = "lab_plan", on = "site_east")).status.let { assertIs<IntentStatus.Succeeded>(it, it.toString()) }
         assertTrue(w.observe(w.agentId).recentEvents.any { "built the lab east of your bedroom" in it })
         val lab = w.layout.place("lab")!!
         assertTrue(w.layout.doors.any { it.inside == "lab" && it.outside == "bedroom" })
@@ -118,9 +118,10 @@ class WorldTest {
         val w = BedroomWorld.create(content)
         assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("build_room", what = "lab_plan", on = "site_east")).status)
         assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("build_room", what = "sunroom_plan", on = "site_far_east")).status)
-        for (p in w.layout.places.drop(1) + w.layout.places.first()) assertIs<IntentStatus.Succeeded>(w.run(Intent.MoveTo(Target.Place(p.id))).status, "he walks to ${p.id}")
-        assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("read", what = "novel", on = "armchair")).status)
+        // He reads first: walking out to the meadow and back takes the day on past the light it needs.
+        w.run(Intent.Do("read", what = "novel", on = "armchair")).status.let { assertIs<IntentStatus.Succeeded>(it, it.toString()) }
         assertEquals("sunroom", w.guyPlace(), "he reads where he chose to sit")
+        for (p in w.layout.places.drop(1) + w.layout.places.first()) w.run(Intent.MoveTo(Target.Place(p.id))).status.let { assertIs<IntentStatus.Succeeded>(it, "he walks to ${p.id}: $it") }
         val spots = w.observe(w.agentId).put!!.spots
         assertTrue(spots.any { it.place == "the lab" && "by_lab_bench" in it.floor }, spots.toString())
         assertIs<IntentStatus.Succeeded>(w.run(Intent.Put("fern_pot", "by_lab_bench")).status)

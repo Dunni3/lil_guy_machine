@@ -155,7 +155,7 @@ class Surroundings {
     fun warmth(h: Host): Field {
         val out = Weather.round1(outdoorTemperature(h))
         val inside = Weather.round1(indoorTemperature(h))
-        return effects.field(EffectKind.Warmth, h.layout, emitters(h, EffectKind.Warmth), out to inside) { _, place -> if (place?.kind == PlaceKind.Room) inside else out }
+        return effects.field(EffectKind.Warmth, h.layout, emitters(h, EffectKind.Warmth), out to inside) { _, place -> if (place?.kind?.indoors == true) inside else out }
     }
 
     /** How loud it is on every tile: nothing but what sounds (a record playing, a chime). */

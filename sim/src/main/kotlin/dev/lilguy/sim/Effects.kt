@@ -162,7 +162,7 @@ class Effects(private val keep: Int = KEPT) {
 
         /** An emitter reaches a tile in its own room, or, outdoors, any tile outdoors. */
         private fun sameSide(home: Place?, there: Place?): Boolean =
-            if (home?.kind == PlaceKind.Room) there == home else there?.kind != PlaceKind.Room
+            if (home?.kind?.indoors == true) there == home else there?.kind?.indoors != true
 
         /** True when nothing between [a] and [b] (neither end counted) blocks [kind]: a straight line, tile by tile. */
         fun clear(kind: EffectKind, layout: Layout, a: Cell, b: Cell): Boolean = through(kind, layout, a, b) > 0
