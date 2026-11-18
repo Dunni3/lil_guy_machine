@@ -133,7 +133,10 @@ class BedroomWorld private constructor(
     private var version = 0
     private var options: Options? = null
 
-    private class Options(val key: List<Any>, val moment: List<Any>, val activities: List<ActivityOption>, val shop: List<ShopOption>, val catalog: List<CatalogEntry>, val verbs: List<VerbView>)
+    private class Options(val key: List<Any>, val moment: List<Any>, val activities: List<ActivityOption>, val shop: List<ShopOption>, val catalog: List<CatalogEntry>, val verbs: List<VerbView>) {
+        /** [gadgetUses] by item id, built when an inspector's view first asks. */
+        val uses = HashMap<String, List<UseView>>()
+    }
 
     /**
      * [usesOf] and [heldBack] by item id while [current] is rebuilt: nothing changes during a rebuild, and each
@@ -2778,6 +2781,7 @@ class BedroomWorld private constructor(
             stored = thingState.mapValues { (_, kept) -> kept.mapValues { it.value.toString() } },
             custom = LinkedHashMap(custom),
             weather = weatherView(),
+            gadgets = gadgets(visited),
         )
         val snapshot = WorldSnapshot(ticks, map, entities, listOf(agentSnapshot()), eventLog(), life = life, layout = layout)
         return Published(snapshot, observe(entities))
@@ -2912,6 +2916,95 @@ class BedroomWorld private constructor(
         }
     }
 
+    // --- the inspector ---------------------------------------------------------------------------
+
+    /** Each placed thing as an inspector shows it ([GadgetView]); [visited] are the visits under way. */
+    private fun gadgets(visited: List<Visit>): List<GadgetView> = placed().map { (spec, _) ->
+        GadgetView(spec.id, custom[spec.id]?.name ?: spec.name, about(spec), gadgetState(spec, visited), gadgetHolds(spec), current.uses.getOrPut(spec.id) { gadgetUses(spec) })
+    }
+
+    /** What [spec] does by its content: what its machine makes from what, and what it gives off, draws, grows or sells for. */
+    private fun about(spec: ItemSpec): List<String> = buildList {
+        val rules = content.machines ?: MachineRules()
+        spec.machine?.let { m ->
+            m.runs.mapNotNull(rules::recipe).forEach { r ->
+                val needs = r.needs.entries.joinToString { (k, v) -> "$k ${num(v)}" }.takeIf { it.isNotEmpty() }?.let { ", with $it" }.orEmpty()
+                add("${r.says}: ${counts(r.takes)} make ${counts(r.makes)} in ${num(r.hours)} hours$needs")
+            }
+            add("holds up to ${m.holds ?: rules.holds} of each thing")
+        }
+        spec.light?.let { l -> add("gives off light ${num(l.strength)}, reaching ${tiles(l.radius)}" + if (LAMP in spec.affords) ", on a timer from ${timerOf(spec).text}" else "") }
+        spec.warmth?.let { add("warms the air ${num(it.strength)} degrees, reaching ${tiles(it.radius)}") }
+        spec.sound?.let { add("heard ${tiles(it.radius)} away" + if (it.playing) " while a record plays on it" else "") }
+        spec.lure?.let { add("draws ${it.draws}, reaching ${tiles(it.radius)}") }
+        spec.grows?.let { add("grows ${quantity(it.yields, it.count)} after ${it.hours} sunny hours in damp soil") }
+        spec.sellPrice?.let { add("sells for $$it") }
+        if (spec.qualities.isNotEmpty()) add("feels " + spec.qualities.entries.joinToString { (k, v) -> "$k ${num(v)}" })
+    }
+
+    /** What's live in [spec] now that a renderer can't see from the entity: its machine, its lamp, its log, its patch or planter. */
+    private fun gadgetState(spec: ItemSpec, visited: List<Visit>): List<Pair<String, String>> = buildList {
+        if (works.isMachine(worksHost, spec.id)) {
+            val s = works.store(spec.id)
+            val recipe = s.recipe?.let { (content.machines ?: MachineRules()).recipe(it) }
+            add("working" to when {
+                s.broken -> "no: jammed until it's mended"
+                recipe != null -> "${recipe.says}, ${(s.progress / (recipe.hours * 60) * 100).roundToInt()}% through a batch" + (s.told?.let { " ($it)" } ?: "")
+                s.told != null -> "no: ${s.told}"
+                else -> "no"
+            })
+            add("wear" to "${s.wear.roundToInt()} of 100")
+        }
+        if (spec.light != null && LAMP in spec.affords) {
+            val lit = if (lampLit(spec)) "on" else "off"
+            add("lamp" to when (lampMode(spec.id)) {
+                LampMode.Timer -> "$lit, on its timer (${timerOf(spec).text})"
+                else -> "$lit, switched by him"
+            })
+        }
+        bareUntil[spec.id]?.takeIf { it > ticks }?.let { add("picked" to "bare until ${stamp(it)}") }
+        spec.grows?.let { add("growing" to (surroundings.harvestLock(spec)?.substringAfter(": ") ?: "ripe, ready to pick")) }
+        visited.filter { it.lure.id == spec.id }.forEach { add("visitors" to "${it.count} ${it.visitor.id}") }
+        records.of(spec.id).entries.take(MAX_LOGGED).forEach { (key, rs) -> rs.lastOrNull()?.let { add(key to "${num(it.value)} at ${stamp(it.tick)}") } }
+    }
+
+    /** What's in [spec]: what was put in its machine and what it made, the record on it, the letters at the hatch. */
+    private fun gadgetHolds(spec: ItemSpec): List<HeldView> = buildList {
+        if (works.isMachine(worksHost, spec.id)) {
+            val s = works.store(spec.id)
+            s.inputs.forEach { (item, n) -> add(HeldView(quantity(item, n), "put in, to work through")) }
+            s.outputs.forEach { (item, n) -> add(HeldView(quantity(item, n), "made, waiting to be taken out")) }
+        }
+        music?.takeIf { it.on == spec.id }?.let { add(HeldView("the ${item(it.itemId).name}", "playing, ${GameClock.duration(((it.endTick - ticks) / clock.ticksPerMinute).toInt().coerceAtLeast(1))} left")) }
+        // The letters wait where they're opened.
+        if (content.verbs.any { v -> spec.id in v.at && v.effects.any { it is OpenMailOp } }) mailbox.forEach { add(HeldView("a letter from ${it.from}", "waiting to be opened")) }
+    }
+
+    /**
+     * The verbs [spec] is for ([usesOf]), each as it stands for this thing: open with what it takes and
+     * gives, when an open option is for it (or, where it's only the place or tool, any open option is),
+     * else locked with why.
+     */
+    private fun gadgetUses(spec: ItemSpec): List<UseView> = usesOf(spec).map { a ->
+        lockReason(a)?.let { return@map UseView(a.id, a.phrase, null, it) }
+        val filler = a.args.values.any { answers(spec.id, it) }
+        val open = current.activities.filter { it.id == a.id && it.locked == null }
+        val mine = if (filler) open.firstOrNull { it.what == spec.id || it.on == spec.id } else open.firstOrNull()
+        if (mine != null) return@map UseView(a.id, a.phrase, listOfNotNull(mine.takes, mine.gives?.ifEmpty { null }).joinToString(": ").ifEmpty { null }, null)
+        val why = (if (filler) bindings(a).filter { spec.id in it.values }.firstNotNullOfOrNull { lockReason(a, it) } else null)
+            ?: current.activities.firstOrNull { it.id == a.id }?.locked ?: "not now"
+        UseView(a.id, a.phrase, null, why)
+    }
+
+    /** "3 food scraps and 1 leaf" */
+    private fun counts(m: Map<String, Int>): String = m.entries.joinToString(" and ") { (id, n) -> quantity(id, n) }
+
+    /** "1 tile", "2.5 tiles". */
+    private fun tiles(d: Double): String = "${num(d)} tile" + if (d == 1.0) "" else "s"
+
+    /** 6 for 6.0, else one decimal. */
+    private fun num(d: Double): String = if (d == Math.floor(d)) d.toInt().toString() else "%.1f".format(d)
+
     /**
      * The map around him, one string per row, with owned furniture as its slot letter (legend in
      * [mapLegend]): the whole room he's in, or outdoors a window of the land around him. Its top-left
@@ -2974,6 +3067,9 @@ class BedroomWorld private constructor(
         private const val ESTIMATE_MINUTES = 10
         /** How far back [lately] looks, in game days. */
         private const val LATELY_DAYS = 2
+
+        /** The most of a recorder's logs an inspector shows, latest reading each. */
+        private const val MAX_LOGGED = 6
 
         /** The eight tiles round one, straight sides first: where he stands to set a thing down. */
         private val NEXT_TO = listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1, 1 to 1, 1 to -1, -1 to 1, -1 to -1)

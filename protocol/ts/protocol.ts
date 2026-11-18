@@ -1,5 +1,5 @@
 /* Generated from schema/protocol.schema.json (protocol/.../*.kt) by gen_types.sh. Don't edit; run `make protocol-types`.
- * schema sha256: 2f89a7793b5f427d2acc8f0b8f54c1b5ddd483a2fa98a36f96b017144f9546e2
+ * schema sha256: af0abfd3db64c01ce6144d8f41095762bcbe52e32cc72e5b8a35c10d088501cb
  */
 
 /**
@@ -86,6 +86,7 @@ export interface Delta {
   tokens: Tokens | null;
   logs: Logs | null;
   code: CodeState | null;
+  gadgets: Gadgets | null;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -777,6 +778,51 @@ export interface ChangedView {
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "Gadgets".
+ */
+export interface Gadgets {
+  things: GadgetView[];
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "GadgetView".
+ */
+export interface GadgetView {
+  id: string;
+  name: string;
+  about: string[];
+  state: FactView[];
+  holds: HeldView[];
+  uses: UseView[];
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "FactView".
+ */
+export interface FactView {
+  label: string;
+  value: string;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "HeldView".
+ */
+export interface HeldView {
+  what: string;
+  detail: string | null;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "UseView".
+ */
+export interface UseView {
+  verb: string;
+  phrase: string | null;
+  gives: string | null;
+  locked: string | null;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
  * via the `definition` "Refused".
  */
 export interface Refused {
@@ -813,6 +859,7 @@ export interface LifeState {
   tokens: Tokens;
   logs: Logs;
   code: CodeState;
+  gadgets: Gadgets;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema

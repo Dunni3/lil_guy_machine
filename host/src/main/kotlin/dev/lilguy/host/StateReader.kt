@@ -36,7 +36,12 @@ import dev.lilguy.protocol.Easel
 import dev.lilguy.protocol.Entity
 import dev.lilguy.protocol.EventView
 import dev.lilguy.protocol.FastState
+import dev.lilguy.protocol.FactView
+import dev.lilguy.protocol.Gadgets
+import dev.lilguy.protocol.GadgetView
 import dev.lilguy.protocol.Gallery
+import dev.lilguy.protocol.HeldView
+import dev.lilguy.protocol.UseView
 import dev.lilguy.protocol.Growth
 import dev.lilguy.protocol.IntentView
 import dev.lilguy.protocol.LifeState
@@ -162,6 +167,11 @@ class StateReader(private val dbEvery: Duration = 1.seconds) {
             tokens = tokens(s),
             logs = logs(s, now),
             code = now.life?.let(::code) ?: CodeState(),
+            gadgets = Gadgets(
+                now.life?.gadgets.orEmpty().map { g ->
+                    GadgetView(g.id, g.name, g.about, g.state.map { (k, v) -> FactView(k, v) }, g.holds.map { HeldView(it.what, it.detail) }, g.uses.map { UseView(it.verb, it.phrase, it.gives, it.locked) })
+                },
+            ),
         )
     }
 

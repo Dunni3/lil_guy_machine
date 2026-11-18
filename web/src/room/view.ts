@@ -3,6 +3,7 @@ import type { Content, Entity, LifeState, MotionView, PlaceView, RectView, World
 import { ClayModel, type ClayRenderer, type Lamp, type Placed } from "../clay/renderer";
 import type { ClayTextures } from "../clay/textures";
 import { Blob, newPose } from "../guy/blob";
+import { GUY } from "../ui/inspector";
 import { X_AXIS, Y_AXIS, Z_AXIS, rotate, scale, translate } from "../math";
 import type { Place } from "../stream/track";
 import { ArtLayer } from "./art";
@@ -29,6 +30,9 @@ const WALL_FACE = 0.03;
 /** (dx, dy) toward the room, from a wall tile. */
 const INWARD: [number, number][] = [[0, 1], [1, 0], [-1, 0], [0, -1]];
 const ACTIVE = new Set(["executing", "validated", "submitted"]);
+/** The box a click on him lands in: half its width, and how far down from the top of his head it reaches. */
+const GUY_HALF = 0.3;
+const GUY_TALL = 0.75;
 
 /** One note on its way up, from where it started. */
 interface Note {
@@ -209,13 +213,23 @@ export class RoomView {
 
   /**
    * The thing [ray] meets first, by the boxes its models take up where they stand, and the middle of
-   * that box's top (for a label to point at); null if it meets none. The guy and the shelf aren't things.
+   * that box's top (for a label to point at); null if it meets none. The shelf isn't a thing; with
+   * [guy], he is one too, as [GUY], by a box from the top of his head down to his feet.
    */
-  pick(ray: Ray): { id: string; top: Vector3 } | null {
+  pick(ray: Ray, guy = false): { id: string; top: Vector3 } | null {
     let best: { id: string; top: Vector3 } | null = null;
     let nearest = Infinity;
     const box = new Box3();
     const hit = new Vector3();
+    if (guy) {
+      const h = this.blob.headTop;
+      box.min.set(h.x - GUY_HALF, h.y - GUY_TALL, h.z - GUY_HALF);
+      box.max.set(h.x + GUY_HALF, h.y, h.z + GUY_HALF);
+      if (ray.intersectBox(box, hit)) {
+        nearest = hit.distanceTo(ray.origin);
+        best = { id: GUY, top: h.clone() };
+      }
+    }
     for (const [id, t] of this.things) {
       const b = t.placed.model.bounds;
       box.min.set(b[0], b[1], b[2]);

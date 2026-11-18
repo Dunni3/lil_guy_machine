@@ -284,7 +284,30 @@ data class LifeSnapshot(
     val custom: Map<String, BedroomState.Custom> = emptyMap(),
     /** The weather now, for drawing it; null without weather. */
     val weather: WeatherView? = null,
+    /** Each thing standing on the map as an inspector shows it, in the order they stand. */
+    val gadgets: List<GadgetView> = emptyList(),
 )
+
+/**
+ * One of his things as an inspector shows it, for screens: what its content says it does ([about]),
+ * what's live in it ([state], label to value), what's in it ([holds]), and the verbs it's for ([uses]), by its [name].
+ * Only what the sim knows and a renderer can't see from the rest of the snapshot.
+ */
+data class GadgetView(
+    val id: String,
+    /** What it's called: what his code named it, else its own name. */
+    val name: String,
+    val about: List<String>,
+    val state: List<Pair<String, String>>,
+    val holds: List<HeldView>,
+    val uses: List<UseView>,
+)
+
+/** Something in a thing: [what] ("3 food scraps") and a [detail] ("put in, for composting"), or null. */
+data class HeldView(val what: String, val detail: String?)
+
+/** A verb a thing is for: open, with what it takes and [gives] ("12 min: +stimulation"), or [locked] with why. */
+data class UseView(val verb: String, val phrase: String?, val gives: String?, val locked: String?)
 
 data class EntitySnapshot(
     val id: EntityId,

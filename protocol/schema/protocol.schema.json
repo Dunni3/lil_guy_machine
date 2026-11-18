@@ -888,6 +888,16 @@
                             "type": "null"
                         }
                     ]
+                },
+                "gadgets": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/Gadgets"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
                 }
             },
             "required": [
@@ -906,7 +916,8 @@
                 "mind",
                 "tokens",
                 "logs",
-                "code"
+                "code",
+                "gadgets"
             ],
             "additionalProperties": false
         },
@@ -1225,6 +1236,23 @@
             ],
             "additionalProperties": false
         },
+        "FactView": {
+            "title": "FactView",
+            "type": "object",
+            "properties": {
+                "label": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "label",
+                "value"
+            ],
+            "additionalProperties": false
+        },
         "FastState": {
             "title": "FastState",
             "type": "object",
@@ -1352,6 +1380,67 @@
             ],
             "additionalProperties": false
         },
+        "GadgetView": {
+            "title": "GadgetView",
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "about": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "state": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/FactView"
+                    }
+                },
+                "holds": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/HeldView"
+                    }
+                },
+                "uses": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/UseView"
+                    }
+                }
+            },
+            "required": [
+                "id",
+                "name",
+                "about",
+                "state",
+                "holds",
+                "uses"
+            ],
+            "additionalProperties": false
+        },
+        "Gadgets": {
+            "title": "Gadgets",
+            "type": "object",
+            "properties": {
+                "things": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/GadgetView"
+                    }
+                }
+            },
+            "required": [
+                "things"
+            ],
+            "additionalProperties": false
+        },
         "Gallery": {
             "title": "Gallery",
             "type": "object",
@@ -1395,6 +1484,30 @@
                 "skills",
                 "books",
                 "done"
+            ],
+            "additionalProperties": false
+        },
+        "HeldView": {
+            "title": "HeldView",
+            "type": "object",
+            "properties": {
+                "what": {
+                    "type": "string"
+                },
+                "detail": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "what",
+                "detail"
             ],
             "additionalProperties": false
         },
@@ -1632,6 +1745,9 @@
                 },
                 "code": {
                     "$ref": "#/$defs/CodeState"
+                },
+                "gadgets": {
+                    "$ref": "#/$defs/Gadgets"
                 }
             },
             "required": [
@@ -1650,7 +1766,8 @@
                 "mind",
                 "tokens",
                 "logs",
-                "code"
+                "code",
+                "gadgets"
             ],
             "additionalProperties": false
         },
@@ -3421,6 +3538,52 @@
                 "state",
                 "size",
                 "rows"
+            ],
+            "additionalProperties": false
+        },
+        "UseView": {
+            "title": "UseView",
+            "type": "object",
+            "properties": {
+                "verb": {
+                    "type": "string"
+                },
+                "phrase": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "gives": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "locked": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "verb",
+                "phrase",
+                "gives",
+                "locked"
             ],
             "additionalProperties": false
         },
