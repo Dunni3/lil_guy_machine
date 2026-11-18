@@ -237,6 +237,9 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
 ## Rules of the road
 
 - `:sim`, `:decision` and `:agent` stay pure Kotlin/JVM: no `com.badlogic` imports, no Android.
+- The libGDX app (`:app`) is frozen: all visual and UI work goes in `web/`, and nothing is ported back.
+  The TV runs the web renderer in a WebView once it's done
+  (`docs/decisions/2026-11-11-the-web-renderer-is-the-only-renderer-and-the-tv-runs-it-in-a-webview.md`).
 - Never block a frame or a tick on a model call; decisions are async intents.
 - API keys come from the environment, never from committed files. Not on the TV long-term.
   Locally they live in `~/.config/lil-guy-machine/secrets.env`, which the Makefile loads. Never
