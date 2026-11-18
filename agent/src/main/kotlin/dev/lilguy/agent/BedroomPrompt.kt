@@ -183,7 +183,7 @@ object BedroomPrompt {
             val hours = if (r.hours % 1.0 == 0.0) "${r.hours.toInt()} hours" else "${r.hours} hours"
             "the ${m.name} ($${m.price}) makes ${r.makes.getValue(ware.id)} ${ware.name} from $inputs in $hours, and a ${ware.name} sells for $${ware.sellPrice}"
         }
-        val invent = if (content.verbs.any { v -> v.effects.any { it is BuildOp } }) " A thing you invent can run the same recipe." else ""
+        val invent = if (content.verbs.any { v -> v.effects.any { it is BuildOp } }) " A thing you invent can run the same recipe, or recipes and wares of your own design, and earns more the more it's worth; your machines can be connected to feed each other and sell by themselves." else ""
         // With a market, the price is the usual one and each sale lowers the next ([dev.lilguy.sim.Market]).
         val more = content.market?.let { m ->
             " That's the usual price: each one sold fetches ${(m.drop * 100).roundToInt()}% less than the last, and the price recovers ${if (m.recoverPerDay == 0.5) "half" else "${(m.recoverPerDay * 100).roundToInt()}% of"} the gap a day, " +

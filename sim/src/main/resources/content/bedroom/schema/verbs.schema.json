@@ -558,6 +558,37 @@
                     "null"
                   ],
                   "description": "Takes apart the thing bound to `on` (an argument `invention`: a thing he invented that stands somewhere): it leaves his world with its book and his verbs for it, its code stops, what its machine held comes to him, its spot is free, and he gets back rules.yaml `invent.salvage` of its materials, each rounded down. Bought things and the house can't be taken apart. (at the finish)"
+                },
+                "connect": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "from": {
+                          "type": "string"
+                        },
+                        "to": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "from",
+                        "to"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Connects two machines over the air (sim/.../Works.kt `Link`): every 10 game minutes what `from` makes goes into `to` by itself, however far apart they stand. Each end is an argument bound to a machine of his, or `you` (from: it takes what it needs from his things; to: what it makes comes to him), or `market` as `to` (what it makes is sold at the going price). Locked when they're connected already or `to` takes nothing `from` makes. (at the finish)"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "disconnect": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Takes away every connection of the machine bound to `on`, to it and from it. Locked when it has none. (at the finish)"
                 }
               },
               "minProperties": 1,
