@@ -9,6 +9,7 @@ import { StreamClient } from "./stream/client";
 import { Track } from "./stream/track";
 import { Admin, SignIn } from "./ui/admin";
 import { Mail } from "./ui/mail";
+import { ArtGallery } from "./ui/gallery";
 import { Hud } from "./ui/hud";
 import { GUY, Inspector } from "./ui/inspector";
 import { lookOf, pressOf } from "./ui/keys";
@@ -73,6 +74,9 @@ resize();
 const admin = new Admin(settings.life);
 const signIn = new SignIn(admin);
 const mail = new Mail(settings.life, settings.broadcast);
+const art = new ArtGallery(settings.life, settings.broadcast);
+/** A panel of DOM over the room has the keys and the pointer. */
+const panelOpen = () => signIn.open || mail.open || art.open;
 const menu = new Menu();
 const hud = new Hud(layer, settings.broadcast);
 const card = new MenuCard(layer);
@@ -129,7 +133,7 @@ const KEY_PAN = 0.1;
 
 /** The remote's keys, as `RemoteInput.kt` lays them out, and the keyboard's for looking round; nothing here moves the guy. */
 window.addEventListener("keydown", (e) => {
-  if (settings.broadcast || signIn.open || mail.open) return;
+  if (settings.broadcast || panelOpen()) return;
   // With the inspector open, Escape closes it and [ and ] step through the things; the rest are the room's.
   if (inspector.open && !menu.open && (e.key === "Escape" || e.key === "[" || e.key === "]")) {
     e.preventDefault();
@@ -203,7 +207,7 @@ const tagTop = new Vector3();
 /** What the mouse is over in the room this frame (the camera may have moved under it), for [ThingLabel]. */
 function hovered() {
   const m = pointer.mouse;
-  if (!m || !view || menu.open || signIn.open || mail.open) return null;
+  if (!m || !view || menu.open || panelOpen()) return null;
   ndc.set((m.x / layer.width) * 2 - 1, 1 - (m.y / layer.height) * 2);
   raycaster.setFromCamera(ndc, renderer.camera);
   return view.pick(raycaster.ray, true);
@@ -220,7 +224,7 @@ function pickAt(e: MouseEvent) {
 
 function pointerView(): PageView | null {
   const life = stream.state.life;
-  return life && !signIn.open && !mail.open ? pageView(life) : null;
+  return life && !panelOpen() ? pageView(life) : null;
 }
 
 function spotAt(e: MouseEvent): Spot | null {
@@ -416,6 +420,7 @@ function draw() {
       runId = life.run.run_id;
       menu.reset();
     }
+    art.update(life);
     // The room waits until there's one to draw.
     if (!view) {
       view = new RoomView(renderer, settings.camera, textures);
@@ -432,7 +437,7 @@ function draw() {
       life, content, speech: view.speech, making: view.making, banner: banner(life, open), hint: hint(open), menuOpen: open,
     }, renderer.camera, f, delta);
     if (!open && card.hover) setHover(null, null);
-    look.update(view.camera.mode, open || signIn.open || mail.open, delta);
+    look.update(view.camera.mode, open || panelOpen(), delta);
     // Over the room, the hand says it can be dragged; over the menu, the pointer is the card's.
     const over = open ? null : hovered();
     if (!settings.broadcast && !pointer.room.size) {
@@ -442,13 +447,13 @@ function draw() {
       else if (open && c === "grab") canvas.style.cursor = "";
     }
     // The menu and the letters cover the room: the inspector goes while they're up.
-    if (inspector.open && (open || mail.open || signIn.open)) inspector.close();
+    if (inspector.open && (open || panelOpen())) inspector.close();
     inspector.update(life, content, delta);
     // The tag over what the mouse rests on, else over what's being inspected.
     const shown = inspector.showing;
     const shownTop = shown && shown !== GUY ? view.topOf(shown, tagTop) : null;
     label.update(over ?? (shown && shownTop ? { id: shown, top: shownTop } : null), life, content, renderer.camera, f.u, delta);
-    readouts.update(life, (id, out) => view!.topOf(id, out), renderer.camera, f.u, open || signIn.open || mail.open, over?.id ?? null);
+    readouts.update(life, (id, out) => view!.topOf(id, out), renderer.camera, f.u, open || panelOpen(), over?.id ?? null);
     card.update(menu, v, f, pressed, delta);
     pressed = false;
     renderer.overlay(layer.scene, layer.camera);

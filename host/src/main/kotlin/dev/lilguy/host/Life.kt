@@ -3,9 +3,11 @@ package dev.lilguy.host
 import dev.lilguy.agent.live.ModelSetup
 import dev.lilguy.agent.live.RunDatabase
 import dev.lilguy.agent.live.SimSession
+import dev.lilguy.protocol.ArtList
 import dev.lilguy.protocol.Command
 import dev.lilguy.protocol.CommandResult
 import dev.lilguy.protocol.Content
+import dev.lilguy.protocol.DrawingView
 import dev.lilguy.protocol.LifeState
 import dev.lilguy.protocol.LifeSummary
 import dev.lilguy.protocol.RunList
@@ -29,7 +31,11 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import dev.lilguy.runlog.ArtPieceRow
+import dev.lilguy.runlog.RowJson
+import dev.lilguy.runlog.Tables
 import dev.lilguy.sim.BedroomWorld
+import dev.lilguy.sim.GameClock
 import dev.lilguy.sim.Letter
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -137,6 +143,23 @@ class Life(
             )
         }.take(limit).toList()
         return RunList(out)
+    }
+
+    /**
+     * Every piece kept in the run this life is on, from the run database, by piece number. A resumed run that went back
+     * past a piece and drew another under its number keeps both rows; the later one is the piece he has. Any thread.
+     */
+    fun art(): ArtList {
+        val run = latest?.state?.run?.runId ?: return ArtList(null, emptyList())
+        val store = db?.store ?: return ArtList(run, emptyList())
+        val rows = store.rows(Tables.artPieces, "run_id = ? ORDER BY seq", listOf(run))
+            .map { RowJson.decodeFromJsonElement(ArtPieceRow.serializer(), it) }
+        return ArtList(run, rows.associateBy { it.piece }.values.sortedBy { it.piece }.map { r ->
+            DrawingView(
+                r.seq, r.piece, r.tick, r.day, r.minuteOfDay?.let(GameClock::hhmm), r.medium, r.title, r.tags, r.shows,
+                r.palette.map { it.removePrefix("#").toInt(16) }, r.letters.size, r.letters,
+            )
+        })
     }
 
     /** Runs [command] on the life's thread between ticks. */

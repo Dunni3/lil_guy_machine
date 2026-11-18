@@ -32,7 +32,7 @@ object ProtocolSchema {
     private val pretty = Json { prettyPrint = true }
 
     /** The roots: everything a client reads or sends is reachable from these. */
-    private val roots = listOf(ServerMessage.serializer().descriptor, Command.serializer().descriptor, CommandResult.serializer().descriptor, Viewer.serializer().descriptor, RunList.serializer().descriptor,
+    private val roots = listOf(ServerMessage.serializer().descriptor, Command.serializer().descriptor, CommandResult.serializer().descriptor, Viewer.serializer().descriptor, RunList.serializer().descriptor, ArtList.serializer().descriptor,
         Credentials.serializer().descriptor, SignedIn.serializer().descriptor, Account.serializer().descriptor, LetterDraft.serializer().descriptor,
         Mailbag.serializer().descriptor, MailError.serializer().descriptor,
     )
@@ -52,6 +52,7 @@ object ProtocolSchema {
                 put("result", ref(CommandResult.serializer().descriptor))
                 put("viewer", ref(Viewer.serializer().descriptor))
                 put("runs", ref(RunList.serializer().descriptor))
+                put("art", ref(ArtList.serializer().descriptor))
                 put("credentials", ref(Credentials.serializer().descriptor))
                 put("signed_in", ref(SignedIn.serializer().descriptor))
                 put("account", ref(Account.serializer().descriptor))
