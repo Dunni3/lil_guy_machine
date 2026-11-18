@@ -1,5 +1,7 @@
 package dev.lilguy.agent
 
+import dev.lilguy.agent.memory.DocSection
+import dev.lilguy.agent.memory.WorldDocs
 import dev.lilguy.decision.ActionSchema
 import dev.lilguy.decision.ToolSet
 import dev.lilguy.sim.ActivityOption
@@ -26,8 +28,8 @@ import kotlinx.serialization.json.putJsonObject
  * things he could do it with; `buy` while there's a shop to buy from; and `wait`. Calling is optional:
  * what he writes is his thought of the moment, and a reply of only text is him thinking, put back so
  * he goes on. Every tool also takes an optional `thought`, for when he acts without writing. Locked
- * verbs aren't tools: the status message lists them with why ([view]). [looks] are `recall`,
- * `ask` and `search`, which answer and let him go on. When [MAX_STEPS] go by without an action, he's sat and
+ * verbs aren't tools: the status message lists them with why ([view]). [looks] are `look_around`,
+ * `search_docs` and `read_docs`, `recall`, `ask` and `search`, which answer and let him go on. When [MAX_STEPS] go by without an action, he's sat and
  * thought: the turn ends as the [ponder] intent.
  */
 object BedroomTools {
@@ -38,6 +40,14 @@ object BedroomTools {
     const val THOUGHT = "inner_voice"
 
     const val LOOK_AROUND = "look_around"
+
+    /** The looks that search and open the world's docs ([WorldDocs]): the game's mechanics, written down. */
+    const val SEARCH_DOCS = "search_docs"
+    const val READ_DOCS = "read_docs"
+
+    /** Sections a docs search gives back, and a read opens at once. */
+    const val DOCS_FOUND = 8
+    const val DOCS_OPEN = 4
 
     /** Tools that aren't verbs, whose names a verb can't take. */
     private val BUILT_IN = dev.lilguy.sim.CodeRules.BUILT_IN
@@ -109,14 +119,16 @@ object BedroomTools {
     /**
      * `look_around` says where he is and what's round him with [look]; `recall` searches his memories
      * and earlier thoughts with [recall]; `ask` asks how his world works with [ask]; `search` searches
-     * the real web with [search]. Any is left out when null.
+     * the real web with [search]; `search_docs` and `read_docs` search and open the world's [docs]
+     * (the game's mechanics: [WorldDocs]) with no model call. Any is left out when null.
      */
     fun looks(
         recall: (suspend (String) -> String)?,
         ask: (suspend (String) -> String)?,
         search: (suspend (String) -> String)? = null,
         look: (() -> String)? = null,
-    ): List<ToolSet.Look> = listOfNotNull(
+        docs: (() -> List<DocSection>)? = null,
+    ): List<ToolSet.Look> = docsLooks(docs) + listOfNotNull(
         look?.let { l ->
             ToolSet.Look(
                 LOOK_AROUND,
@@ -158,6 +170,78 @@ object BedroomTools {
             ) { args -> s(string(args, "query")) }
         },
     )
+
+    /** `search_docs` and `read_docs` over [docs], or none. */
+    private fun docsLooks(docs: (() -> List<DocSection>)?): List<ToolSet.Look> {
+        if (docs == null) return emptyList()
+        return listOf(
+            ToolSet.Look(
+                SEARCH_DOCS,
+                "Search the guide to how your world works: its rules and numbers, what each thing you can do does and needs, what each thing you could own is for and costs, " +
+                    "each book and what it teaches, and how to get to what you can't do yet. You get back the sections that match, with how each begins; open them with $READ_DOCS. " +
+                    "With no query, you get the list of every section. It takes no time; then choose what to do.",
+                buildJsonObject {
+                    put("type", "object")
+                    putJsonObject("properties") {
+                        putJsonObject("query") {
+                            put("type", "string")
+                            put("description", "A few words for what you want to know (\"sleep cold\", \"earn money\", \"easel\"); leave it out for the list of every section.")
+                        }
+                    }
+                    put("additionalProperties", false)
+                },
+            ) { args -> docsSearch(docs(), (args["query"] as? JsonPrimitive)?.contentOrNull.orEmpty()) },
+            ToolSet.Look(
+                READ_DOCS,
+                "Read sections of the guide to how your world works in full, by their ids from $SEARCH_DOCS (such as guide:fun, rules:needs, verb:paint, item:kiln). It takes no time; then choose what to do.",
+                buildJsonObject {
+                    put("type", "object")
+                    putJsonObject("properties") {
+                        putJsonObject("ids") {
+                            put("type", "array")
+                            putJsonObject("items") { put("type", "string") }
+                            put("minItems", 1)
+                            put("maxItems", DOCS_OPEN)
+                            put("description", "Up to $DOCS_OPEN section ids, most useful first.")
+                        }
+                    }
+                    putJsonArray("required") { add("ids") }
+                    put("additionalProperties", false)
+                },
+            ) { args -> docsRead(docs(), ids(args)) },
+        )
+    }
+
+    /** The sections of [docs] that match [query], each with how it begins; the whole list for a blank query. */
+    fun docsSearch(docs: List<DocSection>, query: String): String {
+        if (query.isBlank()) return "Every section of the guide, as `id: title` (open them with $READ_DOCS):\n" + docs.joinToString("\n") { "- ${it.id}: ${it.title}" }
+        val found = WorldDocs.search(docs, query, DOCS_FOUND)
+        if (found.isEmpty()) return "Nothing in the guide matches \"$query\". Try other words, or search with no query for the list of every section."
+        return "Sections matching \"$query\", best first (open them with $READ_DOCS):\n" +
+            found.joinToString("\n") { "- ${it.id}: ${it.title}. ${snippet(it.text)}" }
+    }
+
+    /** [ids] of [docs] in full; an id that isn't one says so, with the sections like it. */
+    fun docsRead(docs: List<DocSection>, ids: List<String>): String {
+        val byId = docs.associateBy { it.id }
+        return ids.distinct().take(DOCS_OPEN).joinToString("\n\n") { id ->
+            byId[id]?.let { "## ${it.id}: ${it.title}\n${it.text}" } ?: run {
+                val like = WorldDocs.search(docs, id, 3)
+                "## $id\nThere's no section \"$id\"." + if (like.isEmpty()) " Search for it with $SEARCH_DOCS." else " Perhaps: ${like.joinToString { it.id }}."
+            }
+        }
+    }
+
+    private const val SNIPPET = 160
+
+    private fun snippet(text: String): String = if (text.length <= SNIPPET) text else text.take(SNIPPET).substringBeforeLast(' ') + " …"
+
+    private fun ids(args: JsonObject): List<String> {
+        val raw = args["ids"] ?: throw ActionSchema.InvalidReply("$READ_DOCS needs `ids`, a list of section ids")
+        val list = (raw as? kotlinx.serialization.json.JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.trim() }
+            ?: listOfNotNull((raw as? JsonPrimitive)?.contentOrNull?.trim())
+        return list.filter { it.isNotEmpty() }.ifEmpty { throw ActionSchema.InvalidReply("$READ_DOCS needs at least one section id") }
+    }
 
     private fun text(name: String, description: String) = buildJsonObject {
         put("type", "object")

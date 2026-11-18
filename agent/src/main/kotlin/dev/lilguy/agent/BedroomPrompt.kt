@@ -447,10 +447,11 @@ ${lookText(looks)}
         |After that you may see what you remember from earlier (memories, and what was on your mind), what you concluded the latest times you stepped back from your days, and your plan from the last time you took stock. Those are your own words: let the lessons and plans in them shape what you do with your hours.
     """.trimMargin()
 
-    /** The system prompt's paragraph on [looks] ("look_around", "recall", "ask", "search"), with its blank line before; empty for none. */
+    /** The system prompt's paragraph on [looks] ("look_around", "search_docs", "recall", "ask", "search"), with its blank line before; empty for none. */
     private fun lookText(looks: Set<String>): String {
         val what = listOfNotNull(
             "`look_around` tells you where you are, what's round you and what you could do with it, and where else you could go".takeIf { BedroomTools.LOOK_AROUND in looks },
+            "`search_docs` and `read_docs` search and open the guide to how your world works (its rules and numbers, what each thing you can do or own is for, needs and costs, and how to get to what you can't do yet)".takeIf { BedroomTools.SEARCH_DOCS in looks },
             "`recall` searches your memories and earlier thoughts for something you're trying to remember".takeIf { "recall" in looks },
             "`ask` asks how something in your world works".takeIf { "ask" in looks },
             "`search` searches the real internet, outside your room, for anything you're curious about".takeIf { "search" in looks },
