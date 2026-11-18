@@ -38,13 +38,15 @@ class MemoryTest {
     fun `a run records outcomes, what happened around him, and a snapshot when he wakes`() {
         val store = InMemoryStore()
         val decisions = mutableListOf<dev.lilguy.agent.AgentRuntime.DecisionRecord>()
-        val (world, runtime) = bedroomScenario(BedroomPolicy(), longTerm = AgentMemory(store, "r1")) { decisions += it }
+        // The old $20 start, so he sketches on the first day (2026-11-15-art-gets-him-by-*).
+        val content = dev.lilguy.sim.BedroomContent.default().let { it.copy(start = it.start.copy(money = 20)) }
+        val (world, runtime) = bedroomScenario(BedroomPolicy(), content = content, longTerm = AgentMemory(store, "r1")) { decisions += it }
         runBlocking { runLockstep(world, runtime, maxTicks = 2 * 7200) }
         val events = store.eventsAfter("r1", 0, 10_000)
         val outcomes = events.filter { it.kind == EventKind.Outcome }
         assertTrue(outcomes.size in decisions.size - 1..decisions.size, "one outcome per finished intent: ${outcomes.size} for ${decisions.size} decisions")
         // From the sim's own words for what the ops did, with how long it took.
-        assertTrue(outcomes.any { it.text.startsWith("sketch (1h): done; +1 sketch, art skill 0.2 (+0.1), energy -3") }, outcomes.map { it.text }.toString())
+        assertTrue(outcomes.any { it.text.startsWith("sketch (1h") && "): done; +1 sketch, art skill 0.2 (+0.1), energy -3" in it.text }, outcomes.map { it.text }.toString())
         assertTrue(outcomes.none { "money $" in it.text && it.text.startsWith("sketch") }, "outcomes don't restate his state")
         // How things stood: at the start, then once each morning he woke (two days from 08:00 reach day 3).
         val snapshots = events.filter { it.kind == EventKind.Snapshot }
@@ -94,9 +96,25 @@ class MemoryTest {
         assertEquals(listOf(5L, 6L), Recall(latest = 2, related = 1).select(all, "nothing relevant").map { it.id })
         assertEquals(listOf(6L), Recall(latest = 3, related = 0, charBudget = 30).select(all, "").map { it.id })
         assertEquals("Day 1 08:00-09:00: I painted.", all.last().render())
-        assertEquals("Day 1 08:30, you thought: \"I want the easel.\"", easel.render())
+        assertEquals("Day 1 08:30, on your mind: \"I want the easel.\"", easel.render())
         // Ranked: the latest memory always, then by relevance, importance and recency.
         assertEquals(listOf(7L, 6L), Recall(pick = 2).selectRanked(all, mapOf(easel.key to 1.0), now = 70).map { it.id })
+    }
+
+    @Test
+    fun `events carry the place he was in, and being there brings up what happened there`() {
+        val store = PlacedStore(InMemoryStore())
+        val (world, runtime) = bedroomScenario(BedroomPolicy(), longTerm = AgentMemory(store, "r1"))
+        world.submit(world.agentId, dev.lilguy.sim.Intent.MoveTo(dev.lilguy.sim.Target.Place("garden")))
+        runBlocking { runLockstep(world, runtime, maxTicks = 600) }
+        val places = store.eventsAfter("r1", 0, 1000).mapNotNull { it.place }.toSet()
+        assertTrue("your bedroom" in places || "the garden" in places, places.toString())
+        // Two memories alike in all but where they happened: the one of where he is comes first.
+        fun m(id: Long, at: String) = Recollection(Recollection.Kind.Memory, id, "Day 1 08:00-09:00", "I looked round.", null, 50, listOf(at))
+        val all = listOf(m(1, "the forest clearing"), m(2, "the garden"), m(3, "your bedroom"))
+        assertEquals(listOf(3L, 1L), Recall(pick = 2).selectRanked(all, emptyMap(), now = 60, here = "the forest clearing").map { it.id })
+        assertEquals(listOf(3L, 2L), Recall(pick = 2).selectRanked(all, emptyMap(), now = 60, here = "the garden").map { it.id })
+        assertEquals("Day 1 08:00-09:00 in the garden: I looked round.", all[1].render())
     }
 
     @Test
@@ -115,6 +133,32 @@ class MemoryTest {
         val later = prompts.first { "What you remember from earlier" in it }
         assertTrue(later.contains("I sketched and sold; the easel is next. (batch 1)"), later)
         assertNotNull(prompts.last().lines().firstOrNull { it.startsWith("- Day 1") })
+    }
+
+    @Test
+    fun `he steps back every so often, building on what he concluded before, and later prompts show it`() {
+        val store = InMemoryStore()
+        val seen = mutableListOf<String>()
+        val model = object : DecisionModel {
+            override val id = "fake-reflector"
+            override val capabilities = Capabilities()
+            override suspend fun <A> decide(request: DecisionRequest, schema: ActionSchema<A>): Decision<A> {
+                seen += request.messages.last().content
+                val raw = """{"reflection":"I keep sketching to keep busy. (reflection ${seen.size})"}"""
+                return Decision(schema.decode(raw), null, Usage(), Duration.ZERO, raw)
+            }
+        }
+        val memory = AgentMemory(store, "r", reflector = Reflector(model, store, "r", "You are him.", minEvents = 12, every = 15))
+        val prompts = mutableListOf<String>()
+        val (world, runtime) = bedroomScenario(BedroomPolicy(), longTerm = memory) { d -> prompts += d.request!!.messages.last().content }
+        runBlocking { runLockstep(world, runtime, maxTicks = 7200) }
+        val stored = store.memories("r", Reflector.LEVEL)
+        assertTrue(stored.size >= 2, "reflections: ${stored.size}")
+        assertEquals(stored.first().toId + 1, stored[1].fromId, "each starts where the last stopped")
+        // The second reads the first, to build on it; the decisions after it show it.
+        assertTrue("What you concluded the last times you stepped back" in seen[1] && "(reflection 1)" in seen[1], seen[1])
+        assertTrue(prompts.any { dev.lilguy.agent.PromptBuilder.REFLECTION_HEADER in it && "(reflection 1)" in it })
+        assertTrue(memory.thoughts().count { it.reflection } == stored.size)
     }
 
     @Test

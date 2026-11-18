@@ -7,7 +7,7 @@ needs:
   fullness_per_hour: -5
   # Asleep he burns less: a night costs about 18 fullness rather than 45.
   asleep_fullness_per_hour: -2
-  # Mood moves this much an hour toward the baseline plus the room's comfort.
+  # Mood moves this much an hour toward the baseline plus the comfort of what he can see (`comfort`).
   mood_drift_per_hour: 3
   mood_baseline: 50
   # Below `low` energy or fullness, mood falls `low_mood_per_hour` instead of drifting.
@@ -18,9 +18,13 @@ needs:
     - { need: energy, below: 5, reason: "too tired to work" }
     - { need: fullness, below: 5, reason: "too hungry to work" }
   # Stimulation (low = bored) drains while he's awake. Hobbies, making things and anything new feed
-  # it; repeating the same thing pays less and drains it (habituation, below). Mood is the summary:
+  # it; repeating the same thing pays less and drains it (habituation, below). The drain is
+  # `stimulation_per_hour` at `stimulation_drain_at` and in proportion to the level otherwise (-4 at
+  # 25, -16 at 100), so stimulation settles where what he does balances it instead of sticking at 0
+  # or 100 (docs/decisions/2026-11-15-fun-drains-in-proportion-*). Mood is the summary:
   # below `bored`, each missing point lowers the mood he settles to by `bored_mood` (16 at 0).
-  stimulation_per_hour: -5.5
+  stimulation_per_hour: -8
+  stimulation_drain_at: 50
   bored: 40
   bored_mood: 0.4
 
@@ -30,19 +34,42 @@ night:
   from: "20:00"
   to: "04:00"
 
-# Repetition wears an activity thin: each time he finishes one, its wear rises `per_repeat` (wear
-# runs 0 to 1) and fades `recover_per_hour`. Its mood and stimulation gains are paid at 1 - wear, and
-# finishing one that was already worn costs `stale_stimulation` times the wear. Routine verbs
-# (eating, sleeping, selling, hanging) don't wear. A verb with arguments wears per item, so each
-# record is its own, unless it says `wear: verb` (reading: any book wears the verb).
+# How familiar what he does is, by what it was like rather than what it's called
+# (docs/decisions/2026-11-15-fun-comes-from-what-is-unfamiliar-*). Each event he finishes is made of
+# features the sim knows, in families: the verb and its `kind`, the `place` it's done in and the `sky`
+# when that's outdoors, each `thing` it's done at or with and that thing's `group` and `quality`s, the
+# `skill` it practises and what it `makes`. Meeting a feature adds 1 to its level, and levels halve every
+# `half_life_days`. A feature's freshness is 1 / (1 + level); an event's is the weighted mean, family by
+# family, so something he does every day stays familiar and a fourth warm lamp is hardly new. His mood
+# and stimulation gains are paid at that freshness, and every finish pays novelty `effects` at it and
+# `stale_stimulation` at 1 - it. Routine verbs (eating, sleeping, selling, hanging) don't count.
+familiarity:
+  half_life_days: 3
+  weights: { verb: 1, kind: 1, place: 1, thing: 1, group: 1, quality: 1, skill: 1, makes: 1, sky: 0.5 }
+
+# Without `familiarity`, repetition wears an activity thin by its id: each time he finishes one, its
+# wear rises `per_repeat` (wear runs 0 to 1) and fades `recover_per_hour`, and its gains are paid at
+# 1 - wear. With it, only what his things' code does wears this way. Finishing one that was already
+# worn costs `stale_stimulation` times the wear. A verb with arguments wears per item, so each record
+# is its own, unless it says `wear: verb` (reading: any book wears the verb).
+# `bored_lock`: below `below` stimulation, anything worn `worn` or more (familiarity: freshness at most
+# 1 - worn) is refused, pay and all, until he's less bored or it wears off. What feeds energy or
+# fullness never locks (the oats stay open), nor does anything without mood or stimulation gains, nor
+# anything he has never done. Work stays open until he could buy something new and still `keep` that
+# much for food (about a day of meals).
 habituation:
   per_repeat: 0.25
-  recover_per_hour: 0.015
+  recover_per_hour: 0.03
   stale_stimulation: -6
+  bored_lock: { below: 40, worn: 0.7, keep: 24 }
 
-# The first time he finishes a verb (with given items: a record, a book) pays this on top. Routine ones don't count.
+# Without `familiarity`, the first time he finishes a verb (with given items: a record, a book) pays this
+# on top; with it, every finish pays it at how fresh it was. Routine ones don't count.
+# `things`: a new thing for the room feeds stimulation while he's awake, `stimulation_per_value` an
+# hour per point of its value to him (so only what he likes), fading to nothing over `days`.
 novelty:
   effects: { stimulation: 8, mood: 3 }
+  things: { stimulation_per_value: 0.5, days: 3 }
 
 # Something failing (refused, or cut short because what it needed was gone) adds `per_failure`;
 # finishing anything that isn't routine adds `per_success`; it fades `per_hour`, and sleep eases it
@@ -54,13 +81,12 @@ frustration:
   above: 20
   mood: 0.3
 
-# Skills (vocabulary.yaml) have no cap. A verb's mood and stimulation gains grow `gain_per_level`
-# per level of the skills it practises. A piece whose `sellable` names a skill sells for
-# `price_per_level` more per level he had when he made it. A skill that `deepens` a quality adds
-# `affinity_per_level` per level to his affinity for it.
+# Skills (vocabulary.yaml) have no cap. A verb's mood gains grow `gain_per_level`
+# per level of the skills it practises. What a skill does for a piece of art (its price and its
+# strokes) is on the item (items.yaml `sellable` and `drawable`). A skill that `deepens` a quality
+# adds `affinity_per_level` per level to his affinity for it.
 skills:
   gain_per_level: 0.1
-  price_per_level: 0.15
   affinity_per_level: 0.25
   deepens: { nature: natural, music: lively }
 
@@ -68,6 +94,50 @@ shop:
   # Orders are placed and delivered at the mail hatch.
   at: mail_hatch
   minutes: 10
+
+# Inventing (the `build` op): one invention is one new item with one use and some qualities. He
+# never names a price. A thing that's `built` (to look at, to play, to sell, and machines) is made
+# of materials he buys from the shop (items.yaml, group supply), and each part of its look names
+# its material: a part takes one unit of its material for every `unit` cubic metres of its shape,
+# at least 1, and its main material (what most of it is made of) takes `finish` more for each point
+# of quality strength. Its workings take more on top: code needs `workings.code` (wiring), and code
+# that moves a part, or recipes it runs, need `workings.moving` (a mechanism). The build takes them
+# from his stock; without them it doesn't happen, and without the wiring the thing is built but
+# does nothing. Food and books aren't made of wood: they cost dollars, `base` plus `per_strength` a
+# point of quality strength (a meal $8, a book a few dollars of paper). `uses`: the affordances
+# open to him and the group their things join; the others stay closed (sim/.../Invention.kt,
+# InventRules.OPEN). A thing to look at takes the first free spare spot of its kind in the room
+# (room.yaml `spots`), else the free spot of its kind nearest the workbench, indoors or out.
+# Food he invents can be reordered from the shop at what it cost. A thing made to sell sells once,
+# for its materials plus `wage_per_hour` an hour of the build, which is less than sketching pays.
+# A book he writes raises one skill `skill_gain` a chapter. `dismantle` takes one of his things
+# apart and gives back `salvage` of its bill, each material rounded down.
+invent:
+  per_day: 1
+  qualities: { most: 3, total: 6 }
+  uses:
+    viewable: { group: decor, built: true }
+    playable: { group: record, built: true }
+    readable: { group: book, base: 3, per_strength: 3 }
+    edible: { group: food, base: 8, per_strength: 2 }
+    sellable: { group: ware, built: true }
+  book: { min_chapters: 3, max_chapters: 5, skill_gain: 0.25 }
+  wage_per_hour: 4
+  look_parts: 12
+  materials:
+    wood: { for: "bodies, boxes, frames, legs, shelves and handles: warm, easy, the cheapest" }
+    metal: { for: "casings, gears, pipes, stands and anything that turns or takes heat; a machine's mechanism" }
+    copper_wire: { for: "coils, springs, antennae and fine lines; the wiring any thing with code needs" }
+    glass: { for: "panes, domes, bulbs, jars and lenses: light shows through it" }
+  unit: 0.006
+  finish: 1
+  workings:
+    code: { copper_wire: 3 }
+    moving: { metal: 5 }
+  salvage: 0.5
+  # The shop takes back materials he doesn't need (verbs.yaml `sell_materials`) for this share of what
+  # one costs in its pack, in whole dollars, at least 1: a wood plank $1, a metal bar, copper wire coil or glass pane $2.
+  sell_back: 0.5
 
 # A decision-loop policy: after `every` decisions without `verb`, he's made to do it (the decision
 # model isn't asked), when something writes its result. Remove it to leave thinking to the model.
@@ -81,7 +151,7 @@ reflection:
 # earns `reward` on top of its price.
 commissions:
   arrive: "09:00"
-  reward: 12
+  reward: 5
   adjectives: [sleepy, stormy, tiny, golden, lonely, cheerful, ancient, frozen, glowing, secret, upside-down, rainy, busy, quiet, wild, striped]
   nouns: [lighthouse, cat, mountain, teapot, garden, whale, rocket, fox, castle, bicycle, moon, sailboat, owl, cactus, bridge, forest]
 
@@ -91,6 +161,66 @@ gallery:
   max: 3
   comfort_each: 3
 
+# Comfort is what he can see from where he stands (docs/decisions/2026-11-15-comfort-is-what-he-can-see-lit-*):
+# a thing in the place he's in counts in full within `near` tiles, less and less out to `far`, where it stops,
+# and in full at `lit` light or more, less in dimmer light, none where it's too dark to see (light.see).
+# Hung art counts where it hangs, the collection where its shelf is (his bedroom), a room's qualities
+# while he's in it. Asleep, he counts what's round him in the room he sleeps in, lit or not. A new thing
+# feels new (novelty.things) by the same measure: while he can see it.
+# `adapt`: he gets used to what he has. A thing's comfort falls from full when he gets it to `floor` of
+# it over `days`, so a room full of things he's had for weeks doesn't keep his mood at the top.
+comfort:
+  near: 2
+  far: 6
+  lit: 4
+  adapt: { days: 14, floor: 0.4 }
+
+# Light, from 0 (black) to about 10 (noon outdoors). It's daylight on the land by the time of day,
+# `indoors` of it everywhere in a room (the sky's light), and through each window (room.yaml `windows`) a
+# light of `window.share` of the daylight reaching `window.radius` tiles. Things with `light` (items.yaml)
+# light round them; walls and trees block light, and a light in a room lights only that room. He can make
+# out a thing with `see` light on it; at night what's darker isn't in what he sees, and a verb that
+# `needs` light (verbs.yaml) is locked where it would be done until there's that much. `lantern`: the
+# small light that goes with him, enough to make out what's beside him; a verb's `needs` don't count it.
+light:
+  see: 1
+  lantern: { strength: 1.5, radius: 1.5 }
+  indoors: 0.5
+  window: { share: 0.8, radius: 8 }
+  daylight: { "00:00": 0.5, "05:00": 0.5, "06:30": 6, "09:00": 10, "17:30": 9, "19:30": 4, "20:30": 1, "21:00": 0.5 }
+  # When a lamp (the `lamp` affordance) is lit if it has no `light.timer` of its own and he hasn't
+  # switched it on or off. Across midnight when off is earlier.
+  timer: { on: "18:00", off: "00:00" }
+
+# Sound, from 0 to 10, carries through walls muffled (a wall lets a third through) and out of a room.
+# He hears it at `hear` or more; music lifts his mood in full where it's `full` loud, less where it's
+# fainter, and not at all where he can't hear it. Something nice he can hear (a chime) counts toward
+# comfort as if he could see it.
+sound:
+  hear: 1
+  full: 4
+
+# Asleep where it's colder than `cold` degrees (the warmth on the bed's tile) or `noisy` loud or more,
+# energy comes back at `rest` of the rate. A heater by the bed keeps a cold night out.
+sleep:
+  cold: 16
+  noisy: 2
+  rest: 0.8
+
+# A planter (items.yaml `grows`) grows an hour toward its harvest for each hour its soil is damp and the
+# sun on it (daylight and the windows' share; lamps don't count) is `sun` or more: by the window or
+# outdoors on a clear day, not in a dim corner. Soil holds `soil` of water, loses `dries_per_hour`, and
+# gets the rain (and any spray) on its tile each hour; watering fills it.
+growing:
+  sun: 7
+  soil: 10
+  dries_per_hour: 0.4
+
+# Samples he keeps are his collection, on a shelf in his room: each kind he has adds comfort, up to `max` kinds.
+collection:
+  comfort_each: 2
+  max: 6
+
 # An item's value to him is each quality's strength times his affinity for it, summed. Mostly it's
 # paid when he does something with it: an `enjoy` op (a record on the player) adds `in_use` mood
 # per point when it finishes. A little is passive: an item in its slot adds `in_view` comfort per
@@ -98,3 +228,42 @@ gallery:
 quality_value:
   in_view: 1
   in_use: 1
+
+# Letters he writes (the `post_letter` op): only to someone who has written to him, at most `per_day`
+# a game day to each of them, and at most `unanswered` in a row to someone before they write back, so
+# nobody gets a pile. A letter is at most `max_length` characters, the same as the ones he gets.
+letters:
+  per_day: 1
+  unanswered: 2
+  max_length: 1000
+
+# Machines (sim/.../Works.kt; docs/decisions/2026-11-15-machines-are-fed-and-wear-out-instead-of-uncapped.md):
+# what a machine makes is a recipe, a batch that takes its inputs and, after `hours` of working, makes
+# its outputs. Nothing comes from nothing: a machine only works while it has what a batch takes, room
+# for what it makes (`holds` of each), and the effects it `needs` at its tile (a raised bed grows by
+# daylight). A machine takes what it needs from what another made within `reach` tiles in the same
+# place; anything else he carries over (the `tend` verb). Each batch wears it (`wear_per_batch`, or
+# the item's `wear`), and each run of a thing's code that changes something wears that thing
+# (`wear_per_run`). Past `slow_at` it works slower, up to half speed at 100, where it jams and stops
+# until it's mended: `repair` takes off `restores` plus `per_level` a level of `skill`, from `worn_at`.
+machines:
+  holds: 6
+  reach: 3
+  wear_per_batch: 10
+  wear_per_run: 1
+  slow_at: 50
+  repair: { restores: 45, per_level: 25, skill: tinkering, worn_at: 25 }
+  recipes:
+    - { id: compost, says: composting, takes: { food_scrap: 3 }, makes: { compost_brick: 1 }, hours: 6 }
+    - { id: grow, says: growing, takes: { compost_brick: 1 }, makes: { cherry_tomatoes: 1 }, hours: 10, needs: { light: 3 } }
+    # The kiln's: $3 of clay into a $20 pot.
+    - { id: fire, says: firing, takes: { clay: 2 }, makes: { clay_pot: 1 }, hours: 4 }
+
+# Wares (the ware affordance, or the ware group) sell for less the more of one kind he sells: each one
+# sold lowers what the next fetches by `drop` of its going price, never below `floor` of its usual
+# price, and the going price climbs back by `recover_per_day` of the gap a game day (sim/.../Market.kt).
+# Art and samples aren't wares. A second kiln earns less than the first; a new kind of ware pays.
+market:
+  drop: 0.06
+  recover_per_day: 0.5
+  floor: 0.25

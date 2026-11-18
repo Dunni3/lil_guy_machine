@@ -3,7 +3,6 @@ package dev.lilguy.agent.authored
 import dev.lilguy.sim.AuthoredOp
 import dev.lilguy.sim.AuthoredResult
 import dev.lilguy.sim.AuthoredView
-import dev.lilguy.sim.BedroomContent
 import dev.lilguy.sim.BedroomWorld
 import dev.lilguy.sim.Intent
 import dev.lilguy.sim.IntentStatus
@@ -96,7 +95,8 @@ class Authors(handlers: List<AuthorHandler<*>>, private val scope: CoroutineScop
         fun staged(): AuthoredResult? = result?.let(handler::staged)
     }
 
-    private var content: BedroomContent? = null
+    /** Its content is read when it's needed: it grows when he invents something. */
+    private var world: BedroomWorld? = null
     private var deliver: (Int, AuthoredResult) -> Unit = { _, _ -> }
     private var stage: (String, AuthoredResult) -> Unit = { _, _ -> }
     private val pending = CopyOnWriteArrayList<Pending>()
@@ -107,7 +107,7 @@ class Authors(handlers: List<AuthorHandler<*>>, private val scope: CoroutineScop
 
     /** Runs authored ops for [world]: its content says which verbs have them, and results go back to it. */
     fun connect(world: BedroomWorld) {
-        content = world.content
+        this.world = world
         deliver = world::deliver
         stage = world::stage
     }
@@ -122,8 +122,8 @@ class Authors(handlers: List<AuthorHandler<*>>, private val scope: CoroutineScop
     /** True while a call for [handler] is running or waiting to be kept. */
     fun busy(handler: String): Boolean = pending.any { it.handler.name == handler && it.job?.isActive == true } || committing.any { it.first == handler && it.second.isActive }
 
-    /** The result of the latest [handler] call not yet kept or thrown away, once the model has sent it. Readable from any thread. */
-    fun inProgress(handler: String): Any? = pending.lastOrNull { it.handler.name == handler }?.result
+    /** True when no authored call is out or waiting for its verb to end: a checkpoint can be taken. */
+    val quiet: Boolean get() = pending.isEmpty() && inline.isEmpty() && committing.none { it.second.isActive }
 
     /** True while a `before` call is out or a `during` call has outlasted its verb: the clock should wait for it. */
     val holding: Boolean get() = inline.isNotEmpty() || committing.any { it.second.isActive }
@@ -155,7 +155,7 @@ class Authors(handlers: List<AuthorHandler<*>>, private val scope: CoroutineScop
     }
 
     private fun start(obs: Observation, intent: Intent, persona: String, situation: String, system: String, timing: Timing): List<Pending> {
-        val verb = (intent as? Intent.Do)?.let { content?.verb(it.activity) } ?: return emptyList()
+        val verb = (intent as? Intent.Do)?.let { world?.content?.verb(it.activity) } ?: return emptyList()
         // Refused at once (too tired, no record): there's nothing to write about.
         if (obs.activities.orEmpty().none { it.id == verb.id && it.locked == null }) return emptyList()
         return verb.authored.filter { it.timing == timing }.mapNotNull { op ->

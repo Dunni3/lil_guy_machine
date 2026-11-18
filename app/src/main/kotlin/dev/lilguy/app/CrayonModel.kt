@@ -7,111 +7,37 @@ import com.badlogic.gdx.graphics.VertexAttribute
 import com.badlogic.gdx.math.Matrix4
 import com.badlogic.gdx.math.Vector3
 import com.badlogic.gdx.utils.Disposable
+import dev.lilguy.parts.Part
 import kotlin.math.ceil
 import kotlin.math.pow
 
-/**
- * A model is a part list (`docs/decisions/2026-10-31-models-are-crayon-part-lists.md`): simple
- * shapes, each with a size, a place, optional lumps, a colour or a painted texture, and an ink
- * outline. Kept as plain data so a model can one day write it as JSON.
- *
- * Units and pivot follow the room's asset conventions: 1 unit = 1 m = 1 tile, the model's pivot at
- * the bottom centre, the front facing +Z. Each part's ([x], [y], [z]) is the bottom centre of its
- * shape, and its rotations (degrees; Y, then X, then Z) turn it about that point.
- */
-data class Part(
-    val shape: Shape,
-    /** Full width (x), height (y) and depth (z), before rotation. */
-    val w: Float,
-    val h: Float,
-    val d: Float,
-    val x: Float = 0f,
-    val y: Float = 0f,
-    val z: Float = 0f,
-    val rotX: Float = 0f,
-    val rotY: Float = 0f,
-    val rotZ: Float = 0f,
-    /** sRGB hex, as in the content files; with a texture, it multiplies it. */
-    val color: String = "#ffffff",
-    /** A painted texture by name ([CrayonModel.of]'s lookup), or none. */
-    val texture: String? = null,
-    /** How far edges are rounded, in metres; negative picks a soft default from the size. */
-    val round: Float = -1f,
-    /** Lump height, in metres, and the seed of their noise. */
-    val lump: Float = 0f,
-    val seed: Int = 0,
-    /** Ink outline thickness, in metres; 0 for none. */
-    val outline: Float = OUTLINE,
-    /** Cylinders only: the top's width as a fraction of the bottom's. */
-    val taper: Float = 1f,
-) {
-    enum class Shape { Sphere, Box, Cylinder, Capsule, Panel }
-
-    /** This part's geometry, centred on the origin, before it's placed. */
-    fun geometry(): PartGeometry {
-        val small = minOf(w, h, d)
-        val soft = if (round >= 0f) round else minOf(MAX_ROUND, small * 0.3f)
-        val geo = when (shape) {
-            Shape.Sphere -> {
-                val ws = (maxOf(w, h, d) * 48).toInt().coerceIn(12, 32)
-                sphereGeometry(ws, ws * 3 / 4) { px, py, pz, out -> out[0] = px * w / 2; out[1] = py * h / 2; out[2] = pz * d / 2 }
-            }
-            Shape.Box -> roundedBoxGeometry(w, h, d, soft)
-            Shape.Cylinder -> cylinderGeometry(w, h, d, soft, taper, segments(maxOf(w, d)))
-            Shape.Capsule -> cylinderGeometry(w, h, d, minOf(w, d) / 2, taper, segments(maxOf(w, d)))
-            Shape.Panel -> panelGeometry(w, h)
+/** This part's geometry, centred on the origin, before it's placed. */
+fun Part.geometry(): PartGeometry {
+    val small = minOf(w, h, d)
+    val soft = if (round >= 0f) round else minOf(Part.MAX_ROUND, small * 0.3f)
+    val geo = when (shape) {
+        Part.Shape.Sphere -> {
+            val ws = (maxOf(w, h, d) * 48).toInt().coerceIn(12, 32)
+            sphereGeometry(ws, ws * 3 / 4) { px, py, pz, out -> out[0] = px * w / 2; out[1] = py * h / 2; out[2] = pz * d / 2 }
         }
-        return geo.lump(lump, seed)
+        Part.Shape.Box -> roundedBoxGeometry(w, h, d, soft)
+        Part.Shape.Cylinder -> cylinderGeometry(w, h, d, soft, taper, segments(maxOf(w, d)))
+        Part.Shape.Capsule -> cylinderGeometry(w, h, d, minOf(w, d) / 2, taper, segments(maxOf(w, d)))
+        Part.Shape.Panel -> panelGeometry(w, h)
     }
-
-    /** Where the geometry goes in the model: to the bottom centre, turned, then up by half its height. */
-    fun placement(out: Matrix4): Matrix4 {
-        out.setToTranslation(x, y, z)
-        if (rotY != 0f) out.rotate(Vector3.Y, rotY)
-        if (rotX != 0f) out.rotate(Vector3.X, rotX)
-        if (rotZ != 0f) out.rotate(Vector3.Z, rotZ)
-        return out.translate(0f, h / 2, 0f)
-    }
-
-    private fun segments(size: Float) = ceil(size * 40).toInt().coerceIn(14, 40)
-
-    companion object {
-        /** The default ink line for room things, in metres (the guy's is about 0.011 m). */
-        const val OUTLINE = 0.011f
-        const val MAX_ROUND = 0.035f
-    }
+    return geo.lump(lump, seed)
 }
 
-/**
- * A part list being written in code: each call adds a [Part] with the shape's arguments in the
- * order the old g3d builders took them (colour, bottom centre, size), so models port line for line.
- * [lump] and [outline] are the defaults for the parts that follow; seeds count up per part.
- */
-class PartList {
-    val parts = ArrayList<Part>()
-    var lump = 0f
-    var outline = Part.OUTLINE
-    private var seed = 1
-
-    fun box(color: String, x: Float, y: Float, z: Float, w: Float, h: Float, d: Float, rotX: Float = 0f, rotZ: Float = 0f, rotY: Float = 0f, round: Float = -1f, texture: String? = null, outline: Float = this.outline, lump: Float = this.lump) =
-        add(Part(Part.Shape.Box, w, h, d, x, y, z, rotX, rotY, rotZ, color, texture, round, lump, seed, outline))
-
-    fun cylinder(color: String, x: Float, y: Float, z: Float, w: Float, h: Float, d: Float, rotX: Float = 0f, rotZ: Float = 0f, taper: Float = 1f, round: Float = -1f, texture: String? = null, outline: Float = this.outline, lump: Float = this.lump) =
-        add(Part(Part.Shape.Cylinder, w, h, d, x, y, z, rotX, 0f, rotZ, color, texture, round, lump, seed, outline, taper))
-
-    /** Upright; turned on its side ([rotZ] -90) it runs from ([x], [y]) along +X, with [y] its axis. */
-    fun capsule(color: String, x: Float, y: Float, z: Float, w: Float, h: Float, d: Float, rotX: Float = 0f, rotZ: Float = 0f, outline: Float = this.outline, lump: Float = this.lump) =
-        add(Part(Part.Shape.Capsule, w, h, d, x, y, z, rotX, 0f, rotZ, color, null, -1f, lump, seed, outline))
-
-    fun sphere(color: String, x: Float, y: Float, z: Float, w: Float, h: Float, d: Float, outline: Float = this.outline, lump: Float = this.lump) =
-        add(Part(Part.Shape.Sphere, w, h, d, x, y, z, color = color, lump = lump, seed = seed, outline = outline))
-
-    /** A flat picture facing +Z, [w] x [h], its bottom centre at ([x], [y], [z]); no outline unless asked. */
-    fun panel(texture: String?, x: Float, y: Float, z: Float, w: Float, h: Float, rotX: Float = 0f, color: String = "#ffffff", outline: Float = 0f) =
-        add(Part(Part.Shape.Panel, w, h, 0f, x, y, z, rotX, 0f, 0f, color, texture, 0f, 0f, seed, outline))
-
-    private fun add(p: Part) { parts += p; seed++ }
+/** Where a part's geometry goes in the model: to the bottom centre, turned, then up by half its height. */
+fun Part.placement(out: Matrix4): Matrix4 {
+    out.setToTranslation(x, y, z)
+    if (rotY != 0f) out.rotate(Vector3.Y, rotY)
+    if (rotX != 0f) out.rotate(Vector3.X, rotX)
+    if (rotZ != 0f) out.rotate(Vector3.Z, rotZ)
+    return out.translate(0f, h / 2, 0f)
 }
+
+private fun segments(size: Float) = ceil(size * 40).toInt().coerceIn(14, 40)
 
 /** How a piece's outline boils: [base] thick plus up to [vary] of noise ([seed]), over its normals and, by [wander] per metre, its position. */
 class Outline(val base: Float, val vary: Float, val seed: Int, val wander: Float = 0f)

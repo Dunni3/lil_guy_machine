@@ -10,8 +10,9 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * What a model sends back each turn: its reasoning, then the intent. "thought" comes first so a
- * model writing left to right reasons before it commits. Milestone 5 adds `remember` and `plan`;
+ * What a model sends back each turn: his thought, then the intent. "thought" is a line in his inner
+ * voice, never the model's reasoning: models that think on their own (Claude) decline a reply that
+ * asks for that ("reasoning_extraction"). Milestone 5 adds `remember` and `plan`;
  * new fields need a default so older logs still decode.
  */
 @Serializable
@@ -41,6 +42,7 @@ internal val VARIANT_DESCRIPTIONS = mapOf(
     "wait" to "Do nothing for some ticks (20 ticks = 1 s of game time).",
     "do" to "Do an activity; the game walks you to where it happens.",
     "buy" to "Buy an item from the shop.",
+    "put" to "Put one of your things at another spot: you carry it there and set it down.",
     "think" to "Stop and think about what you want to do next and what you want to achieve.",
 )
 
@@ -53,7 +55,7 @@ fun replySchema(obs: Observation): ActionSchema<AgentReply> {
     val inView = obs.nearby.map { it.id }
     val hints = SchemaHints(
         descriptions = VARIANT_DESCRIPTIONS + mapOf(
-            "reply.thought" to "Your reasoning in a sentence or two, before you act.",
+            "reply.thought" to "A line of your inner voice, in your own words: what you notice, feel or want.",
             "reply.intent" to "The one action to take now.",
             "entity.id" to "An id from nearby.",
             "pick_up.itemId" to "An id from nearby.",
@@ -73,7 +75,7 @@ fun replySchema(obs: Observation): ActionSchema<AgentReply> {
         ),
         ranges = mapOf("wait.ticks" to 1..GridWorld.MAX_WAIT),
         // Key-and-door is the quick backend test; thinking is for the bedroom.
-        omit = setOf("think"),
+        omit = setOf("think", "put"),
     )
     return ActionSchema.of("reply", AgentReply.serializer(), hints) { it.thought }
 }

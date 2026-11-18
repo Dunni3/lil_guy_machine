@@ -31,6 +31,8 @@ data class DecisionRequest(
     val timeout: Duration = 20.seconds,
     /** The same decision as a closed set, for backends with [Capabilities.closedChoice]. */
     val choices: ChoiceSet? = null,
+    /** The same decision as tools to call, for backends with [Capabilities.toolCalls]; they're sent in place of the schema's. */
+    val tools: ToolSet? = null,
 )
 
 /**
@@ -61,8 +63,15 @@ data class ChoiceSet(
     data class Group(val id: String, val description: String, val parent: String? = null)
 }
 
-data class Message(val role: Role, val content: String) {
-    enum class Role { System, User, Assistant }
+/**
+ * One message of a conversation. An [Role.Assistant] message with [call] is a tool call the model
+ * made (or is shown as having made); a [Role.Tool] message is its result, [call] naming which.
+ */
+data class Message(val role: Role, val content: String, val call: ToolCall? = null) {
+    enum class Role { System, User, Assistant, Tool }
+
+    /** The message as one line of text for logs: a call as `name {arguments}`. */
+    val text: String get() = if (role == Role.Assistant && call != null) "${call.name} ${call.arguments}" else content
 }
 
 data class Decision<A>(
@@ -75,10 +84,19 @@ data class Decision<A>(
     val raw: String,
     /** Every reply that came back, in order; the last one is [raw]. Empty for in-process models. */
     val attempts: List<Attempt> = emptyList(),
+    /** What it looked at first ([ToolSet.looks]), in order. */
+    val looks: List<Looked> = emptyList(),
+    /** What it wrote along the way without acting, in order ([ToolSet.ponder]). */
+    val musings: List<String> = emptyList(),
+    /** True when [value] is [ToolSet.ponder]'s: the turn's steps ran out with no action. */
+    val pondered: Boolean = false,
+    /** Replies that weren't tries at acting (looks, thinking): each one more HTTP call besides [attempts]. */
+    val steps: Int = 0,
 )
 
-data class Usage(val promptTokens: Int = 0, val completionTokens: Int = 0) {
-    operator fun plus(other: Usage) = Usage(promptTokens + other.promptTokens, completionTokens + other.completionTokens)
+/** [cachedTokens] are the part of [promptTokens] the server read from its prompt cache. */
+data class Usage(val promptTokens: Int = 0, val completionTokens: Int = 0, val cachedTokens: Int = 0) {
+    operator fun plus(other: Usage) = Usage(promptTokens + other.promptTokens, completionTokens + other.completionTokens, cachedTokens + other.cachedTokens)
 }
 
 /** One reply from the model and, if it was rejected, why. */
@@ -93,4 +111,10 @@ class DecisionFailed(
     val attempts: List<Attempt> = emptyList(),
     val usage: Usage = Usage(),
     cause: Throwable? = null,
+    /** What it looked at before it failed. */
+    val looked: List<Looked> = emptyList(),
+    /** What it wrote along the way before it failed. */
+    val musings: List<String> = emptyList(),
+    /** Replies that weren't tries at acting (looks, thinking). */
+    val steps: Int = 0,
 ) : Exception(message, cause)

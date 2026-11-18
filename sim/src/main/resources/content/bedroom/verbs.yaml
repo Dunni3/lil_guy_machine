@@ -17,17 +17,21 @@
 # picture rail), `background` (keeps going while he does anything else), `sleep`, and `enjoy`
 # (an argument's value to him, as mood), `progress` (the next chapter of the book bound to an
 # argument, raising the book's skills, library.yaml) and `practice` (raises
-# skills; the verb's mood and stimulation gains grow with them). Where an op names an item it can
+# skills; the verb's mood gains grow with them). Where an op names an item it can
 # name an argument instead.
 #
 # Two ops are authored: a model writes their result, and a handler in the agent layer runs it
 # (agent/.../authored/). `write: { with, into, timing, shows_as }` (with: thought; into: events,
-# short_term; timing: before the verb starts, or during it) and `draw: item` (the
+# short_term; timing: before the verb starts, or during it; `with: invention` designs what a
+# `build` op then builds, rules.yaml `invent`) and `draw: item` (the
 # drawing model draws a piece the verb produced). Results are kept only if the verb succeeds. A
 # verb whose `write` has no handler configured isn't offered to models, unless the write is
-# `optional`; the sim still runs it. `with: reading` writes what stuck with him from a chapter.
+# `optional`; the sim still runs it. `with: reading` writes what stuck with him from a chapter;
+# `with: letter` writes a letter that a `post_letter` op then sends.
 # `wear: verb`: repetition wears the verb as a whole, whatever it's done with (any book wears
 # "read"); by default each item wears on its own (each record). What counts as new stays per item.
+# `needs: { light: N }`: locked where it would be done until the light there is N or more (rules.yaml
+# `light`): "too dark to read there". Of the places in `at`, he goes to the nearest lit enough.
 # `no_repeat`: locked right after he did it. `by_day: { block, minutes }`: started outside the night
 # (rules.yaml `night`), these blocks apply too and it lasts at most `minutes`.
 
@@ -38,9 +42,14 @@ verbs:
     minutes: 30
     routine: true
     block: [{ need: fullness, above: 90, reason: "not hungry" }]
+    # What he eats is an argument so a food's qualities pay (`enjoy`); a plain meal has none.
+    args: { what: edible }
     effects:
-      - consume: { edible: 1 }
+      - consume: { what: 1 }
       - need: { fullness: 45 }
+      - enjoy: what
+      # What's left over goes in the compost bin, if he has one (rules.yaml `machines`).
+      - produce: { food_scrap: 1 }
   # The floor under hunger: the oats in the cupboard never run out and cost nothing, so he can't be
   # left starving with no way to eat, and so no way to sleep (hunger wakes him) or work. Offered at
   # rules.yaml's `low` fullness, where hunger starts pulling his mood down, so oats can always lift
@@ -62,6 +71,7 @@ verbs:
     minutes: 60
     work: true
     block: [{ need: mood, below: 25, reason: "too low to make art" }]
+    needs: { light: 3 }
     effects:
       - produce: { sketch: 1 }
       - draw: sketch
@@ -75,12 +85,42 @@ verbs:
     minutes: 180
     work: true
     block: [{ need: mood, below: 25, reason: "too low to make art" }]
+    needs: { light: 3 }
     effects:
       - produce: { painting: 1 }
       - draw: painting
       - consume: { canvas: 1 }
       - practice: { art: 0.25 }
-      - need: { energy: -8, mood: -3, stimulation: 12 }
+      - need: { energy: -2, mood: -3, stimulation: 12 }
+  # Inventing: he designs one new thing (what it's for, what it's like, how it looks), which a
+  # model writes before he starts (agent/.../invent/Inventor.kt), and `build` checks the design
+  # against rules.yaml `invent`, charges its materials and adds it to his world. A design that's
+  # refused fails the verb and tells him why.
+  - id: invent
+    kind: generative
+    phrase: invent something new and build it
+    at: [workbench]
+    minutes: 120
+    block: [{ need: mood, below: 25, reason: "too low to invent anything" }]
+    needs: { light: 3 }
+    effects:
+      - write: { with: invention, into: [events], timing: before }
+      - build: {}
+      - need: { energy: -4, stimulation: 12 }
+  # He writes code at his desk: new verbs of his own, and what his things do by themselves, in
+  # JavaScript against the world's API (sim/.../Scripts.kt). A coder model writes it before he starts
+  # (agent/.../code/Coder.kt) and `define` checks and puts it in; naming one of his verbs rewrites it.
+  # A thing he invents gets its code at the workbench too (the invention's `code`).
+  - id: devise
+    kind: expressive
+    phrase: write code for a new thing to do, or for what one of your things does
+    at: [desk]
+    minutes: 60
+    needs: { light: 3 }
+    effects:
+      - write: { with: verb_code, into: [events], timing: before }
+      - define: {}
+      - need: { energy: -3, stimulation: 10 }
   - id: sell_art
     kind: economic
     phrase: sell your art
@@ -102,6 +142,32 @@ verbs:
     effects:
       - write: { with: shopping, into: [events], timing: before }
       - basket: { most: 3 }
+  # Letters from people outside his world, sent through the sim host's web page (host/.../Accounts.kt):
+  # one is opened at a time, and what it says goes into the event, so he remembers it. Offered only
+  # while one is waiting. Routine, so a stream of letters never wears thin.
+  - id: read_mail
+    kind: social
+    phrase: open a letter waiting at the mail hatch
+    at: [mail_hatch]
+    minutes: 10
+    routine: true
+    effects:
+      - open_mail: {}
+      - need: { mood: 4, stimulation: 8 }
+  # He writes to someone who has written to him: an answer to their letters, or a letter of his own
+  # when he has something to tell them. The letter is written before he sits down (`with: letter`, who
+  # it's to and what it says), and goes through the hatch as he finishes (`post_letter`), to the host,
+  # which shows it to them. rules.yaml `letters` says how often.
+  - id: write_letter
+    kind: social
+    phrase: write a letter to someone who has written to you
+    at: [desk]
+    minutes: 30
+    needs: { light: 3 }
+    effects:
+      - write: { with: letter, into: [events], timing: before }
+      - post_letter: {}
+      - need: { energy: -2, mood: 4, stimulation: 6 }
   - id: hang_art
     kind: transformative
     phrase: hang your art on the wall
@@ -111,6 +177,36 @@ verbs:
     routine: true
     effects:
       - set_state: { target: what, state: hung }
+  # Lamps run on timers (rules.yaml `light.timer`, or the lamp's own). He can switch one on or off,
+  # where it stays until he switches it again, or put it back on its timer. Each is locked when it
+  # would change nothing.
+  - id: switch_on
+    kind: transformative
+    phrase: switch a lamp on, to stay on past its timer
+    args: { on: lamp }
+    at: [on]
+    minutes: 1
+    routine: true
+    effects:
+      - switch: { target: on, to: "on" }
+  - id: switch_off
+    kind: transformative
+    phrase: switch a lamp off, to stay off whatever its timer says
+    args: { on: lamp }
+    at: [on]
+    minutes: 1
+    routine: true
+    effects:
+      - switch: { target: on, to: "off" }
+  - id: lamp_timer
+    kind: transformative
+    phrase: put a lamp back on its timer
+    args: { on: lamp }
+    at: [on]
+    minutes: 1
+    routine: true
+    effects:
+      - switch: { target: on, to: timer }
   # A chapter a session: the story, and the book's skill. It wears as a whole, so a pile of books
   # isn't a pile of fresh hobbies.
   - id: read
@@ -120,6 +216,7 @@ verbs:
     at: [bed, chair]
     minutes: 60
     wear: verb
+    needs: { light: 3 }
     effects:
       - progress: { book: what }
       - need: { energy: -2, mood: 2, stimulation: 6 }
@@ -182,3 +279,153 @@ verbs:
     effects:
       - need: { energy: -1 }
       - write: { with: thought, into: [events, short_term], timing: before, shows_as: plan }
+  # Outdoors. Exploring a place from its lookout reveals what grows there (the `survey` op), and
+  # it's a pleasure in itself; collecting takes a sample from a patch he has found (`gather`).
+  - id: explore
+    kind: study
+    phrase: explore a place outdoors
+    args: { on: explorable }
+    at: [on]
+    minutes: 40
+    needs: { light: 3, warmth: 4 }
+    effects:
+      - survey: on
+      - practice: { nature: 0.1 }
+      - need: { energy: -4, mood: 3, stimulation: 8 }
+  - id: collect
+    kind: generative
+    phrase: collect a sample
+    args: { on: forageable }
+    at: [on]
+    minutes: 15
+    needs: { light: 3 }
+    effects:
+      - gather: on
+      - need: { energy: -1, stimulation: 2 }
+  # A recorder's log is read standing at it (the `read_log` op): the last day of it, summed up, which
+  # he remembers as something he learned there. It's the one way to know what the weather did while
+  # he wasn't looking, and the pressure it logs is the one sign of rain coming.
+  - id: check_station
+    kind: perceptual
+    phrase: read the weather station's log
+    args: { what: recorder }
+    at: [what]
+    minutes: 10
+    effects:
+      - read_log: what
+      - need: { stimulation: 3 }
+  # His machines (rules.yaml `machines`): he fills one with what it takes that he has and takes out
+  # what it made, standing at it; and he mends a worn or jammed one with a spare part, which raises
+  # his tinkering, so each mend takes off more. Anything of his with code is a machine to mend too.
+  - id: tend
+    kind: upkeep
+    phrase: fill a machine and take out what it made
+    args: { on: machine }
+    at: [on]
+    minutes: 10
+    routine: true
+    effects:
+      - tend: on
+  - id: repair
+    kind: upkeep
+    phrase: mend a worn or jammed machine
+    args: { on: machine }
+    at: [on]
+    minutes: 45
+    effects:
+      - repair: on
+      - consume: { spare_parts: 1 }
+      - practice: { tinkering: 0.2 }
+      - need: { energy: -3, stimulation: 4 }
+  # Taking apart a thing he invented (rules.yaml `invent.salvage`): he gets back half its materials,
+  # its code stops, what its machine held comes to him, and its spot, if it stands somewhere, is free
+  # for something else. A record or a ware he holds is taken apart where he is. Bought things and the house stay.
+  - id: dismantle
+    kind: upkeep
+    phrase: take apart a thing you invented, for half its materials back and any spot it took
+    args: { on: invention }
+    at: [on]
+    minutes: 40
+    effects:
+      - dismantle: on
+      - practice: { tinkering: 0.1 }
+      - need: { energy: -3 }
+  # Visitors (world.yaml `visitors`) come to the things that draw them, when it suits them: watching
+  # them there takes nothing but the time, and they leave something behind (the `watch` op).
+  - id: watch
+    kind: perceptual
+    phrase: watch the visitors
+    args: { on: lure }
+    at: [on]
+    minutes: 20
+    effects:
+      - watch: on
+      - practice: { nature: 0.1 }
+      - need: { mood: 3, stimulation: 6 }
+  # A planter grows in sun on damp soil (rules.yaml `growing`); indoors only watering keeps it damp.
+  - id: water_plant
+    kind: transformative
+    phrase: water a plant
+    args: { on: growable }
+    requires: [watering_can]
+    at: [on]
+    minutes: 5
+    routine: true
+    effects:
+      - water: on
+  - id: harvest
+    kind: generative
+    phrase: pick what a planter has grown
+    args: { on: growable }
+    at: [on]
+    minutes: 10
+    effects:
+      - harvest: on
+      - need: { mood: 2, stimulation: 3 }
+  - id: study_sample
+    kind: study
+    phrase: study a sample under the microscope
+    args: { what: specimen }
+    at: [microscope]
+    minutes: 45
+    needs: { light: 3 }
+    effects:
+      - practice: { nature: 0.2 }
+      - need: { energy: -2, mood: 2, stimulation: 6 }
+  - id: sell_wares
+    kind: economic
+    phrase: sell what your machines made
+    args: { what: ware }
+    at: [mail_hatch]
+    minutes: 1
+    effects:
+      - sell: what
+  # Materials he doesn't need go back to the shop for about half what they cost (rules.yaml
+  # `invent.sell_back`): taking things apart and selling what comes back turns a full world into money.
+  - id: sell_materials
+    kind: economic
+    phrase: sell materials you don't need back to the shop
+    args: { what: material }
+    at: [mail_hatch]
+    minutes: 1
+    effects:
+      - sell: what
+  - id: sell_sample
+    kind: economic
+    phrase: sell samples
+    args: { what: specimen }
+    at: [mail_hatch]
+    minutes: 1
+    effects:
+      - sell: what
+  # The house. A room's plan, bought on a trip, is built on a site; building one that stands
+  # already moves it there (the `place_room` op).
+  - id: build_room
+    kind: transformative
+    phrase: build a room onto the house, or move one
+    args: { what: buildable, on: site }
+    at: [here]
+    minutes: 240
+    effects:
+      - place_room: { room: what, site: on }
+      - need: { energy: -12, mood: 4, stimulation: 10 }

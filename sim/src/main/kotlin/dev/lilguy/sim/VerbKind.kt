@@ -12,7 +12,7 @@ import kotlinx.serialization.Serializable
  * [allowed]: op keys ([Op.key]) it may use. [required]: each set is "at least one of these".
  * [affordance]: it must ask for an item by affordance (in `requires`, `args` or a `consume`),
  * not only by id, or hear what another verb plays (a `hear` op). [routine]: the kind is upkeep, so its rows neither wear thin nor count as new
- * whatever their `routine` flag says. The perceptual kind comes when its ops do.
+ * whatever their `routine` flag says.
  */
 @Serializable
 enum class VerbKind(
@@ -27,41 +27,49 @@ enum class VerbKind(
     @SerialName("consumptive")
     Consumptive(
         "consumptive", "does something with an item it asks for by affordance, and changes needs",
-        allowed = setOf("need", "rate", "consume", "background", "enjoy", "hear", "progress", "practice", "write"),
+        allowed = setOf("need", "rate", "consume", "produce", "background", "enjoy", "hear", "progress", "practice", "write"),
         required = listOf(setOf("need", "rate", "background", "enjoy")),
         affordance = true,
     ),
 
-    /** Making a new item: sketch, paint. */
+    /** Making a new item: sketch, paint, or one of his own design (invent). */
     @SerialName("generative")
     Generative(
         "generative", "turns time (and maybe items it uses up) into a new item",
-        allowed = setOf("need", "rate", "consume", "produce", "draw", "practice"),
-        required = listOf(setOf("produce")),
+        allowed = setOf("need", "rate", "consume", "produce", "draw", "practice", "build", "write", "gather", "harvest"),
+        required = listOf(setOf("produce", "build", "gather", "harvest")),
     ),
 
     /** Working through a book or practising: raises a skill, and may teach him things. */
     @SerialName("study")
     Study(
         "study", "works through a book or practises, raising a skill",
-        allowed = setOf("need", "rate", "progress", "practice", "write"),
-        required = listOf(setOf("progress", "practice")),
+        allowed = setOf("need", "rate", "progress", "practice", "write", "survey"),
+        required = listOf(setOf("progress", "practice", "survey")),
     ),
 
-    /** Changing the state of an item he has: hanging a piece. */
+    /** Changing the state of an item he has: hanging a piece, switching a lamp, watering a planter. */
     @SerialName("transformative")
     Transformative(
         "transformative", "changes the state of an item he has",
-        allowed = setOf("need", "rate", "set_state"),
-        required = listOf(setOf("set_state")),
+        allowed = setOf("need", "rate", "set_state", "place_room", "switch", "water"),
+        required = listOf(setOf("set_state", "place_room", "switch", "water")),
     ),
 
     /** Writing something that persists: a thought, later letters. */
     @SerialName("expressive")
     Expressive(
         "expressive", "he writes something that persists",
-        allowed = setOf("need", "rate", "write"),
+        allowed = setOf("need", "rate", "write", "define"),
         required = listOf(setOf("write")),
+    ),
+
+    /** Letters with people outside the world: opening one that came through the mail hatch, or writing one back. */
+    @SerialName("social")
+    Social(
+        "social", "he hears from or writes to someone outside the world",
+        allowed = setOf("need", "rate", "open_mail", "post_letter", "write"),
+        required = listOf(setOf("open_mail", "post_letter")),
     ),
 
     /** Money moves: selling, or a shopping trip's checkout; a single purchase is the built-in `buy`. Not for inventing. */
@@ -71,6 +79,30 @@ enum class VerbKind(
         allowed = setOf("sell", "basket", "write", "need"),
         required = listOf(setOf("sell", "basket")),
         routine = true,
+    ),
+
+    /** Looking at something and taking in what it shows: reading a recorder's log, watching the birds at a feeder. */
+    @SerialName("perceptual")
+    Perceptual(
+        "perceptual", "he looks at something and takes in what it shows",
+        allowed = setOf("need", "rate", "read_log", "write", "watch", "practice"),
+        required = listOf(setOf("read_log", "watch")),
+    ),
+
+    /** Looking after a machine: filling it, emptying it, mending it ([Works]). */
+    @SerialName("upkeep")
+    Upkeep(
+        "upkeep", "he looks after a machine: fills it, empties it or mends it, or takes a thing of his apart",
+        allowed = setOf("need", "rate", "tend", "repair", "dismantle", "consume", "practice"),
+        required = listOf(setOf("tend", "repair", "dismantle")),
+    ),
+
+    /** A verb he wrote: what it does is its code ([ScriptOp]), so the contract is only that it has some. */
+    @SerialName("scripted")
+    Scripted(
+        "scripted", "does what the code he wrote says",
+        allowed = setOf("script", "need", "write"),
+        required = listOf(setOf("script")),
     ),
 
     /** Sleep. Not for inventing. */

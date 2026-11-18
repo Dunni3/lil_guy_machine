@@ -36,10 +36,26 @@ class MemoryScorer(
         ask(scorer, state, candidates.associate { c ->
             c.key to ScoreQuestion(
                 buildJsonObject {
-                    put("question", RELEVANCE_QUESTION + if (c.kind == Recollection.Kind.Thought) " It is something he thought earlier, in his words." else " It is something he remembers.")
+                    put("question", RELEVANCE_QUESTION + when (c.kind) {
+                        Recollection.Kind.Thought -> " It is something he thought earlier, in his words."
+                        Recollection.Kind.Reflection -> " It is what he concluded earlier, stepping back from his days, in his words."
+                        else -> " It is something he remembers."
+                    })
                     put("memory", c.render())
                 },
                 RELEVANCE,
+            )
+        })
+
+    /** How well each of [candidates] answers what he's trying to recall (`state.looking_for`), by [Recollection.key]. */
+    suspend fun search(state: JsonObject, candidates: List<Recollection>): Map<String, Double> =
+        ask(scorer, state, candidates.associate { c ->
+            c.key to ScoreQuestion(
+                buildJsonObject {
+                    put("question", SEARCH_QUESTION)
+                    put("memory", c.render())
+                },
+                SEARCH,
             )
         })
 
@@ -80,6 +96,17 @@ class MemoryScorer(
             "Bears on what he is doing now or just chose.",
             "Bears on a choice he faces now: what to do, buy or work toward next.",
             "He would likely choose badly without it.",
+        )
+
+        const val SEARCH_QUESTION =
+            "The character in `state` is trying to remember something: `state.looking_for`. How well does `memory` answer it?"
+
+        val SEARCH = listOf(
+            "Nothing to do with it.",
+            "Touches the same things, but doesn't answer it.",
+            "Partly answers it.",
+            "Answers it.",
+            "Exactly what he's looking for.",
         )
 
         const val SIGNIFICANCE_QUESTION =

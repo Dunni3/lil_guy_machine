@@ -35,6 +35,14 @@ for var in $(grep -E '^[[:space:]]*api_key_env:' "$CONFIG" | sed -E 's/.*api_key
   fi
 done
 
+# The run database's sync target, when set: the TV sends its rows to the server with this token.
+for var in LILGUY_SYNC_URL LILGUY_SYNC_TOKEN; do
+  if [[ -n "${!var:-}" ]]; then
+    echo "$var=${!var}" >> "$tmp/secrets.env"
+    echo "sync: $var (from your shell)"
+  fi
+done
+
 adb_ shell mkdir -p "$DEST"
 adb_ push "$CONFIG" "$DEST/endpoints.yaml" >/dev/null
 adb_ push "$tmp/secrets.env" "$DEST/secrets.env" >/dev/null

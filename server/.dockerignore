@@ -1,0 +1,2 @@
+# Only for the host image, whose context is server/host/ itself.
+host/

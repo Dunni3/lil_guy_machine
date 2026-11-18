@@ -1,0 +1,469 @@
+import { Raycaster, Vector2 } from "three";
+import type { LifeState, Settings } from "../../protocol/ts/protocol";
+import { ClayRenderer } from "./clay/renderer";
+import { ClayTextures } from "./clay/textures";
+import { GRADES, gradeNow, watchContext } from "./clay/grade";
+import { RoomView } from "./room/view";
+import { readSettings } from "./settings";
+import { StreamClient } from "./stream/client";
+import { Track } from "./stream/track";
+import { Admin, SignIn } from "./ui/admin";
+import { Mail } from "./ui/mail";
+import { Hud } from "./ui/hud";
+import { lookOf, pressOf } from "./ui/keys";
+import { ThingLabel } from "./ui/label";
+import { Readouts } from "./ui/readout";
+import { LookControls } from "./ui/look";
+import { Layer } from "./ui/layer";
+import { Menu, type Act, type Spot } from "./ui/menu";
+import { MenuCard } from "./ui/menuCard";
+import type { PageView } from "./ui/pages";
+import { frameFor } from "./ui/paper";
+
+// One life's state stream, drawn, with the HUD and menu over it. `settings.ts` lists the URL settings.
+// Viewers only watch; the admin's commands go to the host over HTTP (`ui/admin.ts`).
+const settings = readSettings(location.search);
+const canvas = document.getElementById("room") as HTMLCanvasElement;
+const status = document.getElementById("status") as HTMLElement;
+if (settings.broadcast) document.body.classList.add("broadcast");
+
+const stream = new StreamClient(settings.life);
+const track = new Track();
+let lastGuy: unknown = null;
+const seconds = () => performance.now() / 1000;
+
+stream.onChange = (snapshot) => {
+  const guy = stream.state.life?.fast.entities.find((e) => e.kind === "guy");
+  if (!guy) return;
+  if (!snapshot && guy === lastGuy) return;
+  lastGuy = guy;
+  track.push(seconds(), guy.x, guy.y, snapshot);
+};
+
+const textures = new ClayTextures();
+let view: RoomView | null = null;
+let renderer: ClayRenderer;
+const grade = gradeNow();
+/** Set when the GPU has given out for good: the line under the canvas says so instead of a blank page. */
+let gaveOut: string | null = null;
+try {
+  renderer = new ClayRenderer(canvas, (name) => textures.texture(name), GRADES[grade]);
+} catch (e) {
+  status.textContent = "this browser can't draw the room: WebGL isn't available";
+  throw e;
+}
+watchContext(canvas, grade, () => {
+  gaveOut = "this device's graphics gave out drawing the room; try reloading the page";
+  canvas.style.display = "none";
+});
+// A fraction of the window's pixels, scaled up by CSS, for a slow GPU (`?scale=`).
+renderer.webgl.setPixelRatio(Math.min(window.devicePixelRatio || 1, GRADES[grade].ratio) * settings.scale);
+const layer = new Layer();
+const resize = () => {
+  const w = canvas.clientWidth || window.innerWidth;
+  const h = canvas.clientHeight || window.innerHeight;
+  renderer.resize(w, h);
+  view?.resize(w / Math.max(1, h));
+  layer.resize(w, h, renderer.webgl.getPixelRatio());
+};
+window.addEventListener("resize", resize);
+resize();
+
+const admin = new Admin(settings.life);
+const signIn = new SignIn(admin);
+const mail = new Mail(settings.life, settings.broadcast);
+const menu = new Menu();
+const hud = new Hud(layer, settings.broadcast);
+const card = new MenuCard(layer);
+const look = new LookControls(settings.broadcast, {
+  zoom: (factor) => view?.camera.zoom(factor),
+  orbit: (yaw) => view?.camera.orbit(yaw, 0),
+  mode: (mode) => {
+    if (view) view.camera.mode = mode;
+  },
+});
+const label = new ThingLabel(layer);
+const readouts = new Readouts(layer);
+
+/** The settings the admin last asked for, shown until the host's match (or the ask fails). */
+let requested: Settings | null = null;
+let pressed = false;
+let runId = "";
+
+function pageView(life: LifeState): PageView | null {
+  const content = stream.state.content;
+  if (!content) return null;
+  if (requested && JSON.stringify(requested) === JSON.stringify(life.run.settings)) requested = null;
+  return {
+    life, content, admin: admin.admin, settings: requested ?? life.run.settings,
+    replayPick: menu.replayPick, confirm: menu.confirm, result: admin.result, runs: admin.runs, runPick: menu.runPick,
+  };
+}
+
+function act(a: Act) {
+  switch (a.type) {
+    case "command":
+      void admin.send(a.command).then(() => (pressed = true));
+      break;
+    case "configure":
+      requested = a.settings;
+      void admin.send({ type: "configure", settings: a.settings }).then(() => {
+        if (!admin.result?.endsWith(": ok")) requested = null;
+        pressed = true;
+      });
+      break;
+    case "signIn":
+      signIn.show(() => (pressed = true));
+      break;
+    case "signOut":
+      admin.signOut();
+      menu.reset();
+      break;
+  }
+}
+
+/** How far a key moves the view, as a fraction of the screen's height. */
+const KEY_PAN = 0.1;
+
+/** The remote's keys, as `RemoteInput.kt` lays them out, and the keyboard's for looking round; nothing here moves the guy. */
+window.addEventListener("keydown", (e) => {
+  if (settings.broadcast || signIn.open || mail.open) return;
+  const step = view && !menu.open ? lookOf(e) : null;
+  if (view && step) {
+    e.preventDefault();
+    const h = canvas.clientHeight || window.innerHeight;
+    if (step.type === "pan") view.camera.pan(step.x * h * KEY_PAN, step.y * h * KEY_PAN, h);
+    else if (step.type === "orbit") view.camera.orbit(step.yaw, step.pitch);
+    else view.camera.zoom(step.factor);
+    look.used();
+    return;
+  }
+  const press = pressOf(e);
+  const life = stream.state.life;
+  if (!press || !life) return;
+  e.preventDefault();
+  const v = pageView(life);
+  if (!v) return;
+  pressed = true;
+  if (press === "play") {
+    // PLAY/PAUSE starts, pauses or resumes from anywhere, for the admin.
+    if (admin.admin && life.run.state !== "ended") void admin.send(life.run.state === "running" ? { type: "pause" } : { type: "start" });
+    return;
+  }
+  if (menu.open) {
+    const a = menu.press(press, v);
+    if (a) act(a);
+    return;
+  }
+  // In the room: OK (or LEFT/RIGHT, to page) opens the menu, UP and DOWN pick the camera (and end looking round).
+  if (press === "ok" || press === "left" || press === "right") menu.show(v);
+  else if (view && (press === "up" || press === "down")) view.camera.mode = press === "up" ? "room" : "follow";
+});
+
+/**
+ * The mouse and touch, for everything the keys do: on the room a click opens the menu, as OK does;
+ * on the card a click goes through `Menu.click` and the wheel (or a drag) through `Menu.wheel`, on
+ * the [Spot] `MenuCard` drew there; a click off the card closes it. With the menu closed they look
+ * round the room too: a drag pans (a right-drag or shift-drag turns and tilts), the wheel or a pinch
+ * zooms at the pointer. Broadcast has none.
+ */
+const pointer = {
+  /** A press on the card, for dragging the list or detail: where it was, and the last y. */
+  down: null as { spot: Spot; y: number; from: number } | null,
+  dragged: false,
+  /** Wheel or drag pixels not yet a whole notch, and what they were over. */
+  acc: 0,
+  over: "",
+  /** The rest of a multi-click that opened or closed the menu, sent a command or asked to confirm is ignored: confirming takes a click of its own. */
+  guard: false,
+  /** Where the mouse rests over the room, in CSS pixels from the canvas's top-left, for the things' labels; null off the canvas or for a finger. */
+  mouse: null as { x: number; y: number } | null,
+  /** The pointers down on the room (not the card), by id, at their last place, and whether this press turns the view rather than panning it. */
+  room: new Map<number, { x: number; y: number }>(),
+  turn: false,
+  /** Pixels a press on the room has to move before it is a drag (and not a click). */
+  slop: 0,
+};
+/** Degrees the view turns for a pixel of right-drag. */
+const DRAG_TURN = 0.3;
+const raycaster = new Raycaster();
+const ndc = new Vector2();
+
+/** What the mouse is over in the room this frame (the camera may have moved under it), for [ThingLabel]. */
+function hovered() {
+  const m = pointer.mouse;
+  if (!m || !view || menu.open || signIn.open || mail.open) return null;
+  ndc.set((m.x / layer.width) * 2 - 1, 1 - (m.y / layer.height) * 2);
+  raycaster.setFromCamera(ndc, renderer.camera);
+  return view.pick(raycaster.ray);
+}
+
+function pointerView(): PageView | null {
+  const life = stream.state.life;
+  return life && !signIn.open && !mail.open ? pageView(life) : null;
+}
+
+function spotAt(e: MouseEvent): Spot | null {
+  const r = canvas.getBoundingClientRect();
+  return card.hit(e.clientX - r.left, e.clientY - r.top);
+}
+
+/** The highlight and the pointer cursor, on what a click there would do something to. */
+function setHover(spot: Spot | null, v: PageView | null) {
+  const s = spot && v && menu.open && menu.clickable(spot, v) ? spot : null;
+  canvas.style.cursor = s ? "pointer" : "";
+  if (JSON.stringify(s) === JSON.stringify(card.hover)) return;
+  card.hover = s;
+  pressed = true;
+}
+
+/** [px] of wheel or drag over [spot], a notch at a time (a row over the list, a line over the detail). */
+function scroll(spot: Spot, px: number, v: PageView) {
+  const over = spot.kind === "detail" ? "detail" : "list";
+  if (over !== pointer.over) {
+    pointer.over = over;
+    pointer.acc = 0;
+  }
+  pointer.acc += px;
+  const notch = card.notch(spot);
+  const steps = Math.trunc(pointer.acc / notch);
+  if (!steps) return;
+  pointer.acc -= steps * notch;
+  menu.wheel(spot, steps, v);
+  pressed = true;
+}
+
+if (!settings.broadcast) {
+  canvas.addEventListener("click", (e) => {
+    const v = pointerView();
+    if (!v) return;
+    if (pointer.dragged) {
+      pointer.dragged = false;
+      return;
+    }
+    if (e.detail <= 1) pointer.guard = false;
+    if (pointer.guard) return;
+    pressed = true;
+    card.mouse = true;
+    if (!menu.open) {
+      menu.show(v);
+      pointer.guard = true;
+      return;
+    }
+    const spot = spotAt(e);
+    const a = spot ? menu.click(spot, v) : (menu.close(), null);
+    if (a) act(a);
+    // A ‹ or › may be clicked quickly over and over; anything else that did something takes a click of its own to do more.
+    pointer.guard = menu.confirm || !menu.open || (a !== null && a.type !== "configure");
+    setHover(menu.open ? spot : null, v);
+  });
+
+  canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+
+  canvas.addEventListener("pointerdown", (e) => {
+    const spot = menu.open ? spotAt(e) : null;
+    pointer.down = spot ? { spot, y: e.clientY, from: e.clientY } : null;
+    if (!pointer.room.size) pointer.dragged = false;
+    if (!menu.open && view) {
+      if (!pointer.room.size) {
+        pointer.turn = e.button === 2 || e.shiftKey;
+        pointer.slop = 0;
+      }
+      pointer.room.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      canvas.setPointerCapture(e.pointerId);
+    }
+  });
+
+  /** A pointer down on the room moved to ([x], [y]): one pans or turns the view, two pinch and pan it. */
+  const lookRound = (id: number, x: number, y: number) => {
+    const at = pointer.room.get(id);
+    if (!at || !view) return;
+    const h = canvas.clientHeight || window.innerHeight;
+    const r = canvas.getBoundingClientRect();
+    if (pointer.room.size >= 2) {
+      const [a, b] = [...pointer.room.values()];
+      const other = a === at ? b : a;
+      const before = Math.hypot(at.x - other.x, at.y - other.y);
+      const after = Math.hypot(x - other.x, y - other.y);
+      const mx = (x + other.x) / 2;
+      const my = (y + other.y) / 2;
+      view.camera.pan((x - at.x) / 2, (y - at.y) / 2, h);
+      if (before > 1 && after > 1) view.camera.zoom(after / before, ((mx - r.left) / r.width) * 2 - 1, 1 - ((my - r.top) / r.height) * 2);
+      pointer.dragged = true;
+    } else {
+      const dx = x - at.x;
+      const dy = y - at.y;
+      pointer.slop += Math.abs(dx) + Math.abs(dy);
+      if (pointer.slop > 6) pointer.dragged = true;
+      if (pointer.dragged) {
+        if (pointer.turn) view.camera.orbit(-dx * DRAG_TURN, dy * DRAG_TURN);
+        else view.camera.pan(dx, dy, h);
+      }
+    }
+    at.x = x;
+    at.y = y;
+  };
+  const letGo = (e: PointerEvent) => {
+    pointer.room.delete(e.pointerId);
+  };
+  canvas.addEventListener("pointercancel", letGo);
+
+  canvas.addEventListener("pointermove", (e) => {
+    if (e.pointerType === "mouse" && !card.mouse) {
+      card.mouse = true;
+      pressed = true;
+    }
+    const r = canvas.getBoundingClientRect();
+    pointer.mouse = e.pointerType === "mouse" ? { x: e.clientX - r.left, y: e.clientY - r.top } : null;
+    const v = pointerView();
+    if (pointer.room.has(e.pointerId) && e.buttons) {
+      // On the room, a press that moves is looking round; a still one is a click (the menu).
+      lookRound(e.pointerId, e.clientX, e.clientY);
+      if (pointer.dragged) look.used();
+      if (pointer.dragged) canvas.style.cursor = pointer.turn ? "ew-resize" : "grabbing";
+      return;
+    }
+    const down = pointer.down;
+    if (down && e.buttons && v && menu.open) {
+      // A drag moves what's under it with the finger: dragging up scrolls on down.
+      if (Math.abs(e.clientY - down.from) > 8) pointer.dragged = true;
+      if (pointer.dragged) scroll(down.spot, down.y - e.clientY, v);
+      down.y = e.clientY;
+    }
+    setHover(menu.open ? spotAt(e) : null, v);
+  });
+
+  canvas.addEventListener("pointerup", (e) => {
+    pointer.down = null;
+    letGo(e);
+    if (!pointer.room.size && canvas.style.cursor !== "pointer") canvas.style.cursor = "";
+    if (e.pointerType !== "mouse") setHover(null, null);
+  });
+  canvas.addEventListener("pointerleave", () => {
+    pointer.mouse = null;
+    setHover(null, null);
+  });
+
+  canvas.addEventListener("wheel", (e) => {
+    const v = pointerView();
+    if (v && !menu.open && view) {
+      // The wheel zooms at the pointer; a trackpad's pinch comes as the wheel with ctrl held, in finer steps.
+      e.preventDefault();
+      const r = canvas.getBoundingClientRect();
+      const px = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? canvas.clientHeight : 1);
+      view.camera.zoom(Math.exp(-px * (e.ctrlKey ? 0.01 : 0.0015)), ((e.clientX - r.left) / r.width) * 2 - 1, 1 - ((e.clientY - r.top) / r.height) * 2);
+      look.used();
+      return;
+    }
+    const spot = v && menu.open ? spotAt(e) : null;
+    if (!v || !spot) return;
+    e.preventDefault();
+    scroll(spot, e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? canvas.clientHeight : 1), v);
+  }, { passive: false });
+}
+
+let last = seconds();
+let next = 0;
+/** Null until the first frame sets it, so a page whose first frame is already live still hides the "connecting" it loaded with. */
+let statusText: string | null = null;
+const stats = { frames: 0, worst: 0, since: last, fps: 0 };
+
+function frame() {
+  requestAnimationFrame(frame);
+  draw();
+}
+
+/** One frame, now. A hidden tab gets no animation frames, so a headless check calls this itself (`lilguy.draw`). */
+function draw() {
+  const now = seconds();
+  // The frame cap: skip this one if the last drew too recently, with half a 60 Hz frame's slack for the display's own timing.
+  if (settings.fps && now < next - 0.008) return;
+  // On time, the next is a frame on from this one's slot, so the rate doesn't drift; far behind, a frame on from now.
+  const gap = settings.fps ? 1 / settings.fps : 0;
+  next = (now - next > gap ? now : next) + gap;
+  const delta = now - last;
+  last = now;
+  stats.frames++;
+  stats.worst = Math.max(stats.worst, delta);
+
+  const { life, content } = stream.state;
+  if (life && content) {
+    if (life.run.run_id !== runId) {
+      runId = life.run.run_id;
+      menu.reset();
+    }
+    // The room waits until there's one to draw.
+    if (!view) {
+      view = new RoomView(renderer, settings.camera, textures);
+      view.lightHour = settings.hour;
+      view.sky = settings.sky;
+      view.resize(canvas.clientWidth / Math.max(1, canvas.clientHeight));
+    }
+    view.render(life, content, track.sample(now), delta);
+    renderer.render();
+    const f = frameFor(layer.width, layer.height, settings.broadcast);
+    const v = settings.broadcast ? null : pageView(life);
+    const open = menu.open && v !== null;
+    hud.update({
+      life, content, speech: view.speech, making: view.making, banner: banner(life, open), hint: hint(open), menuOpen: open,
+    }, renderer.camera, f, delta);
+    if (!open && card.hover) setHover(null, null);
+    look.update(view.camera.mode, open || signIn.open || mail.open, delta);
+    // Over the room, the hand says it can be dragged; over the menu, the pointer is the card's.
+    if (!settings.broadcast && !pointer.room.size) {
+      const c = canvas.style.cursor;
+      if (!open && c === "") canvas.style.cursor = "grab";
+      else if (open && c === "grab") canvas.style.cursor = "";
+    }
+    const over = open ? null : hovered();
+    label.update(over, life, content, renderer.camera, f.u, delta);
+    readouts.update(life, (id, out) => view!.topOf(id, out), renderer.camera, f.u, open || signIn.open || mail.open, over?.id ?? null);
+    card.update(menu, v, f, pressed, delta);
+    pressed = false;
+    renderer.overlay(layer.scene, layer.camera);
+  }
+  const text = describe();
+  if (text !== statusText) {
+    status.textContent = statusText = text;
+    status.hidden = text === "";
+  }
+}
+
+/** Across the bottom: the connection when it's down, else the run's state when it isn't simply running, and what OK does about it. */
+function banner(life: LifeState, menuOpen: boolean): string | null {
+  if (stream.connection === "reconnecting") return "connection lost · reconnecting";
+  if (menuOpen) return null;
+  const ok = admin.admin && !settings.broadcast;
+  switch (life.run.state) {
+    case "ready": return ok ? "READY · OK opens the menu, OK again starts" : "READY · the run hasn't started";
+    case "paused": return ok ? "PAUSED · OK opens the menu" : "PAUSED";
+    case "ended": return `ENDED · ${life.run.ended_because ?? ""}`;
+    case "running": return null;
+  }
+}
+
+/** Top right: the room's keys, and for anyone not signed in, where signing in is (on a keyboard, OK is Enter). */
+function hint(menuOpen: boolean): string | null {
+  if (settings.broadcast || menuOpen) return null;
+  const mode = view?.camera.mode;
+  const camera = mode === "free" ? "UP shows the room, DOWN follows him" : mode === "follow" ? "UP shows the room · drag to look round" : "DOWN follows him · drag to look round";
+  return admin.admin ? `OK for the menu · ${camera}` : `OK (Enter) or a click for the menu · admin sign-in is on RUN · ${camera}`;
+}
+
+/** The line under the canvas, for before there's a room to draw a HUD on, or when there's no room at all. */
+function describe(): string {
+  if (gaveOut) return gaveOut;
+  const { life, refused } = stream.state;
+  switch (stream.connection) {
+    case "connecting": return "connecting";
+    case "reconnecting": return life ? "" : "connection lost; reconnecting";
+    case "refused": return refused?.reason ?? "refused";
+    case "live": return life ? "" : "joining";
+  }
+}
+
+// What a person or a headless browser checking the page can read from the console.
+(window as unknown as { lilguy: unknown }).lilguy = { grade, stream, track, renderer, stats, menu, card, admin, hud, label, settings, draw, get view() { return view; } };
+
+stream.start();
+requestAnimationFrame(frame);

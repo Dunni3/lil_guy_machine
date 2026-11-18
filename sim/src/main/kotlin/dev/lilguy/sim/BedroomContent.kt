@@ -8,6 +8,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 import java.io.File
+import kotlin.math.roundToInt
 
 /**
  * The bedroom as data: the room, need rules, items and verbs, loaded from the YAML files in
@@ -39,8 +40,10 @@ data class BedroomContent(
     val gallery: GalleryRules = GalleryRules(),
     /** Repeating an activity pays less; null turns it off. */
     val habituation: HabituationRules? = null,
-    /** The first time with an activity pays a bonus; null turns it off. */
+    /** The first time with an activity pays a bonus; null turns it off. With [familiarity], it's paid every time, at how fresh it was. */
     val novelty: NoveltyRules? = null,
+    /** How familiar what he does is by what it was like (Familiarity.kt); null and verbs wear by id ([habituation]). */
+    val familiarity: FamiliarityRules? = null,
     val vocabulary: Vocabulary = Vocabulary(),
     /** His default affinities and curiosity; a run can swap in another ([withPersonality]). */
     val personality: Personality = Personality(),
@@ -55,6 +58,30 @@ data class BedroomContent(
     val night: NightRules? = null,
     /** How his options are grouped for a picking model to walk down; empty for one flat list. */
     val menu: List<MenuNode> = emptyList(),
+    /** What he may invent at the workbench and what it costs; null and he can't. */
+    val invent: InventRules? = null,
+    /** The land around the house and its places; null and the bedroom is the whole map. */
+    val world: WorldContent? = null,
+    /** Samples he keeps add comfort, one kind at a time; null and they add none. */
+    val collection: CollectionRules? = null,
+    /** How what he sees counts toward comfort: near and lit counts most ([ComfortRules]); null and everything in its slot counts in full, wherever he is. */
+    val comfort: ComfortRules? = null,
+    /** Daylight, windows and what lamps reach ([LightRules]); null and it's never dark. */
+    val light: LightRules? = null,
+    /** Letters he writes to people who have written to him; null and he writes none. */
+    val letters: LetterRules? = null,
+    /** The sky, temperature and hidden pressure over the land, and what a recorder keeps (Weather.kt); null for no weather. */
+    val weather: WeatherRules? = null,
+    /** What machines make from what, how they wear and how they're mended ([Works]); null and nothing is a machine. */
+    val machines: MachineRules? = null,
+    /** How selling a lot of one ware lowers what it fetches, and how fast that recovers ([Market]); null and wares always fetch their price. */
+    val market: MarketRules? = null,
+    /** Where he hears a sound, and how much music lifts his mood there ([SoundRules]); null and music is heard everywhere. */
+    val sound: SoundRules? = null,
+    /** How cold or noise spoils his sleep ([SleepRules]); null and he sleeps the same anywhere. */
+    val sleep: SleepRules? = null,
+    /** How planters grow ([GrowingRules]); null and nothing grows. */
+    val growing: GrowingRules? = null,
 ) {
     @Transient private val byId = items.associateBy { it.id }
 
@@ -65,7 +92,8 @@ data class BedroomContent(
     fun book(id: String): BookSpec? = books.find { it.id == id }
 
     /** Ids a book teaches: unknown to him, so not in his world, until he finishes that book. */
-    @Transient val taught: Set<String> = books.flatMap { it.teaches }.toSet()
+    /** Ids he doesn't know until something shows him: what books teach, and the patches on the land until he explores their place. */
+    @Transient val taught: Set<String> = books.flatMap { it.teaches }.toSet() + world?.finds?.map { it.patch }.orEmpty()
 
     /** The content as he knows it: without what a book teaches that he hasn't learned ([known]). */
     fun known(known: Set<String>): BedroomContent {
@@ -89,6 +117,28 @@ data class BedroomContent(
     /** The same content with [p] as his personality, checked again. */
     fun withPersonality(p: Personality): BedroomContent = copy(personality = p).also { it.validate() }
 
+    /** The content with [invention] in it: its item, and its book when it is one. Checked like any content. */
+    fun plus(invention: Invention): BedroomContent =
+        copy(items = items + invention.item, books = books + listOfNotNull(invention.book)).also { it.validate() }
+
+    /**
+     * The content without [id], a thing he invented and took apart: its item, its book, and the
+     * verbs he wrote that are done with it or at it. Checked like any content.
+     */
+    fun minus(id: String): BedroomContent = copy(
+        items = items.filter { it.id != id },
+        books = books.filter { it.id != id },
+        verbs = verbs.filter { v -> v.code == null || (id !in v.at && id !in v.args.values) },
+    ).also { it.validate() }
+
+    /** The content with [verb], one he wrote, in it, in place of his verb of the same id if there is one. Checked like any content. */
+    fun plusVerb(verb: VerbSpec): BedroomContent =
+        copy(verbs = verbs.filter { it.id != verb.id } + verb).also { it.validate() }
+
+    /** The content with every item put through [change] (things moved to other slots, renamed). Checked like any content. */
+    fun mapItems(change: (ItemSpec) -> ItemSpec): BedroomContent =
+        copy(items = items.map(change)).also { it.validate() }
+
     /** Ids of everything above tier 0: what can be granted. */
     val gated: Set<String> get() = (items.filter { it.tier > 0 }.map { it.id } + verbs.filter { it.tier > 0 }.map { it.id }).toSet()
 
@@ -97,15 +147,31 @@ data class BedroomContent(
         val unknown = granted - gated
         require(unknown.isEmpty()) { "can't grant $unknown: only gated ids (tier above 0) can be granted" }
         fun open(id: String, tier: Int) = tier == 0 || id in granted
-        val items = items.filter { open(it.id, it.tier) }
-        val verbs = verbs.filter { open(it.id, it.tier) }
+        // What comes with a room whose plan is gated is gated with it.
+        val withGatedRooms = world?.rooms.orEmpty().filter { r -> byId[r.plan]?.let { !open(it.id, it.tier) } ?: true }.flatMap { it.items }.toSet()
+        val items = items.filter { open(it.id, it.tier) && it.id !in withGatedRooms }
+        // A verb whose arguments nothing left could fill goes with them: no lamps, no switching one.
+        val opened = verbs.filter { v -> open(v.id, v.tier) && v.args.values.all { tag -> tag == INVENTION || items.any { tag in it.names } } }
+        // Nothing to take apart or sell back where nothing can be built: the verbs that take an invention or a material go with the workbench.
+        val building = opened.any { v -> v.ops<BuildOp>().isNotEmpty() && v.at.all { at -> at in v.args || at == VerbSpec.HERE || items.any { it.id == at } } }
+        val verbs = opened.filter { v -> building || v.args.values.none { it == INVENTION || it == MATERIAL } }
         val ids = (items.map { it.id } + verbs.map { it.id }).toSet()
         return copy(
             items = items,
             verbs = verbs,
             books = books.filter { it.id in ids }.map { b -> b.copy(teaches = b.teaches.filter { it in ids }) },
             menu = menu.map { n -> n.copy(verbs = n.verbs.filter { it in ids }) },
-        ).also { it.validate() }
+            // A room whose plan is gated isn't there until the plan is.
+            world = world?.copy(rooms = world.rooms.filter { it.plan in ids }),
+        ).let { c ->
+            // Nor is a recipe whose inputs or outputs are, nor a machine's run of it.
+            val recipes = machines?.recipes.orEmpty().filter { r -> (r.takes.keys + r.makes.keys).all { it in ids } }
+            val runs = recipes.map { it.id }.toSet()
+            c.copy(
+                machines = machines?.copy(recipes = recipes),
+                items = c.items.map { i -> i.machine?.let { m -> i.copy(machine = m.copy(runs = m.runs.filter { it in runs })) } ?: i },
+            )
+        }.also { it.validate() }
     }
 
     companion object {
@@ -114,13 +180,15 @@ data class BedroomContent(
         /** The content's files, each with the top-level keys it holds. */
         val FILES: Map<String, List<String>> = linkedMapOf(
             "room" to listOf("room", "start"),
-            "rules" to listOf("needs", "night", "habituation", "novelty", "frustration", "skills", "shop", "reflection", "commissions", "gallery", "quality_value"),
+            "rules" to listOf("needs", "night", "habituation", "novelty", "familiarity", "frustration", "skills", "shop", "reflection", "commissions", "gallery", "quality_value", "invent", "collection", "comfort", "light", "letters", "sound", "sleep", "growing", "machines", "market"),
             "vocabulary" to listOf("vocabulary"),
             "personality" to listOf("personality"),
             "items" to listOf("items"),
             "verbs" to listOf("verbs"),
             "library" to listOf("books"),
             "menu" to listOf("menu"),
+            "world" to listOf("world"),
+            "weather" to listOf("weather"),
         )
 
         /** Content from [files], file name (no extension) to its text. Each file may hold only its own keys ([FILES]). */
@@ -134,27 +202,46 @@ data class BedroomContent(
                     entries[k] = v
                 }
             }
-            return yaml.decodeFromYamlNode(serializer(), YamlMap(entries, YamlPath.root)).also { it.validate() }
+            return yaml.decodeFromYamlNode(serializer(), YamlMap(entries, YamlPath.root)).resold().also { it.validate() }
         }
 
-        /** Content from a directory of the [FILES]. */
-        fun load(dir: File): BedroomContent = parse(FILES.keys.associateWith { File(dir, "$it.yaml").readText() })
+        /** Content from a directory of the [FILES]; `world.yaml` and `weather.yaml` may be left out, for a bedroom with no land around it or no weather. */
+        fun load(dir: File): BedroomContent = parse(FILES.keys.filter { it !in OPTIONAL_FILES || File(dir, "$it.yaml").exists() }.associateWith { File(dir, "$it.yaml").readText() })
+
+        private val OPTIONAL_FILES = setOf("world", "weather")
 
         /** The content shipped with the sim. */
-        fun default(): BedroomContent = parse(
-            FILES.keys.associateWith { name ->
-                val stream = BedroomContent::class.java.getResourceAsStream("/content/bedroom/$name.yaml")
-                    ?: error("content/bedroom/$name.yaml is missing from the classpath")
-                stream.bufferedReader().use { it.readText() }
-            },
-        )
+        fun default(): BedroomContent = parse(defaultFiles())
+
+        /** The text of each content file shipped with the sim, by name (no extension): what a run's content hash is taken over. */
+        fun defaultFiles(): Map<String, String> = FILES.keys.associateWith { name ->
+            val stream = BedroomContent::class.java.getResourceAsStream("/content/bedroom/$name.yaml")
+                ?: error("content/bedroom/$name.yaml is missing from the classpath")
+            stream.bufferedReader().use { it.readText() }
+        }
+    }
+
+    /** The content with its materials priced for selling back ([InventRules.resale]). */
+    private fun resold(): BedroomContent {
+        val rules = invent ?: return this
+        return copy(items = items.map { i -> rules.resale(i).let { if (it == i.resale) i else i.copy(resale = it) } })
     }
 
     private fun validate() {
+        world?.problems(room)?.firstOrNull()?.let { throw IllegalArgumentException(it) }
         val ids = items.map { it.id }
         require(ids.size == ids.toSet().size) { "item ids must be unique: ${ids.groupBy { it }.filterValues { it.size > 1 }.keys}" }
         val tags = items.flatMap { it.names }.toSet()
-        val slots = room.slots.values.toSet()
+        val slots = room.slots.values.toSet() + world?.slots?.keys.orEmpty() + world?.rooms?.flatMap { it.slots.values }.orEmpty()
+        world?.rooms?.forEach { r ->
+            require(byId[r.plan] != null) { "room ${r.id}: its plan '${r.plan}' isn't an item" }
+            r.items.forEach { require(byId[it]?.slot in r.slots.values) { "room ${r.id}: '$it' must be an item standing in one of its slots" } }
+            r.qualities.keys.forEach { require(it in vocabulary.qualities) { "room ${r.id} is '$it', which isn't in vocabulary.qualities" } }
+        }
+        world?.finds?.forEach { f ->
+            require(byId[f.patch]?.slot in world.slots.keys) { "find ${f.patch}: the patch must be an item on a world slot" }
+            require(byId[f.yields] != null) { "find ${f.patch} yields '${f.yields}', which isn't an item" }
+        }
         val affordances = vocabulary.affords.toSet()
         val qualities = vocabulary.qualities.toSet()
         require(affordances.none { it in ids }) { "affordances can't share a name with an item: ${affordances.filter { it in ids }}" }
@@ -183,10 +270,11 @@ data class BedroomContent(
             (a.args.keys - VerbSpec.SLOTS).forEach { throw IllegalArgumentException("$where: argument '$it' isn't a slot; use ${VerbSpec.SLOTS.joinToString(" or ")}") }
             require(a.at.isNotEmpty()) { "$where needs at least one place in `at`" }
             a.at.forEach { at ->
-                val places = a.args[at]?.let(::withName) ?: if (at == VerbSpec.HERE) null else listOfNotNull(byId[at])
+                // Things he invents come during a run, and stand somewhere when they're anything to take apart.
+                val places = a.args[at]?.let { if (it == INVENTION) null else withName(it) } ?: if (at == VerbSpec.HERE || a.args[at] == INVENTION) null else listOfNotNull(byId[at])
                 require(places == null || (places.isNotEmpty() && places.all { it.slot != null })) { "$where happens at '$at', which isn't a slot item, an argument naming slot items, or `here`" }
             }
-            (a.requires + a.args.values).forEach { require(it in tags) { "$where names '$it', which isn't an item or an affordance any item has" } }
+            (a.requires + a.args.values).forEach { require(it in tags || it == INVENTION) { "$where names '$it', which isn't an item or an affordance any item has" } }
             require(a.effects.isNotEmpty()) { "$where does nothing: give it `effects`" }
             (a.effects.flatMap { it.problems(this, a) } + a.kind.violations(a, affordances)).takeIf { it.isNotEmpty() }?.let { throw IllegalArgumentException("$where: " + it.joinToString("; ")) }
             require((a.minutes != null) != (a.until != null)) { "$where needs exactly one of `minutes` and `until`" }
@@ -201,12 +289,52 @@ data class BedroomContent(
                 d.block.forEach { needOf(it.need) }
             }
         }
+        verbs.forEach { a ->
+            a.needs.forEach { (k, v) ->
+                require(EffectKind.of(k) != null) { "verb ${a.id} needs '$k', which isn't an effect; use ${EffectKind.entries.joinToString { it.id }}" }
+                require(v > 0) { "verb ${a.id}: needs $k must be above 0" }
+            }
+        }
+        items.forEach { item -> item.light?.let { require(it.strength > 0 && it.radius >= 0) { "item ${item.id}: light needs a strength above 0 and a radius not negative" } } }
+        // A lamp can be switched and runs on a timer; anything else with a light always gives it.
+        items.forEach { item ->
+            if (LAMP in item.affords) require(item.light != null) { "item ${item.id} is a lamp, so it needs a `light`" }
+            item.light?.timer?.let { t ->
+                require(LAMP in item.affords) { "item ${item.id} has a light timer but isn't a lamp (affords lamp)" }
+                t.problems("item ${item.id} light.timer").firstOrNull()?.let { throw IllegalArgumentException(it) }
+            }
+        }
+        items.forEach { item ->
+            listOfNotNull(item.warmth?.let { "warmth" to (it.strength to it.radius) }, item.sound?.let { "sound" to (it.strength to it.radius) }, item.lure?.let { "lure" to (it.strength to it.radius) }).forEach { (what, r) ->
+                require(r.first > 0 && r.second >= 0) { "item ${item.id}: $what needs a strength above 0 and a radius not negative" }
+            }
+            item.lure?.let { l ->
+                require(world?.visitor(l.draws) != null) { "item ${item.id} lures '${l.draws}', which isn't in world.yaml `visitors`" }
+                require(LURE in item.affords) { "item ${item.id} has a lure, so it affords `$LURE` (what the watch verb asks for)" }
+            }
+            item.grows?.let { g ->
+                require(byId[g.yields] != null) { "item ${item.id} grows '${g.yields}', which isn't an item" }
+                require(g.hours > 0 && g.count > 0) { "item ${item.id}: grows needs hours and count above 0" }
+                require(GROWABLE in item.affords && item.slot != null) { "item ${item.id} grows things, so it stands in a slot and affords `$GROWABLE`" }
+                require(growing != null) { "item ${item.id} grows things, so rules need `growing`" }
+            }
+        }
+        world?.visitors?.forEach { v ->
+            require(byId[v.yields] != null) { "visitor ${v.id} leaves '${v.yields}', which isn't an item" }
+            v.problems().firstOrNull()?.let { throw IllegalArgumentException(it) }
+        }
+        world?.visitors?.map { it.id }?.let { ids -> require(ids.size == ids.toSet().size) { "visitor ids must be unique" } }
+        (light?.problems().orEmpty() + comfort?.problems().orEmpty() + familiarity?.problems().orEmpty()).firstOrNull()?.let { throw IllegalArgumentException(it) }
+        (room.windows + world?.rooms?.flatMap { it.windows }.orEmpty()).forEach { require(it.size == 2) { "a window is [x, y]: $it" } }
         night?.let { GameClock.parseHhmm(it.from); GameClock.parseHhmm(it.to) }
         needs.workFloor.forEach { needOf(it.need) }
         require(needs.stimulationPerHour <= 0 && needs.boredMood >= 0) { "stimulation_per_hour can't be positive or bored_mood negative" }
+        require(needs.stimulationDrainAt == null || needs.stimulationDrainAt > 0) { "stimulation_drain_at must be positive" }
         habituation?.let { h ->
             require(h.perRepeat in 0.0..1.0 && h.recoverPerHour > 0 && h.staleStimulation <= 0) { "habituation: per_repeat 0 to 1, recover_per_hour positive, stale_stimulation not positive" }
+            h.boredLock?.let { require(it.worn in 0.0..1.0 && it.below > 0) { "habituation.bored_lock: worn 0 to 1, below positive" } }
         }
+        novelty?.things?.let { require(it.stimulationPerValue >= 0 && it.days > 0) { "novelty.things: stimulation_per_value not negative, days positive" } }
         novelty?.effects?.keys?.forEach { needOf(it) }
         personality.affinities.forEach { (q, w) ->
             require(q in qualities) { "personality likes '$q', which isn't in vocabulary.qualities" }
@@ -230,12 +358,13 @@ data class BedroomContent(
                 require(placed.add(v)) { "menu: verb '$v' is in more than one node" }
             }
         }
+        letters?.let { l -> require(l.perDay >= 1 && l.unanswered >= 1 && l.maxLength >= 1) { "letters: per_day, unanswered and max_length must be at least 1" } }
         reflection?.let { r -> require(verbs.any { it.id == r.verb } && r.every >= 1) { "reflection: verb '${r.verb}' must be a verb and every at least 1" } }
         val skillNames = vocabulary.skills.toSet()
-        items.forEach { item -> item.affords["sellable"]?.skill?.let { require(it in skillNames) { "item ${item.id}: sellable skill '$it' isn't in vocabulary.skills" } } }
+        items.forEach { item -> item.affords.forEach { (a, p) -> p.skill?.let { require(it in skillNames) { "item ${item.id}: $a skill '$it' isn't in vocabulary.skills" } } } }
         (skills.deepens.keys - skillNames).forEach { throw IllegalArgumentException("skills.deepens names '$it', which isn't in vocabulary.skills") }
         (skills.deepens.values.toSet() - qualities).forEach { throw IllegalArgumentException("skills.deepens names '$it', which isn't in vocabulary.qualities") }
-        require(skills.gainPerLevel >= 0 && skills.pricePerLevel >= 0 && skills.affinityPerLevel >= 0) { "skills: per-level numbers can't be negative" }
+        require(skills.gainPerLevel >= 0 && skills.affinityPerLevel >= 0) { "skills: per-level numbers can't be negative" }
         val bookIds = books.map { it.id }
         require(bookIds.size == bookIds.toSet().size) { "each item can be one book at most: ${bookIds.groupBy { it }.filterValues { it.size > 1 }.keys}" }
         books.forEach { b ->
@@ -255,8 +384,37 @@ data class BedroomContent(
         }
         GameClock.parseHhmm(start.time)
         require(room.approach.keys.all { it in room.slots.values }) { "room.approach names a slot that isn't in room.slots" }
+        (room.spots.floor + room.spots.wall).let { spots ->
+            require(spots.all { it in slots } && spots.size == spots.toSet().size) { "room.spots names a slot twice or one that isn't in room.slots" }
+            require(room.spots.wall.all { it in room.wallSlots } && room.spots.floor.none { it in room.wallSlots }) { "room.spots: wall spots must be in wall_slots and floor spots not" }
+        }
+        val slotted = items.mapNotNull { it.slot }
+        require(slotted.size == slotted.toSet().size) { "two items can't share a slot: ${slotted.groupBy { it }.filterValues { it.size > 1 }.keys}" }
+        invent?.problems(this)?.takeIf { it.isNotEmpty() }?.let { throw IllegalArgumentException(it.joinToString("; ")) }
+        weather?.problems()?.firstOrNull()?.let { throw IllegalArgumentException(it) }
+        market?.problems()?.firstOrNull()?.let { throw IllegalArgumentException(it) }
+        (machines ?: MachineRules().takeIf { items.any { it.machine != null } })?.problems(this)?.firstOrNull()?.let { throw IllegalArgumentException(it) }
+        // A recorder logs the weather at its spot, so it stands outdoors, on one of the land's slots.
+        items.filter { RECORDER in it.affords }.forEach { require(it.slot != null && it.slot in world?.slots.orEmpty()) { "item ${it.id} is a recorder, so it needs a slot on the land (world.yaml `slots`)" } }
     }
 }
+
+/** The affordance of a thing that logs the weather where it stands ([Records], [StationLog]). */
+const val RECORDER = "recorder"
+
+/** What a verb's argument names for a thing he invented that stands somewhere (the `dismantle` verb): none are in the content until he builds one. */
+const val INVENTION = "invention"
+
+/** The tag a material he builds with answers to when the shop takes it back ([ItemSpec.resale]): what `sell_materials` sells. */
+const val MATERIAL = "material"
+
+/** The affordance of a light he can switch: on its timer, or on or off until he switches it again ([LampMode]). */
+const val LAMP = "lamp"
+/** The affordance of a thing visitors come to (its `lure`), which the watch verb asks for. */
+const val LURE = "lure"
+
+/** The affordance of a planter (its `grows`), which watering and harvesting ask for. */
+const val GROWABLE = "growable"
 
 @Serializable
 data class RoomContent(
@@ -266,7 +424,14 @@ data class RoomContent(
     @SerialName("wall_slots") val wallSlots: List<String> = emptyList(),
     /** Slot name to the side he works it from (N, E, SE, ...), when that tile is free; else the nearest side. */
     val approach: Map<String, Direction> = emptyMap(),
-)
+    /** Spare slots no shipped item stands in: where the things he invents go ([InventRules.freeSpots]). */
+    val spots: Spots = Spots(),
+    /** Windows: wall tiles [x, y] from the room's top-left, where daylight comes in ([LightRules.window]). */
+    val windows: List<List<Int>> = emptyList(),
+) {
+    @Serializable
+    data class Spots(val floor: List<String> = emptyList(), val wall: List<String> = emptyList())
+}
 
 @Serializable
 data class StartState(
@@ -288,6 +453,11 @@ data class NeedRules(
     @SerialName("work_floor") val workFloor: List<NeedBlock>,
     /** Stimulation lost per waking hour. */
     @SerialName("stimulation_per_hour") val stimulationPerHour: Double = 0.0,
+    /**
+     * When set, the drain scales with how much stimulation he has: [stimulationPerHour] at this level, half that at half
+     * of it, so it eases off as he gets bored and fun settles where what he does balances it, rather than at 0 or 100.
+     */
+    @SerialName("stimulation_drain_at") val stimulationDrainAt: Double? = null,
     /** Below [bored] stimulation, each point under it lowers the mood he settles to by [boredMood]. */
     val bored: Double = 0.0,
     @SerialName("bored_mood") val boredMood: Double = 0.0,
@@ -324,16 +494,15 @@ data class FrustrationRules(
 
 /**
  * How skills pay off. A skill is a number from 0 up with no cap, raised by `practice` ops and by
- * studying a book. A verb's mood and stimulation gains grow [gainPerLevel] per level of the skills
- * it practises (the more he can do, the more he gets out of it). A piece whose `sellable` names a
- * skill sells for [pricePerLevel] more per level he had when he made it. A skill that [deepens] a
+ * studying a book. A verb's mood gains grow [gainPerLevel] per level of the skills
+ * it practises (the more he can do, the more he gets out of it). What a skill does for a piece
+ * (its price and its strokes) is on the item's `sellable` and `drawable`. A skill that [deepens] a
  * quality adds [affinityPerLevel] per level to his affinity for it: knowing about nature, he gets
  * more out of natural things.
  */
 @Serializable
 data class SkillRules(
     @SerialName("gain_per_level") val gainPerLevel: Double = 0.0,
-    @SerialName("price_per_level") val pricePerLevel: Double = 0.0,
     @SerialName("affinity_per_level") val affinityPerLevel: Double = 0.0,
     val deepens: Map<String, String> = emptyMap(),
 )
@@ -360,12 +529,27 @@ data class BookSpec(
  * fades [recoverPerHour] an hour. Its positive mood and stimulation effects are paid at
  * 1 - wear, and finishing one that was already worn costs [staleStimulation] times the wear.
  * Routine verbs (marked, or of a routine [VerbKind]) don't wear. A verb with arguments wears per item (each record on its own).
+ * [boredLock]: when he's bored, what he has worn thin is refused outright; null never refuses.
  */
 @Serializable
 data class HabituationRules(
     @SerialName("per_repeat") val perRepeat: Double,
     @SerialName("recover_per_hour") val recoverPerHour: Double,
     @SerialName("stale_stimulation") val staleStimulation: Double = 0.0,
+    @SerialName("bored_lock") val boredLock: BoredLock? = null,
+)
+
+/**
+ * Below [below] stimulation, a verb worn [worn] or more (0 to 1) is locked, what it pays included,
+ * until he's less bored or it wears off. Verbs that feed energy or fullness, and verbs with no mood
+ * or stimulation gains to wear, never lock, so there's always a way back to food and sleep.
+ */
+@Serializable
+data class BoredLock(
+    val below: Double,
+    val worn: Double,
+    /** Money he keeps for food: work stays open until he could buy something new and still have this. */
+    val keep: Int = 0,
 )
 
 /**
@@ -421,9 +605,19 @@ data class QualityValue(
     }
 }
 
-/** The first time he finishes an activity (or a use with a given item) adds [effects]; routine ones don't count. */
+/**
+ * The first time he finishes an activity (or a use with a given item) adds [effects]; routine ones don't count.
+ * [things]: what a new thing in the room does for him; null for nothing.
+ */
 @Serializable
-data class NoveltyRules(val effects: Map<String, Double>)
+data class NoveltyRules(val effects: Map<String, Double>, val things: NewThings? = null)
+
+/**
+ * A thing he buys that sits in a slot feeds stimulation while he's awake, [stimulationPerValue] an
+ * hour per point of its value to him (so only things he likes), fading to nothing over [days].
+ */
+@Serializable
+data class NewThings(@SerialName("stimulation_per_value") val stimulationPerValue: Double, val days: Double)
 
 /** Refuses an activity when [need] is below [below] or above [above]. */
 @Serializable
@@ -455,6 +649,9 @@ data class CommissionRules(
 
 /** Hung art: at most [max] pieces on the wall, each adding [comfortEach] to the room's comfort. */
 @Serializable
+data class CollectionRules(val max: Int = 6, @SerialName("comfort_each") val comfortEach: Int = 2)
+
+@Serializable
 data class GalleryRules(val max: Int = 3, @SerialName("comfort_each") val comfortEach: Int = 3)
 
 /** What a piece of this item is drawn on: a [size] by [size] grid, up to [colors] colors and [strokes] strokes, each two of a model's picks. */
@@ -475,27 +672,48 @@ data class AffordanceParams(
     val colors: Int? = null,
     /** drawable: at most this many strokes, each two of the deciding model's picks. */
     val strokes: Int? = null,
-    /** sellable, optional: the skill a piece's price grows with ([SkillRules.pricePerLevel]). */
+    /** sellable and drawable, optional: the skill that raises the price or the strokes, at the level he had when he made the piece. */
     val skill: String? = null,
+    /** sellable, optional: dollars more per level of [skill]. */
+    @SerialName("price_per_level") val pricePerLevel: Int? = null,
+    /** drawable, optional: strokes more per whole level of [skill], up to [maxStrokes]. */
+    @SerialName("strokes_per_level") val strokesPerLevel: Int? = null,
+    /** drawable, optional: the most strokes skill can bring a piece to. */
+    @SerialName("max_strokes") val maxStrokes: Int? = null,
 ) {
-    internal val set: Set<String> get() = listOfNotNull(price?.let { "price" }, size?.let { "size" }, colors?.let { "colors" }, strokes?.let { "strokes" }, skill?.let { "skill" }).toSet()
+    internal val values: Map<String, Int?> get() = mapOf(
+        "price" to price, "size" to size, "colors" to colors, "strokes" to strokes,
+        "price_per_level" to pricePerLevel, "strokes_per_level" to strokesPerLevel, "max_strokes" to maxStrokes,
+    )
+    internal val set: Set<String> get() = values.filterValues { it != null }.keys + listOfNotNull(skill?.let { "skill" })
 }
 
 object Affordance {
     /** Affordances that take parameters, with the ones each must set and their ranges. */
     val PARAMS: Map<String, Map<String, IntRange>> = mapOf(
         "sellable" to mapOf("price" to 1..10_000),
+        "specimen" to mapOf("price" to 1..10_000),
+        "ware" to mapOf("price" to 1..10_000),
         "drawable" to mapOf("size" to 4..64, "colors" to 2..32, "strokes" to 1..100),
     )
 
-    /** Parameters an affordance may leave out, which aren't numbers. */
-    val OPTIONAL: Map<String, Set<String>> = mapOf("sellable" to setOf("skill"))
+    /** Parameters an affordance may leave out, with their ranges (null for one that isn't a number). */
+    val OPTIONAL: Map<String, Map<String, IntRange?>> = mapOf(
+        "sellable" to mapOf("skill" to null, "price_per_level" to 0..10_000),
+        "drawable" to mapOf("skill" to null, "strokes_per_level" to 0..100, "max_strokes" to 1..100),
+    )
 
     internal fun problems(affordance: String, p: AffordanceParams): List<String> {
         val wants = PARAMS[affordance].orEmpty()
-        val values = mapOf("price" to p.price, "size" to p.size, "colors" to p.colors, "strokes" to p.strokes)
-        return (p.set - wants.keys - OPTIONAL[affordance].orEmpty()).map { "takes no '$it'" } +
-            wants.mapNotNull { (k, range) -> values[k].let { v -> if (v == null || v !in range) "needs $k from ${range.first} to ${range.last}" else null } }
+        val may = OPTIONAL[affordance].orEmpty()
+        val values = p.values
+        return (p.set - wants.keys - may.keys).map { "takes no '$it'" } +
+            wants.mapNotNull { (k, range) -> values[k].let { v -> if (v == null || v !in range) "needs $k from ${range.first} to ${range.last}" else null } } +
+            may.mapNotNull { (k, range) -> values[k]?.takeIf { range != null && it !in range }?.let { "$k must be from ${range!!.first} to ${range.last}" } } +
+            listOfNotNull(
+                if (p.skill == null && (p.pricePerLevel != null || p.strokesPerLevel != null)) "a per-level number needs a skill" else null,
+                if (p.maxStrokes != null && p.strokes != null && p.maxStrokes < p.strokes) "max_strokes can't be below strokes" else null,
+            )
     }
 }
 
@@ -515,6 +733,10 @@ data class MenuNode(
     val under: String? = null,
     val verbs: List<String> = emptyList(),
     val buys: List<String> = emptyList(),
+    /** Going to a place (a `move_to` a place) sits in this node. */
+    val go: Boolean = false,
+    /** Putting a thing somewhere else (`put`) sits in this node, one node under it per thing. */
+    val put: Boolean = false,
 )
 
 @Serializable
@@ -540,18 +762,47 @@ data class ItemSpec(
     val carried: Boolean = false,
     /** Above 0, it's gated until granted; see [BedroomContent.unlocked]. */
     val tier: Int = 0,
+    /** The light it gives off where it stands; null for none. */
+    val light: LightSpec? = null,
+    /** What it makes from what (rules.yaml `machines`); null when it isn't a machine. */
+    val machine: MachineSpec? = null,
+    /** The degrees it adds round where it stands (a heater, a fire); on a thing that stands nowhere (a blanket), round him out of doors. Null for none. */
+    val warmth: EffectSpec? = null,
+    /** The sound it makes where it stands (a chime; a record player only while a record plays on it). Null for none. */
+    val sound: SoundSpec? = null,
+    /** The visitors it draws (world.yaml `visitors`), and how far. Null for none. */
+    val lure: LureSpec? = null,
+    /** What it grows in sun and damp soil (rules.yaml `growing`), as a planter. Null for nothing. */
+    val grows: GrowSpec? = null,
+    /** What the shop gives back for one, when it's a material he builds with (rules.yaml `invent.sell_back`); set by the content, not its files. */
+    @Transient val resale: Int? = null,
 ) {
-    /** What an activity can ask for it by: its id and its affordances. */
-    @Transient val names: Set<String> = setOf(id) + affords.keys
+    /** What an activity can ask for it by: its id and its affordances, `machine` for a machine, and `material` for one the shop takes back. */
+    @Transient val names: Set<String> = setOf(id) + affords.keys + listOfNotNull(Works.MACHINE.takeIf { machine != null }, MATERIAL.takeIf { resale != null })
 
-    /** What one sells for, when it's `sellable`, before any skill raises it. */
-    val sellPrice: Int? get() = affords["sellable"]?.price
+    /** What one sells for, when it's `sellable` (or a sample, a ware, or a material the shop takes back), before any skill raises it. */
+    val sellPrice: Int? get() = affords["sellable"]?.price ?: affords["specimen"]?.price ?: affords["ware"]?.price ?: resale
 
     /** The skill its price grows with, if any. */
     val sellSkill: String? get() = affords["sellable"]?.skill
 
-    /** The canvas a drawing model gets, when it's `drawable`. */
-    val canvas: CanvasSpec? get() = affords["drawable"]?.let { CanvasSpec(it.size!!, it.colors!!, it.strokes!!) }
+    /** Dollars more it sells for per level of [sellSkill]. */
+    val pricePerLevel: Int get() = affords["sellable"]?.takeIf { it.skill != null }?.pricePerLevel ?: 0
+
+    /** What one sells for when made at [level] in [sellSkill]: its price plus [pricePerLevel] a level, rounded. */
+    fun priceAt(level: Double): Int? = sellPrice?.let { it + (pricePerLevel * level).roundToInt() }
+
+    /** The canvas a drawing model gets, when it's `drawable`, before any skill adds strokes. */
+    val canvas: CanvasSpec? get() = canvasAt(0.0)
+
+    /** The skill that adds strokes to its canvas, if any. */
+    val drawSkill: String? get() = affords["drawable"]?.skill
+
+    /** The canvas when drawn at [level] in [drawSkill]: `strokes_per_level` more strokes a whole level, up to `max_strokes`. */
+    fun canvasAt(level: Double): CanvasSpec? = affords["drawable"]?.let { p ->
+        val more = if (p.skill == null) 0 else (p.strokesPerLevel ?: 0) * level.toInt()
+        CanvasSpec(p.size!!, p.colors!!, minOf(p.strokes!! + more, p.maxStrokes ?: Affordance.PARAMS.getValue("drawable").getValue("strokes").last))
+    }
 }
 
 /** See [VerbSpec.wear]. */
@@ -597,6 +848,10 @@ data class VerbSpec(
     @SerialName("by_day") val byDay: ByDay? = null,
     /** What repetition wears: each way of filling its arguments on its own (each record), or the verb as a whole (any book). */
     val wear: Wear = Wear.Items,
+    /** A verb he wrote: its JavaScript ([ScriptOp] runs it). Null for the world's own verbs. */
+    val code: VerbCode? = null,
+    /** What it needs where it's done, effect kind ([EffectKind]) to the least level: `{ light: 3 }` is too dark to read below 3. */
+    val needs: Map<String, Double> = emptyMap(),
 ) {
     /** Marked routine, or of a kind that always is (selling, sleeping). */
     val isRoutine: Boolean get() = routine || kind.routine

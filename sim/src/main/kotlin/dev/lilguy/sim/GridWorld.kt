@@ -19,9 +19,13 @@ import kotlin.math.roundToInt
  * the end of its constructor, once its own state exists.
  */
 abstract class GridWorld protected constructor(
-    val map: TileMap,
+    map: TileMap,
     protected val guy: Character,
 ) : World {
+    /** The terrain; a world whose house changes (a room built or moved) swaps in a new one between ticks. */
+    @Volatile var map: TileMap = map
+        protected set
+
     protected var ticks = 0L
         private set
     private val inbox = ConcurrentLinkedQueue<Handle>()
@@ -124,12 +128,14 @@ abstract class GridWorld protected constructor(
         is Intent.Wait -> "wait ${intent.ticks}"
         is Intent.Do -> "do ${intent.activity}" + listOfNotNull(intent.what, intent.on?.let { "on $it" }).joinToString("") { " $it" }
         is Intent.Buy -> "buy ${intent.item}"
+        is Intent.Put -> "put ${intent.item} at ${intent.spot}"
         Intent.Think -> "think"
     }
 
     protected fun describe(target: Target): String = when (target) {
         is Target.Tile -> "(${target.x}, ${target.y})"
         is Target.Entity -> target.id
+        is Target.Place -> target.id
     }
 
     // --- intent lifecycle --------------------------------------------------------------------
@@ -269,7 +275,8 @@ abstract class GridWorld protected constructor(
         return Work.Walk(ArrayDeque(path.cells))
     }
 
-    protected fun event(text: String) = addEvent(WorldEvent(ticks, text))
+    /** Something that happened around him; [place] when it happened somewhere of its own ([WorldEvent.place]). */
+    protected fun event(text: String, place: String? = null) = addEvent(WorldEvent(ticks, text, place = place))
 
     /**
      * An event that says how the running intent ended: what it did when it finished (its ops'
@@ -297,6 +304,10 @@ abstract class GridWorld protected constructor(
     /** [recentEvents] without the ones that are an intent's outcome: what happened around him. */
     protected fun news(): List<String> = events.takeLast(OBSERVED_EVENTS).filter { !it.outcome }.map { "${stamp(it.tick)}: ${it.text}" }
 
+    /** The [news] lines that happened in a place of their own, to that place's name by [name]. */
+    protected fun newsPlaces(name: (String) -> String?): Map<String, String> =
+        events.takeLast(OBSERVED_EVENTS).filter { !it.outcome && it.place != null }.mapNotNull { e -> name(e.place!!)?.let { "${stamp(e.tick)}: ${e.text}" to it } }.toMap()
+
     protected fun agentSnapshot(): AgentSnapshot = AgentSnapshot(
         id = guy.id,
         intent = last?.intent,
@@ -310,6 +321,36 @@ abstract class GridWorld protected constructor(
         is Work.Walk -> work
         is Work.Steps -> work.steps.firstOrNull()?.let(::currentWalk)
         else -> null
+    }
+
+    // --- checkpoints ---------------------------------------------------------------------------
+
+    /** True when nothing is running or queued, so the world can be saved ([GridState]). */
+    protected val atRest: Boolean get() = running == null && inbox.isEmpty()
+
+    /** What this class holds of the world, for a subclass's checkpoint. Only [atRest]. */
+    protected fun gridState(): GridState {
+        check(atRest) { "can't save the world while an intent is running or queued" }
+        return GridState(
+            tick = ticks, x = guy.x, y = guy.y, facing = guy.facing,
+            events = events.map { GridState.Event(it.tick, it.text, it.outcome, it.place) },
+            last = last?.let { GridState.Last(it.intent, it.status, it.outcome) },
+            saying = saying, sayUntil = sayUntil,
+        )
+    }
+
+    /** Puts [s] back, then publishes, so the next observation is the saved one. Call once, before the first [step]. */
+    protected fun restoreGrid(s: GridState) {
+        ticks = s.tick
+        guy.x = s.x
+        guy.y = s.y
+        guy.facing = s.facing
+        events.clear()
+        s.events.forEach { events.addLast(WorldEvent(it.tick, it.text, it.outcome, it.place)) }
+        last = s.last?.let { l -> Handle(l.intent).also { it.status = l.status ?: IntentStatus.Submitted; it.outcome = l.outcome } }
+        saying = s.saying
+        sayUntil = s.sayUntil
+        published = publish()
     }
 
     // --- internals ---------------------------------------------------------------------------

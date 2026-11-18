@@ -58,6 +58,28 @@ data class Drawing(
 )
 
 /**
+ * A piece as it's being made, for the room to show stroke by stroke: what it is ([item], and its
+ * [title] from the subject), the crayons' colours (0xRRGGBB, the paper first), and [art], the
+ * picture after [strokes] of [of] strokes, [crayon] the last one's. [tick] says which piece it is.
+ * The [Painter] reports it as it goes; [ArtStudio] says when it's [State.Done] or [State.Dropped].
+ */
+data class Underway(
+    val tick: Long,
+    val item: String,
+    val title: String,
+    val palette: List<Int>,
+    val strokes: Int,
+    val of: Int,
+    val art: Artwork,
+    val crayon: Int? = null,
+    val state: State = State.Drawing,
+    /** The verb making it, once the studio has said. */
+    val verb: String? = null,
+) {
+    enum class State { Drawing, Done, Dropped }
+}
+
+/**
  * How his art gets made: a run of closed choices on the model that decides for him, so the cheap
  * picking model (TypeSafe's Jev) draws, and nothing has to write text. First he picks the piece's
  * subject (the customer's request, or something of his own), then a box of crayons ([Palettes]),
@@ -100,7 +122,10 @@ class Painter(
      * Draws one piece of [item] on [canvas]. [persona] is who he is; [situation] is his state in
      * the words of the decision prompt, which is what the subject is chosen from. [drawn] are the
      * titles of pieces he has already made, which aren't offered as subjects of his own again.
-     * Never throws for a model failure: the drawing says what went wrong.
+     * [nounsDrawn] are the nouns he has drawn before: the others are marked new to him, since a
+     * new subject lifts his stimulation, and some are always among those offered.
+     * Never throws for a model failure: the drawing says what went wrong. [onProgress] hears the
+     * piece once its crayons are picked and again after every stroke, on the drawing's coroutine.
      */
     suspend fun draw(
         persona: String,
@@ -113,6 +138,8 @@ class Painter(
         day: Int?,
         time: String?,
         drawn: Collection<String> = emptyList(),
+        nounsDrawn: Set<String> = emptySet(),
+        onProgress: (Underway) -> Unit = {},
     ): Drawing {
         val started = TimeSource.Monotonic.markNow()
         val asked = commission?.let { it.request ?: "I'd like ${it.wants}." }
@@ -132,7 +159,7 @@ class Painter(
         return try {
             withTimeout(timeout) {
                 val random = Random(tick)
-                val subject = pickSubject(pick, persona, situation, item, commission, subjects, drawn.toSet(), random)
+                val subject = pickSubject(pick, persona, situation, item, commission, subjects, drawn.toSet(), nounsDrawn, random)
                 val palette = pickPalette(pick, item, subject, canvas, random)
                 // The subject stage's shapes are drawn in front of everything else, whenever they were made.
                 val back = mutableListOf<DrawOp>()
@@ -144,16 +171,19 @@ class Painter(
                 val used = mutableSetOf<String>()
                 var copies = 0
                 var shows: String? = null
+                fun report(strokes: Int, crayon: Int?) =
+                    onProgress(Underway(tick, item, subject.title, palette.rgb, strokes, canvas.strokes, Artwork.draw(canvas.size, palette.rgb, back + front), crayon))
+                report(0, null)
                 for (strokes in 0 until canvas.strokes) {
                     val stage = Strokes.stage(strokes, canvas.strokes, subject.shapes.isNotEmpty())
                     val seed = tick * 101 + strokes
                     // The crayons shuffled, as the strokes are, with the paper last: a picker leans to early options, and the paper rubs out.
                     val crayons = (1 until palette.crayons.size).shuffled(Random(seed)) + 0
                     val art = Artwork.draw(canvas.size, palette.rgb, back + front)
-                    fun with(stroke: Strokes.Stroke, k: Int) = if (stroke.front) back + front + stroke.ops(k) else back + stroke.ops(k) + front
+                    val inFront = Artwork.covered(canvas.size, front)
                     // A stroke that wouldn't show in any crayon (a detail wholly behind the subject) isn't offered.
                     val menu = Strokes.menu(canvas.size, seed, stage, subject.shapes).filter { it.label !in used && !(it.copy && copies >= MAX_COPIES) }
-                        .let { all -> all.filter { visible(canvas.size, palette.rgb, art, it, crayons) { k -> with(it, k) }.isNotEmpty() }.ifEmpty { all } }
+                        .let { all -> all.filter { visible(art, it, inFront, crayons).isNotEmpty() }.ifEmpty { all } }
                     val shared = buildJsonObject {
                         put("subject", "$item: ${subject.wants}")
                         put("now", stage.says)
@@ -166,7 +196,7 @@ class Painter(
                     val stroke = menu.first { it.label == chosen }
                     val crayon = if (palette.crayons.size == 2) 1 else {
                         val state = JsonObject(shared + ("stroke" to kotlinx.serialization.json.JsonPrimitive(stroke.description)))
-                        val showing = visible(canvas.size, palette.rgb, art, stroke, crayons) { k -> with(stroke, k) }.ifEmpty { crayons }
+                        val showing = visible(art, stroke, inFront, crayons).ifEmpty { crayons }
                         pick(CRAYON_INSTRUCTIONS, state, showing.map { k -> Menu.Option(Strokes.colorLabel(k), palette.crayons[k].name + if (k == 0) " (the paper: rubs out)" else "") })
                             .removePrefix("crayon:").toInt()
                     }
@@ -175,6 +205,7 @@ class Painter(
                     used += chosen
                     if (stroke.copy) copies++
                     if (stroke.front && stroke.shape in Shapes.showing(subject.noun)) shows = subject.noun
+                    report(strokes + 1, crayon)
                 }
                 val ops = back + front
                 val art = Artwork.draw(canvas.size, palette.rgb, ops)
@@ -196,16 +227,16 @@ class Painter(
     /**
      * The [crayons] [stroke] would show in on [art]: at least half the cells it covers change. A shape
      * drawn in the color already under it vanishes (a green tree on green grass), or behind the
-     * subject, and that pick is wasted, so it isn't offered.
+     * subject, and that pick is wasted, so it isn't offered. Counted from the cells the stroke covers,
+     * which are the same in any crayon, less those [inFront] (the subject's, drawn over anything that
+     * isn't itself one of them), rather than by drawing the picture again per crayon: on the TV that
+     * redrawing was most of the time a painting took.
      */
-    private fun visible(size: Int, rgb: List<Int>, art: Artwork, stroke: Strokes.Stroke, crayons: List<Int>, with: (Int) -> List<DrawOp>): List<Int> {
-        val covers = Artwork.draw(size, listOf(0, 1), stroke.ops(1)).letters().sumOf { row -> row.count { it == 'b' } }
-        val before = art.letters()
-        return crayons.filter { k ->
-            val after = Artwork.draw(size, rgb, with(k)).letters()
-            val changed = before.indices.sumOf { y -> before[y].indices.count { x -> before[y][x] != after[y][x] } }
-            2 * changed >= covers
-        }
+    private fun visible(art: Artwork, stroke: Strokes.Stroke, inFront: BooleanArray, crayons: List<Int>): List<Int> {
+        val covers = Artwork.covered(art.size, stroke.ops(1))
+        val shown = covers.indices.filter { covers[it] && (stroke.front || !inFront[it]) }
+        val count = covers.count { it }
+        return crayons.filter { k -> 2 * shown.count { art.cell(it) != k } >= count }
     }
 
     private suspend fun pickSubject(
@@ -216,19 +247,24 @@ class Painter(
         commission: CommissionView?,
         subjects: Subjects,
         drawn: Set<String>,
+        nounsDrawn: Set<String>,
         random: Random,
     ): Subject {
         // The request first (he's offered it plainly), then a handful of his own, seeded by the piece,
-        // leaving out what he has drawn before.
+        // leaving out what he has drawn before. Half of his own have nouns new to him while there are any.
         val all = subjects.adjectives.flatMap { a -> subjects.nouns.map { n -> a to n } }
-        val own = all.filter { (a, n) -> titleOf(a, n) !in drawn }.ifEmpty { all }.shuffled(random).take(OWN_SUBJECTS).map { (a, n) -> Subject(a, n, forRequest = false) }
+        val pool = all.filter { (a, n) -> titleOf(a, n) !in drawn }.ifEmpty { all }.shuffled(random)
+        val fresh = pool.filter { it.second !in nounsDrawn }.distinctBy { it.second }.take(OWN_SUBJECTS / 2)
+        val own = (fresh + (pool - fresh.toSet()).take(OWN_SUBJECTS - fresh.size)).shuffled(random).map { (a, n) -> Subject(a, n, forRequest = false) }
+        fun mark(noun: String) = if (noun in nounsDrawn) "" else " He has never drawn ${article(noun)} $noun: something new to him."
+
         val request = commission?.let { c ->
             val words = c.wants.split(' ').filter { it !in setOf("a", "an", "the") }
             if (words.size >= 2) Subject(words.dropLast(1).joinToString(" "), words.last(), forRequest = true) else null
         }
         val options = buildList {
-            request?.let { add(Menu.Option("request", "What the customer asked for: \"${commission!!.request ?: "I'd like ${commission.wants}."}\" It pays $${commission.reward} more if the piece is what they asked for, until ${commission.until}.")) }
-            own.forEachIndexed { i, s -> add(Menu.Option("own:$i", "A subject of his own: ${s.wants}.")) }
+            request?.let { add(Menu.Option("request", "What the customer asked for: \"${commission!!.request ?: "I'd like ${commission.wants}."}\" It pays $${commission.reward} more if the piece is what they asked for, until ${commission.until}.${mark(it.noun)}")) }
+            own.forEachIndexed { i, s -> add(Menu.Option("own:$i", "A subject of his own: ${s.wants}.${mark(s.noun)}")) }
         }
         val state = buildJsonObject {
             put("making", "a $item: a small picture he draws himself")
@@ -262,7 +298,8 @@ class Painter(
 
         val SUBJECT_INSTRUCTIONS = "The character in `state.who` is sitting down to make `state.making`. `state.situation` is his life right now: what he sees, " +
             "what he remembers, the thoughts he had and what he planned the last time he stopped to think. Which subject should the picture be? " +
-            "The customer's request earns him money he may need; a subject of his own should fit what's on his mind."
+            "The customer's request earns him money he may need; a subject of his own should fit what's on his mind. Drawing something he has never drawn " +
+            "lifts his stimulation, which matters most when he's bored."
 
         val PALETTE_INSTRUCTIONS = "The character is about to draw `state.subject`. Which box of crayons suits it best?"
 

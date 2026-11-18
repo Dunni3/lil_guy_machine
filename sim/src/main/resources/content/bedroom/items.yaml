@@ -8,16 +8,21 @@ items:
   - { id: mail_hatch, name: mail hatch, group: fixture, slot: hatch, blocks: true }
   - { id: picture_rail, name: picture rail, group: fixture, slot: rail, blocks: true }
   - { id: bed, name: bed, group: furniture, slot: bed }
-  - { id: desk, name: desk, group: furniture, slot: desk, blocks: true }
+  # The desk has its own little lamp: enough to work at the desk by, not to read in the chair beside it.
+  # It isn't a `lamp` he switches: it's always lit, the floor under his night work, as the oats are under hunger.
+  - { id: desk, name: desk, group: furniture, slot: desk, blocks: true, light: { strength: 3.5, radius: 0.8 } }
   - { id: chair, name: chair, group: furniture, slot: chair }
   - { id: sketchbook, name: sketchbook, group: tool }
+  # Where he invents: designs a thing of his own and builds it (verbs.yaml `invent`, rules.yaml `invent`).
+  - { id: workbench, name: workbench, group: furniture, slot: workbench, blocks: true, price: 30 }
   - { id: meal, name: meal, group: food, affords: { edible: {} }, price: 24, pack: 3, stackable: true }
   # Never sold or used up: what eat_oats eats when there's nothing else (verbs.yaml).
   - { id: oats, name: oats, group: food, affords: { staple: {} } }
   # Painting is learned: drawing_book teaches paint, the easel and canvas (library.yaml).
   - { id: canvas, name: canvas, group: supply, price: 15, stackable: true }
   - { id: easel, name: easel, group: furniture, slot: easel, blocks: true, price: 17 }
-  - { id: record_player, name: record player, group: furniture, slot: shelf, blocks: true, price: 150 }
+  # It's heard while a record plays on it (rules.yaml `sound`): through the bedroom wall, muffled, it carries to the garden.
+  - { id: record_player, name: record player, group: furniture, slot: shelf, blocks: true, price: 150, sound: { strength: 8, radius: 21, playing: true } }
   - { id: jazz_record, name: jazz record, group: record, affords: { playable: {} }, qualities: { lively: 2, warm: 1 }, price: 20 }
   - { id: ambient_record, name: ambient record, group: record, affords: { playable: {} }, qualities: { calm: 2, strange: 1 }, price: 20 }
   - { id: folk_record, name: folk record, group: record, affords: { playable: {} }, qualities: { warm: 2, natural: 1 }, price: 20 }
@@ -28,41 +33,168 @@ items:
   - { id: field_guide, name: field guide, group: book, affords: { readable: {} }, qualities: { natural: 2, bright: 1 }, price: 12 }
   - { id: drawing_book, name: drawing book, group: book, affords: { readable: {} }, qualities: { pretty: 1, bright: 1 }, price: 14 }
   - { id: music_book, name: music book, group: book, affords: { readable: {} }, qualities: { lively: 1, warm: 1 }, price: 12 }
+  # Outdoors: a lookout in each place he explores it from, and the patches things grow on, hidden
+  # from him until he has explored their place (world.yaml `finds`). All stand on the land from the start.
+  - { id: garden_bench, name: garden bench, group: fixture, slot: garden_bench, affords: { explorable: {} } }
+  - { id: forest_trail, name: forest trail, group: fixture, slot: forest_trail, affords: { explorable: {} } }
+  - { id: clearing_log, name: log in the clearing, group: fixture, slot: clearing_log, affords: { explorable: {} } }
+  - { id: pond_edge, name: edge of the pond, group: fixture, slot: pond_edge, affords: { explorable: {} } }
+  - { id: glowcap_patch, name: glowcaps under the log, group: fixture, slot: glowcap_patch, affords: { forageable: {} }, light: { strength: 1.2, radius: 1 } }
+  - { id: moss_patch, name: mossy stones, group: fixture, slot: moss_patch, affords: { forageable: {} } }
+  - { id: fern_patch, name: blue ferns, group: fixture, slot: fern_patch, affords: { forageable: {} } }
+  - { id: beetle_log, name: rotting log with beetles, group: fixture, slot: beetle_log, affords: { forageable: {} } }
+  # Fireflies come to the reeds on warm evenings (world.yaml `visitors`).
+  - { id: pond_patch, name: reeds at the pond, group: fixture, slot: pond_patch, affords: { forageable: {}, lure: {} }, lure: { draws: fireflies, strength: 3, radius: 3 } }
+  - { id: seedpod_bush, name: seed-pod bush, group: fixture, slot: seedpod_bush, affords: { forageable: {} } }
+  # Samples he collects: kept, they're his collection (rules.yaml `collection`); studied at the
+  # microscope they raise nature; sold at the hatch for their `specimen` price (sell_art leaves them).
+  - { id: glowcap, name: glowcap, group: sample, affords: { specimen: { price: 6 } }, qualities: { strange: 2, bright: 1 }, stackable: true }
+  - { id: moss_ball, name: moss ball, group: sample, affords: { specimen: { price: 3 } }, qualities: { soft: 2, natural: 1 }, stackable: true }
+  - { id: blue_fern, name: blue fern, group: sample, affords: { specimen: { price: 4 } }, qualities: { natural: 2, pretty: 1 }, stackable: true }
+  - { id: violet_beetle, name: violet beetle, group: sample, affords: { specimen: { price: 9 } }, qualities: { strange: 2, pretty: 1 }, stackable: true }
+  - { id: pond_water, name: jar of pond water, group: sample, affords: { specimen: { price: 2 } }, qualities: { natural: 1, calm: 1 }, stackable: true }
+  - { id: amber_seed_pod, name: amber seed pod, group: sample, affords: { specimen: { price: 5 } }, qualities: { warm: 2, natural: 1 }, stackable: true }
+  # Rooms: a plan is bought, then built on a site (world.yaml `rooms`, `sites`; verbs.yaml build_room).
+  # Sites are where a room can stand; what comes with each room stands in its slots.
+  - { id: lab_plan, name: plans for a lab, group: room, affords: { buildable: {} }, price: 60 }
+  - { id: sunroom_plan, name: plans for a sunroom, group: room, affords: { buildable: {} }, price: 150 }
+  - { id: site_east, name: the site east of your bedroom, group: fixture, affords: { site: {} } }
+  - { id: site_far_east, name: the site further east, group: fixture, affords: { site: {} } }
+  - { id: lab_bench, name: lab bench, group: fixture, slot: lab_bench, blocks: true }
+  - { id: lab_shelf, name: tall lab shelf, group: fixture, slot: lab_shelf, blocks: true }
+  - { id: armchair, name: armchair, group: fixture, slot: armchair, qualities: { cozy: 2, soft: 1 } }
+  - { id: floor_lamp, name: floor lamp, group: fixture, slot: floor_lamp, blocks: true, affords: { lamp: {} }, qualities: { warm: 1 }, light: { strength: 6, radius: 5 } }
+  # A recorder: it stands outdoors (by the garden bench, and he can put it on any free spot on the land)
+  # and logs the weather at its spot each hour (weather.yaml); he
+  # reads the log there (verbs.yaml check_station). He asked for one (run 01a1e006, day 25): "a
+  # little machine that tracks ambient changes".
+  - { id: weather_station, name: weather station, group: gadget, slot: by_garden_bench, blocks: true, price: 40, affords: { recorder: {} } }
+  # Machines (rules.yaml `machines`): each runs recipes, holds what it takes and what it made, wears
+  # with each batch (`wear`) and jams at 100 until it's mended (verbs.yaml `tend`, `repair`). The
+  # compost bin turns the scraps left from his meals into compost; the raised bed beside it, within
+  # reach, takes the compost itself and grows cherry tomatoes from each by daylight. He carries the
+  # scraps over and the tomatoes in. (The planter indoors grows by watering instead: rules.yaml `growing`.)
+  - { id: compost_bin, name: compost bin, group: gadget, slot: compost_corner, blocks: true, price: 25, machine: { runs: [compost], holds: 6, wear: 15 } }
+  - { id: raised_bed, name: raised bed, group: gadget, slot: garden_bed, blocks: true, price: 20, qualities: { natural: 1 }, machine: { runs: [grow], holds: 3, wear: 8 } }
+  # What eating leaves and what the bin makes of it (the raised bed grows cherry tomatoes, below).
+  - { id: food_scrap, name: food scrap, group: scrap, stackable: true }
+  - { id: compost_brick, name: compost brick, group: scrap, stackable: true }
+  # What mending a machine uses up.
+  - { id: spare_parts, name: spare part, group: supply, price: 8, pack: 2, stackable: true }
+  # The machine that pays (docs/decisions/2026-11-15-art-gets-him-by-machines-get-him-ahead.md): the kiln
+  # by the front door fires bought clay into pots, which sell at the hatch for far more than the clay
+  # cost (verbs.yaml `sell_wares`). Art keeps him fed; a kiln, or more than one, or one he invents that
+  # runs the same recipe, is how he gets ahead. It only pays while he keeps it fed, empties it and mends it.
+  - { id: kiln, name: kiln, group: gadget, slot: kiln_pad, blocks: true, price: 60, qualities: { warm: 1 }, machine: { runs: [fire], holds: 6, wear: 8 } }
+  - { id: clay, name: clay, group: supply, price: 6, pack: 4, stackable: true }
+  # What his inventions are built from (rules.yaml `invent.materials`): each part of a look names one,
+  # and the workbench takes them from his stock. Sold in packs on shopping trips, and they never run out.
+  - { id: wood, name: wood plank, group: supply, price: 10, pack: 5, stackable: true }
+  - { id: metal, name: metal bar, group: supply, price: 15, pack: 5, stackable: true }
+  - { id: copper_wire, name: copper wire coil, group: supply, price: 12, pack: 3, stackable: true }
+  - { id: glass, name: glass pane, group: supply, price: 9, pack: 3, stackable: true }
+  - { id: clay_pot, name: clay pot, group: ware, affords: { ware: { price: 20 } }, stackable: true }
+  # Warmth, sound, growing things and visitors (rules.yaml `sleep`, `sound`, `growing`; world.yaml `visitors`).
+  # `warmth: { strength, radius }` adds degrees round it; on a thing that stands nowhere (the blanket), round
+  # him out of doors. `sound` is heard round it. `lure` draws a visitor. `grows`: what a planter grows.
+  - { id: heater, name: heater, group: furniture, slot: heater, blocks: true, price: 45, qualities: { warm: 2, cozy: 1 }, warmth: { strength: 6, radius: 4 } }
+  - { id: fire_pit, name: fire pit, group: furniture, slot: fire_ring, blocks: true, price: 55, qualities: { warm: 2, cozy: 2, lively: 1 }, warmth: { strength: 12, radius: 3 }, light: { strength: 4.5, radius: 3 } }
+  - { id: blanket, name: blanket, group: tool, price: 14, warmth: { strength: 4, radius: 0 } }
+  - { id: wind_chime, name: wind chime, group: decor, slot: porch_hook, blocks: true, price: 18, affords: { viewable: {} }, qualities: { calm: 2, pretty: 1 }, sound: { strength: 2.5, radius: 5 } }
+  - { id: bird_feeder, name: bird feeder, group: gadget, slot: feeder_post, blocks: true, price: 22, affords: { lure: {} }, qualities: { natural: 1, lively: 1 }, lure: { draws: birds, strength: 3, radius: 3 } }
+  # A lamp on its timer like the others: switched off, it draws no moths (world.yaml `visitors` need its light).
+  - { id: moth_lamp, name: porch lantern, group: gadget, slot: porch_lamp, blocks: true, price: 30, affords: { lure: {}, lamp: {} }, qualities: { warm: 1, strange: 1 }, light: { strength: 4, radius: 3, timer: { on: "19:00", off: "02:00" } }, lure: { draws: moths, strength: 3, radius: 3 } }
+  - { id: watering_can, name: watering can, group: tool, price: 8 }
+  - { id: planter, name: planter, group: furniture, slot: planter, blocks: true, price: 20, affords: { growable: {} }, qualities: { natural: 2 }, grows: { yields: cherry_tomatoes, hours: 10, count: 3 } }
+  - { id: cherry_tomatoes, name: cherry tomatoes, group: produce, affords: { edible: {} }, qualities: { natural: 1, bright: 1 }, stackable: true }
+  - { id: feather, name: feather, group: sample, affords: { specimen: { price: 3 } }, qualities: { soft: 2, pretty: 1 }, stackable: true }
+  - { id: silver_moth, name: silver moth, group: sample, affords: { specimen: { price: 7 } }, qualities: { strange: 2, pretty: 1 }, stackable: true }
+  - { id: firefly_jar, name: jar of fireflies, group: sample, affords: { specimen: { price: 5 } }, qualities: { bright: 2, strange: 1 }, stackable: true }
+  # Where samples are studied (verbs.yaml `study_sample`).
+  - { id: microscope, name: microscope, group: furniture, slot: microscope, blocks: true, price: 35 }
   # Taught by music_book.
   - { id: guitar, name: guitar, group: instrument, price: 45 }
-  # Decor: in view, its qualities raise comfort.
+  # Decor: in view, its qualities raise comfort. `light: { strength, radius }`: it lights round it (rules.yaml `light`).
+# A `lamp` is lit on its `light.timer` (rules.yaml `light.timer` when it has none) unless he switches it
+# on or off (verbs.yaml switch_on, switch_off, lamp_timer); a light that isn't a lamp always glows.
   - { id: plant, name: plant, group: decor, slot: plant, blocks: true, price: 25, affords: { viewable: {} }, qualities: { natural: 2, calm: 2 } }
   - { id: poster, name: poster, group: decor, slot: poster, blocks: true, price: 15, affords: { viewable: {} }, qualities: { bright: 2, pretty: 1 } }
   - { id: rug, name: rug, group: decor, slot: rug, price: 60, affords: { viewable: {} }, qualities: { cozy: 3, soft: 2, warm: 1 } }
-  - { id: string_lights, name: string lights, group: decor, slot: string_lights, blocks: true, price: 28, affords: { viewable: {} }, qualities: { cozy: 2, pretty: 2, warm: 1 } }
+  - { id: string_lights, name: string lights, group: decor, slot: string_lights, blocks: true, price: 28, affords: { viewable: {}, lamp: {} }, qualities: { cozy: 2, pretty: 2, warm: 1 }, light: { strength: 3, radius: 5 } }
   - { id: window_succulents, name: windowsill succulents, group: decor, slot: window_succulents, blocks: true, price: 20, affords: { viewable: {} }, qualities: { natural: 2, calm: 1, pretty: 1 } }
   - { id: moon_mobile, name: moon mobile, group: decor, slot: moon_mobile, blocks: true, price: 18, affords: { viewable: {} }, qualities: { calm: 2, pretty: 1, strange: 1 } }
   - { id: round_mirror, name: round mirror, group: decor, slot: round_mirror, blocks: true, price: 16, affords: { viewable: {} }, qualities: { bright: 2, pretty: 1 } }
   - { id: cork_board, name: cork board, group: decor, slot: cork_board, blocks: true, price: 10, affords: { viewable: {} }, qualities: { lively: 2, warm: 1 } }
   - { id: rainbow, name: rainbow, group: decor, slot: rainbow, blocks: true, price: 18, affords: { viewable: {} }, qualities: { bright: 2, pretty: 1, lively: 1 } }
-  - { id: cloud_light, name: cloud night-light, group: decor, slot: cloud_light, blocks: true, price: 22, affords: { viewable: {} }, qualities: { calm: 2, soft: 1, cozy: 1 } }
+  - { id: cloud_light, name: cloud night-light, group: decor, slot: cloud_light, blocks: true, price: 22, affords: { viewable: {}, lamp: {} }, qualities: { calm: 2, soft: 1, cozy: 1 }, light: { strength: 1.5, radius: 2, timer: { on: "21:00", off: "07:00" } } }
   - { id: bunting, name: bunting, group: decor, slot: bunting, blocks: true, price: 10, affords: { viewable: {} }, qualities: { lively: 2, bright: 1 } }
-  - { id: lava_lamp, name: lava lamp, group: decor, slot: lava_lamp, blocks: true, price: 24, affords: { viewable: {} }, qualities: { strange: 2, warm: 1, lively: 1 } }
+  - { id: lava_lamp, name: lava lamp, group: decor, slot: lava_lamp, blocks: true, price: 24, affords: { viewable: {}, lamp: {} }, qualities: { strange: 2, warm: 1, lively: 1 }, light: { strength: 2, radius: 2 } }
   - { id: sunflowers, name: jug of sunflowers, group: decor, slot: sunflowers, blocks: true, price: 20, affords: { viewable: {} }, qualities: { bright: 2, natural: 1, pretty: 1 } }
-  - { id: mushroom_lamp, name: mushroom lamp, group: decor, slot: mushroom_lamp, blocks: true, price: 30, affords: { viewable: {} }, qualities: { warm: 2, cozy: 1, strange: 1 } }
+  - { id: mushroom_lamp, name: mushroom lamp, group: decor, slot: mushroom_lamp, blocks: true, price: 30, affords: { viewable: {}, lamp: {} }, qualities: { warm: 2, cozy: 1, strange: 1 }, light: { strength: 4, radius: 3 } }
   - { id: teddy_bear, name: teddy bear, group: decor, slot: teddy_bear, blocks: true, price: 26, affords: { viewable: {} }, qualities: { soft: 2, cozy: 2, warm: 1 } }
   - { id: beanbag, name: beanbag, group: decor, slot: beanbag, blocks: true, price: 40, affords: { viewable: {} }, qualities: { soft: 3, cozy: 2 } }
   - { id: fishbowl, name: fishbowl, group: decor, slot: fishbowl, blocks: true, price: 32, affords: { viewable: {} }, qualities: { calm: 2, natural: 1, lively: 1 } }
   - { id: cactus, name: cactus, group: decor, slot: cactus, blocks: true, price: 12, affords: { viewable: {} }, qualities: { natural: 2, strange: 1 } }
+  # What he invented at the workbench in live runs, now in the shop: each priced at what its materials
+  # cost him, with his look (parts/.../InventedParts.kt) and, above each, why he made it. Food is used up.
+  # He invented this (run 01a1e006): "I wanted a glowing piece of the forest to bring calm nature into my bedroom workshop."
+  - { id: moss_terrarium, name: moss terrarium, group: decor, slot: moss_terrarium, blocks: true, price: 34, affords: { viewable: {} }, qualities: { natural: 3, cozy: 2, calm: 1 } }
+  # He invented this (run 01a1de0f): "I want to invent a cozy ceramic mug for warm drinks to enjoy during quiet mornings in my room while I save up for a record player."
+  - { id: ceramic_mug, name: ceramic mug, group: food, affords: { edible: {} }, qualities: { cozy: 2, warm: 2 }, price: 16, stackable: true }
+  # He invented this (run 01a1de0f): "I wanted to craft a cozy, warm ceramic teacup to enjoy warm drinks while working on my art and reading."
+  - { id: ceramic_teacup, name: ceramic teacup, group: food, affords: { edible: {} }, qualities: { cozy: 3, warm: 2, pretty: 1 }, price: 20, stackable: true }
+  # He invented this (run 01a1de0f): "I want to add a cozy, natural wooden stool to make my living space feel warmer and more complete."
+  - { id: tiny_wooden_stool, name: tiny wooden stool, group: decor, slot: tiny_wooden_stool, blocks: true, price: 19, affords: { viewable: {} }, qualities: { natural: 2, warm: 1 } }
+  # He invented this (run 01a1de0f): "I want to add a natural, cozy wooden ornament to my room to match my plants and make my space feel warmer."
+  - { id: pinecone_ornament, name: pinecone ornament, group: decor, slot: pinecone_ornament, blocks: true, price: 24, affords: { viewable: {} }, qualities: { natural: 2, cozy: 2 } }
+  # He invented this (run 01a1de0f): "I wanted a warm, cozy cup of herbal tea to keep my fullness and comfort up during long painting sessions."
+  - { id: cozy_teapot, name: cozy teapot, group: food, affords: { edible: {} }, qualities: { cozy: 3, warm: 2, calm: 1 }, price: 20, stackable: true }
+  # He invented this (run 01a1de0f): "I'll craft a honeyed ceramic teacup to enjoy warm, sweet drinks in my cozy room and keep my fullness up."
+  - { id: honeyed_ceramic_teacup, name: honeyed ceramic teacup, group: food, affords: { edible: {} }, qualities: { cozy: 2, warm: 2, pretty: 2 }, price: 20, stackable: true }
+  # He invented this (run 01a1dfc4): "I wanted a touch of green and nature in my room to keep me calm and connected to the outdoors."
+  - { id: moss_bowl, name: moss bowl, group: decor, slot: moss_bowl, blocks: true, price: 9, affords: { viewable: {} }, qualities: { natural: 1 } }
+  # He invented this (run 01a1dfc4): "I wanted a soft, cozy place to sit on the floor while reading or relaxing in my room."
+  - { id: floor_pillow, name: floor pillow, group: decor, slot: floor_pillow, blocks: true, price: 14, affords: { viewable: {} }, qualities: { cozy: 2 } }
+  # He invented this (run 01a1dfc4): "I wanted a soothing, glowing natural piece to bring more calm and coziness to my room at night."
+  - { id: moss_lamp, name: moss lamp, group: decor, slot: moss_lamp, blocks: true, price: 24, affords: { viewable: {}, lamp: {} }, qualities: { cozy: 2, natural: 2 }, light: { strength: 3, radius: 3 } }
+  # He invented this (run 01a1dfc4): "I wanted a lush green fern to bring more natural life and calm coziness to my room."
+  - { id: fern_pot, name: fern pot, group: decor, slot: fern_pot, blocks: true, price: 34, affords: { viewable: {} }, qualities: { cozy: 2, natural: 2, calm: 2 } }
+  # He invented this (run 01a1dfc4): "I wanted a cozy wooden wall shelf with a little green plant to brighten up my room's walls and make the space feel more alive and natural."
+  - { id: wooden_shelf, name: wooden shelf, group: decor, slot: wooden_shelf, blocks: true, price: 34, affords: { viewable: {} }, qualities: { cozy: 2, calm: 2, natural: 2 } }
+  # He invented this (run 01a1e006): "I wanted a warm, bright floor lamp to light up the new sunroom and make the reading nook feel extra cozy at night."
+  - { id: sunroom_lamp, name: sunroom lamp, group: decor, slot: sunroom_lamp, blocks: true, price: 34, affords: { viewable: {}, lamp: {} }, qualities: { cozy: 2, warm: 2, bright: 2 }, light: { strength: 6, radius: 5 } }
+  # He invented this (run 01a1e006): "I wanted a warm, glowing woodland light to bring the forest indoors."
+  - { id: acorn_lamp, name: acorn lamp, group: decor, slot: acorn_lamp, blocks: true, price: 34, affords: { viewable: {}, lamp: {} }, qualities: { cozy: 2, warm: 2, natural: 2 }, light: { strength: 4, radius: 4 } }
+  # He invented this (run 01a1e006): "I wanted a warm, glowing floor lamp to cast a cozy amber light across the room during quiet evenings."
+  - { id: amber_floor_lamp, name: amber floor lamp, group: decor, slot: amber_floor_lamp, blocks: true, price: 34, affords: { viewable: {}, lamp: {} }, qualities: { cozy: 2, warm: 2, pretty: 2 }, light: { strength: 5, radius: 5 } }
+  # He invented this (run 01a1e006): "I wanted a warm, cozy wall lamp to softly light my room during quiet evenings."
+  - { id: amber_wall_lamp, name: amber wall lamp, group: decor, slot: amber_wall_lamp, blocks: true, price: 34, affords: { viewable: {}, lamp: {} }, qualities: { cozy: 3, warm: 2, bright: 1 }, light: { strength: 4, radius: 4 } }
+  # He invented this (run 01a1e006): "I wanted a textured, cozy wall hanging to add warmth and softness to the room."
+  - { id: woven_wall_tapestry, name: woven wall tapestry, group: decor, slot: woven_wall_tapestry, blocks: true, price: 34, affords: { viewable: {} }, qualities: { cozy: 3, soft: 3 } }
   # Art is carried until sold or hung. `drawable` is what a piece is drawn on: a square grid `size`
   # wide, up to `colors` crayons and `strokes` strokes, each two picks (which stroke, then which
   # crayon) by the model that decides for him, so strokes is what a piece costs in calls. Painting's
   # bigger canvas is what the easel buys him. Hung art's comfort is the gallery's, since what a piece is like is whatever
-  # he drew. A piece's price grows with his art skill when he made it (`sellable: { skill }`).
+  # he drew. His art skill when he makes a piece pays twice: it sells for `price_per_level` dollars
+  # more a level, and he draws it in `strokes_per_level` more strokes a whole level, up to
+  # `max_strokes` (each stroke two more calls). Reading the drawing book (+2) about doubles a sketch.
   - id: sketch
     name: sketch
     group: art
     carried: true
     stackable: true
-    affords: { sellable: { price: 3, skill: art }, hangable: {}, viewable: {}, drawable: { size: 16, colors: 4, strokes: 6 } }
+    affords:
+      sellable: { price: 4, skill: art, price_per_level: 1 }
+      hangable: {}
+      viewable: {}
+      drawable: { size: 16, colors: 4, strokes: 6, skill: art, strokes_per_level: 2, max_strokes: 16 }
   - id: painting
     name: painting
     group: art
     carried: true
     stackable: true
-    affords: { sellable: { price: 30, skill: art }, hangable: {}, viewable: {}, drawable: { size: 32, colors: 16, strokes: 12 } }
+    affords:
+      sellable: { price: 25, skill: art, price_per_level: 4 }
+      hangable: {}
+      viewable: {}
+      drawable: { size: 32, colors: 16, strokes: 12, skill: art, strokes_per_level: 3, max_strokes: 30 }

@@ -1,0 +1,189 @@
+# yaml-language-server: $schema=schema/world.schema.json
+# The land around the house, and the named places on it. One tile is one metre and one game
+# minute of walking. The house's rooms stand on the lot (room.yaml is the bedroom), and walking
+# between any two places is one A* over the whole map.
+
+world:
+  # One string per row, north at the top. ' ' is off the land (the sea), ',' grass, '=' path,
+  # ':' bare ground, '*' flowers, '~' water, 'T' a tree. Water and trees block. Under the house,
+  # whatever is here is replaced by its rooms.
+  lot:
+    - "               ,,,,,,,,,                "
+    - "            ,,,,,,,,,,,,,,,             "
+    - "          ,,,,,,,,,,,,,,,,,,,           "
+    - "        ,,,,,,,,,,,,,,,,T,,,,,,         "
+    - "      ,,,,,,,,,,,,,,,,,,,,,,,,,,        "
+    - "     ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,      "
+    - "   ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,     "
+    - "   ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,     "
+    - "  ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,    "
+    - "  T,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,T   "
+    - " ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,   "
+    - " ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,  "
+    - " ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,  "
+    - " ,,T,,,,,,,,,,=,,,,,,,,,,,,,,,,,,,,,,,  "
+    - " ,,,,,,,,,,,,,=,,,,,,,,T,T,T,,,,T,,T,T  "
+    - " ,,,,,,,,============,,,,,,,,,T,,,,,,,  "
+    - " ,,******=***,,,,,,,==,,,T,,T,,,T,,,,,  "
+    - " ,,*,,,,,=,,*,,,,,,,,==,,,,,,,,,,,T,,T  "
+    - " ,,*,,,,,=,,*,,,,,,,,,==,,,:::::,,,,,,  "
+    - "  ,*,,,,,,,,*,,,,,,,T,,==,:::::::,T,T   "
+    - "  ,*,,,,,,,,*,,,,,,,,,,,==:::::::,,,,   "
+    - "   *,,,,,,,,*,,,,,,,,,T,,,:::::::,T,    "
+    - "   **********,,,,,,,T,,,T,,:::::,,,     "
+    - "    ,,,,,,,,,,,,,,,,,,T~~,,,,,,,,,,     "
+    - "     ,,,,,,,,,,,,,,,T,~~~~T,,,,,,T      "
+    - "      ,,,,,,,,,,,,,,,,~~~~,,T,,T,       "
+    - "       ,,,,,,,,,,,,,,T,~~,T,,,,,        "
+    - "         ,,,,,,,,,,,,,,T,,,,,T          "
+    - "            ,,,,,,,,,T,,,T,T            "
+    - "                                        "
+  # The bedroom (room.yaml's rows, walls included) stands with its top-left corner at `at`, and the
+  # front door is the wall tile `door` of it (from its top-left), opening onto the lot.
+  house:
+    room: bedroom
+    name: your bedroom
+    at: [7, 5]
+    door: [7, 7]
+  # Spots on the land things stand in, as the room's slots: [x, y] on the lot, a walkable tile.
+  # Each place has a lookout he explores it from, and patches where things grow.
+  slots:
+    clearing_log: [29, 19]
+    glowcap_patch: [31, 21]
+    moss_patch: [27, 21]
+    forest_trail: [24, 16]
+    fern_patch: [34, 18]
+    beetle_log: [32, 25]
+    pond_edge: [21, 25]
+    pond_patch: [26, 25]
+    garden_bench: [6, 17]
+    seedpod_bush: [10, 20]
+    # His machines in the garden's corner, the raised bed within the compost bin's reach (rules.yaml `machines`).
+    compost_corner: [4, 21]
+    garden_bed: [6, 21]
+    # Where the outdoor things in the shop stand when they arrive (items.yaml): a fire ring in the
+    # garden, a feeder post by the weather station, a lamp and a chime hook by the front door.
+    fire_ring: [6, 19]
+    feeder_post: [8, 18]
+    porch_lamp: [13, 13]
+    porch_hook: [16, 13]
+    # The kiln, by the front door (items.yaml `kiln`).
+    kiln_pad: [17, 14]
+    # Free spots: nothing in items.yaml stands in these, so his things can be put down here (the
+    # `put` intent, or world.move in his code). Each is named by what it's beside. On the ground
+    # only: a thing that goes in a wall stays indoors.
+    by_front_door: [15, 13]
+    by_garden_bench: [7, 17]
+    by_seedpod_bush: [9, 20]
+    pond_shore: [25, 23]
+    by_clearing_log: [30, 19]
+    trailside: [23, 15]
+  # Putting a thing somewhere else: game minutes to lift it and to set it down, besides the walks.
+  carry: { lift: 2, set_down: 3 }
+  # What grows on the land. A patch is hidden until he explores its place (the `survey` op); then
+  # `collect` takes what it yields (the `gather` op), and it's bare for `regrow_hours`.
+  finds:
+    - { patch: glowcap_patch, yields: glowcap, regrow_hours: 30 }
+    - { patch: moss_patch, yields: moss_ball, regrow_hours: 24 }
+    - { patch: fern_patch, yields: blue_fern, regrow_hours: 30 }
+    - { patch: beetle_log, yields: violet_beetle, regrow_hours: 48 }
+    - { patch: pond_patch, yields: pond_water, regrow_hours: 12 }
+    - { patch: seedpod_bush, yields: amber_seed_pod, regrow_hours: 36 }
+  # Visitors: animals drawn to the things whose `lure` draws them (items.yaml), when the conditions at
+  # that thing allow: within `hours`, each effect in `above` at least that much there and each in
+  # `below` less (light, warmth in degrees, sound, water: the rain). So where a feeder or a lamp stands
+  # decides who comes and when. He watches them there (verbs.yaml `watch`), and they leave one of
+  # `yields` behind and stay away `rest_hours`. A weather station within a lure's reach logs them.
+  # `come` is when they come, for his lock reasons.
+  visitors:
+    - id: birds
+      name: birds
+      yields: feather
+      come: "by day, when it isn't raining or loud"
+      hours: { from: "06:00", to: "19:00" }
+      above: { light: 4 }
+      below: { water: 0.5, sound: 4 }
+      rest_hours: 5
+    - id: moths
+      name: moths
+      yields: silver_moth
+      come: "at night to a lit lamp, when it isn't too cold"
+      hours: { from: "20:30", to: "03:00" }
+      above: { light: 3, warmth: 6 }
+      rest_hours: 6
+    - id: fireflies
+      name: fireflies
+      yields: firefly_jar
+      come: "on warm evenings, where it's dark"
+      hours: { from: "20:00", to: "23:00" }
+      above: { warmth: 10 }
+      below: { light: 2 }
+      rest_hours: 20
+  # Rooms he can add to the house: each is bought as a plan (an item in items.yaml, group room), then
+  # built on a site with `build_room`, which also moves a built one. Rows as room.yaml's, walls
+  # included; a slot letter is where one of its `items` stands, which come with the room. `qualities`
+  # are what the room is like to him, scored by his affinities into comfort while it stands.
+  rooms:
+    - id: lab
+      plan: lab_plan
+      name: the lab
+      says: a small lab with a bench and a tall shelf
+      qualities: { strange: 1, bright: 1 }
+      rows:
+        - "########"
+        - "#L....S#"
+        - "#......#"
+        - "#......#"
+        - "#......#"
+        - "#......#"
+        - "#......#"
+        - "########"
+      slots: { L: lab_bench, S: lab_shelf }
+      items: [lab_bench, lab_shelf]
+      windows: [[3, 0]]
+    - id: sunroom
+      plan: sunroom_plan
+      name: the sunroom
+      says: a bright room with an armchair and a floor lamp
+      qualities: { cozy: 2, bright: 1, calm: 1 }
+      rows:
+        - "########"
+        - "#A....F#"
+        - "#......#"
+        - "#......#"
+        - "#......#"
+        - "#......#"
+        - "#......#"
+        - "########"
+      slots: { A: armchair, F: floor_lamp }
+      items: [armchair, floor_lamp]
+      windows: [[2, 0], [5, 0], [0, 4]]
+  # Where a room can stand: its top-left tile on the lot, and the doorway into the room it joins
+  # (`next_to`: a site whose room must stand first; none means the bedroom). Rooms share the wall
+  # they meet at, so a site's left column is its neighbour's right wall.
+  sites:
+    - { id: site_east, name: east of your bedroom, at: [20, 5], door: [20, 8] }
+    - { id: site_far_east, name: "east again, next to that room", at: [27, 5], door: [27, 8], next_to: site_east }
+  # Named places outdoors, the first whose rects hold a tile wins; rooms come before all of them.
+  # A rect is [x0, y0, x1, y1], tiles inclusive. `says` is the line his map gives the place.
+  places:
+    - id: clearing
+      name: the forest clearing
+      says: a sunny clearing in the middle of the forest
+      rects: [[26, 18, 32, 22]]
+    - id: pond
+      name: the pond
+      says: a small pond at the forest's south edge, with reeds
+      rects: [[20, 23, 26, 27]]
+    - id: forest
+      name: the forest
+      says: trees east and south of the house, round a clearing
+      rects: [[19, 13, 39, 29]]
+    - id: garden
+      name: the garden
+      says: a flower-edged garden south-west of the house
+      rects: [[2, 15, 13, 23]]
+    - id: outside
+      name: the grass round the house
+      says: open grass round the house, with room for more rooms
+      rects: [[0, 0, 39, 29]]

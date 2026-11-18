@@ -23,10 +23,23 @@ captures/
 .env
 .env.*
 !.env.example
+!.env.host.example
 config/endpoints.yaml
+
+# The sim host image's staged build (server/deploy/stage-host.sh)
+server/host/dist/
 
 # Run output (JSONL decision logs, replays)
 runs/
 
 # Local-only notes from agents and Ian
 research_notes/
+
+# Python (server/)
+__pycache__/
+.pytest_cache/
+.venv/
+
+# The web renderer's build and packages (web/)
+web/dist/
+web/node_modules/

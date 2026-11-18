@@ -88,6 +88,20 @@ class PainterTest {
     }
 
     @Test
+    fun `the piece is reported stroke by stroke as it's drawn, for the room to show`() = runBlocking<Unit> {
+        val script = ArrayDeque(listOf("request", "box:night", "band:bottom:thin", "crayon:1", "shape:moon:top_right:small", "crayon:2"))
+        val heard = mutableListOf<Underway>()
+        val d = Painter(Picker { script.removeFirst() }).draw("", "", "sketch", sketch, moon, Painter.Subjects.DEFAULT, 500, 1, "10:00") { heard += it }
+
+        // Blank paper once the crayons are picked, then a report after each stroke, ending on the finished picture.
+        assertEquals(listOf(0, 1, 2), heard.map { it.strokes })
+        assertTrue(heard.all { it.tick == 500L && it.of == 2 && it.title == "Tiny Moon" && it.state == Underway.State.Drawing })
+        assertTrue(heard[0].art.blank())
+        assertEquals(listOf(null, 1, 2), heard.map { it.crayon })
+        assertEquals(d.artwork!!.letters(), heard.last().art.letters())
+    }
+
+    @Test
     fun `a painting's menus fit a Choice question, and a text model is offered the same options`() = runBlocking<Unit> {
         val painting = CanvasSpec(32, 16, 12)
         val eager = Picker { it.first() }

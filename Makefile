@@ -26,8 +26,8 @@ local.properties:
 # --- desktop / headless --------------------------------------------------------
 
 .PHONY: desktop
-desktop: ## Run the app in a desktop window (ENDPOINT=<name>, MEMORY_ENDPOINT=<name|none>, WRITER_ENDPOINT=<name|none>, RECALL_ENDPOINT=<name|none>, SCENARIO=key-door, MINUTE_TICKS=<n>, DAYS=<n, 0 no end>, BEAM=<n, 0 flat>)
-	LILGUY_ENDPOINT=$(ENDPOINT) LILGUY_MEMORY_ENDPOINT=$(MEMORY_ENDPOINT) LILGUY_WRITER_ENDPOINT=$(or $(WRITER_ENDPOINT),$(JOURNAL_ENDPOINT)) LILGUY_RECALL_ENDPOINT=$(RECALL_ENDPOINT) LILGUY_SCENARIO=$(SCENARIO) LILGUY_MINUTE_TICKS=$(MINUTE_TICKS) LILGUY_DAYS=$(DAYS) LILGUY_BEAM=$(BEAM) $(GRADLE) :desktop:run
+desktop: ## Run the app in a desktop window (ENDPOINT=<name>, MEMORY_ENDPOINT=<name|none>, WRITER_ENDPOINT=<name|none>, RECALL_ENDPOINT=<name|none>, SCENARIO=key-door, MINUTE_TICKS=<n>, DAYS=<n, 0 no end>, BEAM=<n, 0 flat>, RESUME=<run id|latest>)
+	LILGUY_RESUME=$(RESUME) LILGUY_ENDPOINT=$(ENDPOINT) LILGUY_MEMORY_ENDPOINT=$(MEMORY_ENDPOINT) LILGUY_WRITER_ENDPOINT=$(or $(WRITER_ENDPOINT),$(JOURNAL_ENDPOINT)) LILGUY_RECALL_ENDPOINT=$(RECALL_ENDPOINT) LILGUY_SCENARIO=$(SCENARIO) LILGUY_MINUTE_TICKS=$(MINUTE_TICKS) LILGUY_DAYS=$(DAYS) LILGUY_BEAM=$(BEAM) $(GRADLE) :desktop:run
 
 .PHONY: cli
 cli: ## Run the headless CLI (ARGS="--endpoint hosted --runs 10"; ARGS=--help for all)
@@ -40,6 +40,105 @@ content-docs: ## Regenerate the bedroom content's JSON Schemas and build/grammar
 .PHONY: test
 test: ## Run all JVM unit tests
 	$(GRADLE) test
+
+# --- sim host ------------------------------------------------------------------
+# The headless host runs a life in real time and streams its state over WebSocket
+# (http://127.0.0.1:8790/ is its debug page). Commands need LILGUY_ADMIN_PASSWORD, from the
+# secrets file above; without one every command is refused. Never commit or print it.
+
+NODE_IMAGE := node:22-alpine
+
+.PHONY: host
+host: web-if-possible ## Run the sim host, the web renderer at /room/ (ENDPOINT=<name>, else the scripted policy; PAINTER=<s> paints with random picks; INVENTOR=1 invents from fixed designs; START=0 waits for a start command; PORT=8790; DAYS=<n>; SPEED=<game minutes a second>; RESUME=<run id|none>, unset carries on the run it was last on)
+	LILGUY_ENDPOINT=$(ENDPOINT) LILGUY_MEMORY_ENDPOINT=$(MEMORY_ENDPOINT) LILGUY_WRITER_ENDPOINT=$(WRITER_ENDPOINT) LILGUY_RECALL_ENDPOINT=$(RECALL_ENDPOINT) LILGUY_PAINTER_ENDPOINT=$(PAINTER_ENDPOINT) LILGUY_PAINTER=$(PAINTER) LILGUY_INVENTOR=$(INVENTOR) LILGUY_SEARCH=$(SEARCH) LILGUY_AUTOSTART=$(or $(START),1) LILGUY_HOST_PORT=$(PORT) LILGUY_DAYS=$(DAYS) LILGUY_SPEED=$(SPEED) LILGUY_RESUME=$(RESUME) $(GRADLE) -q :host:run
+
+.PHONY: protocol-types
+protocol-types: ## Regenerate the protocol's JSON Schema from its Kotlin types, and the TypeScript types from it
+	$(GRADLE) -q :protocol:writeProtocolSchema
+	docker run --rm -v $(CURDIR)/protocol:/p -w /p $(NODE_IMAGE) sh gen_types.sh
+
+.PHONY: protocol-check
+protocol-check: ## Fail when protocol/ts/protocol.ts isn't what the generator makes from the current schema (make test checks the hash only)
+	$(GRADLE) -q :protocol:checkProtocolTypes
+	docker run --rm -v $(CURDIR)/protocol:/p -w /p $(NODE_IMAGE) sh -c 'sh gen_types.sh /tmp/protocol.ts && cmp /tmp/protocol.ts ts/protocol.ts || { echo "protocol/ts/protocol.ts is stale: run make protocol-types"; exit 1; }'
+
+# --- web renderer ---------------------------------------------------------------
+# web/ is TypeScript, Three.js and Vite, run in the same Node container as the protocol types, with
+# its packages in a volume so Linux and macOS builds of them don't meet. `make host` builds it when
+# something in it changed, so the jar serves it at /room/.
+
+WEB_RUN := docker run --rm -v $(CURDIR):/repo -v lilguy-web-modules:/repo/web/node_modules -w /repo/web
+WEB_SOURCES := $(shell find web/src -type f 2>/dev/null) web/index.html web/package.json web/package-lock.json web/vite.config.ts web/tsconfig.json parts/export/parts.json protocol/ts/protocol.ts
+
+web/dist/index.html: $(WEB_SOURCES)
+	$(WEB_RUN) $(NODE_IMAGE) sh -c 'npm install --no-audit --no-fund && npm run build'
+	touch $@
+
+.PHONY: web-build
+web-build: web/dist/index.html ## Build the web renderer into web/dist (the host's jar carries it)
+
+.PHONY: web-if-possible
+web-if-possible:
+	-@$(MAKE) --no-print-directory web-build
+
+.PHONY: web-dev
+web-dev: ## The web renderer with live reload at http://localhost:5173/, the stream proxied to a host on this machine (make host in another terminal)
+	$(WEB_RUN) -it -p 5173:5173 -e LILGUY_HOST=http://host.docker.internal:$(or $(PORT),8790) $(NODE_IMAGE) sh -c 'npm install --no-audit --no-fund && npm run dev -- --host 0.0.0.0'
+
+.PHONY: web-test
+web-test: ## The stream client's test, against a stream recorded from a real scripted life
+	$(GRADLE) -q :host:recordStream
+	$(WEB_RUN) $(NODE_IMAGE) sh -c 'npm install --no-audit --no-fund && npm test'
+
+.PHONY: parts
+parts: ## Regenerate parts/export/parts.json from the part lists (make test fails when it's stale)
+	$(GRADLE) -q :parts:writeParts
+
+# --- run database --------------------------------------------------------------
+# Every run records into runs/lilguy.db and syncs to the server when LILGUY_SYNC_URL and
+# LILGUY_SYNC_TOKEN are set (put them in the secrets file above). The server is server/:
+# Postgres plus the FastAPI ingest service. See server/README.md.
+
+DEV_COMPOSE := POSTGRES_PASSWORD=dev LILGUY_INGEST_TOKENS=dev:dev DOMAIN=localhost HOST_DOMAIN=localhost docker compose -f server/docker-compose.yml -f server/docker-compose.dev.yml
+
+.PHONY: server-schema
+server-schema: ## Regenerate the rows' JSON Schema from runlog's row classes, and the server's Pydantic models from it
+	$(GRADLE) -q :cli:run --args="--server-schema server/schema/rows.schema.json"
+	$(DEV_COMPOSE) run --rm --build --no-deps -v $(CURDIR)/server:/srv api sh gen_models.sh
+
+.PHONY: server-up
+server-up: ## Start Postgres and the ingest service locally (http://localhost:8787; token "dev")
+	$(DEV_COMPOSE) up -d --build db api
+
+.PHONY: server-down
+server-down: ## Stop the local server (the data volume stays)
+	$(DEV_COMPOSE) down
+
+.PHONY: server-test
+server-test: ## Run the server's tests (ingest is idempotent) against the local Postgres
+	$(DEV_COMPOSE) up -d db
+	$(DEV_COMPOSE) run --rm --build api pytest -q tests
+
+.PHONY: server-psql
+server-psql: ## Open psql on the local server's database
+	$(DEV_COMPOSE) exec db psql -U lilguy lilguy
+
+.PHONY: server-deploy
+server-deploy: ## Build the sim host, sync server/ to the Lightsail box and restart it (DEPLOY_HOST=ubuntu@<host>)
+	server/deploy/deploy.sh
+
+.PHONY: server-tunnel
+server-tunnel: ## Forward the box's Postgres to localhost:5434 for psql, pandas or DuckDB (DEPLOY_HOST=ubuntu@<host>)
+	@: "$${DEPLOY_HOST:?set DEPLOY_HOST=ubuntu@<host>}"
+	ssh -N -L 5434:127.0.0.1:5432 $(DEPLOY_HOST)
+
+.PHONY: import-runs
+import-runs: ## Read the old run logs under runs/ (and runs/tv/) into runs/lilguy.db, then sync
+	$(GRADLE) -q :cli:run --args="--import-runs runs"
+
+.PHONY: sync
+sync: ## Send what runs/lilguy.db hasn't synced to the server
+	$(GRADLE) -q :cli:run --args="--sync"
 
 # --- tv ------------------------------------------------------------------------
 
@@ -57,8 +156,8 @@ tv-install: local.properties ## Build and install the debug APK on the connected
 	$(GRADLE) :android:installDebug
 
 .PHONY: tv-run
-tv-run: tv-install ## Install and launch on the connected device (ENDPOINT=<name>, MEMORY_ENDPOINT=<name|none>, WRITER_ENDPOINT=<name|none>, RECALL_ENDPOINT=<name|none>, SCENARIO=key-door, MINUTE_TICKS=<n>, DAYS=<n>, BEAM=<n, 0 flat>)
-	$(ADB) shell am start -S -n $(APP_ID)/dev.lilguy.android.AndroidLauncher $(if $(ENDPOINT),--es endpoint $(ENDPOINT)) $(if $(MEMORY_ENDPOINT),--es memory_endpoint $(MEMORY_ENDPOINT)) $(if $(or $(WRITER_ENDPOINT),$(JOURNAL_ENDPOINT)),--es writer_endpoint $(or $(WRITER_ENDPOINT),$(JOURNAL_ENDPOINT))) $(if $(RECALL_ENDPOINT),--es recall_endpoint $(RECALL_ENDPOINT)) $(if $(SCENARIO),--es scenario $(SCENARIO)) $(if $(MINUTE_TICKS),--ei minute_ticks $(MINUTE_TICKS)) $(if $(DAYS),--ei days $(DAYS)) $(if $(BEAM),--ei beam $(BEAM))
+tv-run: tv-install ## Install and launch on the connected device (ENDPOINT=<name>, MEMORY_ENDPOINT=<name|none>, WRITER_ENDPOINT=<name|none>, RECALL_ENDPOINT=<name|none>, SCENARIO=key-door, MINUTE_TICKS=<n>, DAYS=<n>, BEAM=<n, 0 flat>, RESUME=<run id|latest>)
+	$(ADB) shell am start -S -n $(APP_ID)/dev.lilguy.android.AndroidLauncher $(if $(ENDPOINT),--es endpoint $(ENDPOINT)) $(if $(MEMORY_ENDPOINT),--es memory_endpoint $(MEMORY_ENDPOINT)) $(if $(or $(WRITER_ENDPOINT),$(JOURNAL_ENDPOINT)),--es writer_endpoint $(or $(WRITER_ENDPOINT),$(JOURNAL_ENDPOINT))) $(if $(RECALL_ENDPOINT),--es recall_endpoint $(RECALL_ENDPOINT)) $(if $(SCENARIO),--es scenario $(SCENARIO)) $(if $(MINUTE_TICKS),--ei minute_ticks $(MINUTE_TICKS)) $(if $(DAYS),--ei days $(DAYS)) $(if $(BEAM),--ei beam $(BEAM)) $(if $(RESUME),--es resume $(RESUME))
 
 .PHONY: tv-push-config
 tv-push-config: ## Push config/endpoints.yaml and its API keys to the device (dev only)

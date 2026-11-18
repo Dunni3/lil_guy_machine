@@ -31,6 +31,7 @@ class RoomWorld private constructor(
                     }
                     cell
                 }
+                is Target.Place -> reject("this room has no places to go to")
                 is Target.Entity -> {
                     if (target.id == guy.id.value) reject("you can't move to yourself")
                     if (target.id in guy.inventory) reject("you are carrying ${target.id}")
@@ -89,6 +90,7 @@ class RoomWorld private constructor(
         is Intent.Wait -> waitFor(intent)
         is Intent.Do -> reject("there are no activities in this room")
         is Intent.Buy -> reject("there is no shop in this room")
+        is Intent.Put -> reject("nothing here can be put anywhere else")
         Intent.Think -> Work.Timed(World.TICKS_PER_SECOND) { null }
     }
 

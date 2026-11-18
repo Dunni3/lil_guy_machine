@@ -29,6 +29,9 @@ sealed interface AuthoredOp {
             "reading" to setOf("events"),
             "draw" to setOf("pieces", "events"),
             "shopping" to setOf("events"),
+            "invention" to setOf("events"),
+            "letter" to setOf("events"),
+            "verb_code" to setOf("events"),
         )
 
         /** Where results can go: his event stream, short-term memory, and the sim's art pieces. */
@@ -104,6 +107,7 @@ data class DrawOp(val what: String) : Op(), AuthoredOp {
  * An authored op whose verb succeeded, waiting for its result: [id] is what [BedroomWorld.deliver]
  * takes. [piece]: for a drawing, the piece it is for. [tick]: when the verb finished.
  */
+@kotlinx.serialization.Serializable
 data class AuthoredView(val id: Int, val verb: String, val handler: String, val tick: Long, val piece: Int? = null, val delivered: Boolean = false)
 
 /** What the agent layer hands back for an authored op ([BedroomWorld.deliver]). */
@@ -125,4 +129,25 @@ sealed interface AuthoredResult {
      * nothing could be picked (the model's call failed); the trip then fails rather than buying nothing.
      */
     data class Basket(val items: List<String>, val savingFor: String? = null, val choseSaving: Boolean = true, val failed: String? = null) : AuthoredResult
+
+    /**
+     * What he designed at the workbench, staged before he starts building ([BedroomWorld.stage]) and
+     * checked and built as he finishes ([BuildOp]). [failed]: why there's no design (the model's call
+     * failed); the build then fails. [code]: what the thing does, written with it (its verbs and
+     * behavior, naming it `this`), put in when it's built; [codeFailed]: why that couldn't be written.
+     */
+    /**
+     * A letter he wrote, staged before he sits down to write it ([BedroomWorld.stage]) and put
+     * through the hatch as he finishes ([PostLetterOp]): to the sender [to], saying [body].
+     * [failed]: why there's no letter (the model's call failed); the verb then fails.
+     */
+    data class Composed(val to: Long?, val body: String?, val failed: String? = null) : AuthoredResult
+
+    data class Designed(val design: Design?, val failed: String? = null, val code: CodeDesign? = null, val codeFailed: String? = null) : AuthoredResult
+
+    /**
+     * A verb he wrote at his desk, staged before he starts ([BedroomWorld.stage]) and checked and put
+     * in as he finishes ([DefineOp]). [failed]: why there's none (the model's call failed).
+     */
+    data class Coded(val design: CodeDesign?, val failed: String? = null) : AuthoredResult
 }

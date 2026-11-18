@@ -3,6 +3,8 @@ package dev.lilguy.agent
 import dev.lilguy.decision.ChoiceSet
 import dev.lilguy.decision.DecisionRequest
 import dev.lilguy.decision.Message
+import dev.lilguy.decision.ToolCall
+import dev.lilguy.decision.ToolSet
 import dev.lilguy.sim.Intent
 import dev.lilguy.sim.IntentStatus
 import dev.lilguy.sim.Observation
@@ -27,7 +29,8 @@ import kotlin.time.Duration.Companion.seconds
  * recent intents with how each ended (and, for a think, what he thought), each stamped by [stamp].
  *
  * [choices] builds the same decision as a closed set, for models that pick, with his self-model
- * ([self]) in its state. [persona] is who he is, for authored ops (thoughts, art); null in rooms
+ * ([self]) in its state. [toolTurn] builds it as tools to call, for models that call them; null in
+ * rooms that don't. [persona] is who he is, for authored ops (thoughts, art); null in rooms
  * without one.
  */
 class PromptBuilder(
@@ -39,7 +42,23 @@ class PromptBuilder(
     private val self: () -> String? = { null },
     /** The observation as the deciding model sees it (what it can choose among); unchanged by default. */
     private val view: (Observation) -> Observation = { it },
+    private val toolTurn: ToolTurn? = null,
 ) {
+    /**
+     * The decision as a conversation with tools: [system] says how his life works and that he
+     * acts by calling one, [tools] are what he can do in an observation (as [view] shows it),
+     * [status] is that observation as the turn's message shows it, and [call] is the call an
+     * earlier intent stands for, so his recent actions come back as his own tool calls.
+     */
+    class ToolTurn(
+        val system: () -> String,
+        val tools: (Observation) -> ToolSet,
+        val status: (Observation) -> Observation,
+        val call: (Intent) -> Pair<String, JsonObject>,
+        /** A line before the closing instruction, when there's something to point out (that he hasn't searched today). */
+        val note: (Observation) -> String? = { null },
+    )
+
     /** A fixed system prompt and persona. */
     constructor(
         system: String,
@@ -63,35 +82,30 @@ class PromptBuilder(
      * are what long-term memory recalled for this decision (memories and earlier thoughts);
      * [thought] is his latest thought ("stamp: text"), shown until the next one replaces it.
      * [found] is what he found out by asking how his world works, his latest answers ("stamp: I asked ...: ...").
+     * [reflections] are what he concluded the latest times he stepped back ("stamp: text"), oldest first.
      */
     fun build(
         observed: Observation,
         recent: List<Memory.Entry>,
         closedChoice: Boolean = false,
+        /** Put it as tools to call, when this room can ([toolTurn]). */
+        tools: Boolean = false,
         memories: List<String> = emptyList(),
         thought: String? = null,
         found: List<String> = emptyList(),
+        reflections: List<String> = emptyList(),
     ): DecisionRequest {
         val obs = view(observed)
+        // His latest thought is the last call's in the history, so it isn't shown again.
+        if (tools && toolTurn != null) return toolRequest(toolTurn, obs, recent, memories, null, found, reflections)
         val history = recent.joinToString("\n") { e ->
             "${stamp(e.tick)}: ${json.encodeToString(Intent.serializer(), e.intent)} -> ${e.result?.let(::describe) ?: "running"}" +
-                (e.thought?.let { "; you thought: \"$it\"" } ?: "")
+                (e.thought?.let { "; on your mind: \"$it\"" } ?: "")
         }
         val user = buildString {
             appendLine(OBSERVATION_HEADER)
             appendLine(json.encodeToString(Observation.serializer(), obs))
-            if (memories.isNotEmpty()) {
-                appendLine(MEMORY_HEADER)
-                memories.forEach { appendLine("- $it") }
-            }
-            if (thought != null) {
-                appendLine(THOUGHT_HEADER)
-                appendLine("- $thought")
-            }
-            if (found.isNotEmpty()) {
-                appendLine(FOUND_HEADER)
-                found.forEach { appendLine("- $it") }
-            }
+            recall(memories, thought, found, reflections)
             if (history.isNotEmpty()) {
                 appendLine("Your recent actions, oldest first:")
                 appendLine(history)
@@ -102,12 +116,68 @@ class PromptBuilder(
             system = system,
             messages = listOf(Message(Message.Role.User, user)),
             timeout = timeout,
-            choices = if (closedChoice) choices(obs, recent)?.let { withRecall(it, memories, thought, self(), found) } else null,
+            choices = if (closedChoice) choices(obs, recent)?.let { withRecall(it, memories, thought, self(), found, reflections) } else null,
         )
     }
 
+    /**
+     * His recent actions as calls he made, each answered by how it ended, then one message with how
+     * things stand (the observation as [ToolTurn.status] shows it, and what he recalls).
+     */
+    private fun toolRequest(turn: ToolTurn, obs: Observation, recent: List<Memory.Entry>, memories: List<String>, thought: String?, found: List<String>, reflections: List<String>): DecisionRequest {
+        val messages = mutableListOf<Message>()
+        if (recent.isNotEmpty()) {
+            messages += Message(Message.Role.User, HISTORY_HEADER)
+            recent.forEachIndexed { i, e ->
+                val (name, args) = turn.call(e.intent)
+                // What he thought as he chose it is his own words, said before the call.
+                val call = ToolCall("call_${e.tick}_$i", name, args)
+                val ended = e.result?.let(::describe) ?: "still going"
+                val result = "Started ${stamp(e.tick)}. " + (e.outcome?.let { "$ended: $it" } ?: ended) + (e.thought?.let { " On your mind: \"$it\"" } ?: "")
+                messages += Message(Message.Role.Assistant, e.reason.orEmpty(), call)
+                messages += Message(Message.Role.Tool, result, call)
+            }
+        }
+        val tools = turn.tools(obs)
+        val user = buildString {
+            appendLine(STATUS_HEADER)
+            appendLine(statusJson.encodeToString(Observation.serializer(), turn.status(obs)))
+            recall(memories, thought, found, reflections)
+            turn.note(obs)?.let { appendLine(it) }
+            append(
+                when {
+                    tools.ponder != null && tools.looks.isEmpty() -> THINK
+                    tools.ponder != null -> THINK_LOOK
+                    tools.looks.isEmpty() -> CALL
+                    else -> LOOK_THEN_CALL
+                },
+            )
+        }
+        messages += Message(Message.Role.User, user)
+        return DecisionRequest(system = turn.system(), messages = messages, timeout = timeout, tools = tools)
+    }
+
+    private fun StringBuilder.recall(memories: List<String>, thought: String?, found: List<String>, reflections: List<String>) {
+        if (memories.isNotEmpty()) {
+            appendLine(MEMORY_HEADER)
+            memories.forEach { appendLine("- $it") }
+        }
+        if (reflections.isNotEmpty()) {
+            appendLine(REFLECTION_HEADER)
+            reflections.forEach { appendLine("- $it") }
+        }
+        if (thought != null) {
+            appendLine(THOUGHT_HEADER)
+            appendLine("- $thought")
+        }
+        if (found.isNotEmpty()) {
+            appendLine(FOUND_HEADER)
+            found.forEach { appendLine("- $it") }
+        }
+    }
+
     /** Adds how he sees himself, what he remembers and his latest thought to the state a picking model judges the options against. */
-    private fun withRecall(set: ChoiceSet, memories: List<String>, thought: String?, self: String?, found: List<String>): ChoiceSet {
+    private fun withRecall(set: ChoiceSet, memories: List<String>, thought: String?, self: String?, found: List<String>, reflections: List<String>): ChoiceSet {
         var state = set.state
         var instructions = set.instructions
         if (self != null) {
@@ -118,28 +188,50 @@ class PromptBuilder(
             state = JsonObject(state + ("memories" to JsonArray(memories.map(::JsonPrimitive))))
             instructions += " `state.memories` is what he remembers from earlier and thoughts he had, oldest first."
         }
+        if (reflections.isNotEmpty()) {
+            state = JsonObject(state + ("reflections" to JsonArray(reflections.map(::JsonPrimitive))))
+            instructions += " `state.reflections` is what he concluded the latest times he stepped back from his days, oldest first: the patterns and lessons he has drawn. Choose in their light."
+        }
         if (thought != null) {
             state = JsonObject(state + ("latest_thought" to JsonPrimitive(thought)))
             instructions += " `state.latest_thought` is what he decided the last time he stopped to think: his plan for now. Unless his needs won't allow it, choose what carries that plan forward."
         }
         if (found.isNotEmpty()) {
             state = JsonObject(state + ("found_out" to JsonArray(found.map(::JsonPrimitive))))
-            instructions += " `state.found_out` is what he found out lately by asking how his world works: questions he asked and their answers, oldest first."
+            instructions += " `state.found_out` is what he found out lately by asking how his world works or looking things up online: questions he asked and their answers, oldest first."
         }
         return set.copy(state = state, instructions = instructions)
     }
 
     companion object {
         private const val OBSERVATION_HEADER = "Observation:"
-        const val MEMORY_HEADER = "What you remember from earlier (memories, and thoughts you had), oldest first:"
-        const val THOUGHT_HEADER = "What you decided the last time you stopped to think (your plan for now):"
-        const val FOUND_HEADER = "What you found out lately by asking how your world works, oldest first:"
+        const val MEMORY_HEADER = "What you remember from earlier (memories, and what was on your mind), oldest first:"
+        const val REFLECTION_HEADER = "What you concluded the latest times you stepped back from your days (patterns and lessons you've drawn), oldest first:"
+        const val THOUGHT_HEADER = "Your plan for now, from the last time you took stock:"
+        const val FOUND_HEADER = "What you found out lately, by asking how your world works or looking things up online, oldest first:"
         private const val ASK = "Choose your next action."
+        private const val STATUS_HEADER = "How things stand now:"
+        private const val HISTORY_HEADER = "Your recent actions, oldest first, are the calls below; each result says when it started and how it ended."
+        private const val CALL = "Call one tool: what you do next."
+        private const val LOOK_THEN_CALL = "If something you'd remember, or don't know about how your world works, would change what you do, look first. Then call one tool that acts: what you do next."
+        private const val THINK = "Think it over, and act when you know what you want."
+        private const val THINK_LOOK = "Think, remember or act: say what you're thinking, recall something or ask how something works, or do what you want to do next."
 
-        /** The user message of [request] without the closing ask: his situation, for authored ops. */
-        fun situationOf(request: DecisionRequest): String =
-            request.messages.lastOrNull { it.role == Message.Role.User }?.content?.removeSuffix(ASK)?.trimEnd().orEmpty()
+        /**
+         * His situation, for authored ops: the request's last user message without the closing ask,
+         * and, when the request put his recent actions as tool calls, those as lines first.
+         */
+        fun situationOf(request: DecisionRequest): String {
+            val now = request.messages.lastOrNull { it.role == Message.Role.User }?.content?.removeSuffix(ASK)?.removeSuffix(CALL)?.removeSuffix(LOOK_THEN_CALL)?.removeSuffix(THINK)?.removeSuffix(THINK_LOOK)?.trimEnd().orEmpty()
+            val calls = request.messages.filter { it.role == Message.Role.Tool && it.call != null }.map { m ->
+                val c = m.call!!
+                "- ${c.name} ${JsonObject(c.arguments - BedroomTools.THOUGHT - "thought")}: ${m.content}"
+            }
+            return if (calls.isEmpty()) now else "Your recent actions, oldest first:\n${calls.joinToString("\n")}\n$now"
+        }
         private val json = Json { encodeDefaults = true; ignoreUnknownKeys = true }
+        /** The tool turn's status leaves out what's null. */
+        private val statusJson = Json { encodeDefaults = true; explicitNulls = false }
         /** Examples show every field, nulls included, the way a strict schema wants them. */
         internal val exampleJson = Json { encodeDefaults = true; explicitNulls = true }
 
@@ -169,7 +261,7 @@ class PromptBuilder(
                 |Actions (the "intent" field), each with an example:
                 |$actions
                 |
-                |Reply with a JSON object {"thought": ..., "intent": ...}. "thought" is your reasoning in a sentence or two; "intent" is the one action to take now. Use only ids from the observation: an id in "nearby", or an item id in your inventory.
+                |Reply with a JSON object {"thought": ..., "intent": ...}. "thought" is a line of your inner voice, in your own words; "intent" is the one action to take now. Use only ids from the observation: an id in "nearby", or an item id in your inventory.
                 |
                 |The observation is JSON:
                 |- self: your id, position (x, y), facing, and inventory (ids of the items you hold)

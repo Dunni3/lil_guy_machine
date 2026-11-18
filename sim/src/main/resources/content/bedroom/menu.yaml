@@ -7,7 +7,8 @@
 # it, each in at most one node. A purchase sits in the node of the first verb the item is for (a
 # record with play_record), else in the node whose `buys` names its item group (decor). Waiting,
 # and anything placed nowhere, stays at the top. A node with nothing on offer is left out, and one
-# with a single option is that option.
+# with a single option is that option. Going to a place sits in the node with `go: true`, and
+# putting a thing somewhere else in the node with `put: true`, under a node for each thing.
 menu:
   - id: upkeep
     says: look after his body - eat something or sleep
@@ -29,11 +30,34 @@ menu:
     verbs: [read]
     buys: [book]
   - id: room
-    says: make his room nicer - buy decor or furniture to look at
-    buys: [decor, furniture]
+    says: make his home nicer - buy decor or furniture to look at, water or pick from a planter, or build a new room onto the house or move one
+    verbs: [build_room, water_plant, harvest]
+    buys: [decor, furniture, room]
+  - id: lamps
+    under: room
+    says: switch one of his lamps on or off, or put it back on its timer
+    verbs: [switch_on, switch_off, lamp_timer]
+  - id: arrange
+    under: room
+    says: move one of his things to another spot - elsewhere in the house, or outdoors by the front door, in the garden, by the pond or in the forest
+    put: true
+  - id: workshop
+    says: his machines, or invent something new of his own design at the workbench and build it from his materials - a thing for his room, a record, a book, food or something to sell - take apart one he made or sell spare materials back, or write code for a new thing to do, or for what one of his things does
+    verbs: [invent, dismantle, sell_materials, devise]
+  - id: machines
+    under: workshop
+    says: look after his machines - fill one and take out what it made, sell what they made, or mend one that's worn or jammed
+    verbs: [tend, sell_wares, repair]
   - id: shopping
     says: go through the shop's catalog and buy food, supplies or things to own - furniture, decor, books, records - or see what to save for
     verbs: [shop]
+  - id: outdoors
+    says: the outdoors - go out to the garden, the forest or the pond, explore them, collect samples, watch the birds, moths or fireflies that come, study or sell the samples, or read a weather station's log
+    verbs: [explore, collect, watch, check_station, study_sample, sell_sample]
+    go: true
+  - id: mail
+    says: letters - open one someone outside his world sent him through the mail hatch, or write to someone who has written to him
+    verbs: [read_mail, write_letter]
   - id: mind
     says: stop to think things over and plan, asking how things in his world work
     verbs: [think]

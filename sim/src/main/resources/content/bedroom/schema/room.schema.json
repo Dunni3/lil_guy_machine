@@ -40,6 +40,33 @@
               "NW"
             ]
           }
+        },
+        "spots": {
+          "type": "object",
+          "properties": {
+            "floor": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "wall": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "windows": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          }
         }
       },
       "required": [

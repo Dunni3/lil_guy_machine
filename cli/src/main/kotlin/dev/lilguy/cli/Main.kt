@@ -14,11 +14,14 @@ import dev.lilguy.agent.TokenPrice
 import dev.lilguy.agent.TokenPurpose
 import dev.lilguy.agent.TokenReport
 import dev.lilguy.agent.TokenTotals
+import dev.lilguy.agent.invent.Inventor
+import dev.lilguy.agent.mail.LetterWriter
 import dev.lilguy.agent.shop.Shopper
 import dev.lilguy.agent.shop.Trip
 import dev.lilguy.agent.memory.AgentMemory
 import dev.lilguy.agent.memory.Answer
 import dev.lilguy.agent.memory.InMemoryStore
+import dev.lilguy.agent.memory.PlacedStore
 import dev.lilguy.agent.memory.Oracle
 import dev.lilguy.agent.art.ArtStudio
 import dev.lilguy.agent.art.CommissionVoice
@@ -31,11 +34,26 @@ import dev.lilguy.agent.memory.Reader
 import dev.lilguy.agent.memory.Thinker
 import dev.lilguy.agent.memory.MemoryStore
 import dev.lilguy.agent.memory.Summarizer
-import dev.lilguy.memory.SqliteMemoryStore
+import dev.lilguy.agent.Carried
+import dev.lilguy.agent.LifeRecorder
+import dev.lilguy.agent.carried
+import dev.lilguy.agent.memory.RunMemoryStore
+import dev.lilguy.runlog.Ids
+import dev.lilguy.runlog.RowJson
+import dev.lilguy.runlog.RunRecorder
+import dev.lilguy.runlog.RunRow
+import dev.lilguy.runlog.RunStore
+import dev.lilguy.runlog.RowSchema
+import dev.lilguy.runlog.jdbc.JdbcSqlDriver
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import dev.lilguy.agent.Scenario
 import dev.lilguy.agent.runLockstep
 import dev.lilguy.decision.DecisionModel
 import dev.lilguy.decision.Endpoints
+import dev.lilguy.decision.WebSearches
+import dev.lilguy.agent.web.Search
+import dev.lilguy.agent.web.Searcher
 import dev.lilguy.decision.Scorer
 import dev.lilguy.decision.StructuredOutput
 import dev.lilguy.decision.withBeam
@@ -48,6 +66,8 @@ import dev.lilguy.sim.Need
 import dev.lilguy.sim.NeedChange
 import dev.lilguy.sim.Transaction
 import dev.lilguy.sim.World
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -60,6 +80,8 @@ import kotlin.system.exitProcess
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
+
+private const val DEFAULT_DB = "runs/lilguy.db"
 
 private const val USAGE = """lil guy machine cli: lockstep runs of the key-and-door room or the bedroom.
 
@@ -76,9 +98,19 @@ private const val USAGE = """lil guy machine cli: lockstep runs of the key-and-d
                       (default: the endpoint's beam, 3)
   --log-dir DIR       where run logs go (default runs/); --no-log to skip
   --replay FILE       play back a decision log instead of calling a model
-  --memory FILE       keep long-term memory in this SQLite file: how each action turned out, what
-                      happened around him, a daily snapshot, his thoughts; plus memories when
-                      --memory-endpoint is set. Recalled memories and thoughts join each prompt
+  --db FILE           the run database (default runs/lilguy.db): every run's decisions, model calls with
+                      their prompts, ledger, needs, hourly state, memory, art and a checkpoint each
+                      morning. Rows sync to the server when LILGUY_SYNC_URL and LILGUY_SYNC_TOKEN are
+                      set. Long-term memory lives here too: how each action turned out, what happened
+                      around him, a daily snapshot, his thoughts; plus memories when --memory-endpoint
+                      is set. Recalled memories and thoughts join each prompt. (--memory FILE is its old name)
+  --no-db             record nothing in a database (memory, if needed, is in-process only)
+  --no-bodies         keep the rows but not prompts, replies and observations (for long batches)
+  --resume RUN        bedroom: carry on run RUN (its id, or "latest") from its latest checkpoint, for
+                      --days more days; its personality, grants and clock come from the run
+  --import-runs DIR   read old run logs under DIR (the CLI's and the TV's layouts) into the run database, then exit
+  --sync              send what the run database hasn't synced to the server, then exit
+  --server-schema F   write the rows' JSON Schema (what the server's Pydantic models are generated from) to F, then exit
   --memory-endpoint N endpoint that writes the memories, of stretches and of whole days (must write
                       text, so not typesafe)
   --writer-endpoint N bedroom: endpoint that writes his thoughts when he thinks, revises his
@@ -92,6 +124,10 @@ private const val USAGE = """lil guy machine cli: lockstep runs of the key-and-d
                       His art is drawn by the deciding model itself, one closed pick a stroke, so
                       typesafe draws too (a PNG per piece in art-NN/ beside the log); the scripted
                       policy and a replay don't draw
+  --painter-endpoint N bedroom: endpoint that draws his art instead of the deciding one (typesafe is
+                      cheapest: two picks a stroke). Defaults to the config's painter_endpoint
+  --search none       bedroom: keep him off the web; otherwise a model that calls tools may search it
+                      as the config's search: block says
   --grant IDS         bedroom: unlock gated content, comma-separated ids (e.g. paint,easel,canvas,painting)
   --affinities Q=W    bedroom: his personality for these runs, quality=weight pairs over the content's
                       default (e.g. calm=2,loud=-1); weights -1 to 2
@@ -131,10 +167,10 @@ private class Args(argv: Array<String>) {
     fun flag(name: String) = name in flags
 
     companion object {
-        val FLAGS = setOf("--quiet", "--no-log", "--help", "--content-docs")
+        val FLAGS = setOf("--quiet", "--no-log", "--help", "--content-docs", "--no-db", "--no-bodies", "--sync")
         val KNOWN = FLAGS + setOf(
-            "--scenario", "--endpoint", "--runs", "--days", "--minute-ticks", "--ticks", "--max-decisions", "--config", "--strategy", "--beam", "--log-dir", "--replay", "--memory", "--memory-endpoint", "--writer-endpoint", "--journal-endpoint", "--recall-endpoint", "--grant",
-            "--affinities", "--curiosity",
+            "--scenario", "--endpoint", "--runs", "--days", "--minute-ticks", "--ticks", "--max-decisions", "--config", "--strategy", "--beam", "--log-dir", "--replay", "--memory", "--memory-endpoint", "--writer-endpoint", "--journal-endpoint", "--recall-endpoint", "--painter-endpoint", "--search", "--grant",
+            "--affinities", "--curiosity", "--db", "--resume", "--import-runs", "--server-schema",
         )
     }
 }
@@ -211,25 +247,58 @@ fun main(argv: Array<String>) {
         println("wrote the content schemas and ${page.path}")
         return
     }
+    args.string("--server-schema")?.let { path ->
+        File(path).also { it.parentFile?.mkdirs() }.writeText(RowSchema.text())
+        println("wrote $path")
+        return
+    }
+    val replay = args.string("--replay")?.let(::File)
+    // A replay retraces a logged run, so it isn't recorded as a new one.
+    val runDb: RunStore? = if (args.flag("--no-db") || replay != null) null else JdbcSqlDriver.store(File(args.string("--db") ?: args.string("--memory") ?: DEFAULT_DB))
+    val sync = runDb?.let(::syncWorker)
+    args.string("--import-runs")?.let { dir ->
+        val db = runDb ?: run { System.err.println("--import-runs needs the run database"); exitProcess(2) }
+        Importer(db).importAll(File(dir))
+        finalSync(db, sync)
+        db.close()
+        return
+    }
+    if (args.flag("--sync")) {
+        val db = runDb ?: run { System.err.println("--sync needs the run database"); exitProcess(2) }
+        finalSync(db, sync ?: run { System.err.println("set LILGUY_SYNC_URL and LILGUY_SYNC_TOKEN to sync"); exitProcess(2) })
+        db.close()
+        return
+    }
     val scenario = try {
         Scenario.parse(args.string("--scenario") ?: Scenario.KeyDoor.id)
     } catch (e: IllegalArgumentException) {
         System.err.println(e.message)
         exitProcess(2)
     }
+    val carried = try {
+        args.string("--resume")?.let { id ->
+            require(scenario == Scenario.Bedroom) { "--resume is for the bedroom (--scenario bedroom)" }
+            carried(requireNotNull(runDb) { "--resume needs the run database" }, id)
+        }
+    } catch (e: IllegalArgumentException) {
+        System.err.println(e.message)
+        exitProcess(2)
+    }
     val endpoint = args.string("--endpoint") ?: "scripted"
-    val replay = args.string("--replay")?.let(::File)
-    val runs = if (replay != null) 1 else args.int("--runs", 1)
-    val minuteTicks = args.int("--minute-ticks", GameClock.DEFAULT_TICKS_PER_MINUTE)
+    val runs = if (replay != null || carried != null) 1 else args.int("--runs", 1)
+    val minuteTicks = carried?.run?.ticksPerMinute ?: args.int("--minute-ticks", GameClock.DEFAULT_TICKS_PER_MINUTE)
     val days = args.int("--days", 3)
+    val fromTick = carried?.resume?.checkpoint?.tick ?: 0L
     val maxTicks = args.string("--ticks")?.toLongOrNull() ?: when (scenario) {
         Scenario.KeyDoor -> 2000L
-        Scenario.Bedroom -> days.toLong() * GameClock.MINUTES_PER_DAY * minuteTicks
+        Scenario.Bedroom -> fromTick + days.toLong() * GameClock.MINUTES_PER_DAY * minuteTicks
     }
     val maxDecisions = args.int("--max-decisions", if (scenario == Scenario.Bedroom) 60 * days else 60)
     val quiet = args.flag("--quiet")
-    val granted = args.string("--grant")?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }?.toSet().orEmpty()
-    val personality = personalityOf(args)
+    val granted = carried?.run?.granted?.toSet() ?: args.string("--grant")?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }?.toSet().orEmpty()
+    val personality = if (carried != null) carried.personality else personalityOf(args)
+    carried?.let { c -> println("resuming run ${c.run.id} from its checkpoint at ${c.resume.checkpoint.day}, ${GameClock.hhmm(c.resume.checkpoint.minuteOfDay)} (${c.resume.checkpoint.reason})") }
+    val syncJob = sync?.start(CoroutineScope(Dispatchers.IO))
 
     // Each run gets a fresh model, so nothing carries over between runs.
     val (label, timeout, newModel) = try {
@@ -248,6 +317,10 @@ fun main(argv: Array<String>) {
 
     val results = (1..runs).map { n ->
         val ledger = TokenLedger()
+        val runId = carried?.run?.id ?: Ids.uuid7()
+        val sessionId = Ids.uuid7()
+        val recorder = runDb?.let { RunRecorder(it, runId, sessionId, bodies = !args.flag("--no-bodies")) }
+        val life = recorder?.let(::LifeRecorder)
         val config by lazy { Endpoints.load(File(args.string("--config") ?: Endpoints.DEFAULT_PATH)) }
         fun priceOf(name: String) = config.endpoints[name]?.let(TokenPrice::of)
         val decisionModel = newModel()
@@ -255,7 +328,7 @@ fun main(argv: Array<String>) {
         val log = logDir?.let { DecisionLog(File(it, "run-%02d.jsonl".format(n)), run = "$stamp-$n", model = model.id) }
         val summaryEndpoint = args.string("--memory-endpoint")
         val summaryModel = summaryEndpoint?.let { name ->
-            requireNotNull(args.string("--memory")) { "--memory-endpoint needs --memory FILE" }
+            requireNotNull(runDb) { "--memory-endpoint needs the run database (drop --no-db)" }
             Endpoints.create(config, name)
         }
         // Like the app: the writer (thoughts, the self-model, commissions) defaults to the memory endpoint; "none" turns it off.
@@ -272,16 +345,21 @@ fun main(argv: Array<String>) {
         val scorerName = recallEndpoint?.takeIf { it != "none" } ?: endpoint
         // The deciding model draws his art, pick by pick, so a picking model can; the scripted policy and a replay can't.
         val painting = scenario == Scenario.Bedroom && replay == null && endpoint != "scripted"
-        val store: MemoryStore? = args.string("--memory")?.let { SqliteMemoryStore(File(it)) } ?: if (writerModel != null || painting || rawScorer != null) InMemoryStore() else null
+        val painterEndpoint = if (!painting) null else (args.string("--painter-endpoint") ?: config.defaultPainterEndpoint)?.takeIf { it != endpoint }
+        val painterModel = painterEndpoint?.let { Endpoints.create(config, it) } ?: decisionModel
+        // Memory lives in the run database, so every run has it; without one, only when something needs it.
+        val memoryStore = recorder?.let { RunMemoryStore(runDb!!, it, RunMemoryStore.lineage(runDb, carried?.resume?.checkpoint?.id)) }
+        val store: MemoryStore? = (memoryStore ?: if (writerModel != null || painting || rawScorer != null) InMemoryStore() else null)?.let(::PlacedStore)
         val revisions = mutableListOf<SelfRevision>()
         val core = (personality ?: BedroomContent.default().personality)
         val memory = store?.let { st ->
-            val run = "$stamp-$n"
+            val run = if (recorder != null) runId else "$stamp-$n"
             val studio = if (!painting) null else ArtStudio(
-                Painter(ledger.meter(decisionModel, TokenPurpose.Art, priceOf(endpoint))), st, run, dir = logDir?.let { d -> File(d, "art-%02d".format(n)) },
+                Painter(ledger.meter(painterModel, TokenPurpose.Art, priceOf(painterEndpoint ?: endpoint))), st, run, dir = logDir?.let { d -> File(d, "art-%02d".format(n)) },
                 voice = writerModel?.let { CommissionVoice(ledger.meter(it, TokenPurpose.Art, priceOf(writerEndpoint!!))) },
             ) { d ->
                 log?.write(d)
+                life?.drawing(d)
                 if (!quiet) printDrawing(d)
             }
             val scorer = rawScorer?.let { MemoryScorer(ledger.meter(it, TokenPurpose.Recall, priceOf(scorerName)), ledger.meter(it, TokenPurpose.Significance, priceOf(scorerName)), onFailure = { e -> System.err.println("scoring failed: ${e.message}") }) }
@@ -313,6 +391,7 @@ fun main(argv: Array<String>) {
                 reader = writerModel?.takeIf { scenario == Scenario.Bedroom }?.let { Reader(ledger.meter(it, TokenPurpose.Reading, priceOf(writerEndpoint!!))) },
                 onAnswer = { a ->
                     log?.write(a)
+                    life?.answer(a)
                     if (!quiet) printAnswer(a)
                 },
                 // A shopping trip's picks: the writer with reasons, falling back to the deciding model's one pick.
@@ -320,25 +399,84 @@ fun main(argv: Array<String>) {
                     val picker = decisionModel.takeIf { painting }?.let { ledger.meter(it, TokenPurpose.Shop, priceOf(endpoint)) }
                     writerModel?.let { Shopper(ledger.meter(it, TokenPurpose.Shop, priceOf(writerEndpoint!!)), fallback = picker) } ?: picker?.let { Shopper(it) }
                 },
+                // LILGUY_INVENTOR=workshop (or machines, or 1) builds from fixed designs with no endpoint, as the host's.
+                inventor = if (scenario != Scenario.Bedroom) null else
+                    writerModel?.let { Inventor(ledger.meter(it, TokenPurpose.Invent, priceOf(writerEndpoint!!))) }
+                        ?: System.getenv("LILGUY_INVENTOR")?.takeIf { it.isNotEmpty() }?.let { dev.lilguy.agent.invent.CannedInventor.of(it) },
+                // His code: the deciding model when it's a text model, else the writer.
+                coder = if (scenario != Scenario.Bedroom) null else
+                    decisionModel.takeIf { painting }?.let { dev.lilguy.agent.code.Coder(ledger.meter(it, TokenPurpose.Code, priceOf(endpoint))) }
+                        ?: writerModel?.let { dev.lilguy.agent.code.Coder(ledger.meter(it, TokenPurpose.Code, priceOf(writerEndpoint!!))) },
+                onCoded = { c ->
+                    life?.code(c)
+                    if (!quiet) printCoded(c)
+                },
+                // The real web, as the config's `search:` says; only a model that calls tools searches. --search none keeps him off it.
+                searcher = config.search?.takeIf { painting && !it.off && args.string("--search") != "none" }?.let { sc ->
+                    Searcher(ledger.meter(WebSearches.create(sc), TokenPrice.of(sc)), sc.perDay)
+                },
+                onSearch = { s -> if (!quiet) printSearch(s) },
+                onDraft = { d -> life?.invention(d) },
+                reflector = writerModel?.takeIf { scenario == Scenario.Bedroom && !it.capabilities.closedChoice }?.let {
+                    dev.lilguy.agent.memory.Reflector(
+                        ledger.meter(it, TokenPurpose.Reflect, priceOf(writerEndpoint!!)), st, run, core.core.you,
+                        threshold = if (scorer != null) dev.lilguy.agent.memory.Reflector.THRESHOLD else null,
+                    )
+                },
+                onReflection = { t -> if (!quiet) printReflection(t) },
+                letterWriter = writerModel?.takeIf { scenario == Scenario.Bedroom && !it.capabilities.closedChoice }?.let { LetterWriter(ledger.meter(it, TokenPurpose.Letter, priceOf(writerEndpoint!!))) },
+                onLetter = { l -> life?.letter(l) },
                 onTrip = { t ->
                     log?.write(t)
+                    life?.trip(t)
                     if (!quiet) printTrip(t)
                 },
             )
         }
+        // The run's row: what it is, what built it, and with which models.
+        life?.let { l ->
+            val models = buildJsonObject {
+                fun role(name: String, ep: String?) = ep?.let { e ->
+                    put(name, buildJsonObject {
+                        put("endpoint", e)
+                        config.takeIf { e != "scripted" && replay == null }?.endpoints?.get(e)?.let { c -> put("model", c.model); c.priceIn?.let { put("price_in", it) }; c.priceOut?.let { put("price_out", it) } }
+                    })
+                }
+                put("decision", buildJsonObject { put("endpoint", endpoint); put("id", model.id); args.string("--beam")?.let { put("beam", it.toInt()) } })
+                role("memory", summaryEndpoint)
+                role("writer", writerEndpoint)
+                role("recall", recallEndpoint?.takeIf { it != "none" })
+                role("painter", painterEndpoint)
+            }
+            val runRow = carried?.run ?: RunRow(
+                id = runId, scenario = scenario.id, platform = "cli", host = Build.host, gitSha = Build.gitSha, gitDirty = Build.gitDirty,
+                contentHash = contentRow.hash.takeIf { scenario == Scenario.Bedroom }, seed = 0, ticksPerMinute = minuteTicks,
+                personality = personality?.let { RowJson.encodeToJsonElement(Personality.serializer(), it) }, granted = granted.sorted(),
+                models = models,
+                settings = buildJsonObject { put("days", days); put("max_decisions", maxDecisions); put("bodies", !args.flag("--no-bodies")); logDir?.let { put("log_dir", it.path) } },
+                startedAt = Ids.now(), label = label,
+            )
+            l.begin(runRow, sessionRow(sessionId, runId, carried?.resume?.checkpoint?.id, contentRow.hash.takeIf { scenario == Scenario.Bedroom }), contentRow.takeIf { scenario == Scenario.Bedroom })
+            ledger.record(l)
+            if (!quiet) println("run $n is ${runId}${if (carried != null) " (session $sessionId)" else ""}")
+        }
         try {
-            runOnce(n, scenario, model, timeout, minuteTicks, maxTicks, maxDecisions, quiet, log, logDir, ledger, memory, granted, personality, revisions)
+            runOnce(n, scenario, model, timeout, minuteTicks, maxTicks, maxDecisions, quiet, log, logDir, ledger, memory, granted, personality, revisions, life, carried, memoryStore)
         } finally {
+            recorder?.let { r -> runBlocking { r.flush() }; r.lastError?.let { System.err.println("run database: $it") }; r.close() }
             log?.close()
             store?.close()
             (summaryModel as? AutoCloseable)?.close()
             (writerModel as? AutoCloseable)?.close()
             (ownScorer as? AutoCloseable)?.close()
             (decisionModel as? AutoCloseable)?.close()
+            if (painterModel !== decisionModel) (painterModel as? AutoCloseable)?.close()
         }
     }
 
     summarize(results, logDir)
+    syncJob?.cancel()
+    runDb?.let { finalSync(it, sync); it.close() }
     if (results.any { !it.solved }) exitProcess(1)
 }
 
@@ -363,7 +501,9 @@ private fun modelSource(scenario: Scenario, endpoint: String, replay: File?, arg
         val entries = DecisionLog.read(replay)
         return Triple("replay", 20.seconds) { ReplayDecisionModel(entries, id = "replay:${entries.firstOrNull()?.model}", upgrade = scenario.upgrade()) }
     }
-    if (endpoint == "scripted") return Triple("scripted", 20.seconds) { scenario.scriptedPolicy() }
+    // LILGUY_SCRIPT=read,put:floor_lamp:pond_shore has the scripted policy do those first, as the host's and desktop's.
+    val script = System.getenv("LILGUY_SCRIPT").orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
+    if (endpoint == "scripted") return Triple("scripted", 20.seconds) { scenario.scriptedPolicy(script = script) }
     var config = Endpoints.load(File(args.string("--config") ?: Endpoints.DEFAULT_PATH))
     args.string("--strategy")?.let { s ->
         val strategy = StructuredOutput.entries.firstOrNull { it.name.equals(s.replace("_", ""), ignoreCase = true) }
@@ -394,33 +534,50 @@ private fun runOnce(
     granted: Set<String> = emptySet(),
     personality: Personality? = null,
     revisions: List<SelfRevision> = emptyList(),
+    life: LifeRecorder? = null,
+    carried: Carried? = null,
+    memoryStore: RunMemoryStore? = null,
 ): RunResult {
     val records = mutableListOf<AgentRuntime.DecisionRecord>()
     lateinit var stampOf: (Long) -> String
-    val (world, runtime) = scenario.create(model, timeout, minuteTicks, longTerm = memory, granted = granted, personality = personality) { d ->
+    val (world, runtime) = scenario.create(
+        model, timeout, minuteTicks, longTerm = memory, granted = granted, personality = personality,
+        // Dev aids, as the host's: LILGUY_START_ITEMS=rug,meal=6 and LILGUY_START_MONEY=500 start him further along.
+        startItems = System.getenv("LILGUY_START_ITEMS").orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
+            .associate { it.substringBefore('=') to (it.substringAfter('=', "1").toIntOrNull() ?: 1) },
+        startMoney = System.getenv("LILGUY_START_MONEY")?.toIntOrNull(),
+        from = carried?.resume?.world, dropped = { d -> d.forEach { println("resume: dropped $it") } },
+    ) { d ->
         records += d
         log?.write(d)
+        life?.decision(d)
         if (!quiet) {
             val intent = Json.encodeToString(Intent.serializer(), d.intent)
             val note = if (d.error != null) "FALLBACK: ${d.error}" else d.rationale.orEmpty()
             val tries = if (d.attempts.size > 1) " [${d.attempts.size} tries]" else ""
             println("%s  decide  %-52s %5d ms%s  %s".format(stampOf(d.tick), intent, d.latency.inWholeMilliseconds, tries, note))
-            d.thought?.let { println("%s  thought %s".format(stampOf(d.tick), it.text?.let { t -> "\"$t\"" } ?: "FAILED: ${it.error}")) }
+            d.looks.forEach { l -> println("%s  %s %s -> %s".format(stampOf(d.tick), l.name, l.arguments.values.joinToString(" "), l.result.replace('\n', ' ').take(160))) }
+            d.thought?.takeIf { it.text != d.rationale }?.let { println("%s  thought %s".format(stampOf(d.tick), it.text?.let { t -> "\"$t\"" } ?: "FAILED: ${it.error}")) }
         }
     }
     val bedroom = world as? BedroomWorld
     ledger.attach({ world.tick }, bedroom?.clock)
+    carried?.resume?.agent?.let { a ->
+        runtime.restore(a.runtime)
+        a.memory?.let { m -> memory?.restore(m) }
+    }
+    if (bedroom != null) life?.attach(bedroom, runtime, memory, memoryStore) else life?.attachClock(null)
     stampOf = if (bedroom != null) { t -> bedroom.clock.reading(t).let { "d%2d %s".format(it.day, it.time) } } else { t -> "t=%4d".format(t) }
     if (!quiet) println("--- run $n ---")
 
     val hours = mutableListOf<HourSample>()
     val lowest = Need.entries.associateWith { Double.MAX_VALUE }.toMutableMap()
     var ticksAtZero = 0L
-    var printed = 0L
+    var printed = world.tick
     var failed = 0
     val started = TimeSource.Monotonic.markNow()
     val endTick = runBlocking {
-        runLockstep(world, runtime, maxTicks, shouldStop = { records.size >= maxDecisions }) {
+        runLockstep(world, runtime, maxTicks, shouldStop = { records.size >= maxDecisions }, beforeStep = { life?.beforeStep() }) {
             for (e in world.snapshot().events) {
                 if (e.tick > printed) {
                     if (" failed: " in e.text) failed++
@@ -433,12 +590,23 @@ private fun runOnce(
                 if (Need.entries.any { it != Need.Stimulation && it != Need.Frustration && bedroom.needs[it] <= 0.0 }) ticksAtZero++
                 if (bedroom.clock.isMinuteStart(world.tick) && bedroom.clock.minuteOfDay(world.tick) % 60 == 0) hours += BedroomReport.sample(bedroom)
             }
+            life?.afterStep()
         }
     }
     memory?.let { runBlocking { it.flush() } }
     val wall = started.elapsedNow()
     val capped = records.size >= maxDecisions
     val solved = if (bedroom != null) !capped else world.snapshot().completed
+    life?.let { l ->
+        l.settle(world.observe(world.agentId))
+        val why = when {
+            capped -> "decision cap"
+            bedroom != null -> "days reached"
+            solved -> "walked out"
+            else -> "tick limit"
+        }
+        l.end(why)
+    }
     val life = bedroom?.let { b ->
         val days = BedroomReport.days(b, hours)
         logDir?.let { dir ->
@@ -516,11 +684,30 @@ private fun printAnswer(a: Answer) {
     println("%s  asked \"%s\" (opened %s): %s".format(stamp, a.question, a.opened.joinToString(), r.text ?: "FAILED: ${r.error}"))
 }
 
+private fun printSearch(s: Search) {
+    val stamp = if (s.day != null) "d%2d %s".format(s.day, s.time) else "t=%4d".format(s.tick)
+    val what = if (!s.found) "nothing (${s.error ?: "no results"})" else (s.summary ?: s.sources.joinToString { it.title }) + " [" + s.sources.joinToString { it.title } + "]"
+    println("%s  searched the web for \"%s\": %s".format(stamp, s.query, what))
+}
+
+private fun printCoded(c: dev.lilguy.agent.code.Coded) {
+    val stamp = if (c.day != null) "d%2d %s".format(c.day, c.time) else "t=%4d".format(c.tick)
+    val what = c.error?.let { "FAILED: $it" } ?: c.design?.let { dev.lilguy.agent.code.CodeHandler.summary(it) } ?: "nothing"
+    println("%s  wrote code%s: %s%s".format(stamp, c.forThing?.let { " for the $it" } ?: "", what, if (c.redid.isEmpty()) "" else " (redone once: ${c.redid.joinToString("; ")})"))
+    c.design?.verbs?.forEach { v -> println(v.code.prependIndent("        | ")) }
+    c.design?.behaviors?.forEach { b -> println(b.code.prependIndent("        | ")) }
+}
+
 private fun printTrip(t: Trip) {
     val stamp = if (t.day != null) "d%2d %s".format(t.day, t.time) else "t=%4d".format(t.tick)
     val what = t.error?.let { "FAILED: $it" }
         ?: ("picked " + t.buy.joinToString { it.item }.ifEmpty { "nothing" } + (t.saveFor?.let { "; saving for $it" } ?: "") + (t.note?.let { ": $it" } ?: ""))
     println("%s  shopping trip, %d in the catalog: %s".format(stamp, t.catalog.size, what))
+}
+
+private fun printReflection(t: dev.lilguy.agent.memory.Thought) {
+    val stamp = if (t.day != null) "d%2d %s".format(t.day, t.time) else "t=%4d".format(t.tick)
+    println("%s  stepped back: %s".format(stamp, t.text ?: "FAILED: ${t.error}"))
 }
 
 private fun printSelf(r: SelfRevision) {

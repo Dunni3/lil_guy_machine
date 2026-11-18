@@ -12,8 +12,8 @@ package dev.lilguy.agent.memory
  * world starts with a clean past.
  */
 interface MemoryStore : AutoCloseable {
-    /** Appends to the event stream and returns the new event's id; ids grow with time. */
-    fun appendEvent(run: String, tick: Long, day: Int?, time: String?, kind: EventKind, text: String): Long
+    /** Appends to the event stream and returns the new event's id; ids grow with time. [place] is where he was, by name, or null. */
+    fun appendEvent(run: String, tick: Long, day: Int?, time: String?, kind: EventKind, text: String, place: String? = null): Long
 
     /** Up to [limit] events with an id above [afterId], oldest first. */
     fun eventsAfter(run: String, afterId: Long, limit: Int): List<MemoryEvent>
@@ -27,7 +27,7 @@ interface MemoryStore : AutoCloseable {
      * Stores a summary of the level-below items `fromId..toId` (event ids for level 1, level-1 ids
      * for level 2, level-2 ids for level 3). [importance] is 0 to 1, from the events it covers.
      */
-    fun addMemory(run: String, level: Int, fromId: Long, toId: Long, span: Span, text: String, source: String, importance: Double? = null): Long
+    fun addMemory(run: String, level: Int, fromId: Long, toId: Long, span: Span, text: String, source: String, importance: Double? = null, places: List<String> = emptyList()): Long
 
     /** Memories of one level, oldest first. */
     fun memories(run: String, level: Int): List<StoredMemory>
@@ -58,8 +58,17 @@ enum class EventKind(val id: String) {
     /** A question he asked about how his world works, and the answer. */
     Answer("answer"),
 
+    /** Something he looked up on the real web, and what the results said. */
+    Search("search"),
+
     /** A shopping trip in his words: what he picked and why, what he's saving for, what caught his eye. */
-    Shopping("shopping");
+    Shopping("shopping"),
+
+    /** Something he invented and built, in his words: what it is and why he made it. */
+    Invention("invention"),
+
+    /** A letter he wrote to someone outside his world: who to, and what it said. */
+    Letter("letter");
 
     companion object {
         fun of(id: String): EventKind = entries.first { it.id == id }
@@ -76,6 +85,8 @@ data class MemoryEvent(
     val text: String,
     /** 0 to 1, or null until it's scored (or when nothing scores). */
     val significance: Double? = null,
+    /** Where he was, by name ("the forest clearing"), or null where there are no places. */
+    val place: String? = null,
 ) {
     /** "d2 14:30", or "t=140" in rooms without a clock. */
     val stamp: String get() = if (day != null) "d$day $time" else "t=$tick"
@@ -104,6 +115,8 @@ data class StoredMemory(
     val source: String,
     /** 0 to 1, from the significance of what it covers; null when nothing was scored. */
     val importance: Double? = null,
+    /** The places what it covers happened in, most of it first. */
+    val places: List<String> = emptyList(),
 )
 
 /** Everything in memory, for tests and for platforms without a database yet. */
@@ -112,9 +125,9 @@ class InMemoryStore : MemoryStore {
     private val memories = mutableListOf<StoredMemory>()
 
     @Synchronized
-    override fun appendEvent(run: String, tick: Long, day: Int?, time: String?, kind: EventKind, text: String): Long {
+    override fun appendEvent(run: String, tick: Long, day: Int?, time: String?, kind: EventKind, text: String, place: String?): Long {
         val id = events.size + 1L
-        events += MemoryEvent(id, run, tick, day, time, kind, text)
+        events += MemoryEvent(id, run, tick, day, time, kind, text, place = place)
         return id
     }
 
@@ -132,9 +145,9 @@ class InMemoryStore : MemoryStore {
     }
 
     @Synchronized
-    override fun addMemory(run: String, level: Int, fromId: Long, toId: Long, span: Span, text: String, source: String, importance: Double?): Long {
+    override fun addMemory(run: String, level: Int, fromId: Long, toId: Long, span: Span, text: String, source: String, importance: Double?, places: List<String>): Long {
         val id = memories.size + 1L
-        memories += StoredMemory(id, run, level, fromId, toId, span, text, source, importance)
+        memories += StoredMemory(id, run, level, fromId, toId, span, text, source, importance, places)
         return id
     }
 
@@ -142,4 +155,16 @@ class InMemoryStore : MemoryStore {
     override fun memories(run: String, level: Int) = memories.filter { it.run == run && it.level == level }
 
     override fun close() {}
+}
+
+/**
+ * [inner], with each event stamped with where he is when it's written, unless the writer says: the
+ * one store every writer shares (outcomes, thoughts, readings, art, trips), so they all carry a
+ * place. [AgentMemory.connect] tells it how to find where he is.
+ */
+class PlacedStore(private val inner: MemoryStore) : MemoryStore by inner {
+    @Volatile var where: () -> String? = { null }
+
+    override fun appendEvent(run: String, tick: Long, day: Int?, time: String?, kind: EventKind, text: String, place: String?): Long =
+        inner.appendEvent(run, tick, day, time, kind, text, place ?: where())
 }

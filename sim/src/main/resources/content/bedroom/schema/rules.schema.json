@@ -66,6 +66,12 @@
         "stimulation_per_hour": {
           "type": "number"
         },
+        "stimulation_drain_at": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
         "bored": {
           "type": "number"
         },
@@ -126,6 +132,32 @@
             },
             "stale_stimulation": {
               "type": "number"
+            },
+            "bored_lock": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "below": {
+                      "type": "number"
+                    },
+                    "worn": {
+                      "type": "number"
+                    },
+                    "keep": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "below",
+                    "worn"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [
@@ -149,10 +181,58 @@
               "additionalProperties": {
                 "type": "number"
               }
+            },
+            "things": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "stimulation_per_value": {
+                      "type": "number"
+                    },
+                    "days": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "stimulation_per_value",
+                    "days"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [
             "effects"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "familiarity": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "half_life_days": {
+              "type": "number"
+            },
+            "weights": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number"
+              }
+            }
+          },
+          "required": [
+            "half_life_days"
           ],
           "additionalProperties": false
         },
@@ -202,9 +282,6 @@
         "gain_per_level": {
           "type": "number"
         },
-        "price_per_level": {
-          "type": "number"
-        },
         "affinity_per_level": {
           "type": "number"
         },
@@ -214,7 +291,8 @@
             "enum": [
               "art",
               "music",
-              "nature"
+              "nature",
+              "tinkering"
             ]
           },
           "additionalProperties": {
@@ -324,6 +402,496 @@
         }
       },
       "additionalProperties": false
+    },
+    "invent": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "per_day": {
+              "type": "integer"
+            },
+            "qualities": {
+              "type": "object",
+              "properties": {
+                "most": {
+                  "type": "integer"
+                },
+                "total": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            },
+            "uses": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "group": {
+                    "type": "string"
+                  },
+                  "base": {
+                    "type": "integer"
+                  },
+                  "per_strength": {
+                    "type": "integer"
+                  },
+                  "built": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "group"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "book": {
+              "type": "object",
+              "properties": {
+                "min_chapters": {
+                  "type": "integer"
+                },
+                "max_chapters": {
+                  "type": "integer"
+                },
+                "skill_gain": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            },
+            "wage_per_hour": {
+              "type": "integer"
+            },
+            "look_parts": {
+              "type": "integer"
+            },
+            "materials": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "for": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "for"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "unit": {
+              "type": "number"
+            },
+            "finish": {
+              "type": "integer"
+            },
+            "workings": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "integer"
+                  }
+                },
+                "moving": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "integer"
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "salvage": {
+              "type": "number"
+            },
+            "sell_back": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "uses"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "collection": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "max": {
+              "type": "integer"
+            },
+            "comfort_each": {
+              "type": "integer"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "comfort": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "near": {
+              "type": "number"
+            },
+            "far": {
+              "type": "number"
+            },
+            "lit": {
+              "type": "number"
+            },
+            "adapt": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "days": {
+                      "type": "number"
+                    },
+                    "floor": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "days",
+                    "floor"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "light": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "see": {
+              "type": "number"
+            },
+            "daylight": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number"
+              }
+            },
+            "indoors": {
+              "type": "number"
+            },
+            "window": {
+              "type": "object",
+              "properties": {
+                "share": {
+                  "type": "number"
+                },
+                "radius": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "share",
+                "radius"
+              ],
+              "additionalProperties": false
+            },
+            "lantern": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "strength": {
+                      "type": "number"
+                    },
+                    "radius": {
+                      "type": "number"
+                    },
+                    "timer": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "on": {
+                              "type": "string"
+                            },
+                            "off": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "on",
+                            "off"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "strength",
+                    "radius"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "timer": {
+              "type": "object",
+              "properties": {
+                "on": {
+                  "type": "string"
+                },
+                "off": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "on",
+                "off"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "daylight"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "letters": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "per_day": {
+              "type": "integer"
+            },
+            "unanswered": {
+              "type": "integer"
+            },
+            "max_length": {
+              "type": "integer"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "sound": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "hear": {
+              "type": "number"
+            },
+            "full": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "sleep": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "cold": {
+              "type": "number"
+            },
+            "noisy": {
+              "type": "number"
+            },
+            "rest": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "growing": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "sun": {
+              "type": "number"
+            },
+            "soil": {
+              "type": "number"
+            },
+            "dries_per_hour": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "machines": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "recipes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "says": {
+                    "type": "string"
+                  },
+                  "takes": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "integer"
+                    }
+                  },
+                  "makes": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "integer"
+                    }
+                  },
+                  "hours": {
+                    "type": "number"
+                  },
+                  "needs": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "number"
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "says",
+                  "takes",
+                  "makes",
+                  "hours"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "holds": {
+              "type": "integer"
+            },
+            "reach": {
+              "type": "integer"
+            },
+            "wear_per_batch": {
+              "type": "number"
+            },
+            "wear_per_run": {
+              "type": "number"
+            },
+            "slow_at": {
+              "type": "number"
+            },
+            "repair": {
+              "type": "object",
+              "properties": {
+                "restores": {
+                  "type": "number"
+                },
+                "per_level": {
+                  "type": "number"
+                },
+                "skill": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "worn_at": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "market": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "drop": {
+              "type": "number"
+            },
+            "recover_per_day": {
+              "type": "number"
+            },
+            "floor": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "required": [

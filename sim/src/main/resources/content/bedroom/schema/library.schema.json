@@ -31,7 +31,8 @@
               "enum": [
                 "art",
                 "music",
-                "nature"
+                "nature",
+                "tinkering"
               ]
             },
             "additionalProperties": {

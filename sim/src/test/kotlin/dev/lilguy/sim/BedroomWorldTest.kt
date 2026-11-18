@@ -8,18 +8,25 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class BedroomWorldTest {
-    /** The shipped file gates nothing; the tier mechanism is tested on what used to be tier 1, and all decor. */
+    /** The shipped file gates nothing; the tier mechanism is tested on what used to be tier 1, all decor, and the food he invented. */
     private val tier1 = setOf(
+        "workbench", "invent",
         "canvas", "easel", "record_player", "jazz_record", "ambient_record", "folk_record", "novel", "poetry_book",
         "field_guide", "painting", "paint", "read", "listen", "play_record",
-        "drawing_book", "music_book", "guitar", "play_guitar",
-    ) + BedroomContent.default().items.filter { it.group == "decor" }.map { it.id }
+        "drawing_book", "music_book", "guitar", "play_guitar", "build_room", "microscope", "study_sample", "weather_station", "check_station",
+        "compost_bin", "raised_bed", "spare_parts", "tend", "repair", "kiln", "clay", "clay_pot", "sell_wares",
+        "drawing_book", "music_book", "guitar", "play_guitar", "build_room", "microscope", "study_sample", "weather_station", "check_station", "watch", "water_plant", "harvest",
+        "heater", "fire_pit", "blanket", "bird_feeder", "moth_lamp", "watering_can", "planter",
+        "wood", "metal", "copper_wire", "glass",
+    ) + BedroomContent.default().items.filter { it.group == "decor" || it.group == "room" || (it.group == "food" && it.id !in setOf("meal", "oats")) }.map { it.id }
     /** Books here teach nothing, so painting and the guitar are there from the start; [shipped] is the file as it is. */
     private val content = BedroomContent.default().let { c ->
         c.copy(
             items = c.items.map { if (it.id in tier1) it.copy(tier = 1) else it },
             verbs = c.verbs.map { if (it.id in tier1) it.copy(tier = 1) else it },
             books = c.books.map { it.copy(teaches = emptyList()) },
+            // The old $20 start: these tests are the art economy without a kiln (2026-11-15-art-gets-him-by-*).
+            start = c.start.copy(money = 20),
         )
     }
     private val shipped = BedroomContent.default()
@@ -66,7 +73,7 @@ class BedroomWorldTest {
     fun `tier 0 is the small world, and gated content comes in only when granted`() {
         val w = world(granted = emptySet())
         val obs = w.obs()
-        assertEquals(listOf("eat", "eat_oats", "sketch", "sell_art", "shop", "hang_art", "sleep", "think"), obs.activities!!.map { it.id })
+        assertEquals(listOf("eat", "eat_oats", "sketch", "devise", "sell_art", "shop", "read_mail", "write_letter", "hang_art", "sleep", "think", "explore", "explore", "explore", "explore", "collect", "sell_sample"), obs.activities!!.map { it.id })
         assertEquals(listOf("meal"), obs.shop!!.map { it.id })
         assertEquals("you have no sketch to sell; sketch makes some", w.activity("sell_art").locked)
         assertTrue("no activity called 'paint'" in failure(w.run(Intent.Do("paint"))))
@@ -76,7 +83,7 @@ class BedroomWorldTest {
 
         // A grant has to bring what it needs with it, and only gated ids can be granted.
         val painting = setOf("paint", "easel", "canvas", "painting")
-        assertEquals(listOf("eat", "eat_oats", "sketch", "paint", "sell_art", "shop", "hang_art", "sleep", "think"), world(money = 500, granted = painting).obs().activities!!.map { it.id })
+        assertEquals(listOf("eat", "eat_oats", "sketch", "paint", "devise", "sell_art", "shop", "read_mail", "write_letter", "hang_art", "sleep", "think", "explore", "explore", "explore", "explore", "collect", "sell_sample"), world(money = 500, granted = painting).obs().activities!!.map { it.id })
         assertTrue("canvas" in assertFailsWith<IllegalArgumentException> { content.unlocked(setOf("paint", "easel")) }.message!!)
         assertTrue("meal" in assertFailsWith<IllegalArgumentException> { content.unlocked(setOf("meal")) }.message!!)
     }
@@ -91,8 +98,8 @@ class BedroomWorldTest {
         assertEquals("not bedtime yet; by day only a nap, when exhausted (energy 80)", w.activity("sleep").locked)
         assertNull(w.activity("sketch").locked)
         assertEquals("1h", w.activity("sketch").takes)
-        assertEquals("1 sketch, sells for $3; art skill +0.1; energy -3; mood -1; stimulation +4; new to you: stimulation +8, mood +3", w.activity("sketch").gives)
-        assertEquals("uses a meal (you have 2); fullness +45", w.activity("eat").gives)
+        assertEquals("1 sketch, sells for $4; art skill +0.1; energy -3; mood -1; stimulation +4; fresh to you (gains at 100%), stimulation +8, mood +3", w.activity("sketch").gives)
+        assertEquals("uses a meal (you have 2); fullness +45; 1 food scrap", w.activity("eat").gives)
         assertEquals("needs a record player ($150)", w.activity("play_record").locked, "what it happens at first: the shop holds records back until then")
 
         assertEquals("can't paint: needs an easel ($17)", failure(w.run(Intent.Do("paint"))))
@@ -112,8 +119,8 @@ class BedroomWorldTest {
         assertTrue(desk.inReach)
         // Awake decay over the walk and the hour, plus the sketch's -3.
         assertTrue(obs.needs!!.energy in 72..73, "energy ${obs.needs!!.energy}")
-        assertTrue(obs.recentEvents.last().endsWith("finished sketch: +1 sketch, art skill 0.1 (+0.1), energy -3, mood -1, stimulation +4, new to you: stimulation +8, mood +3"), obs.recentEvents.last())
-        assertEquals("$3 for the 1 sketch you hold", w.activity("sell_art").gives)
+        assertTrue(obs.recentEvents.last().endsWith("finished sketch: +1 sketch, art skill 0.1 (+0.1), energy -3, mood -1, stimulation +4, fresh to you (gains at 100%), stimulation +8, mood +3"), obs.recentEvents.last())
+        assertEquals("$4 for the 1 sketch you hold", w.activity("sell_art").gives)
     }
 
     @Test
@@ -122,16 +129,16 @@ class BedroomWorldTest {
         w.run(Intent.Do("sketch"))
         w.run(Intent.Do("sketch"))
         assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("sell_art")).status)
-        assertEquals(26, w.ledger.balance)
+        assertEquals(28, w.ledger.balance)
         assertEquals(emptyList(), w.obs().holding)
 
         assertIs<IntentStatus.Succeeded>(w.run(Intent.Buy("meal")).status)
-        assertEquals(2, w.ledger.balance)
+        assertEquals(4, w.ledger.balance)
         assertEquals(5, w.count("meal"))
-        assertEquals(listOf(6, -24), w.ledger.transactions.map { it.amount })
+        assertEquals(listOf(8, -24), w.ledger.transactions.map { it.amount })
         assertEquals(listOf("sold 2 sketches", "bought 3 meals"), w.ledger.transactions.map { it.reason })
         assertEquals(20 + w.ledger.transactions.sumOf { it.amount }, w.ledger.balance)
-        assertTrue(w.obs().recentEvents.any { "bought 3 meals for $24 (money $2)" in it })
+        assertTrue(w.obs().recentEvents.any { "bought 3 meals for $24 (money $4)" in it })
         assertEquals(w.ledger.transactions, w.snapshot().life!!.transactions)
     }
 
@@ -140,8 +147,8 @@ class BedroomWorldTest {
         val w = world(money = 10)
         val shop = w.obs().shop!!.associateBy { it.id }
         assertEquals(ShopOption("meal", 24, false, "3 meals; for eat"), shop["meal"])
-        assertEquals(ShopOption("easel", 17, false, "for paint (3h: 1 painting, sells for $30; uses a canvas), which also needs a canvas ($15)"), shop["easel"])
-        assertEquals("comfort +4: mood settles 4 higher; natural, calm", shop.getValue("plant").gives)
+        assertEquals(ShopOption("easel", 17, false, "for paint (3h: 1 painting, sells for $25; uses a canvas), which also needs a canvas ($15)"), shop["easel"])
+        assertEquals("comfort +4 in view (near you, lit): mood settles 4 higher; new to you: stimulation +2/h while you're awake and can see it, fading over 3 days; natural, calm", shop.getValue("plant").gives)
         assertEquals("the easel costs $17 and you have $10", failure(w.run(Intent.Buy("easel"))))
         // What's no use without something else isn't sold until he has it; the thing it needs says what it opens up.
         assertTrue(listOf("canvas", "jazz_record", "folk_record").none { it in shop }, "held back: ${shop.keys}")
@@ -154,13 +161,13 @@ class BedroomWorldTest {
         assertEquals("you already have the easel", failure(rich.run(Intent.Buy("easel"))))
         assertTrue(rich.obs().shop!!.none { it.id == "easel" }, "one of a kind: gone from the shop once owned")
         assertEquals("needs a canvas ($15)", rich.activity("paint").locked)
-        assertEquals("unlocks paint (3h: 1 painting, sells for $30; uses a canvas)", rich.obs().shop!!.first { it.id == "canvas" }.gives)
+        assertEquals("unlocks paint (3h: 1 painting, sells for $25; uses a canvas)", rich.obs().shop!!.first { it.id == "canvas" }.gives)
         rich.run(Intent.Buy("canvas"))
         assertIs<IntentStatus.Succeeded>(rich.run(Intent.Do("paint")).status)
         assertEquals(listOf("painting"), rich.obs().holding)
         assertEquals(0, rich.count("canvas"))
         rich.run(Intent.Do("sell_art"))
-        assertEquals(500 - 17 - 15 + 30, rich.ledger.balance)
+        assertEquals(500 - 17 - 15 + 25, rich.ledger.balance)
     }
 
     @Test
@@ -168,7 +175,8 @@ class BedroomWorldTest {
         val w = world()
         w.run(Intent.Wait(GridWorld.MAX_WAIT)) // 40 game minutes
         while (w.clock.reading(w.tick) != ClockReading(1, "09:00")) w.step()
-        assertEquals(NeedLevels(76, 65, 57, 54), w.obs().needs)
+        // Stimulation drains in proportion to its level: -8 an hour at 50, so a little more from 60.
+        assertEquals(NeedLevels(76, 65, 57, 51), w.obs().needs)
         val reasons = w.needs.changes.map { it.need to it.reason }.toSet()
         assertEquals(setOf(Need.Energy to "awake", Need.Stimulation to "awake", Need.Fullness to "hunger", Need.Mood to "drift toward 50"), reasons)
         val sums = w.needs.changes.groupBy { it.need }.mapValues { (_, c) -> c.sumOf { it.delta } }
@@ -244,7 +252,8 @@ class BedroomWorldTest {
 
         // Before it came to that: spending the last of the food money says so.
         val poor = world(money = 21, items = content.start.items - "meal")
-        assertTrue(poor.obs().shop!!.first { it.id == "novel" }.gives.endsWith("leaves you \$9 with no food, short of a meal (3 for \$24)"))
+        val gives = poor.obs().shop!!.first { it.id == "novel" }.gives
+        assertTrue(gives.endsWith("leaves you \$9 with no food, short of a ceramic mug (\$16)"), gives)
     }
 
     @Test
@@ -262,7 +271,7 @@ class BedroomWorldTest {
         w.run(Intent.Buy("record_player"))
         w.run(Intent.Buy("jazz_record"))
         assertEquals(
-            ActivityOption("play_record", "jazz_record", "record_player", "1 min", "you like it: mood +2; music for 45 min: mood +2/h, stimulation +6/h; new to you: stimulation +8, mood +3"),
+            ActivityOption("play_record", "jazz_record", "record_player", "1 min", "you like it: mood +2; music for 45 min: mood +2/h, stimulation +6/h; fresh to you (gains at 100%), stimulation +8, mood +3"),
             w.activity("play_record"),
         )
         assertTrue("do(verb, what, on)" in failure(w.run(Intent.Use("jazz_record", on = "record_player"))))
@@ -272,7 +281,7 @@ class BedroomWorldTest {
         assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("play_record", what = "jazz_record")).status)
         assertTrue(w.obs().music!!.startsWith("jazz_record, 4"), w.obs().music)
         assertEquals("playing jazz_record", w.obs().nearby.first { it.id == "record_player" }.state)
-        assertEquals(ActivityOption("listen", null, null, "30 min", "the jazz record that's playing: you like it: mood +2; mood +4; stimulation +12; new to you: stimulation +8, mood +3"), w.activity("listen"))
+        assertEquals(ActivityOption("listen", null, null, "30 min", "the jazz record that's playing: you like it: mood +1; mood +3; stimulation +8; fresh to you (gains at 70%), stimulation +4, mood +2"), w.activity("listen"))
         assertTrue("takes no `what`" in failure(w.run(Intent.Do("listen", what = "jazz_record"))))
 
         // Music plays while he does something else, and its mood shows in the need log.
@@ -297,7 +306,25 @@ class BedroomWorldTest {
         w.step()
         val notes = w.obs().art!!.associate { it.id to it.commission }
         assertEquals("doesn't match the request: there's no $noun drawn in it", notes[first.piece])
-        assertEquals("matches the request: +$12 when sold", notes[second.piece])
+        assertEquals("matches the request: +$5 when sold", notes[second.piece])
+    }
+
+    @Test
+    fun `drawing a subject for the first time is new to him, once`() {
+        val w = world(needs = NeedLevels(80, 70, 80))
+        repeat(2) { assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("sketch")).status) }
+        val (first, second) = w.obs().authored.filter { it.handler == "draw" }
+        w.deliver(first.id, AuthoredResult.Drawn("Sleepy Whale", listOf("sleepy", "whale")))
+        w.step()
+        val before = w.needs[Need.Stimulation]
+        assertEquals(setOf("whale"), w.subjectsDrawn)
+        assertTrue(w.needs.changes.any { it.reason == "new: subject:whale" && it.delta > 0 })
+        w.deliver(second.id, AuthoredResult.Drawn("Wild Whale", listOf("wild", "whale"), shows = "whale"))
+        w.step()
+        assertEquals(1, w.needs.changes.count { it.reason == "new: subject:whale" && it.need == Need.Stimulation })
+        assertTrue(w.needs[Need.Stimulation] <= before)
+        // It's kept with the run.
+        assertEquals(setOf("whale"), BedroomWorld.restore(w.exportState(), w.content, strict = true).world.subjectsDrawn)
     }
 
     @Test
@@ -306,7 +333,8 @@ class BedroomWorldTest {
         assertEquals(50.0, w.snapshot().life!!.moodTarget)
         w.run(Intent.Buy("rug"))
         w.run(Intent.Buy("plant"))
-        assertEquals(60.0, w.snapshot().life!!.moodTarget)
+        // Each counts by how near and lit it is from where he stands (at the hatch, across the room from the plant).
+        assertTrue(w.snapshot().life!!.moodTarget in 51.0..60.0, "${w.snapshot().life!!.moodTarget}")
         assertTrue(w.obs().nearby.any { it.id == "rug" } && w.obs().localMap.any { 'r' in it })
         // The plant blocks its tile; the rug doesn't.
         val plant = w.obs().nearby.first { it.id == "plant" }
@@ -316,19 +344,68 @@ class BedroomWorldTest {
     }
 
     @Test
-    fun `the first time pays more, repeating pays less, and boredom lowers the mood he settles to`() {
-        val w = world()
+    fun `what he does grows familiar by what it's like, not what it's called, and boredom lowers the mood he settles to`() {
+        // Sketching under another name: the same place, things, skill and product.
+        val doodle = content.verb("sketch")!!.copy(id = "doodle", phrase = "doodle in the sketchbook")
+        val w = BedroomWorld.create(content.copy(verbs = content.verbs + doodle), granted = content.gated)
         w.run(Intent.Do("sketch"))
-        assertTrue(w.obs().recentEvents.last().endsWith("new to you: stimulation +8, mood +3"), w.obs().recentEvents.last())
-        assertTrue("done a lot lately: gains at 80%" in w.activity("sketch").gives!!, w.activity("sketch").gives)
+        assertTrue(w.obs().recentEvents.last().endsWith("fresh to you (gains at 100%), stimulation +8, mood +3"), w.obs().recentEvents.last())
         w.run(Intent.Do("sketch"))
-        val again = w.obs().recentEvents.last()
-        assertTrue("new to you" !in again && "done a lot lately, so it paid 80%, stimulation -1" in again, again)
-        // Eating is routine: never new, never worn.
+        assertTrue("fresh to you (gains at 50%)" in w.obs().recentEvents.last(), w.obs().recentEvents.last())
+        w.run(Intent.Do("sketch"))
+        assertTrue(w.activity("sketch").gives!!.endsWith("familiar (gains at 30%), stimulation -2, mood +1"), w.activity("sketch").gives)
+        // He has never doodled, but only its name is new: barely fresher than sketching.
+        val doodles = w.activity("doodle").gives!!
+        val percent = Regex("""familiar \(gains at (\d+)%\)""").find(doodles)?.groupValues?.get(1)?.toInt()
+        assertTrue(percent != null && percent <= 40, doodles)
+        // Eating is routine: neither fresh nor familiar.
         w.run(Intent.Do("eat"))
-        assertTrue(w.obs().recentEvents.last().let { "finished eat: used 1 meal, fullness +" in it && "new" !in it && "lately" !in it }, w.obs().recentEvents.last())
+        assertTrue(w.obs().recentEvents.last().let { "finished eat: used 1 meal, fullness +" in it && "fresh" !in it && "familiar" !in it }, w.obs().recentEvents.last())
 
         assertEquals(34.0, world(needs = NeedLevels(80, 70, 50, stimulation = 0)).snapshot().life!!.moodTarget)
+    }
+
+    @Test
+    fun `bored, what is familiar is refused until it fades`() {
+        val w = world(money = 100, needs = NeedLevels(80, 70, 50, stimulation = 10))
+        repeat(3) { assertIs<IntentStatus.Succeeded>(w.run(Intent.Do("sketch")).status) }
+        val locked = w.activity("sketch").locked
+        assertTrue(locked!!.startsWith("you're bored, and it's all familiar to you"), locked)
+        assertTrue(failure(w.run(Intent.Do("sketch"))).startsWith("can't sketch: you're bored"))
+        // Upkeep and the oats never lock, and sketching fades back to fresh enough within two days.
+        assertNull(w.activity("eat").locked)
+        val since = w.tick
+        while (w.activity("sketch").locked?.startsWith("you're bored") == true) {
+            repeat(w.clock.ticks(60)) { w.step() }
+            assertTrue(w.tick - since < w.clock.ticks(48 * 60), "still locked 2 days later: ${w.activity("sketch").locked}")
+        }
+
+        // Broke, work stays open however bored he is: it's his way to the money for something new.
+        val broke = world(money = 0, needs = NeedLevels(80, 70, 50, stimulation = 10))
+        repeat(3) { broke.run(Intent.Do("sketch")) }
+        val sketch = broke.activity("sketch")
+        assertNull(sketch.locked)
+        assertTrue("you're bored of it, but you can't afford anything new yet" in sketch.gives!!, sketch.gives)
+
+        // Reading wears as one habit, but a book he's never opened is new, so it stays open.
+        val reader = world(needs = NeedLevels(80, 70, 50, stimulation = 10), items = content.start.items + mapOf("novel" to 1, "poetry_book" to 1))
+        repeat(3) { reader.run(Intent.Do("read", what = "novel")) }
+        val reads = reader.obs().activities!!.filter { it.id == "read" }
+        assertTrue(reads.none { it.what == "novel" }, "the novel is worn thin: $reads")
+        assertNull(reads.single { it.what == "poetry_book" }.locked)
+    }
+
+    @Test
+    fun `a new thing he likes feeds stimulation for a few days, fading`() {
+        // Without comfort rules it's felt wherever he is; with them, while he can see it.
+        val w = BedroomWorld.create(content.copy(comfort = null, start = content.start.copy(money = 500)), granted = content.gated)
+        val bought = w.tick
+        w.run(Intent.Buy("plant"))
+        repeat(w.clock.ticks(4 * 24 * 60).toInt()) { w.step() }
+        val fed = w.needs.changes.filter { it.reason == "new: plant" }
+        assertTrue(fed[1].delta in 1.9..2.0, "first whole hour ${fed[1].delta}")
+        assertTrue(fed.drop(1).zipWithNext().all { (a, b) -> b.delta <= a.delta }, "fades: ${fed.map { it.delta }}")
+        assertTrue(fed.last().tick - bought in w.clock.ticks(71 * 60)..w.clock.ticks(73 * 60), "stops after 3 days, logged on the hour")
     }
 
     @Test
@@ -339,22 +416,30 @@ class BedroomWorldTest {
         assertTrue("isn't in vocabulary.qualities" in broken(withItem("rug") { it.copy(qualities = mapOf("shiny" to 1.0)) }))
         assertTrue("isn't in vocabulary.affords" in broken(withItem("novel") { it.copy(affords = mapOf("edible?" to AffordanceParams())) }))
         assertEquals("item sketch, sellable: needs price from 1 to 10000", broken(withItem("sketch") { it.copy(affords = it.affords + ("sellable" to AffordanceParams())) }))
-        assertEquals("verb read: a generative verb needs produce; a generative verb can't progress; a generative verb can't enjoy; a generative verb can't write", broken(withActivity("read") { it.copy(kind = VerbKind.Generative) }))
+        assertEquals("verb read: a generative verb needs produce or build or gather or harvest; a generative verb can't progress; a generative verb can't enjoy", broken(withActivity("read") { it.copy(kind = VerbKind.Generative) }))
         assertEquals("verb listen: a consumptive verb needs an affordance in requires, args or a consume, or a hear", broken(withActivity("listen") { it.copy(requires = listOf("record_player"), effects = it.effects.drop(1)) }))
         // Kinds list what they allow: an op no kind lists for it is refused.
         assertEquals("verb think: an expressive verb can't produce", broken(withActivity("think") { it.copy(effects = it.effects + ProduceOp(mapOf("sketch" to 1))) }))
 
         val fond = content.withPersonality(content.personality.copy(affinities = content.personality.affinities + mapOf("cozy" to 2.0, "lively" to -1.0)))
         val w = BedroomWorld.create(fond.copy(start = fond.start.copy(money = 500)), granted = content.gated)
-        assertEquals("comfort +9: mood settles 9 higher; cozy, soft, warm", w.obs().shop!!.first { it.id == "rug" }.gives)
+        assertEquals("comfort +9 in view (near you, lit): mood settles 9 higher; new to you: stimulation +4.5/h while you're awake and can see it, fading over 3 days; cozy, soft, warm", w.obs().shop!!.first { it.id == "rug" }.gives)
         w.run(Intent.Buy("record_player"))
         w.run(Intent.Buy("jazz_record"))
         assertTrue(w.activity("play_record").gives!!.startsWith("you don't like it: mood -1;"), w.activity("play_record").gives)
     }
 
     @Test
+    fun `art skill adds dollars to a piece and strokes to its canvas, a whole level at a time, up to its most`() {
+        val sketch = shipped.item("sketch")!!
+        assertEquals(listOf(4, 5, 6, 9), listOf(0.0, 1.0, 2.0, 5.0).map { sketch.priceAt(it) })
+        assertEquals(listOf(6, 6, 8, 12, 16, 16), listOf(0.0, 0.9, 1.0, 3.5, 5.0, 9.0).map { sketch.canvasAt(it)!!.strokes })
+    }
+
+    @Test
     fun `a book is read a chapter a session, each new chapter raises its skill, and finishing it teaches what it hid`() {
-        val w = BedroomWorld.create(shipped.copy(start = shipped.start.copy(money = 500)))
+        // Not bored, so five chapters in a row stay open.
+        val w = BedroomWorld.create(shipped.copy(start = shipped.start.copy(money = 500, needs = shipped.start.needs.copy(stimulation = 90))))
         assertTrue(w.obs().activities!!.none { it.id == "paint" } && w.obs().shop!!.none { it.id == "easel" }, "painting is unknown until learned")
         assertTrue("isn't for sale" in failure(w.run(Intent.Buy("easel"))))
         assertEquals(10, w.obs().needs!!.frustration, "a failure frustrates him")
@@ -378,9 +463,9 @@ class BedroomWorldTest {
         assertTrue("rereads" in w.activity("read").gives!!)
         w.run(Intent.Do("read", what = "drawing_book"))
         assertEquals(2.0, w.obs().skills!!["art"], "rereading a finished book raises nothing")
-        // Painting is in his world now, and his art skill raises what a piece sells for: $30 at 2.0 is $39.
+        // Painting is in his world now, and his art skill raises what a piece sells for: $40 plus $12 a level at 2.0 is $64.
         assertEquals("needs an easel ($17)", w.activity("paint").locked)
-        assertEquals("for paint (3h: 1 painting, sells for $39; uses a canvas), which also needs a canvas ($15)", w.obs().shop!!.first { it.id == "easel" }.gives)
+        assertEquals("for paint (3h: 1 painting, sells for $33; uses a canvas), which also needs a canvas ($15)", w.obs().shop!!.first { it.id == "easel" }.gives)
         assertTrue(w.knownContent().verb("paint") != null && shipped.known(emptySet()).verb("paint") == null)
         assertEquals(null, w.snapshot().life!!.catalog.first { it.id == "easel" }.taughtBy)
     }
@@ -392,7 +477,8 @@ class BedroomWorldTest {
         assertIs<IntentStatus.Succeeded>(w.run(Intent.MoveTo(Target.Entity("bed"))).status)
         assertTrue(w.obs().nearby.first { it.id == "bed" }.distance < 0.1f)
         assertIs<IntentStatus.Succeeded>(w.run(Intent.Say("morning")).status)
-        assertTrue("wall or furniture" in failure(w.run(Intent.MoveTo(Target.Tile(0, 0)))))
+        assertTrue("off the land" in failure(w.run(Intent.MoveTo(Target.Tile(0, 0)))))
+        assertTrue("is a wall" in failure(w.run(Intent.MoveTo(Target.Tile(7, 5)))), "the bedroom's corner, on the lot")
     }
 
     @Test
@@ -402,5 +488,59 @@ class BedroomWorldTest {
         room.step()
         assertEquals("there are no activities in this room", failure(handle))
         assertNull(room.observe(room.agentId).clock)
+    }
+
+    @Test
+    fun `a letter waits at the hatch until he opens it, and is kept by a save`() {
+        val w = world()
+        assertEquals("can't read_mail: no letters are waiting at the mail hatch", failure(w.run(Intent.Do("read_mail"))))
+        w.post(Letter(7, "Sam", "I like your sketches."))
+        w.post(Letter(7, "Sam", "I like your sketches."))
+        w.step()
+        assertEquals("a letter from Sam", w.activity("read_mail").gives?.substringBefore(";"))
+        val back = BedroomWorld.restore(w.exportState(), w.content, strict = true).world
+        back.run(Intent.Do("read_mail"))
+        assertTrue("reads: \"I like your sketches.\"" in back.obs().outcome!!)
+        assertEquals(setOf(7L), back.lettersOpened)
+        back.post(Letter(7, "Sam", "I like your sketches."))
+        back.step()
+        assertEquals("no letters are waiting at the mail hatch", back.activity("read_mail").locked)
+    }
+
+    @Test
+    fun `he writes back to whoever wrote to him, once a day, and a save keeps it`() {
+        val w = world()
+        assertEquals("nobody has written to you yet, so there's nobody to write to", w.activity("write_letter").locked)
+        w.post(Letter(7, "Sam", "Do you like the rain?", sender = 3))
+        w.step()
+        w.run(Intent.Do("read_mail"))
+        assertEquals("Sam's letter is waiting for an answer", w.activity("write_letter").gives?.substringBefore(";"))
+        w.stage("write_letter", AuthoredResult.Composed(3, "Dear Sam, I love the rain on my window."))
+        w.run(Intent.Do("write_letter"))
+        assertTrue("wrote to Sam and put the letter through the mail hatch, answering their letter" in w.obs().outcome!!)
+        val sent = w.lettersSent.single()
+        assertEquals(listOf(3L, 7L), listOf(sent.to, sent.inReplyTo))
+        assertEquals("Dear Sam, I love the rain on my window.", sent.body)
+        val back = BedroomWorld.restore(w.exportState(), w.content, strict = true).world
+        assertEquals(sent, back.lettersSent.single())
+        assertEquals("you've written to Sam today", back.activity("write_letter").locked)
+    }
+
+    @Test
+    fun `he carries a lamp out to a free spot by the pond, which takes game minutes, and put says why it can't`() {
+        val w = world(items = content.start.items + ("amber_floor_lamp" to 1))
+        val put = w.obs().put!!
+        assertTrue("amber_floor_lamp" in put.things)
+        assertTrue(put.spots.any { it.place == "the pond" && "pond_shore" in it.floor }, put.toString())
+        val before = w.tick
+        assertIs<IntentStatus.Succeeded>(w.run(Intent.Put("amber_floor_lamp", "pond_shore")).status)
+        assertEquals("pond_shore", w.content.item("amber_floor_lamp")!!.slot)
+        assertEquals("pond", w.snapshot().entities.single { it.id.value == "amber_floor_lamp" }.place)
+        assertTrue(w.tick - before >= w.clock.ticks(5), "lifting and setting down take 5 game minutes besides the walks")
+        assertTrue(w.obs().put!!.spots.none { "pond_shore" in it.floor })
+
+        assertTrue("kept for the garden bench" in failure(w.run(Intent.Put("chair", "garden_bench"))))
+        assertTrue("part of the house or the land" in failure(w.run(Intent.Put("garden_bench", "trailside"))))
+        assertTrue("goes on the ground, and wall_1 is in a wall" in failure(w.run(Intent.Put("chair", "wall_1"))))
     }
 }

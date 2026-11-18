@@ -47,6 +47,12 @@ class Ledger(start: Int, private val clock: GameClock) {
 
     fun canAfford(amount: Int) = amount <= balance
 
+    /** Sets the balance a checkpoint saved; the history before it is in the run database, not here. */
+    internal fun restore(balance: Int) {
+        require(balance >= 0) { "money can't be negative" }
+        this.balance = balance
+    }
+
     private fun record(tick: Long, amount: Int, reason: String): Transaction {
         balance += amount
         val reading = clock.reading(tick)
@@ -139,6 +145,16 @@ class Needs(start: NeedLevels, private val clock: GameClock) {
             history += entry(tick, need, applied, reason)
         }
         return applied
+    }
+
+    /** Rate changes since the last [flush], for a checkpoint. */
+    internal fun pending(): Map<Pair<Need, String>, Double> = LinkedHashMap(pending)
+
+    /** Puts back a checkpoint's exact levels and its rate changes not yet flushed. */
+    internal fun restore(levels: Map<Need, Double>, unflushed: Map<Pair<Need, String>, Double>) {
+        levels.forEach { (need, v) -> values[need.ordinal] = v.coerceIn(0.0, MAX) }
+        pending.clear()
+        pending.putAll(unflushed)
     }
 
     /** Writes the summed rate changes since the last flush, one entry per need and reason. */

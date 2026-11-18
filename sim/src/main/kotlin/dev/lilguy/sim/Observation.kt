@@ -18,11 +18,33 @@ data class Observation(
     val tick: Long,
     val self: SelfState,
     val nearby: List<SeenEntity>,
-    /** Small local map, one string per row, centered on the character (the bedroom shows all of it). */
+    /** Small local map, one string per row, centered on the character (in the bedroom, the room he's in). */
     val localMap: List<String>,
     val lastIntent: Intent?,
     val lastResult: IntentStatus?,
     val recentEvents: List<String>,
+    /** Where he is: the place, and the nearest thing to him in it ("your bedroom, by the desk"); null in rooms without places. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val place: String? = null,
+    /**
+     * How the light is round him, in a few landmark phrases ("lit by the floor lamp (light 5): the bed and
+     * the chair"; "too dark to see the rest here"); null when everything near him is lit enough for anything.
+     */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val light: List<String>? = null,
+    /**
+     * What's round him in this place, nearest first, in a few words each ("bench: 2 tiles north-west, within reach"):
+     * [nearby] said briefly, for a model that calls tools; it sees no [nearby]. Null for every other model.
+     */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val here: List<String>? = null,
+    /**
+     * What he feels of warmth and sound where he is, only when it limits or explains something
+     * ("cold here (4°): your mood and energy fall", "you can't hear the jazz record from here",
+     * "the bed is cold (14°): you'd sleep less well tonight").
+     */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val senses: List<String>? = null,
+    /** The other places he could walk to, nearest first, with the walk from here; null in rooms without places. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val places: List<PlaceOption>? = null,
+    /** What of his he could put somewhere else, and the free spots by place ([Intent.Put]); null when there's nothing to move or nowhere to put it. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val put: PutOptions? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val clock: ClockReading? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val money: Int? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val needs: NeedLevels? = null,
@@ -47,6 +69,11 @@ data class Observation(
     @EncodeDefault(EncodeDefault.Mode.NEVER) val skills: Map<String, Double>? = null,
     /** The books he owns and how far he has read. */
     @EncodeDefault(EncodeDefault.Mode.NEVER) val books: List<BookView>? = null,
+    /**
+     * What he's been doing: what he did most in the last two days, and what he could do now but hasn't
+     * for two days or more, or ever. So a run of the same few things is something he can see.
+     */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val lately: List<String>? = null,
     /** Authored ops waiting for (or given) their results, for the agent layer; never shown to models. */
     @Transient val authored: List<AuthoredView> = emptyList(),
     /**
@@ -57,7 +84,17 @@ data class Observation(
     @Transient val outcome: String? = null,
     /** [recentEvents] without the outcomes: deliveries, requests, the day changing. For memory. */
     @Transient val news: List<String> = emptyList(),
+    /** The place each line of [news] happened in, by place name, for the lines that say ([WorldEvent.place]). For memory. */
+    @Transient val newsPlaces: Map<String, String> = emptyMap(),
+    /** The tile at [localMap]'s top-left, where the map is part of a bigger world; null when it's all of it. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val localMapAt: Cell? = null,
+    /** The weather as he sees it now ("raining, cold"; indoors only the sky through the window); null without weather. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val weather: String? = null,
 )
+
+/** A place he could go to: its id (for `move_to` a place), its name, what it is, and the game minutes to walk there. */
+@Serializable
+data class PlaceOption(val id: String, val name: String, val says: String, val walk: Int)
 
 /**
  * A request for a piece: [wants] is the adjective and noun ("a sleepy lighthouse"), [request] the
@@ -120,10 +157,16 @@ data class ActivityOption(
     @EncodeDefault(EncodeDefault.Mode.NEVER) val gives: String? = null,
     /** Why it can't be done now, such as "needs an easel ($120)". */
     @EncodeDefault(EncodeDefault.Mode.NEVER) val locked: String? = null,
+    /** The place it's done in, when that's somewhere else than where he is, and the game minutes it takes to walk there. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val where: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val walk: Int? = null,
 )
 
 @Serializable
 data class ShopOption(val id: String, val price: Int, val affordable: Boolean, val gives: String)
+
+/** An [invention] for screens. [wall]: it hangs in a wall rather than standing on the floor. */
+data class InventedView(val invention: Invention, val wall: Boolean)
 
 /**
  * One item the shop sells, for screens rather than models: everything priced, owned or not, with
@@ -150,8 +193,9 @@ data class CatalogEntry(
  */
 data class VerbView(val id: String, val phrase: String?, val locked: String?, val gives: String?, val taughtBy: String? = null)
 
-/** How often he has finished a verb this run, and when he first did. */
-data class VerbTally(val count: Int, val firstTick: Long)
+/** How often he has finished a verb this run, and when he first and last did. */
+@Serializable
+data class VerbTally(val count: Int, val firstTick: Long, val lastTick: Long = firstTick)
 
 @Serializable
 data class SelfState(
@@ -175,6 +219,8 @@ data class SeenEntity(
     val state: String? = null,
     /** On or beside your tile, so pick_up and use can reach it. Computed so models needn't. */
     val inReach: Boolean = false,
+    /** Too dark to see: he knows it's there (his house's things, what's in a place he explored), but not how it is. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val remembered: Boolean = false,
 )
 
 /** Compass directions; north is toward row 0. */
@@ -205,6 +251,8 @@ data class WorldSnapshot(
     val completed: Boolean = false,
     /** The bedroom's clock, money and needs; null in rooms without them. */
     val life: LifeSnapshot? = null,
+    /** The places on [map] and how they join; null in rooms without places. */
+    val layout: Layout? = null,
 )
 
 /** Clock, money and needs for HUDs, at full precision. */
@@ -239,10 +287,22 @@ data class LifeSnapshot(
     val art: List<PieceView> = emptyList(),
     /** Everything the shop sells, in file order, including what a book has yet to teach. */
     val catalog: List<CatalogEntry> = emptyList(),
+    /** What he has invented, oldest first: the things a renderer has no model or name for but these. */
+    val inventions: List<InventedView> = emptyList(),
     /** Every verb in the content, in file order. */
     val verbs: List<VerbView> = emptyList(),
     /** Verb id to how often he has finished it this run. */
     val done: Map<String, VerbTally> = emptyMap(),
+    /** The verbs he wrote, oldest first. */
+    val coded: List<CodedVerb> = emptyList(),
+    /** What his things do by themselves, item id to its `hourly` code. */
+    val behaviors: Map<String, ThingCode> = emptyMap(),
+    /** What his code stored on things: item id (or `self`) to key to the value as JSON. */
+    val stored: Map<String, Map<String, String>> = emptyMap(),
+    /** What his code changed about his things (where they stand, their names and colours), by item id. */
+    val custom: Map<String, BedroomState.Custom> = emptyMap(),
+    /** The weather now, for drawing it; null without weather. */
+    val weather: WeatherView? = null,
 )
 
 data class EntitySnapshot(
@@ -256,6 +316,18 @@ data class EntitySnapshot(
     val state: String? = null,
     /** Set while the entity is in someone's inventory; such entities aren't on the map. */
     val carriedBy: EntityId? = null,
+    /** The place it's in ([Layout.places]), or null in rooms without places. */
+    val place: String? = null,
+    /** The colour his code painted it, hex, or null for its own colours. */
+    val color: String? = null,
+    /** The variant of its design his code shows ([ThingLook]), null for its own look. */
+    val variant: String? = null,
+    /** Its parts his code set moving. */
+    val motions: List<Motion> = emptyList(),
+    /** The short label his code floats over it. */
+    val readout: String? = null,
+    /** The light it gives off, or null for none. */
+    val light: LightSpec? = null,
 )
 
 /** What a character's controller is doing, for HUDs and debug views. */
@@ -270,5 +342,9 @@ data class AgentSnapshot(
     val saying: String?,
 )
 
-/** [outcome]: it says how an intent ended (a finish, a purchase, a failure) rather than what happened around him. */
-data class WorldEvent(val tick: Long, val text: String, val outcome: Boolean = false)
+/**
+ * [outcome]: it says how an intent ended (a finish, a purchase, a failure) rather than what happened
+ * around him. [place]: the id of the place it happened in ([Layout.places]), when that isn't simply
+ * where he is: a machine of his acting in its own place. Memory files it there.
+ */
+data class WorldEvent(val tick: Long, val text: String, val outcome: Boolean = false, val place: String? = null)

@@ -21,7 +21,11 @@
               "study",
               "transformative",
               "expressive",
+              "social",
               "economic",
+              "perceptual",
+              "upkeep",
+              "scripted",
               "rest"
             ]
           },
@@ -178,7 +182,7 @@
                     "string",
                     "null"
                   ],
-                  "description": "Sells everything carried that answers to the name, at each item's `sellable` price, plus any commission reward. (at the finish)"
+                  "description": "Sells everything carried that answers to the name, at each item's `sellable` price (plus `price_per_level` a level of its skill when the piece was made), plus any commission reward. (at the finish)"
                 },
                 "basket": {
                   "anyOf": [
@@ -315,13 +319,14 @@
                         "enum": [
                           "art",
                           "music",
-                          "nature"
+                          "nature",
+                          "tinkering"
                         ]
                       },
                       "additionalProperties": {
                         "type": "number"
                       },
-                      "description": "Raises skills (vocabulary.yaml). The verb's mood and stimulation gains grow with the skills it practises (rules.yaml `skills`). (at the finish)"
+                      "description": "Raises skills (vocabulary.yaml). The verb's mood gains grow with the skills it practises (rules.yaml `skills`). (at the finish)"
                     },
                     {
                       "type": "null"
@@ -364,7 +369,7 @@
                         "into"
                       ],
                       "additionalProperties": false,
-                      "description": "Authored: a model writes it (handler `thought`, `reading` for what stuck from a chapter, or `shopping` for a trip's picks) into the named destinations, kept only if the verb succeeds. `shows_as: plan` makes a short-term result his plan in later prompts. Without a handler the verb isn't offered, unless the write is `optional: true`. (before or during; kept at the finish)"
+                      "description": "Authored: a model writes it (handler `thought`, `reading` for what stuck from a chapter, `shopping` for a trip's picks, `invention` for the design a `build` builds, or `letter` for the letter a `post_letter` sends) into the named destinations, kept only if the verb succeeds. `shows_as: plan` makes a short-term result his plan in later prompts. Without a handler the verb isn't offered, unless the write is `optional: true`. (before or during; kept at the finish)"
                     },
                     {
                       "type": "null"
@@ -377,6 +382,182 @@
                     "null"
                   ],
                   "description": "Authored: the drawing model draws a drawable item the verb produced (listed after its produce); the piece gets its title, tags and the noun it drew a shape for, which a commission is matched on. Without an artist the piece is made undrawn. (during; kept at the finish)"
+                },
+                "build": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": false,
+                      "description": "Builds the thing he designed in the verb's `write: { with: invention, timing: before }`: the design (one use, some qualities, a look) is checked against rules.yaml `invent`, each shape names its material, and the materials its look takes (by volume, plus `finish` a point of quality strength, plus `workings` for code or moving parts) come from his stock; food and books are paid in dollars. The new item joins his world for the rest of the run, at the room's first free spare spot or the nearest free spot of its kind anywhere. A design that's refused, or that he hasn't the materials for, fails the verb with the reasons. (at the finish)"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "survey": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Looks round the place the item bound to `on` (a lookout) stands in: every patch there (world.yaml `finds`) he hadn't found becomes known to him, so collecting from it is offered and his map says what grows there. Exploring again finds nothing new. (at the finish)"
+                },
+                "gather": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Takes what the patch bound to `on` yields (world.yaml `finds`), one at a time; the patch is bare, and the verb locked with when it grows back, for its `regrow_hours`. (at the finish)"
+                },
+                "place_room": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "room": {
+                          "type": "string"
+                        },
+                        "site": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "room",
+                        "site"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Builds the room whose plan is bound to `room` (world.yaml `rooms`) on the site bound to `site` (world.yaml `sites`): its rows go onto the map, a doorway is cut into the room it joins, and what comes with it is his. If the room stands elsewhere already, it moves there. Locked while the site is taken, the room it joins isn't built, or another room is built onto this one. (at the finish)"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "open_mail": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": false,
+                      "description": "Opens the oldest letter waiting at the mail hatch (one someone sent through the sim host's web page): what it says goes into the finish event, so it reaches his memory. Locked while none is waiting. (at the finish)"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "post_letter": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": false,
+                      "description": "Puts the letter he wrote in the verb's `write: { with: letter, timing: before }` through the mail hatch, to someone whose letter he has opened; the sim host shows it to them. Locked while there's nobody he may write to (rules.yaml `letters`: so many a day to each, so many in a row before they write back). With no letter written, the verb fails. (at the finish)"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "script": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": false,
+                      "description": "Runs the verb's own JavaScript (`code`, a verb he wrote): `canDo(world)`, if it has one, is its lock (a string back is why not; it may only look), and `finish(world)` runs as it finishes, against the world API (sim/.../Scripts.kt). Nothing it does is capped. Code that breaks fails the verb with the error. Only verbs he writes have it; content doesn't. (lock and finish)"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "define": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": false,
+                      "description": "Puts in the code he wrote in the verb's `write: { with: verb_code, timing: before }`: new verbs of his own (kind `scripted`) and what his things do by themselves (`hourly`, `every`, `onArrive`, `onLeave`, `onFinish`, `onSleep`, `onWake`, `onTimer`). Each part is checked (it parses, it has its function, names fit) and goes in or is reported; naming one of his verbs rewrites it. (at the finish)"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "read_log": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Reads the log of the recorder bound to `what` (a thing with the `recorder` affordance, which logs the weather at its spot each hour, weather.yaml), standing at it: the last day of it summed up (rain spells, where the pressure is going and since when, the coldest and warmest, the brightest hour). Locked until it has logged something. (at the finish)"
+                },
+                "switch": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "target": {
+                          "type": "string"
+                        },
+                        "to": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "target",
+                        "to"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Switches the lamp bound to the target (a thing with the `lamp` affordance) `on` or `off`, where it stays until he switches it again, or back to its `timer` (its own `light.timer`, else rules.yaml `light.timer`). Locked when the lamp is already set that way. (at the finish)"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "tend": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Fills the machine bound to `on` (an item with `machine`, or anything of his with code) with what he has that its recipes take, up to what it holds, and takes out everything it has made (rules.yaml `machines`). Locked when there's nothing to put in or take out. (at the finish)"
+                },
+                "repair": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Mends the machine bound to `on`: takes `machines.repair.restores` wear off it, plus `per_level` for each level of the repair skill, and a jammed one (wear 100) works again. Locked below `worn_at` wear. (at the finish)"
+                },
+                "water": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Waters the planter bound to `on` (a thing with `grows`): its soil is full (rules.yaml `growing.soil`) and dries `dries_per_hour`. Rain and spray on its tile water it too. Locked while its soil is still wet. (at the finish)"
+                },
+                "harvest": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Picks what the planter bound to `on` has grown (items.yaml `grows`: `count` of `yields`), once it has had `hours` sunny hours on damp soil, and it starts again. An hour counts when its soil is damp and the sun on it (daylight and windows, not lamps) is `growing.sun` or more. Locked until then, saying how far along it is and why it isn't growing. (at the finish)"
+                },
+                "watch": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Watches the visitors at the thing bound to `on` (its `lure` draws them, world.yaml `visitors`): they leave one of their `yields`, and stay away `rest_hours`. Locked while none are there, saying when they come. (at the finish)"
+                },
+                "dismantle": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Takes apart the thing bound to `on` (an argument `invention`: a thing he invented that stands somewhere): it leaves his world with its book and his verbs for it, its code stops, what its machine held comes to him, its spot is free, and he gets back rules.yaml `invent.salvage` of its materials, each rounded down. Bought things and the house can't be taken apart. (at the finish)"
                 }
               },
               "minProperties": 1,
@@ -519,6 +700,38 @@
               "items",
               "verb"
             ]
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "type": "string"
+                  },
+                  "says": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "source",
+                  "says"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "needs": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
           }
         },
         "required": [

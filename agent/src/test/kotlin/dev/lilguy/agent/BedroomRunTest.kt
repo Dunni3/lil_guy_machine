@@ -24,9 +24,12 @@ class BedroomRunTest {
         val lowestFullnessBy: Map<Int, Double>,
     )
 
+    /** Art alone: he starts with $20, as before he started with enough for a kiln (2026-11-15-art-gets-him-by-*). */
+    private val artOnly = dev.lilguy.sim.BedroomContent.default().let { it.copy(start = it.start.copy(money = 20)) }
+
     private fun live(days: Int): Lived {
         val decisions = mutableListOf<AgentRuntime.DecisionRecord>()
-        val (world, runtime) = bedroomScenario(BedroomPolicy()) { decisions += it }
+        val (world, runtime) = bedroomScenario(BedroomPolicy(), content = artOnly) { decisions += it }
         val lowest = Need.entries.associateWith { Double.MAX_VALUE }.toMutableMap()
         val ticksOn = mutableMapOf<Int, MutableMap<String, Long>>()
         val fullnessBy = mutableMapOf<Int, Double>()
@@ -67,6 +70,14 @@ class BedroomRunTest {
      * The knowledge-and-skill retune (sketch energy 6 to 3, fullness asleep 5 to 2 an hour) left
      * him about 11 spare hours and 4 to 5 sketching; the bounds hold that until a Jev run says
      * whether the economy needs tightening again.
+     *
+     * Art skill paying in dollars ($3 a level on a sketch) means the sketching that feeds him
+     * shrinks as he practises: about 2.6 hours a day over days 2 to 6 (was 4 to 5), with the
+     * spare hours about 13. That's the point (skill buys him time and money for new things), so
+     * the bound records it rather than retuning.
+     *
+     * Art that just gets him by ($4 plus $1 a level, 2026-11-15-art-gets-him-by-*) puts the sketching
+     * back up; the run starts with the old $20, since this is the art-only economy without a kiln.
      */
     @Test
     fun `surviving takes part of the day and leaves 8 to 14 spare waking hours`() {
@@ -76,7 +87,7 @@ class BedroomRunTest {
         val spare = (2..6).map { lived.hours[it].orEmpty()["wait"] ?: 0.0 }
         val sketching = (2..6).map { lived.hours[it].orEmpty()["sketch"] ?: 0.0 }
         assertTrue(spare.average() in 8.0..14.0, "spare waking hours a day: $spare")
-        assertTrue(sketching.average() >= 4.0, "sketching hours a day: $sketching")
+        assertTrue(sketching.average() >= 2.0, "sketching hours a day: $sketching")
         val mealPrice = w.content.item("meal")!!.price!!
         val richest = w.ledger.transactions.maxOf { it.balance }
         assertTrue(richest < 2 * mealPrice, "saved up $richest")
@@ -89,13 +100,17 @@ class BedroomRunTest {
         assertEquals(run(), run())
     }
 
-    /** The shipped file gates nothing; the small world and its grants are tested on what used to be tier 1, and all decor. */
-    private val smallWorld = dev.lilguy.sim.BedroomContent.default().let { c ->
+    /** The shipped file gates nothing; the small world and its grants are tested on what used to be tier 1, all decor, and the food he invented. */
+    private val smallWorld = artOnly.let { c ->
         val tier1 = setOf(
+        "workbench", "invent",
             "canvas", "easel", "record_player", "jazz_record", "ambient_record", "folk_record", "novel", "poetry_book",
             "field_guide", "drawing_book", "music_book", "guitar", "painting", "paint", "read",
-            "listen", "play_record", "play_guitar",
-        ) + c.items.filter { it.group == "decor" }.map { it.id }
+            "listen", "play_record", "play_guitar", "build_room", "microscope", "study_sample", "weather_station", "check_station",
+            "compost_bin", "raised_bed", "spare_parts", "tend", "repair", "kiln", "clay", "sell_wares",
+            "watch", "water_plant", "harvest", "heater", "fire_pit", "blanket", "bird_feeder", "moth_lamp", "watering_can", "planter",
+            "wood", "metal", "copper_wire", "glass",
+        ) + c.items.filter { it.group == "decor" || it.group == "room" || (it.group == "food" && it.id !in setOf("meal", "oats")) }.map { it.id }
         c.copy(
             items = c.items.map { if (it.id in tier1) it.copy(tier = 1) else it },
             verbs = c.verbs.map { if (it.id in tier1) it.copy(tier = 1) else it },
@@ -112,16 +127,19 @@ class BedroomRunTest {
         fun enumOf(variant: String, field: String) =
             variants.getValue(variant)["properties"]!!.jsonObject[field]!!.jsonObject["enum"]!!.jsonArray.map { it.jsonPrimitive.content }
         // Tier 0: a shop of meals he can't afford yet ($20 for $24), nothing to pick up, and use is for other rooms.
-        assertEquals(setOf("do", "move_to", "say", "wait"), variants.keys)
+        assertEquals(setOf("do", "move_to", "put", "say", "wait"), variants.keys)
         // The schema takes every verb the sim would; choices only offer what's shown. Sleep isn't: at 08:00 it's only a nap, when exhausted.
-        assertEquals(listOf("eat", "sketch", "shop", "think"), enumOf("do", "activity"))
+        assertEquals(listOf("eat", "sketch", "devise", "shop", "think", "explore"), enumOf("do", "activity"))
         assertEquals(listOf("meal"), obs.shop.orEmpty().map { it.id })
 
         val choices = BedroomPrompt.choices(obs, emptyList(), world.clock.ticksPerMinute, world.content)
         assertEquals(
-            listOf("do:eat", "do:sketch", "do:shop", "do:think", "wait:${BedroomPrompt.WAIT_TICKS}"),
-            choices.options.map { it.label },
+            // Then going to each place outdoors, nearest first.
+            listOf("do:eat:meal", "do:sketch", "do:devise", "do:shop", "do:think") + listOf("garden_bench", "forest_trail", "clearing_log", "pond_edge").map { "do:explore:$it" } + obs.places!!.map { "move_to:${it.id}" } + "wait:${BedroomPrompt.WAIT_TICKS}",
+            choices.options.map { it.label }.filter { !it.startsWith("put:") },
         )
+        // His furniture can go to the free spots, outdoors too.
+        assertTrue("put:chair:pond_shore" in choices.options.map { it.label })
         // Every option's reply passes the same schema a writing model is held to.
         val decoder = ActionSchema("reply", AgentReply.serializer(), schema)
         choices.options.forEach { decoder.decode(it.reply.toString()) }
@@ -133,9 +151,9 @@ class BedroomRunTest {
         val (world, _) = bedroomScenario(BedroomPolicy(), content = smallWorld)
         val system = BedroomPrompt.system(world.content, world.clock.ticksPerMinute)
         assertTrue(system.startsWith(world.content.personality.core.you), system.take(80))
-        assertTrue("- What you can do: eat, eat plain oats from the cupboard, sketch, sell your art, go through the shop's catalog, hang your art on the wall, sleep and stop and think." in system)
+        assertTrue("- What you can do: eat, eat plain oats from the cupboard, sketch, write code for a new thing to do, or for what one of your things does, sell your art, go through the shop's catalog, open a letter waiting at the mail hatch, write a letter to someone who has written to you, hang your art on the wall, sleep, stop and think, explore a place outdoors, collect a sample and sell samples." in system)
         assertTrue("You live in this bedroom. You need money for food." in system)
-        assertTrue("a sketch sells for $3" in system)
+        assertTrue("a sketch sells for $4" in system)
         listOf("easel", "canvas", "record", "painting", "decor", "`uses`", "music", "journal", "restrictive").forEach { w -> assertTrue(w !in system, "mentions '$w': " + system.lines().filter { w in it }) }
         assertTrue(Persona.SELF_HEADER !in system, "no self-model unless something revises it")
         val withSelf = BedroomPrompt.system(world.content, world.clock.ticksPerMinute, self = "- Who I am: someone who sketches.")
@@ -143,7 +161,7 @@ class BedroomRunTest {
 
         // Granting brings the gated content into the prompt.
         val grown = BedroomPrompt.system(smallWorld.unlocked(setOf("paint", "easel", "canvas", "painting")), 5)
-        assertTrue("sketch and paint make art" in grown && "a painting sells for $30" in grown, grown)
+        assertTrue("sketch and paint make art" in grown && "a painting sells for $25" in grown, grown)
         assertTrue("for food and for anything you want to own" in grown)
     }
 

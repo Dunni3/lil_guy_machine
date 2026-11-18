@@ -5,28 +5,48 @@ room:
   # One string per row. '#' wall, '.' floor, '@' where he starts; other letters are slots
   # (below). A slot is empty until he owns the item that goes there.
   rows:
-    - "##l##oF#w###"
-    - "#bvf...t.sn#"
-    - "m.........p#"
-    - "iq...r.....a"
-    - "k..........H"
-    - "#e.........u"
-    - "#y@....cd.xg"
-    - "############"
+    - "#l7#5F8g9w6o##"
+    - "ubvfK1OI2Nstn#"
+    - "m.h......M.Cp#"
+    - "H.....r.....J#"
+    - "iGP........q.#"
+    - "ke...........#"
+    - "ay@3BWA.cdDx4#"
+    - "##############"
   # H is the mail hatch in the wall, where the shop delivers and art is sold.
-  # The rest are decor: on the floor along the walls, and in the walls.
+  # The rest are decor: on the floor along the walls, and in the walls. Wall slots are in the back
+  # (top) and left walls, the two the cutaway leaves standing; the right and front walls are cut low.
   slots:
     { b: bed, d: desk, c: chair, e: easel, s: shelf, p: plant, o: poster, r: rug, H: hatch, F: rail,
       v: lava_lamp, f: sunflowers, t: mushroom_lamp, n: beanbag, q: fishbowl, y: teddy_bear, x: cactus,
-      l: string_lights, w: window_succulents, m: moon_mobile, i: round_mirror, k: cork_board, a: rainbow, u: cloud_light, g: bunting }
+      l: string_lights, w: window_succulents, m: moon_mobile, i: round_mirror, k: cork_board, a: rainbow, u: cloud_light, g: bunting,
+      W: workbench, M: microscope,
+      # Warmth and growing things (rules.yaml `sleep`, `growing`): a heater by the bed, a planter in the far corner from the window.
+      h: heater, P: planter,
+      # Things he invented in live runs, sold in the shop now (items.yaml).
+      K: sunroom_lamp, O: amber_floor_lamp, I: moss_lamp, N: acorn_lamp, C: pinecone_ornament, J: fern_pot,
+      G: floor_pillow, B: tiny_wooden_stool, A: moss_terrarium, D: moss_bowl,
+      "7": wooden_shelf, "8": amber_wall_lamp, "9": woven_wall_tapestry,
+      "1": spot_1, "2": spot_2, "3": spot_3, "4": spot_4, "5": wall_1, "6": wall_2 }
   # Slots in the wall rather than on the floor.
-  wall_slots: [poster, hatch, rail, string_lights, window_succulents, moon_mobile, round_mirror, cork_board, rainbow, cloud_light, bunting]
+  wall_slots: [poster, hatch, rail, string_lights, window_succulents, moon_mobile, round_mirror, cork_board, rainbow, cloud_light, bunting,
+               wooden_shelf, amber_wall_lamp, woven_wall_tapestry, wall_1, wall_2]
+  # Spare spots nothing in items.yaml stands in: a thing he invents to look at takes the first
+  # free one, on the floor or in a wall, and when they're full he can't build another.
+  spots: { floor: [spot_1, spot_2, spot_3, spot_4], wall: [wall_1, wall_2] }
+  # Windows: wall tiles [x, y] from the top-left where daylight comes in (rules.yaml `light`). The back
+  # wall's, over the windowsill succulents.
+  windows: [[9, 0]]
   # The side he works a slot from when it's free: at the desk he sits on the chair, and he paints
   # from beside the easel so he isn't standing between the camera and the canvas.
   approach: { desk: W, easel: E }
 
 start:
-  money: 20
+  # Enough for a kiln and its first clay, with some over for food (items.yaml `kiln`).
+  money: 100
   time: "08:00"
   needs: { energy: 80, fullness: 70, mood: 60, stimulation: 60 }
-  items: { mail_hatch: 1, picture_rail: 1, bed: 1, desk: 1, chair: 1, sketchbook: 1, meal: 2, oats: 1 }
+  items: { mail_hatch: 1, picture_rail: 1, bed: 1, desk: 1, chair: 1, sketchbook: 1, meal: 2, oats: 1,
+           garden_bench: 1, forest_trail: 1, clearing_log: 1, pond_edge: 1,
+           glowcap_patch: 1, moss_patch: 1, fern_patch: 1, beetle_log: 1, pond_patch: 1, seedpod_bush: 1,
+           site_east: 1, site_far_east: 1 }

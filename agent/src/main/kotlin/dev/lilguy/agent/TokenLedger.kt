@@ -10,10 +10,17 @@ import dev.lilguy.decision.EndpointConfig
 import dev.lilguy.decision.ScoreRequest
 import dev.lilguy.decision.ScoreResult
 import dev.lilguy.decision.Scorer
+import dev.lilguy.decision.SearchConfig
 import dev.lilguy.decision.Usage
+import dev.lilguy.decision.WebResults
+import dev.lilguy.decision.WebSearch
 import dev.lilguy.sim.GameClock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlin.time.TimeSource
 
 /** What a model call was for. */
 @Serializable
@@ -38,15 +45,33 @@ enum class TokenPurpose {
     @SerialName("significance") Significance,
     /** A shopping trip's picks. */
     @SerialName("shop") Shop,
+    /** The design of something he invents. */
+    @SerialName("invent") Invent,
+    /** A letter he writes. */
+    @SerialName("letter") Letter,
+    /** A search of the real web, and what its results say. */
+    @SerialName("search") Search,
+    /** Code he writes: his own verbs, and what his things do. */
+    @SerialName("code") Code,
+    /** Stepping back over a stretch of his life: what it adds up to. */
+    @SerialName("reflect") Reflect,
 }
 
-/** Dollars per million tokens, from an endpoint's `price_in` and `price_out`. */
-data class TokenPrice(val inPerMillion: Double, val outPerMillion: Double) {
-    fun cost(usage: Usage) = (usage.promptTokens * inPerMillion + usage.completionTokens * outPerMillion) / 1_000_000
+/**
+ * Dollars per million tokens, from an endpoint's `price_in`, `price_out` and `price_cached` (input read from the prompt cache; null: [inPerMillion]),
+ * plus [perCall] for APIs that bill by the request.
+ */
+data class TokenPrice(val inPerMillion: Double, val outPerMillion: Double, val cachedPerMillion: Double? = null, val perCall: Double = 0.0) {
+    fun cost(usage: Usage) =
+        ((usage.promptTokens - usage.cachedTokens) * inPerMillion + usage.cachedTokens * (cachedPerMillion ?: inPerMillion) + usage.completionTokens * outPerMillion) / 1_000_000 + perCall
 
     companion object {
         fun of(config: EndpointConfig): TokenPrice? =
-            if (config.priceIn == null && config.priceOut == null) null else TokenPrice(config.priceIn ?: 0.0, config.priceOut ?: 0.0)
+            if (config.priceIn == null && config.priceOut == null) null else TokenPrice(config.priceIn ?: 0.0, config.priceOut ?: 0.0, config.priceCached)
+
+        fun of(config: SearchConfig): TokenPrice? =
+            if (config.priceIn == null && config.priceOut == null && config.pricePerSearch == null) null
+            else TokenPrice(config.priceIn ?: 0.0, config.priceOut ?: 0.0, perCall = config.pricePerSearch ?: 0.0)
     }
 }
 
@@ -67,6 +92,8 @@ data class TokenCall(
     @SerialName("latency_ms") val latencyMs: Long,
     @SerialName("cost_usd") val costUsd: Double? = null,
     val failed: Boolean = false,
+    /** The part of [promptTokens] read from the server's prompt cache. */
+    @SerialName("cached_tokens") val cachedTokens: Int = 0,
 )
 
 /** Sums of [TokenCall]s: a day, a purpose, a whole run. */
@@ -109,6 +136,12 @@ class TokenLedger {
 
     @Volatile private var tickNow: () -> Long = { 0L }
     @Volatile private var clock: GameClock? = null
+    @Volatile private var sink: LifeRecorder? = null
+
+    /** Also writes every call from here on, with its prompt and reply, to [recorder]'s `model_calls`. */
+    fun record(recorder: LifeRecorder?) {
+        sink = recorder
+    }
 
     /** Stamps calls from here on with [tick] and [clock]'s day and time. */
     fun attach(tick: () -> Long, clock: GameClock? = null) {
@@ -128,13 +161,51 @@ class TokenLedger {
 
         override suspend fun score(request: ScoreRequest): ScoreResult {
             val tick = tickNow()
+            val body = { scoreJson(request) }
             try {
-                return scorer.score(request).also { record(tick, purpose, id, price, it.usage, 1, it.latency.inWholeMilliseconds, failed = false) }
+                return scorer.score(request).also { r ->
+                    record(tick, purpose, id, price, r.usage, 1, r.latency.inWholeMilliseconds, failed = false)
+                    sink?.modelCall(tick, purpose, id, price, r.usage, 1, r.latency.inWholeMilliseconds, false, request = body(), response = answersJson(r))
+                }
             } catch (e: DecisionFailed) {
                 record(tick, purpose, id, price, e.usage, 1, 0, failed = true)
+                sink?.modelCall(tick, purpose, id, price, e.usage, 1, 0, true, request = body(), response = LifeRecorder.responseJson(null, e.attempts, e.message))
                 throw e
             }
         }
+    }
+
+    /** [search], reporting every search here as [TokenPurpose.Search], with the query and what came back. */
+    fun meter(search: WebSearch, price: TokenPrice? = null): WebSearch = object : WebSearch {
+        override val id: String get() = search.id
+
+        override suspend fun search(query: String): WebResults {
+            val tick = tickNow()
+            val started = TimeSource.Monotonic.markNow()
+            val request = buildJsonObject { put("query", JsonPrimitive(query)) }
+            try {
+                return search.search(query).also { r ->
+                    record(tick, TokenPurpose.Search, id, price, r.usage, 1, r.latency.inWholeMilliseconds, failed = false)
+                    sink?.modelCall(tick, TokenPurpose.Search, id, price, r.usage, 1, r.latency.inWholeMilliseconds, false, request = request, response = resultsJson(r))
+                }
+            } catch (e: DecisionFailed) {
+                record(tick, TokenPurpose.Search, id, price, e.usage, 1, started.elapsedNow().inWholeMilliseconds, failed = true)
+                sink?.modelCall(tick, TokenPurpose.Search, id, price, e.usage, 1, started.elapsedNow().inWholeMilliseconds, true, request = request, response = LifeRecorder.responseJson(null, e.attempts, e.message))
+                throw e
+            }
+        }
+    }
+
+    private fun resultsJson(r: WebResults) = buildJsonObject {
+        r.summary?.let { put("summary", JsonPrimitive(it)) }
+        put("queries", JsonArray(r.queries.map { JsonPrimitive(it) }))
+        put("sources", JsonArray(r.sources.map { s ->
+            buildJsonObject {
+                put("title", JsonPrimitive(s.title))
+                put("url", JsonPrimitive(s.url))
+                s.snippet?.let { put("snippet", JsonPrimitive(it)) }
+            }
+        }))
     }
 
     /** Writes every call so far to [file] as JSONL, replacing it. */
@@ -163,14 +234,45 @@ class TokenLedger {
 
         override suspend fun <A> decide(request: DecisionRequest, schema: ActionSchema<A>): Decision<A> {
             val tick = tickNow()
+            val started = TimeSource.Monotonic.markNow()
             try {
                 val d = inner.decide(request, schema)
-                record(tick, purpose, id, price, d.usage, d.attempts.size, d.latency.inWholeMilliseconds, failed = false)
+                record(tick, purpose, id, price, d.usage, d.attempts.size + d.steps, d.latency.inWholeMilliseconds, failed = false)
+                sink?.modelCall(
+                    tick, purpose, id, price, d.usage, d.attempts.size + d.steps, d.latency.inWholeMilliseconds, false,
+                    system = request.system, request = LifeRecorder.requestJson(request, schema.jsonSchema), response = LifeRecorder.responseJson(d.raw, d.attempts),
+                )
                 return d
             } catch (e: DecisionFailed) {
-                record(tick, purpose, id, price, e.usage, e.attempts.size, 0, failed = true)
+                record(tick, purpose, id, price, e.usage, e.attempts.size + e.steps, 0, failed = true)
+                sink?.modelCall(
+                    tick, purpose, id, price, e.usage, e.attempts.size + e.steps, started.elapsedNow().inWholeMilliseconds, true,
+                    system = request.system, request = LifeRecorder.requestJson(request, schema.jsonSchema), response = LifeRecorder.responseJson(null, e.attempts, e.message),
+                )
                 throw e
             }
+        }
+    }
+
+    private fun scoreJson(r: ScoreRequest) = buildJsonObject {
+        put("state", r.state)
+        put("questions", buildJsonObject {
+            r.questions.forEach { (k, q) ->
+                put(k, buildJsonObject {
+                    put("instructions", q.instructions)
+                    put("criteria", JsonArray(q.criteria.map { JsonPrimitive(it) }))
+                })
+            }
+        })
+    }
+
+    private fun answersJson(r: ScoreResult) = buildJsonObject {
+        r.answers.forEach { (k, a) ->
+            put(k, buildJsonObject {
+                put("score", JsonPrimitive(a.score))
+                put("levels", JsonPrimitive(a.levels))
+                put("probabilities", JsonArray(a.probabilities.map { JsonPrimitive(it) }))
+            })
         }
     }
 
@@ -179,7 +281,7 @@ class TokenLedger {
         log += TokenCall(
             tick, reading?.day, reading?.time, purpose, model,
             calls = attempts.coerceAtLeast(1), usage.promptTokens, usage.completionTokens, latencyMs,
-            costUsd = price?.cost(usage), failed = failed,
+            costUsd = price?.cost(usage), failed = failed, cachedTokens = usage.cachedTokens,
         )
     }
 }

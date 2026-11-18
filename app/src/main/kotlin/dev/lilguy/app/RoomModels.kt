@@ -7,22 +7,17 @@ import com.badlogic.gdx.graphics.VertexAttribute
 import com.badlogic.gdx.math.MathUtils
 import com.badlogic.gdx.math.Vector3
 import com.badlogic.gdx.utils.Disposable
-import dev.lilguy.app.DecorModels.decor
+import dev.lilguy.parts.Part
+import dev.lilguy.parts.RoomParts
 import dev.lilguy.sim.Terrain
 import dev.lilguy.sim.TileMap
 import kotlin.math.hypot
 import kotlin.math.max
 
 /**
- * The 3D room in the hand-drawn look: furniture as part lists ([PartList], drawn by
- * [CrayonRenderer]), and the floor and walls as flat meshes carrying painted textures ([RoomPaint]),
- * drawn with the cheap paper shader. No asset files.
- *
- * Conventions every model here follows, so another part list (or a model file) can replace one as
- * a drop-in: 1 unit = 1 meter = 1 tile; pivot at the bottom centre of the item's tile; the front faces
- * +Z (toward the camera). Wall items ([wallItem]) instead have their back at z = 0 and are placed
- * against whichever wall face looks into the room. Models are keyed by item id ([item]), with a
- * plain box for ids nothing here knows. Positions come from the world snapshot, never from here.
+ * The 3D room in the hand-drawn look: furniture from its part lists ([RoomParts], drawn by
+ * [CrayonRenderer]), each built into meshes once, and the floor and walls as flat meshes carrying
+ * painted textures ([RoomPaint]), drawn with the cheap paper shader. No asset files.
  */
 class RoomModels : Disposable {
     val paint = RoomPaint()
@@ -54,35 +49,17 @@ class RoomModels : Disposable {
     }
 
     /** The model for item [id] (of [kind], for the fallback), built once. */
-    fun item(id: String, kind: String): CrayonModel = items.getOrPut("$kind/$id") { model { buildItem(id, kind) } }
+    fun item(id: String, kind: String): CrayonModel = cached("$kind/$id") { RoomParts.item(id, kind) }
 
-    /** Items that hang in a wall rather than stand on the floor: their back is at z = 0. */
-    fun wallItem(id: String, kind: String): Boolean = id in WALL_ITEMS || id in DecorModels.ON_WALL || kind == "door"
+    fun wallItem(id: String, kind: String): Boolean = RoomParts.wallItem(id, kind)
 
-    /** Items that lie flat and cast no shadow of their own. */
-    fun flat(id: String, kind: String): Boolean = id == "rug" || kind == "exit"
+    fun flat(id: String, kind: String): Boolean = RoomParts.flat(id, kind)
 
-    /**
-     * An empty picture frame, pivot at its bottom centre, back at z = 0, [FRAME] square; the view
-     * puts a piece's texture on its mat ([FRAME_ART] square, [FRAME_ART_Z] out from the wall).
-     */
-    fun frame(): CrayonModel = items.getOrPut("frame") {
-        model {
-            box(WOOD_DARK, 0f, 0f, 0.015f, FRAME, FRAME, 0.03f, round = 0.012f)
-            box(PAPER, 0f, 0.03f, 0.03f, FRAME - 0.06f, FRAME - 0.06f, 0.01f, round = 0.004f, outline = 0f)
-            sphere(KNOB, 0f, FRAME + 0.065f, 0.01f, 0.035f, 0.035f, 0.025f)
-        }
-    }
+    fun frame(): CrayonModel = cached("frame") { RoomParts.frame() }
 
-    /** A blank canvas, pivot at the easel's, standing on its ledge; its face is [CANVAS_Z] out and [CANVAS_Y] up at its centre. */
-    fun canvas(): CrayonModel = items.getOrPut("canvas") {
-        model { box(CANVAS, 0f, 0.47f, 0.12f, 0.5f, 0.56f, 0.03f, round = 0.008f) }
-    }
+    fun canvas(): CrayonModel = cached("canvas") { RoomParts.canvas() }
 
-    /** One clock hand, pivot at its base, pointing up (+Y) and facing +Z. */
-    fun hand(length: Float): CrayonModel = items.getOrPut("hand/$length") {
-        model { box(HAND, 0f, -0.02f, 0f, 0.025f, length, 0.01f, round = 0.005f, outline = 0f) }
-    }
+    fun hand(length: Float): CrayonModel = cached("hand/$length") { RoomParts.hand(length) }
 
     /** A square of a picture, [size] wide, facing +Z, or lying face up when [flat], for the paper shader. */
     fun quad(size: Float, flat: Boolean): Mesh {
@@ -93,106 +70,48 @@ class RoomModels : Disposable {
         }.mesh()
     }
 
-    /**
-     * A wall shelf of what he owns to read and play, back at z = 0 like [wallItem]s: [books] as
-     * spines on the top board and [records] as sleeves leaning on the bottom one, each item id its
-     * own colour. Built once per set of contents.
-     */
-    fun shelf(books: List<String>, records: List<String>): CrayonModel = items.getOrPut("shelf/${books.joinToString(",")}/${records.joinToString(",")}") {
-        model {
-            for (y in listOf(SHELF_LOW, SHELF_HIGH)) {
-                box(WOOD, 0f, y, SHELF_DEPTH / 2, SHELF_WIDTH, 0.035f, SHELF_DEPTH, round = 0.012f)
-                for (side in listOf(-1f, 1f)) box(WOOD_DARK, side * (SHELF_WIDTH / 2 - 0.1f), y - 0.1f, 0.05f, 0.035f, 0.1f, 0.1f, round = 0.012f)
-            }
-            lump = 0.002f
-            var x = -SHELF_WIDTH / 2 + 0.06f
-            for (id in books.take(SHELF_BOOKS)) {
-                val k = id.hashCode().mod(SPINES.size)
-                val w = 0.055f + 0.012f * (k % 3)
-                val h = 0.2f + 0.025f * (k % 4)
-                box(SPINES[k], x + w / 2, SHELF_HIGH + 0.035f, 0.1f, w, h, 0.15f, round = 0.008f)
-                box(PAPER, x + w / 2, SHELF_HIGH + 0.035f + h * 0.62f, 0.176f, w * 0.7f, 0.022f, 0.004f, round = 0.002f, outline = 0f)
-                x += w + 0.006f
-            }
-            records.take(SHELF_RECORDS).forEachIndexed { i, id ->
-                val k = id.hashCode().mod(SLEEVES.size)
-                val sx = -SHELF_WIDTH / 2 + 0.2f + i * 0.27f
-                box(SLEEVES[k], sx, SHELF_LOW + 0.035f, 0.09f + i * 0.012f, SLEEVE, SLEEVE, 0.014f, rotX = -9f, round = 0.006f)
-                cylinder(SPINES[(k + 2) % SPINES.size], sx, SHELF_LOW + 0.035f + SLEEVE * 0.32f, 0.105f + i * 0.012f, 0.12f, 0.004f, 0.12f, rotX = 81f, round = 0.002f, outline = 0.005f)
-            }
-        }
-    }
+    /** Built once per set of contents. */
+    fun shelf(books: List<String>, records: List<String>): CrayonModel =
+        cached("shelf/${books.joinToString(",")}/${records.joinToString(",")}") { RoomParts.shelf(books, records) }
 
-    /** His guitar, hanging on a peg; back at z = 0 like the [shelf]. */
-    fun guitar(): CrayonModel = items.getOrPut("guitar") {
-        model {
-            lump = 0.002f
-            sphere(GUITAR, 0f, 0.82f, 0.06f, 0.4f, 0.36f, 0.09f)
-            sphere(GUITAR, 0f, 1.08f, 0.06f, 0.3f, 0.27f, 0.09f)
-            cylinder(VINYL, 0f, 1.05f, 0.1f, 0.1f, 0.01f, 0.1f, rotX = 90f, round = 0.002f, outline = 0.004f)
-            box(WOOD_DARK, 0f, 0.86f, 0.106f, 0.12f, 0.025f, 0.012f, round = 0.004f, outline = 0.004f)
-            box(WOOD_DARK, 0f, 1.2f, 0.07f, 0.055f, 0.42f, 0.035f, round = 0.01f)
-            box(WOOD_DARK, 0f, 1.6f, 0.07f, 0.085f, 0.12f, 0.03f, round = 0.012f)
-            capsule(KNOB, 0f, 1.62f, 0.02f, 0.035f, 0.05f, 0.035f, rotX = 90f, outline = 0.005f)
-        }
-    }
+    fun guitar(): CrayonModel = cached("guitar") { RoomParts.guitar() }
 
-    // --- props he holds or works with, in his own units (the guy is scaled up from them) --------------
+    // --- props he holds or works with ---------------------------------------------------------------
 
-    /** The colour of book [id]'s spine on the [shelf], so the one in his hands matches; the plain book colour without one. */
-    fun bookColor(id: String?): String = id?.let { SPINES[it.hashCode().mod(SPINES.size)] } ?: BOOK
+    fun bookColor(id: String?): String = RoomParts.bookColor(id)
 
-    /** A book held up in both hands, cover out (+Z), the page block showing along the top; pivot at its bottom centre. */
-    fun heldBook(color: String): CrayonModel = items.getOrPut("held_book/$color") {
-        model {
-            box(color, 0f, 0f, 0f, 0.26f, 0.32f, 0.06f, round = 0.012f)
-            box(PAPER, 0f, 0.012f, -0.004f, 0.24f, 0.3f, 0.045f, round = 0.006f, outline = 0f)
-        }
-    }
+    fun heldBook(color: String): CrayonModel = cached("held_book/$color") { RoomParts.heldBook(color) }
 
-    /** His guitar held to play: the body at the origin facing +Z, the neck out along -x. */
-    fun heldGuitar(): CrayonModel = items.getOrPut("held_guitar") {
-        model {
-            lump = 0.002f
-            sphere(GUITAR, 0.04f, -0.15f, 0f, 0.3f, 0.27f, 0.07f)
-            sphere(GUITAR, -0.13f, -0.11f, 0f, 0.22f, 0.2f, 0.07f)
-            cylinder(VINYL, -0.06f, -0.05f, 0.03f, 0.075f, 0.01f, 0.075f, rotX = 90f, round = 0.002f, outline = 0.004f)
-            box(WOOD_DARK, 0.06f, -0.06f, 0.04f, 0.02f, 0.09f, 0.01f, round = 0.004f, outline = 0.004f)
-            box(WOOD_DARK, -0.4f, -0.04f, 0.02f, 0.34f, 0.04f, 0.026f, round = 0.008f)
-            box(WOOD_DARK, -0.62f, -0.055f, 0.02f, 0.1f, 0.065f, 0.024f, round = 0.01f)
-        }
-    }
+    fun heldGuitar(): CrayonModel = cached("held_guitar") { RoomParts.heldGuitar() }
 
-    /** A music note, its head at the origin, facing +Z. */
-    fun note(color: String): CrayonModel = items.getOrPut("note/$color") {
-        model {
-            lump = 0f
-            sphere(color, 0f, -0.03f, 0f, 0.075f, 0.06f, 0.03f, outline = 0.005f)
-            box(color, 0.03f, -0.005f, 0f, 0.016f, 0.15f, 0.016f, round = 0.004f, outline = 0.005f)
-            box(color, 0.055f, 0.12f, 0f, 0.05f, 0.022f, 0.014f, rotZ = -30f, round = 0.004f, outline = 0.005f)
-        }
-    }
+    /** [color] is 0xRRGGBB. */
+    fun tool(color: Int, brush: Boolean): CrayonModel = cached("tool/$brush/$color") { RoomParts.tool(hex(color), brush) }
 
-    /** The record on the player, centred on its spindle, with a stripe on the label so it shows turning. */
-    fun disc(): CrayonModel = items.getOrPut("disc") {
-        model {
-            cylinder(VINYL, 0f, 0f, 0f, 0.3f, 0.02f, 0.3f, round = 0.006f)
-            cylinder(RECORD_LABEL, 0f, 0.015f, 0f, 0.1f, 0.012f, 0.1f, round = 0.004f, outline = 0.005f)
-            box(PAPER, 0.025f, 0.026f, 0f, 0.045f, 0.004f, 0.014f, round = 0.002f, outline = 0f, lump = 0f)
-        }
-    }
+    /** [colors] are 0xRRGGBB. */
+    fun palette(colors: List<Int>): CrayonModel = cached("palette/${colors.joinToString(",")}") { RoomParts.palette(colors.map(::hex)) }
+
+    /** [color] is 0xRRGGBB. */
+    fun sparkle(color: Int): CrayonModel = cached("sparkle/$color") { RoomParts.sparkle(hex(color)) }
+
+    private fun hex(rgb: Int) = "#%06x".format(rgb and 0xffffff)
+
+    fun note(color: String): CrayonModel = cached("note/$color") { RoomParts.note(color) }
+
+    fun disc(): CrayonModel = cached("disc") { RoomParts.disc() }
 
     /** Centre x of the back-wall shelf, right of the window above the record player's place, and of the guitar, between the clock and the poster. */
-    fun shelfX(map: TileMap): Float = map.width * 0.85f
-    fun guitarX(map: TileMap): Float = map.width * 0.37f
+    fun shelfX(map: TileMap): Float = map.width * RoomParts.SHELF_AT
+    fun guitarX(map: TileMap): Float = map.width * RoomParts.GUITAR_AT
 
     /** Centre x of the back-wall clock, left of centre. */
-    fun clockX(map: TileMap): Float = map.width * 0.27f
+    fun clockX(map: TileMap): Float = map.width * RoomParts.CLOCK_AT
 
     /** Centre x of the back-wall window: the widest stretch of back wall with nothing in it, right of centre. */
-    fun window(map: TileMap): Float = map.width * 0.7f
+    fun window(map: TileMap): Float = map.width * RoomParts.WINDOW_AT
 
-    private fun model(body: PartList.() -> Unit): CrayonModel = CrayonModel.of(PartList().apply(body).parts, paint::texture)
+    private fun cached(key: String, parts: () -> List<Part>): CrayonModel = items.getOrPut(key) { model(parts()) }
+
+    private fun model(parts: List<Part>): CrayonModel = CrayonModel.of(parts, paint::texture)
 
     // --- the room ------------------------------------------------------------------------------
 
@@ -219,33 +138,9 @@ class RoomModels : Disposable {
                 walls.mesh() to paint.texture(RoomPaint.WALL)!!,
                 section.mesh() to paint.texture(RoomPaint.SECTION)!!,
             ),
-            model { fixtures(map) },
+            model(RoomParts.fixtures(window(map), clockX(map))),
             glass,
         )
-    }
-
-    /** The back wall's window frame, curtains and rod, and the clock (its hands are the view's, [hand]). */
-    private fun PartList.fixtures(map: TileMap) {
-        val wx = window(map)
-        val tall = WINDOW_TOP - WINDOW_BOTTOM
-        box(TRIM, wx, WINDOW_BOTTOM - 0.07f, 1.0f, WINDOW_WIDTH + 0.18f, 0.08f, 0.12f)
-        box(TRIM, wx, WINDOW_TOP, 1.0f, WINDOW_WIDTH + 0.12f, 0.07f, 0.05f)
-        box(TRIM, wx - WINDOW_WIDTH / 2 - 0.03f, WINDOW_BOTTOM, 1.0f, 0.07f, tall, 0.05f)
-        box(TRIM, wx + WINDOW_WIDTH / 2 + 0.03f, WINDOW_BOTTOM, 1.0f, 0.07f, tall, 0.05f)
-        box(TRIM, wx, WINDOW_BOTTOM, 1.0f, 0.045f, tall, 0.035f, outline = 0.008f)
-        box(TRIM, wx, WINDOW_BOTTOM + tall / 2 - 0.02f, 1.0f, WINDOW_WIDTH, 0.045f, 0.035f, outline = 0.008f)
-        // Curtains, gathered and tied back, and a rod with knobs on.
-        lump = 0.01f
-        for (side in listOf(-1f, 1f)) {
-            val cx = wx + side * (WINDOW_WIDTH / 2 + 0.1f)
-            box(CURTAIN, cx, WINDOW_BOTTOM - 0.25f, 1.07f, 0.28f, tall + 0.36f, 0.07f, round = 0.03f)
-            capsule(CURTAIN_TIE, cx - 0.16f, WINDOW_BOTTOM + 0.15f, 1.11f, 0.07f, 0.32f, 0.05f, rotZ = -90f)
-        }
-        lump = 0f
-        cylinder(WOOD_DARK, wx - WINDOW_WIDTH / 2 - 0.35f, WINDOW_TOP + 0.13f, 1.08f, 0.035f, WINDOW_WIDTH + 0.7f, 0.035f, rotZ = -90f)
-        for (side in listOf(-1f, 1f)) sphere(WOOD_DARK, wx + side * (WINDOW_WIDTH / 2 + 0.37f), WINDOW_TOP + 0.1f, 1.08f, 0.07f, 0.07f, 0.07f)
-        // The clock: a round box whose front cap is the painted dial.
-        cylinder("#ffffff", clockX(map), CLOCK_Y, 1.0f, 0.42f, 0.05f, 0.42f, rotX = 90f, round = 0.015f, texture = "clock")
     }
 
     /** A floor tile, on a quarter-metre grid so the shade where floor meets wall can be laid on per vertex. */
@@ -372,110 +267,6 @@ class RoomModels : Disposable {
         return Color(SHADE).lerp(Color.WHITE, t * t * (3 - 2 * t))
     }
 
-    // --- items ---------------------------------------------------------------------------------
-
-    private fun PartList.buildItem(id: String, kind: String) {
-        lump = 0.003f
-        when (id) {
-            "bed" -> {
-                for (sx in listOf(-0.4f, 0.4f)) for (sz in listOf(-0.42f, 0.42f)) box(WOOD_DARK, sx, 0f, sz, 0.085f, 0.16f, 0.085f, round = 0.03f)
-                box(WOOD, 0f, 0.12f, 0f, 0.94f, 0.1f, 0.98f, round = 0.035f)
-                box(SHEET, 0f, 0.2f, 0.01f, 0.88f, 0.12f, 0.92f, round = 0.05f)
-                box(BLANKET, 0f, 0.225f, 0.17f, 0.93f, 0.1f, 0.62f, round = 0.045f, lump = 0.006f)
-                box(BLANKET_STRIPE, 0f, 0.235f, -0.12f, 0.94f, 0.1f, 0.08f, round = 0.04f, lump = 0.006f)
-                sphere(PILLOW, 0f, 0.27f, -0.3f, 0.6f, 0.15f, 0.27f, lump = 0.008f)
-                box(WOOD, 0f, 0f, -0.47f, 0.98f, 0.7f, 0.07f, round = 0.03f)
-                capsule(WOOD_LIGHT, -0.52f, 0.7f, -0.47f, 0.08f, 1.04f, 0.1f, rotZ = -90f)
-            }
-            "desk" -> {
-                for (sx in listOf(-0.42f, 0.42f)) for (sz in listOf(-0.24f, 0.24f)) box(WOOD_DARK, sx, 0f, sz, 0.065f, 0.5f, 0.065f, round = 0.025f)
-                box(WOOD, 0f, 0.5f, 0f, 0.98f, 0.065f, 0.62f, round = 0.03f)
-                box(WOOD_LIGHT, 0.24f, 0.31f, 0f, 0.42f, 0.18f, 0.56f, round = 0.03f)
-                sphere(KNOB, 0.24f, 0.38f, 0.28f, 0.045f, 0.045f, 0.03f)
-                // His sketchbook's page, at the end by the chair; the view lays the sketch under way or his newest on it.
-                box(PAPER, SKETCH_X, 0.562f, SKETCH_Z, 0.28f, 0.004f, 0.2f, round = 0.002f, outline = 0f, lump = 0f)
-                cylinder(MUG, 0.18f, 0.565f, 0.12f, 0.09f, 0.1f, 0.09f, round = 0.015f)
-                capsule(MUG, 0.235f, 0.585f, 0.12f, 0.025f, 0.06f, 0.025f)
-                // A little lamp.
-                cylinder(WOOD_DARK, -0.34f, 0.565f, -0.18f, 0.15f, 0.035f, 0.15f, round = 0.015f)
-                cylinder(WOOD_DARK, -0.34f, 0.58f, -0.18f, 0.025f, 0.24f, 0.025f)
-                cylinder(LAMPSHADE, -0.34f, 0.78f, -0.18f, 0.26f, 0.16f, 0.26f, taper = 0.62f, round = 0.025f)
-            }
-            "chair" -> {
-                for (sx in listOf(-0.16f, 0.16f)) for (sz in listOf(-0.16f, 0.16f)) box(WOOD_DARK, sx, 0f, sz, 0.055f, 0.3f, 0.055f, round = 0.022f)
-                box(WOOD, 0f, 0.29f, 0f, 0.44f, 0.05f, 0.44f, round = 0.02f)
-                box(CUSHION, 0f, 0.32f, 0f, 0.38f, 0.07f, 0.38f, round = 0.035f, lump = 0.006f)
-                box(WOOD, -0.195f, 0.3f, 0f, 0.05f, 0.44f, 0.42f, round = 0.022f)
-            }
-            "easel" -> {
-                box(WOOD, -0.22f, 0f, 0.08f, 0.05f, 1.15f, 0.05f, rotZ = -8f, round = 0.02f)
-                box(WOOD, 0.22f, 0f, 0.08f, 0.05f, 1.15f, 0.05f, rotZ = 8f, round = 0.02f)
-                box(WOOD_DARK, 0f, 0f, -0.2f, 0.05f, 1.1f, 0.05f, rotX = -14f, round = 0.02f)
-                // The ledge a canvas stands on ([canvas]); the easel is bare without one.
-                box(WOOD, 0f, 0.42f, 0.12f, 0.58f, 0.05f, 0.09f, round = 0.02f)
-            }
-            "record_player" -> {
-                box(WOOD_DARK, 0f, 0f, 0f, 0.8f, 0.5f, 0.46f, round = 0.035f)
-                box(WOOD, 0f, 0.08f, 0.225f, 0.68f, 0.32f, 0.03f, round = 0.015f)
-                box(WOOD_LIGHT, 0f, 0.5f, 0f, 0.62f, 0.06f, 0.4f, round = 0.025f)
-                // The record is its own model ([disc], at [DISC_X], [DISC_Y]), so the view can turn it.
-                capsule(TRIM, 0.2f, 0.575f, -0.19f, 0.03f, 0.22f, 0.03f, rotX = 90f)
-            }
-            "plant" -> {
-                cylinder(POT, 0f, 0f, 0f, 0.28f, 0.28f, 0.28f, taper = 1.2f, round = 0.02f)
-                cylinder(POT_RIM, 0f, 0.25f, 0f, 0.37f, 0.07f, 0.37f, round = 0.03f)
-                lump = 0.02f
-                sphere(LEAF_DARK, 0f, 0.27f, 0f, 0.42f, 0.32f, 0.42f)
-                sphere(LEAF, -0.11f, 0.42f, 0.05f, 0.27f, 0.27f, 0.27f)
-                sphere(LEAF, 0.12f, 0.45f, -0.02f, 0.25f, 0.29f, 0.25f)
-                sphere(LEAF_LIGHT, 0f, 0.58f, 0.04f, 0.21f, 0.23f, 0.21f)
-            }
-            "rug" -> cylinder("#ffffff", 0f, 0f, 0f, 1.9f, 0.02f, 1.3f, round = 0.008f, texture = "rug", outline = 0.008f, lump = 0f)
-            "mail_hatch" -> {
-                // A brass flap in the wall at hand height, with a little shelf under it for parcels.
-                box(TRIM, 0f, 0.62f, 0.02f, 0.64f, 0.52f, 0.05f, round = 0.02f)
-                box(WOOD_DARK, 0f, 0.66f, 0.045f, 0.54f, 0.42f, 0.02f, round = 0.01f, outline = 0.007f)
-                box(KNOB, 0f, 0.74f, 0.06f, 0.46f, 0.28f, 0.03f, round = 0.015f)
-                capsule(WOOD_DARK, -0.17f, 0.95f, 0.08f, 0.03f, 0.34f, 0.025f, rotZ = -90f, outline = 0.006f)
-                box(WOOD_DARK, 0f, 0.8f, 0.08f, 0.14f, 0.03f, 0.03f, round = 0.012f, outline = 0.006f)
-                box(WOOD, 0f, 0.5f, 0.12f, 0.72f, 0.045f, 0.24f, round = 0.02f)
-                box(WOOD_DARK, -0.28f, 0.36f, 0.04f, 0.045f, 0.14f, 0.08f, round = 0.018f)
-                box(WOOD_DARK, 0.28f, 0.36f, 0.04f, 0.045f, 0.14f, 0.08f, round = 0.018f)
-            }
-            // A rail along the wall, a little wider than its tile; the view hangs frames from it.
-            "picture_rail" -> capsule(WOOD_DARK, RAIL_X - RAIL_LENGTH / 2, RAIL_Y + 0.02f, 0.03f, 0.05f, RAIL_LENGTH, 0.05f, rotZ = -90f)
-            "poster" -> {
-                box("#ffffff", 0f, 0.95f, 0.01f, 0.62f, 0.82f, 0.02f, round = 0.006f, texture = "poster", lump = 0f)
-                sphere(CURTAIN, 0f, 1.71f, 0.03f, 0.05f, 0.05f, 0.03f)
-            }
-            else -> if (!decor(id)) when (kind) {
-                "door", "fixture" -> {
-                    box(TRIM, 0f, 0f, 0.02f, 0.94f, 1.68f, 0.05f, round = 0.02f)
-                    box(DOOR, 0f, 0f, 0.05f, 0.8f, 1.6f, 0.05f, round = 0.02f)
-                    box(WOOD_DARK, 0f, 0.92f, 0.08f, 0.6f, 0.5f, 0.02f, round = 0.015f, outline = 0.007f)
-                    box(WOOD_DARK, 0f, 0.22f, 0.08f, 0.6f, 0.55f, 0.02f, round = 0.015f, outline = 0.007f)
-                    sphere(KNOB, 0.3f, 0.78f, 0.1f, 0.075f, 0.075f, 0.075f)
-                }
-                "key" -> {
-                    cylinder(KNOB, -0.08f, 0.02f, 0f, 0.16f, 0.04f, 0.16f)
-                    box(KNOB, 0.07f, 0.02f, 0f, 0.2f, 0.04f, 0.05f)
-                    box(KNOB, 0.14f, 0.02f, 0.04f, 0.04f, 0.04f, 0.06f)
-                }
-                "apple" -> {
-                    sphere(APPLE, 0f, 0f, 0f, 0.24f, 0.22f, 0.24f, lump = 0.006f)
-                    capsule(WOOD_DARK, 0f, 0.2f, 0f, 0.02f, 0.06f, 0.02f, outline = 0.005f)
-                    sphere(LEAF, 0.05f, 0.23f, 0f, 0.09f, 0.025f, 0.05f, outline = 0.005f)
-                }
-                "book" -> {
-                    box(BOOK, 0f, 0f, 0f, 0.3f, 0.07f, 0.4f, round = 0.015f)
-                    box(PAPER, 0.02f, 0.01f, 0f, 0.27f, 0.05f, 0.38f, round = 0.01f, outline = 0f)
-                }
-                "exit" -> box(EXIT, 0f, 0f, 0f, 0.9f, 0.01f, 0.9f, round = 0.004f, outline = 0.006f, lump = 0f)
-                else -> box(UNKNOWN, 0f, 0f, 0f, 0.4f, 0.4f, 0.4f, round = 0.05f)
-            }
-        }
-    }
-
     override fun dispose() {
         built?.dispose()
         items.values.forEach { it.dispose() }
@@ -514,87 +305,21 @@ class RoomModels : Disposable {
         }
     }
 
-    companion object {
-        const val WALL_HEIGHT = 2.1f
-        const val LIP = 0.14f
-        const val WINDOW_WIDTH = 1.3f
-        const val WINDOW_BOTTOM = 1.0f
-        const val WINDOW_TOP = 1.8f
-        const val CLOCK_Y = 1.32f
-        /** Where the desk's page is, from the desk's pivot. */
-        const val SKETCH_X = -0.24f
-        const val SKETCH_Z = 0.06f
-        const val CANVAS_Y = 0.75f
-        const val CANVAS_Z = 0.135f
-        /** The record's spindle on the player, from its pivot. */
-        const val DISC_X = -0.06f
-        const val DISC_Y = 0.555f
-        const val FRAME = 0.44f
-        const val FRAME_ART = 0.34f
-        const val FRAME_ART_Z = 0.04f
-        /** Where the picture rail runs, from its tile's centre, and the frames' centres along it. */
-        const val RAIL_X = 0f
-        const val RAIL_Y = 1.86f
-        const val RAIL_LENGTH = 1.5f
-        val FRAME_XS = floatArrayOf(-0.46f, 0f, 0.46f)
-        /** The shelf's boards, in metres up from the floor, and how much fits on them. */
-        const val SHELF_LOW = 1.0f
-        const val SHELF_HIGH = 1.4f
-        private const val SHELF_WIDTH = 1.1f
-        private const val SHELF_DEPTH = 0.2f
-        private const val SLEEVE = 0.3f
-        private const val SHELF_BOOKS = 12
-        private const val SHELF_RECORDS = 3
-        const val FRAME_BOTTOM = 1.2f
-        /** The bands of the painted wall, in metres up from the floor. */
-        const val BASEBOARD = 0.1f
-        const val WAINSCOT = 0.75f
-        const val RAIL_TOP = 0.8f
-        private val WALL_ITEMS = setOf("poster", "door", "mail_hatch", "picture_rail")
-        private const val THICK = 0.14f
-        private const val FLOOR_GRID = 4
+    private companion object {
+        const val WALL_HEIGHT = RoomParts.WALL_HEIGHT
+        const val LIP = RoomParts.LIP
+        const val WINDOW_WIDTH = RoomParts.WINDOW_WIDTH
+        const val WINDOW_BOTTOM = RoomParts.WINDOW_BOTTOM
+        const val WINDOW_TOP = RoomParts.WINDOW_TOP
+        const val THICK = 0.14f
+        const val FLOOR_GRID = 4
         /** How far from a wall the floor's corner shade fades out, and what it multiplies by at the wall. */
-        private const val CORNER_SHADE_REACH = 0.4f
-        private val CORNER_SHADE = Color.valueOf("d9c9dcff")
+        const val CORNER_SHADE_REACH = 0.4f
+        val CORNER_SHADE = Color.valueOf("d9c9dcff")
         /** The shaded side's tone, as the crayon shader's (sRGB). */
-        private val SHADE = Color.valueOf("e2d2ecff")
+        val SHADE = Color.valueOf("e2d2ecff")
         /** (dx, dy) to each neighbouring tile. */
-        private val SIDES = listOf(0 to 1, 0 to -1, 1 to 0, -1 to 0)
-        private val FULL_UV = floatArrayOf(0f, 1f, 1f, 1f, 1f, 0f, 0f, 0f)
-
-        // Pastels, a little softer than the old flat colours, since ink outlines do the separating now.
-        const val TRIM = "#fff8ee"
-        private const val WOOD = "#dba77c"
-        private const val WOOD_LIGHT = "#edc49c"
-        private const val WOOD_DARK = "#b47e5e"
-        private const val SHEET = "#fff7ea"
-        private const val BLANKET = "#9fc1ef"
-        private const val BLANKET_STRIPE = "#ffe08a"
-        private const val PILLOW = "#fffaf2"
-        private const val PAPER = "#fdf9ef"
-        private const val MUG = "#f2928a"
-        private const val LAMPSHADE = "#ffe3a1"
-        private const val CUSHION = "#f4a3ad"
-        private const val CANVAS = "#fdf8ee"
-        private const val VINYL = "#4a4255"
-        private const val RECORD_LABEL = "#f2928a"
-        private const val POT = "#e9a07c"
-        private const val POT_RIM = "#f2b594"
-        private const val LEAF = "#9fd49a"
-        private const val LEAF_DARK = "#80c088"
-        private const val LEAF_LIGHT = "#c2e6a8"
-        private const val POSTER_SUN = "#ffd86a"
-        private const val DOOR = "#d6a27a"
-        private const val KNOB = "#f5cf6a"
-        private const val APPLE = "#ef7b7b"
-        private const val BOOK = "#8fb0ec"
-        private const val EXIT = "#8fdcaa"
-        private const val CURTAIN = "#f6b2b7"
-        private const val CURTAIN_TIE = "#fde9c6"
-        private const val HAND = "#4a3a4f"
-        private const val UNKNOWN = "#d6aee6"
-        private const val GUITAR = "#f0b46e"
-        private val SPINES = listOf("#8fb0ec", "#f2928a", "#9fd49a", "#ffd86a", "#d6aee6", "#f6b2b7", "#9fd3d9")
-        private val SLEEVES = listOf("#f4a3ad", "#9fc1ef", "#c2e6a8", "#ffe3a1", "#c9b2ec")
+        val SIDES = listOf(0 to 1, 0 to -1, 1 to 0, -1 to 0)
+        val FULL_UV = floatArrayOf(0f, 1f, 1f, 1f, 1f, 0f, 0f, 0f)
     }
 }

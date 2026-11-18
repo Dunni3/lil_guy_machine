@@ -89,6 +89,7 @@ private fun option(intent: Intent, description: String) = ChoiceSet.Option(
 private fun label(intent: Intent): String = when (intent) {
     is Intent.MoveTo -> "move_to:" + when (val t = intent.target) {
         is Target.Entity -> t.id
+        is Target.Place -> t.id
         is Target.Tile -> "${t.x},${t.y}"
     }
     is Intent.PickUp -> "pick_up:${intent.itemId}"
@@ -97,6 +98,7 @@ private fun label(intent: Intent): String = when (intent) {
     is Intent.Wait -> "wait:${intent.ticks}"
     is Intent.Do -> (listOf("do", intent.activity) + listOfNotNull(intent.what, intent.on)).joinToString(":")
     is Intent.Buy -> "buy:${intent.item}"
+    is Intent.Put -> "put:${intent.item}:${intent.spot}"
     Intent.Think -> "think"
 }
 

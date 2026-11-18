@@ -6,9 +6,17 @@ vocabulary:
   # an affordance works with every verb that asks for it. sellable and drawable take parameters on
   # the item (sim/.../BedroomContent.kt, Affordance). `staple` is food that's always there (the
   # cupboard's oats), kept apart from `edible` so eat doesn't use it.
-  affords: [readable, playable, edible, sellable, hangable, viewable, combinable, wearable, drawable, staple]
+  # Outdoors: `explorable` (a lookout he explores a place from), `forageable` (a patch things grow
+  # on) and `specimen` (a sample, with a price at the hatch like sellable's).
+  # Rooms: `buildable` (a room's plan) and `site` (where one can stand).
+  # `recorder`: a thing outdoors that logs the weather where it stands (weather.yaml), read there.
+  # `lamp`: a light he can switch (it needs a `light`); on its timer until he does.
+  # `lure`: a thing visitors come to (its `lure`, world.yaml `visitors`), watched there. `growable`: a planter.
+  # `ware`: something a machine makes to sell, with a price at the hatch like sellable's (verbs.yaml `sell_wares`).
+  affords: [readable, playable, edible, sellable, hangable, viewable, combinable, wearable, drawable, staple, explorable, forageable, specimen, buildable, site, recorder, lamp, lure, growable, ware]
   # What an item is like to him, each with a strength from 0 to 3, scored by his affinities.
   qualities: [cozy, calm, warm, soft, bright, pretty, natural, lively, strange, loud]
   # What he can get better at, each a number from 0 with no cap: `practice` ops and reading a
   # book raise them (rules.yaml `skills` says what they do).
-  skills: [art, music, nature]
+  # `tinkering` rises with mending his machines (verbs.yaml `repair`) and makes each mend take off more wear.
+  skills: [art, music, nature, tinkering]

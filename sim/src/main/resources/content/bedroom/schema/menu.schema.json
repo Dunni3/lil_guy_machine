@@ -32,6 +32,12 @@
             "items": {
               "type": "string"
             }
+          },
+          "go": {
+            "type": "boolean"
+          },
+          "put": {
+            "type": "boolean"
           }
         },
         "required": [

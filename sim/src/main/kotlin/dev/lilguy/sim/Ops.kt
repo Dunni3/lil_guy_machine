@@ -120,18 +120,22 @@ data class ProduceOp(val items: Map<String, Int>) : Op() {
 data class SellOp(val what: String) : Op() {
     override val key get() = "sell"
 
-    override fun problems(c: BedroomContent, verb: VerbSpec) = listOfNotNull(c.unknownName(what)) +
-        c.withName(what).filter { it.sellPrice == null }.map { "sells ${it.id}, which isn't sellable" }
+    /** What it sells: an id or affordance, or an argument slot naming the item bound to it (`sell: what`). */
+    override fun problems(c: BedroomContent, verb: VerbSpec): List<String> {
+        val name = verb.args[what] ?: what
+        return listOfNotNull(c.unknownName(name)) + c.withName(name).filter { it.sellPrice == null }.map { "sells ${it.id}, which isn't sellable" }
+    }
 
     override fun lockReason(w: OpWorld, b: Bound): String? {
+        val what = b.resolve(what)
         if (w.count(what) > 0) return null
         val makers = w.content.verbs.filter { m -> w.knows(m.id) && m.effects.any { op -> op is ProduceOp && op.items.keys.any { what in w.item(it).names } } }.map { it.id }
         return "you have no ${w.noun(what)} to sell" + if (makers.isEmpty()) "" else "; ${makers.joinToString(" or ")} makes some"
     }
 
-    override fun finish(w: OpWorld, b: Bound) = listOf(w.sell(what))
+    override fun finish(w: OpWorld, b: Bound) = listOf(w.sell(b.resolve(what)))
 
-    override fun describe(w: OpWorld, b: Bound, forSale: Boolean) = if (forSale) emptyList() else listOf(w.saleText(what))
+    override fun describe(w: OpWorld, b: Bound, forSale: Boolean) = if (forSale) emptyList() else listOf(w.saleText(b.resolve(what)))
 
     override fun takes() = ", however much you sell"
 }
@@ -160,6 +164,53 @@ data class BasketOp(val most: Int) : Op() {
 }
 
 /**
+ * Builds the thing he designed: checks the design against the invent rules ([InventRules.check]),
+ * charges its materials, adds it to the content of his world and gives him the first one. The
+ * design comes from the verb's `write: { with: invention, timing: before }` (the agent layer
+ * stages it through [BedroomWorld.stage]); a design that's refused fails the verb and says why.
+ */
+data object BuildOp : Op() {
+    override val key get() = "build"
+
+    override fun problems(c: BedroomContent, verb: VerbSpec) = listOfNotNull(
+        if (c.invent == null) "build: the rules have no `invent`" else null,
+        if (verb.minutes == null) "build: the verb needs `minutes`" else null,
+        if (verb.effects.none { it is WriteOp && it.with == "invention" && it.timing == Timing.Before }) "build: the verb needs a `write: { with: invention, timing: before }` to design what's built" else null,
+    )
+
+    override fun lockReason(w: OpWorld, b: Bound) = w.buildLock()
+
+    override fun gone(w: OpWorld, b: Bound) = w.buildFailed(b.verb)
+
+    override fun finish(w: OpWorld, b: Bound) = w.build(b.verb)
+
+    override fun describe(w: OpWorld, b: Bound, forSale: Boolean) = listOf(w.buildText())
+}
+
+/**
+ * Takes apart the thing of his bound to [on], one he invented that stands somewhere: it leaves his
+ * world (its code stops, what its machine held goes to him) and its spot is free, and he gets back
+ * rules.yaml `invent.salvage` of the materials it took, each rounded down. Bought things and the
+ * house aren't his to take apart.
+ */
+data class DismantleOp(val on: String) : Op() {
+    override val key get() = "dismantle"
+
+    override fun problems(c: BedroomContent, verb: VerbSpec) = listOfNotNull(
+        if (verb.args[on] == null) "dismantle's thing must be an argument slot (`on`)" else null,
+        if (c.invent == null) "dismantles, but rules.yaml has no `invent`" else null,
+    )
+
+    override fun lockReason(w: OpWorld, b: Bound) = b.args[on]?.let(w::dismantleLock)
+
+    override fun gone(w: OpWorld, b: Bound) = w.dismantleLock(b.resolve(on))
+
+    override fun finish(w: OpWorld, b: Bound) = w.dismantle(b.resolve(on))
+
+    override fun describe(w: OpWorld, b: Bound, forSale: Boolean) = if (forSale) emptyList() else listOfNotNull(b.args[on]?.let(w::dismantleText))
+}
+
+/**
  * Puts an item he holds into a [state]. The one state so far is `hung`: his newest held piece
  * answering to [target] goes on the picture rail ([GalleryRules]).
  */
@@ -180,6 +231,22 @@ data class SetStateOp(val target: String, val state: String) : Op() {
     companion object {
         val STATES = listOf("hung")
     }
+}
+
+/** Switches the lamp bound to [target] on or off, where it stays, or back to its timer ([LampMode]). */
+data class SwitchOp(val target: String, val to: LampMode) : Op() {
+    override val key get() = "switch"
+
+    override fun problems(c: BedroomContent, verb: VerbSpec) = listOfNotNull(
+        c.unknownName(verb.args[target] ?: target),
+        c.withName(verb.args[target] ?: target).firstOrNull { LAMP !in it.affords }?.let { "switches ${it.id}, which isn't a lamp (affords lamp)" },
+    )
+
+    override fun lockReason(w: OpWorld, b: Bound) = w.switchLock(b.resolve(target), to)
+
+    override fun finish(w: OpWorld, b: Bound) = listOf(w.switch(b.resolve(target), to))
+
+    override fun describe(w: OpWorld, b: Bound, forSale: Boolean) = if (forSale) emptyList() else listOf(w.switchText(b.resolve(target), to))
 }
 
 /** Starts something that keeps going while he does anything else: the item bound to `what` (a record) [rates] per hour for [minutes]. */
@@ -294,7 +361,7 @@ data class ProgressOp(val book: String) : Op() {
     }
 }
 
-/** Raises his skills by [gains] when the verb finishes. The verb's mood and stimulation gains grow with these skills ([SkillRules]). */
+/** Raises his skills by [gains] when the verb finishes. The verb's mood gains grow with these skills ([SkillRules]). */
 data class PracticeOp(val gains: Map<String, Double>) : Op() {
     override val key get() = "practice"
 
@@ -377,7 +444,28 @@ internal interface OpWorld {
     /** Why [verb]'s trip came to nothing (its picks couldn't be made), or null; the trip then fails. */
     fun tripFailed(verb: String): String?
 
+    /** Why he can't start building now (today's invention is made, or no money for materials), or null. */
+    fun buildLock(): String?
+
+    /** As [verb] finishes: why the staged design can't be built (none came, it's refused, he can't pay), or null. */
+    fun buildFailed(verb: VerbSpec): String?
+
+    /** Builds [verb]'s staged design; returns the event's parts. */
+    fun build(verb: VerbSpec): List<String>
+
+    /** "design and build one new thing: materials from $4". */
+    fun buildText(): String
+
     fun hangLock(tag: String): String?
+
+    /** Why [lamp] can't be switched [to] that now: it already is. Null for an unbound slot. */
+    fun switchLock(lamp: String, to: LampMode): String?
+
+    /** Switches [lamp] [to] that; returns the event text. */
+    fun switch(lamp: String, to: LampMode): String
+
+    /** What switching [lamp] [to] that does, for the option list. */
+    fun switchText(lamp: String, to: LampMode): String
 
     fun hang(tag: String): String
 
@@ -394,6 +482,111 @@ internal interface OpWorld {
 
     /** The item the background called [name] is playing and its whole minutes left; null when it isn't playing. */
     fun playing(name: String): Pair<String, Int>?
+
+    /** Looks round where [lookout] stands: the patches there he hadn't found become known; what he found, for the event. */
+    fun survey(lookout: String): String
+
+    /** What exploring at [lookout] would show, for the option: whether he has looked round there before. */
+    fun surveyText(lookout: String): String
+
+    /** Why [patch] has nothing to collect now (it hasn't grown back), or null. */
+    fun bare(patch: String): String?
+
+    /** Why [plan]'s room can't be built (or moved) onto [site] now, or null. */
+    fun roomLock(plan: String, site: String): String?
+
+    /** Builds (or moves) [plan]'s room onto [site]; the event's parts. */
+    fun placeRoom(plan: String, site: String): List<String>
+
+    /** Takes what [patch] yields; the event's parts. */
+    fun gather(patch: String): List<String>
+
+    /** Why planter [planter] needs no water now (its soil is still wet), or null. */
+    fun waterLock(planter: String): String?
+
+    /** Waters [planter]; the event's parts. */
+    fun water(planter: String): List<String>
+
+    /** Why [planter] has nothing to pick yet (and why it isn't growing), or null. */
+    fun harvestLock(planter: String): String?
+
+    /** Picks what [planter] grew; the event's parts. */
+    fun harvest(planter: String): List<String>
+
+    /** "soil damp, 4 of 10 sunny hours toward its tomatoes", for the option. */
+    fun soilText(planter: String): String
+
+    /** Why there's nothing to watch at [lure] now (and when they come), or null. */
+    fun watchLock(lure: String): String?
+
+    /** Watches the visitors at [lure]; the event's parts. */
+    fun watch(lure: String): List<String>
+
+    /** Who's at [lure] now, or when they come, for the option. */
+    fun watchText(lure: String): String
+
+    /** Why the log of recorder [thing] can't be read now (it has logged nothing yet), or null. */
+    fun logLock(thing: String): String?
+
+    /** The log of recorder [thing], summed up as the event's parts. */
+    fun readLog(thing: String): List<String>
+
+    /** Why there's no letter to open: none is waiting at the mail hatch; null when one is. */
+    fun mailLock(): String?
+
+    /** Opens the oldest letter waiting; the event's parts, the letter among them. */
+    fun openMail(): List<String>
+
+    /** "a letter from Sam is waiting (2 in all)", for the option; null when none is. */
+    fun mailText(): String?
+
+    /** Why he can't write a letter now: nobody has written to him, or he has written to each as often as he may; null when he can. */
+    fun letterLock(): String?
+
+    /** Why [verb]'s letter can't go: none was written, or it's to someone he can't write to; null when it can. */
+    fun letterFailed(verb: String): String?
+
+    /** Puts [verb]'s letter through the hatch; the event's parts. */
+    fun postLetter(verb: String): List<String>
+
+    /** "Sam's letter is waiting for an answer", for the option; null for nothing to say. */
+    fun letterText(): String?
+    /** Why [b]'s own code says it can't be done now (its `canDo`), or null. */
+    fun scriptLock(b: Bound): String?
+
+    /** Runs [b]'s `finish` as it finishes: why it broke, or null, keeping what it said for [scriptParts]. */
+    fun runScript(b: Bound): String?
+
+    /** What [verb]'s code said and returned as it finished: the event's parts. */
+    fun scriptParts(verb: String): List<String>
+
+    /** As [verb] finishes: why the staged verb design can't go in (none came, or it's refused), or null. */
+    fun defineFailed(verb: VerbSpec): String?
+
+    /** Puts in [verb]'s staged design; the event's parts. */
+    fun define(verb: VerbSpec): List<String>
+
+    /** "write the code for a new thing to do: you've written 2", for the option. */
+    fun defineText(): String
+
+    // Machines ([Works]).
+    /** Why tending machine [id] would do nothing now, or null. */
+    fun tendLock(id: String): String?
+    fun tendText(id: String): String
+    /** Fills machine [id] and takes out what it made; the event's parts. */
+    fun tend(id: String): List<String>
+    /** Why machine [id] doesn't need mending, or null. */
+    fun repairLock(id: String): String?
+    fun repairText(id: String): String
+    fun repair(id: String): List<String>
+
+    // Taking his things apart ([DismantleOp]).
+    /** Why thing [id] can't be taken apart, or null. */
+    fun dismantleLock(id: String): String?
+    /** "back: 4 wood planks, 1 copper wire coil", for the option. */
+    fun dismantleText(id: String): String
+    /** Takes thing [id] apart; the event's parts. */
+    fun dismantle(id: String): List<String>
 }
 
 /**
@@ -405,8 +598,16 @@ internal class Bound(val verb: VerbSpec, val args: Map<String, String>, val fres
     /** The item bound to [name] when it's an argument slot, otherwise [name] itself (an id or affordance); unbound, the slot's type. */
     fun resolve(name: String): String = args[name] ?: verb.args[name] ?: name
 
-    /** [d] as paid at [fresh] and [skilled]: gains in mood and stimulation shrink with wear and grow with skill; costs and other needs don't. */
-    fun paid(need: String, d: Double): Double = if (d > 0 && (need == Need.Mood.id || need == Need.Stimulation.id)) d * fresh * skilled else d
+    /**
+     * [d] as paid at [fresh] and [skilled]: gains in mood and stimulation shrink with wear, and mood gains grow with skill;
+     * costs and other needs don't. Skill doesn't make a thing less boring, so stimulation isn't scaled by it.
+     */
+    fun paid(need: String, d: Double): Double = when {
+        d <= 0 -> d
+        need == Need.Mood.id -> d * fresh * skilled
+        need == Need.Stimulation.id -> d * fresh
+        else -> d
+    }
 
     /** "mood +2", rounded, as paid now. */
     fun shown(need: String, d: Double) = "$need ${signed(paid(need, d).roundToInt().toDouble())}"
@@ -419,6 +620,130 @@ internal fun signed(v: Double): String {
 }
 
 private fun needProblems(names: Collection<String>): List<String> = names.mapNotNull { runCatching { needOf(it) }.exceptionOrNull()?.message }
+
+/**
+ * Looks round the place the item bound to [on] stands in (a lookout): every patch there that he
+ * hadn't found becomes known to him, so collecting from it is offered and his map says what grows
+ * there. Exploring again finds nothing new, but it's still a walk outdoors.
+ */
+data class SurveyOp(val on: String) : Op() {
+    override val key get() = "survey"
+
+    override fun problems(c: BedroomContent, verb: VerbSpec) = listOfNotNull(
+        if (verb.args[on] == null && c.item(on) == null) "surveys '$on', which isn't an argument or an item" else null,
+        if (c.world == null) "surveys, but there's no land (world.yaml)" else null,
+    )
+
+    override fun finish(w: OpWorld, b: Bound) = listOf(w.survey(b.resolve(on)))
+
+    override fun describe(w: OpWorld, b: Bound, forSale: Boolean) = if (forSale) emptyList() else listOf(w.surveyText(b.resolve(on)))
+}
+
+/** Takes what the patch bound to [on] yields (world.yaml `finds`); it's bare until it regrows. */
+data class GatherOp(val on: String) : Op() {
+    override val key get() = "gather"
+
+    override fun problems(c: BedroomContent, verb: VerbSpec) = listOfNotNull(
+        if (verb.args[on] == null && c.item(on) == null) "gathers from '$on', which isn't an argument or an item" else null,
+        if (c.world == null) "gathers, but there's no land (world.yaml)" else null,
+    )
+
+    override fun lockReason(w: OpWorld, b: Bound) = w.bare(b.resolve(on))
+
+    override fun gone(w: OpWorld, b: Bound) = w.bare(b.resolve(on))
+
+    override fun finish(w: OpWorld, b: Bound) = w.gather(b.resolve(on))
+
+    override fun describe(w: OpWorld, b: Bound, forSale: Boolean) = listOfNotNull(w.content.world?.find(b.resolve(on))?.let { f -> "+1 ${w.item(f.yields).name}" })
+}
+
+/** Reads the log of the recorder bound to [what], standing at it: the last day of it, summed up ([StationLog]). */
+data class ReadLogOp(val what: String) : Op() {
+    override val key get() = "read_log"
+
+    override fun problems(c: BedroomContent, verb: VerbSpec) = listOfNotNull(
+        if (verb.args[what] == null && c.item(what) == null) "reads the log of '$what', which isn't an argument or an item" else null,
+        if (c.weather == null) "reads a log, but there's no weather (weather.yaml)" else null,
+    )
+
+    override fun lockReason(w: OpWorld, b: Bound) = w.logLock(b.resolve(what))
+
+    override fun finish(w: OpWorld, b: Bound) = w.readLog(b.resolve(what))
+
+    override fun describe(w: OpWorld, b: Bound, forSale: Boolean) = listOf("what ${w.content.item(b.resolve(what))?.takeIf { !forSale }?.let { "the ${it.name}" } ?: "it"} logged over the last day")
+}
+
+/** Waters the planter bound to [on] (rules.yaml `growing`): its soil is full and stays damp a while. */
+data class WaterOp(val on: String) : Op() {
+    override val key get() = "water"
+
+    override fun problems(c: BedroomContent, verb: VerbSpec) = listOfNotNull(
+        if (verb.args[on] == null && c.item(on) == null) "waters '$on', which isn't an argument or an item" else null,
+        if (c.growing == null) "waters, but rules have no `growing`" else null,
+    )
+
+    override fun lockReason(w: OpWorld, b: Bound) = w.waterLock(b.resolve(on))
+
+    override fun finish(w: OpWorld, b: Bound) = w.water(b.resolve(on))
+
+    override fun describe(w: OpWorld, b: Bound, forSale: Boolean) = if (forSale) emptyList() else listOf(w.soilText(b.resolve(on)))
+}
+
+/** Picks what the planter bound to [on] has grown, once it has had its sunny hours (items.yaml `grows`). */
+data class HarvestOp(val on: String) : Op() {
+    override val key get() = "harvest"
+
+    override fun problems(c: BedroomContent, verb: VerbSpec) = listOfNotNull(
+        if (verb.args[on] == null && c.item(on) == null) "harvests '$on', which isn't an argument or an item" else null,
+        if (c.growing == null) "harvests, but rules have no `growing`" else null,
+    )
+
+    override fun lockReason(w: OpWorld, b: Bound) = w.harvestLock(b.resolve(on))
+
+    override fun gone(w: OpWorld, b: Bound) = w.harvestLock(b.resolve(on))
+
+    override fun finish(w: OpWorld, b: Bound) = w.harvest(b.resolve(on))
+
+    override fun describe(w: OpWorld, b: Bound, forSale: Boolean) = listOfNotNull(w.content.item(b.resolve(on))?.grows?.let { g -> "+${g.count} ${w.item(g.yields).name}" })
+}
+
+/** Watches the visitors at the thing bound to [on] (its `lure`, world.yaml `visitors`): they leave something behind, and stay away a while. */
+data class WatchOp(val on: String) : Op() {
+    override val key get() = "watch"
+
+    override fun problems(c: BedroomContent, verb: VerbSpec) = listOfNotNull(
+        if (verb.args[on] == null && c.item(on) == null) "watches '$on', which isn't an argument or an item" else null,
+        if (c.world?.visitors.isNullOrEmpty()) "watches visitors, but world.yaml has none" else null,
+    )
+
+    override fun lockReason(w: OpWorld, b: Bound) = w.watchLock(b.resolve(on))
+
+    override fun gone(w: OpWorld, b: Bound) = w.watchLock(b.resolve(on))
+
+    override fun finish(w: OpWorld, b: Bound) = w.watch(b.resolve(on))
+
+    override fun describe(w: OpWorld, b: Bound, forSale: Boolean) = if (forSale) emptyList() else listOf(w.watchText(b.resolve(on)))
+}
+
+/** Builds the room whose plan is bound to [room] on the site bound to [site], or moves it there when it stands elsewhere. */
+data class PlaceRoomOp(val room: String, val site: String) : Op() {
+    override val key get() = "place_room"
+
+    override fun problems(c: BedroomContent, verb: VerbSpec) = listOfNotNull(
+        if (verb.args[room] == null) "place_room's room must be an argument slot (`what`)" else null,
+        if (verb.args[site] == null) "place_room's site must be an argument slot (`on`)" else null,
+        if (c.world?.rooms.isNullOrEmpty()) "places rooms, but world.yaml has none" else null,
+    )
+
+    override fun lockReason(w: OpWorld, b: Bound) = w.roomLock(b.resolve(room), b.resolve(site))
+
+    override fun gone(w: OpWorld, b: Bound) = w.roomLock(b.resolve(room), b.resolve(site))
+
+    override fun finish(w: OpWorld, b: Bound) = w.placeRoom(b.resolve(room), b.resolve(site))
+
+    override fun describe(w: OpWorld, b: Bound, forSale: Boolean) =
+        listOfNotNull(w.content.world?.roomFor(b.resolve(room))?.let { r -> "${r.name} on ${w.content.world?.site(b.resolve(site))?.name ?: b.resolve(site)}" })
+}
 
 /**
  * How an op is written in content: a one-key map, `- need: { mood: 2 }`. Exactly one field is set;
@@ -442,7 +767,32 @@ internal data class OpEntry(
     val practice: Map<String, Double>? = null,
     val write: Write? = null,
     val draw: String? = null,
+    val build: NoParams? = null,
+    val survey: String? = null,
+    val gather: String? = null,
+    @SerialName("place_room") val placeRoom: PlaceRoom? = null,
+    @SerialName("open_mail") val openMail: NoParams? = null,
+    @SerialName("post_letter") val postLetter: NoParams? = null,
+    val script: NoParams? = null,
+    val define: NoParams? = null,
+    @SerialName("read_log") val readLog: String? = null,
+    val switch: Switch? = null,
+    val tend: String? = null,
+    val repair: String? = null,
+    val water: String? = null,
+    val harvest: String? = null,
+    val watch: String? = null,
+    val dismantle: String? = null,
 ) {
+    /** `switch: { target: on, to: off }`: to is on, off or timer. */
+    @Serializable
+    @SerialName("switch")
+    data class Switch(val target: String, val to: String)
+
+    @Serializable
+    @SerialName("place_room")
+    data class PlaceRoom(val room: String, val site: String)
+
     @Serializable
     @SerialName("write")
     data class Write(val with: String, val into: List<String>, val timing: Timing = Timing.During, @SerialName("shows_as") val showsAs: String? = null, val optional: Boolean = false)
@@ -473,7 +823,10 @@ internal data class OpEntry(
             need?.let(::NeedOp), rate?.let(::RateOp), consume?.let(::ConsumeOp), produce?.let(::ProduceOp), sell?.let(::SellOp), basket?.let { BasketOp(it.most) },
             setState?.let { SetStateOp(it.target, it.state) }, background?.let { BackgroundOp(it.name, it.minutes, it.rates) },
             sleep?.let { SleepOp }, enjoy?.let(::EnjoyOp), hear?.let(::HearOp), progress?.let { ProgressOp(it.book) }, practice?.let(::PracticeOp),
-            write?.let { WriteOp(it.with, it.into, it.timing, it.showsAs, it.optional) }, draw?.let(::DrawOp),
+            write?.let { WriteOp(it.with, it.into, it.timing, it.showsAs, it.optional) }, draw?.let(::DrawOp), build?.let { BuildOp },
+            survey?.let(::SurveyOp), gather?.let(::GatherOp), placeRoom?.let { PlaceRoomOp(it.room, it.site) }, openMail?.let { OpenMailOp }, postLetter?.let { PostLetterOp },
+            script?.let { ScriptOp }, define?.let { DefineOp }, readLog?.let(::ReadLogOp), switch?.let { SwitchOp(it.target, LampMode.of(it.to)) }, tend?.let(::TendOp), repair?.let(::RepairOp),
+            water?.let(::WaterOp), harvest?.let(::HarvestOp), watch?.let(::WatchOp), dismantle?.let(::DismantleOp),
         )
         require(set.size == 1) { "an effect is one op, such as `- need: { mood: 2 }`; this one has ${if (set.isEmpty()) "none" else set.joinToString { it.key }}" }
         return set.single()
@@ -496,6 +849,22 @@ internal data class OpEntry(
             is PracticeOp -> OpEntry(practice = op.gains)
             is WriteOp -> OpEntry(write = Write(op.with, op.into, op.timing, op.showsAs, op.optional))
             is DrawOp -> OpEntry(draw = op.what)
+            BuildOp -> OpEntry(build = NoParams())
+            is SurveyOp -> OpEntry(survey = op.on)
+            is GatherOp -> OpEntry(gather = op.on)
+            is PlaceRoomOp -> OpEntry(placeRoom = PlaceRoom(op.room, op.site))
+            OpenMailOp -> OpEntry(openMail = NoParams())
+            PostLetterOp -> OpEntry(postLetter = NoParams())
+            ScriptOp -> OpEntry(script = NoParams())
+            DefineOp -> OpEntry(define = NoParams())
+            is ReadLogOp -> OpEntry(readLog = op.what)
+            is SwitchOp -> OpEntry(switch = Switch(op.target, op.to.id))
+            is TendOp -> OpEntry(tend = op.on)
+            is RepairOp -> OpEntry(repair = op.on)
+            is WaterOp -> OpEntry(water = op.on)
+            is HarvestOp -> OpEntry(harvest = op.on)
+            is WatchOp -> OpEntry(watch = op.on)
+            is DismantleOp -> OpEntry(dismantle = op.on)
         }
     }
 }

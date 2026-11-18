@@ -16,6 +16,8 @@ import kotlin.time.Duration.Companion.milliseconds
 data class EndpointsFile(
     val endpoints: Map<String, EndpointConfig> = emptyMap(),
     val agents: List<AgentConfig> = emptyList(),
+    /** How he searches the web, if he does ([WebSearches]); a model that calls tools gets a `search` look. */
+    val search: SearchConfig? = null,
 ) {
     /** The endpoint the first character is configured to use, if any. */
     val defaultEndpoint: String? get() = agents.firstOrNull()?.endpoint
@@ -28,11 +30,14 @@ data class EndpointsFile(
 
     /** The endpoint that scores the first character's recall and event significance, if any. */
     val defaultRecallEndpoint: String? get() = agents.firstOrNull()?.recallEndpoint
+
+    /** The endpoint that draws the first character's art, if not the deciding one. */
+    val defaultPainterEndpoint: String? get() = agents.firstOrNull()?.painterEndpoint
 }
 
 @Serializable
 data class EndpointConfig(
-    /** Backend: `openai_compat`, or `typesafe` (System One; picks from a closed set). */
+    /** Backend: `openai_compat`, `anthropic` (the Messages API), or `typesafe` (System One; picks from a closed set). */
     val kind: String = "openai_compat",
     @SerialName("base_url") val baseUrl: String,
     val model: String,
@@ -59,6 +64,16 @@ data class EndpointConfig(
     @SerialName("price_in") val priceIn: Double? = null,
     /** Dollars per million output tokens. */
     @SerialName("price_out") val priceOut: Double? = null,
+    /** Dollars per million input tokens read from the server's prompt cache; unset, they cost [priceIn]. */
+    @SerialName("price_cached") val priceCached: Double? = null,
+    /**
+     * Anthropic: past [loadedTools] tools, the rest are sent by name only (`defer_loading`) with the
+     * API's tool search, and the system prompt lists their names. Loaded: looks and the tools called
+     * most recently in the conversation.
+     */
+    @SerialName("tool_search") val toolSearch: Boolean = false,
+    /** Anthropic, with [toolSearch]: how many of a turn's acting tools stay loaded. */
+    @SerialName("loaded_tools") val loadedTools: Int = 8,
     /** TypeSafe: how many paths [BeamSearch] keeps when the options come in groups; 0 asks over the flat list. */
     val beam: Int = 3,
 ) {
@@ -104,6 +119,11 @@ data class AgentConfig(
      * (TypeSafe System One). Unset or "none": recall goes by keywords and summaries by event count.
      */
     @SerialName("recall_endpoint") val recallEndpoint: String? = null,
+    /**
+     * Draws his art, two closed picks a stroke ([Capabilities.closedChoice] is cheapest). Unset: the
+     * deciding endpoint draws, as before.
+     */
+    @SerialName("painter_endpoint") val painterEndpoint: String? = null,
 ) {
     val writer: String? get() = writerEndpoint ?: journalEndpoint
 }
@@ -143,6 +163,7 @@ object Endpoints {
         return when (endpoint.kind) {
             "openai_compat" -> OpenAiCompatBackend(endpoint, key, id = "$name:${endpoint.model}")
             "typesafe" -> TypesafeBackend(endpoint, key, id = "$name:${endpoint.model}")
+            "anthropic" -> AnthropicBackend(endpoint, key, id = "$name:${endpoint.model}")
             else -> throw IllegalArgumentException("endpoint '$name' has unknown kind '${endpoint.kind}'")
         }
     }

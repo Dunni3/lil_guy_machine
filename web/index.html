@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>lil guy machine</title>
+  <link rel="icon" href="data:,">
+  <style>
+    html, body { margin: 0; height: 100%; background: #f4ecdc; overflow: hidden; }
+    canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+    body.broadcast, body.broadcast canvas { cursor: none; }
+    #status {
+      position: fixed; left: 12px; bottom: 10px;
+      font: 13px/1.3 ui-monospace, Menlo, monospace; color: #4a3a4f; opacity: 0.72;
+      pointer-events: none;
+    }
+    /* The admin's password box: the one piece of DOM over the room, there only while signing in. */
+    #signin {
+      position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+      width: min(720px, 86vw); box-sizing: border-box; padding: 32px 36px;
+      background: #fff8ee; border: 6px solid #e8cfb2; border-radius: 22px;
+      font: 600 22px/1.3 ui-rounded, system-ui, sans-serif; color: #3a2a20;
+    }
+    #signin[hidden] { display: none; }
+    #signin label { display: block; color: #8a7464; font-size: 18px; letter-spacing: 0.04em; margin-bottom: 12px; }
+    #signin input {
+      width: 100%; box-sizing: border-box; padding: 14px 18px; font: inherit; color: inherit;
+      background: #fde9c6; border: 0; border-radius: 12px; outline: 5px solid #e07f74; outline-offset: 3px;
+    }
+    #signin p { margin: 18px 0 0; color: #8a7464; font-size: 18px; text-align: center; }
+    /* The camera's buttons (ui/look.ts), bottom left, and the how-to line over them until the viewer first looks round. */
+    #look { position: fixed; left: 16px; bottom: 14px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+    #look[hidden], #look-teach[hidden] { display: none; }
+    #look-teach {
+      margin: 0; padding: 8px 14px; max-width: calc(100vw - 32px); box-sizing: border-box;
+      font: 600 14px/1.35 ui-rounded, system-ui, sans-serif; color: #4a3a4f;
+      background: #fff8ee; border: 3px solid #e8cfb2; border-radius: 14px;
+    }
+    #look-teach b { color: #c0504a; }
+    #look .bar { display: flex; gap: 4px; padding: 4px; background: #fff8ee; border: 4px solid #e8cfb2; border-radius: 999px; }
+    #look .bar span { width: 2px; margin: 6px 3px; background: #e8cfb2; border-radius: 1px; }
+    #look button {
+      min-width: 38px; height: 34px; padding: 0 12px; border: 0; border-radius: 999px; cursor: pointer;
+      font: 600 16px/1 ui-rounded, system-ui, sans-serif; color: #3a2a20; background: none;
+    }
+    #look button[data-look="left"], #look button[data-look="right"] { font-size: 22px; }
+    #look button:hover { background: #fde9c6; }
+    #look button.on { background: #e07f74; color: #fff8ee; }
+    /* On a phone, above the letters button rather than beside it. */
+    @media (max-width: 560px) { #look { bottom: 70px; } }
+    /* Letters to him (ui/mail.ts): a button in the corner, and the panel it opens over the room. */
+    #mail-open {
+      position: fixed; right: 16px; bottom: 14px; padding: 10px 18px;
+      font: 600 16px/1 ui-rounded, system-ui, sans-serif; color: #3a2a20;
+      background: #fff8ee; border: 4px solid #e8cfb2; border-radius: 999px; cursor: pointer;
+    }
+    #mail-open:hover { background: #fde9c6; }
+    #mail {
+      position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+      width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto; box-sizing: border-box; padding: 24px 28px;
+      background: #fff8ee; border: 6px solid #e8cfb2; border-radius: 22px;
+      font: 600 17px/1.35 ui-rounded, system-ui, sans-serif; color: #3a2a20;
+    }
+    #mail[hidden], #mail form[hidden], #mail-open[hidden], #mail-sent-title[hidden] { display: none; }
+    #mail h2 { margin: 0 40px 14px 0; color: #8a7464; font-size: 15px; letter-spacing: 0.06em; }
+    #mail label { display: block; color: #8a7464; font-size: 14px; letter-spacing: 0.04em; margin: 12px 0 6px; }
+    #mail input, #mail textarea {
+      width: 100%; box-sizing: border-box; padding: 10px 14px; font: inherit; font-weight: 500; color: inherit;
+      background: #fde9c6; border: 0; border-radius: 10px;
+    }
+    #mail input:focus, #mail textarea:focus { outline: 4px solid #e07f74; outline-offset: 2px; }
+    #mail textarea { min-height: 140px; resize: vertical; }
+    #mail .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+    #mail .row .grow { flex: 1; color: #8a7464; font-size: 14px; }
+    #mail button { font: inherit; padding: 9px 18px; border-radius: 10px; border: 0; cursor: pointer; background: #e8cfb2; color: #3a2a20; }
+    #mail button.go { background: #e07f74; color: #fff8ee; }
+    #mail button:disabled { opacity: 0.5; cursor: default; }
+    #mail button.link { background: none; padding: 4px 6px; color: #8a7464; text-decoration: underline; }
+    #mail-close { position: absolute; top: 14px; right: 16px; }
+    #mail .note { margin: 10px 0 0; color: #8a7464; font-size: 14px; min-height: 1em; }
+    #mail ol { list-style: none; padding: 0; margin: 6px 0 0; }
+    #mail li { border-top: 2px solid #f0dfc8; padding: 10px 0; }
+    #mail li p { margin: 4px 0 0; font-weight: 500; white-space: pre-wrap; overflow-wrap: anywhere; }
+    #mail .mail-status { color: #8a7464; font-size: 13px; }
+    #mail .mail-status.opened { color: #5c8a5a; }
+    #mail li.his { background: #fdf1dc; border-radius: 10px; border-top-color: transparent; padding: 10px 12px; margin: 6px 0; }
+    #mail li.his .mail-status { color: #c0645a; }
+    #mail-open.news { background: #e07f74; color: #fff8ee; }
+  </style>
+</head>
+<body>
+  <canvas id="room"></canvas>
+  <div id="status" role="status">connecting</div>
+  <form id="signin" hidden autocomplete="on">
+    <label for="password">ADMIN PASSWORD</label>
+    <input id="password" type="password" autocomplete="current-password" spellcheck="false">
+    <p id="signin-note">Enter signs in · Escape gives up</p>
+  </form>
+  <div id="look" hidden>
+    <p id="look-teach" hidden><b>Look around:</b> drag to move · scroll or pinch to zoom · right-drag to turn</p>
+    <div class="bar" role="group" aria-label="Camera">
+      <button type="button" data-look="out" title="Zoom out (−)" aria-label="Zoom out">−</button>
+      <button type="button" data-look="in" title="Zoom in (+)" aria-label="Zoom in">+</button>
+      <button type="button" data-look="left" title="Turn left (Q)" aria-label="Turn left">⟲</button>
+      <button type="button" data-look="right" title="Turn right (E)" aria-label="Turn right">⟳</button>
+      <span aria-hidden="true"></span>
+      <button type="button" data-look="room" title="The whole room (UP)">Room</button>
+      <button type="button" data-look="follow" title="Follow him (DOWN)">Follow him</button>
+    </div>
+  </div>
+  <button id="mail-open" type="button" hidden>Write to him</button>
+  <section id="mail" hidden aria-label="Letters">
+    <button id="mail-close" class="link" type="button" aria-label="Close">close</button>
+    <form id="mail-auth" autocomplete="on">
+      <h2 id="mail-auth-title">SIGN IN TO WRITE TO HIM</h2>
+      <label for="mail-email">Email</label>
+      <input id="mail-email" type="email" autocomplete="email" spellcheck="false" required>
+      <label for="mail-password">Password</label>
+      <input id="mail-password" type="password" autocomplete="current-password" required>
+      <div class="row">
+        <button id="mail-auth-go" class="go" type="submit">Sign in</button>
+        <span class="grow"></span>
+        <button id="mail-switch" class="link" type="button">Make an account</button>
+      </div>
+      <p id="mail-auth-note" class="note"></p>
+    </form>
+    <form id="mail-write" hidden>
+      <h2>A LETTER THROUGH HIS MAIL HATCH</h2>
+      <label for="mail-from">Sign it as</label>
+      <input id="mail-from" maxlength="40" autocomplete="nickname" required>
+      <label for="mail-body">Your letter</label>
+      <textarea id="mail-body" maxlength="1000" required></textarea>
+      <div class="row">
+        <button id="mail-send" class="go" type="submit">Send</button>
+        <span id="mail-count" class="grow"></span>
+      </div>
+      <p id="mail-write-note" class="note"></p>
+      <h2 id="mail-sent-title" hidden style="margin-top: 18px">LETTERS</h2>
+      <ol id="mail-sent"></ol>
+      <div class="row"><span class="grow">Signed in as <span id="mail-who"></span></span><button id="mail-signout" class="link" type="button">Sign out</button></div>
+    </form>
+  </section>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
