@@ -314,7 +314,6 @@ function render() {
     ["books", esc(g.books.map((b) => `${b.title} ${b.read}/${b.chapters}`).join("; ") || "none")],
     ["done", esc(Object.entries(g.done).map(([k, v]) => `${k} ×${v.count}`).join(", "))],
     ["art", esc(a.art.map((p) => `#${p.id} ${p.item}${p.title ? ` "${p.title}"` : ""}${p.hung ? " (hung)" : p.sells_for ? ` $${p.sells_for}` : ""}`).join("; ") || "none")],
-    a.commission ? ["request", esc(`${a.commission.request ?? a.commission.wants} · $${a.commission.reward} until ${a.commission.until}`)] : null,
     ["shop", esc(state.shop.catalog.filter((c) => c.affordable && !c.taught_by).length + " affordable of " + state.shop.catalog.length)],
   ]);
   const m = state.mind;

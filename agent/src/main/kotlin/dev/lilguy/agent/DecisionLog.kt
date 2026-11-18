@@ -104,10 +104,9 @@ data class ArtLogEntry(
     val time: String?,
     val item: String,
     val piece: Int?,
-    val commission: String?,
     val title: String?,
     val tags: List<String>,
-    /** The noun it drew a subject shape for, which a request's noun is matched on; null for none. */
+    /** The noun it drew a subject shape for; null for none. */
     val shows: String? = null,
     val ops: Int,
     /** Model calls the piece took: one per pick. */
@@ -222,7 +221,7 @@ class DecisionLog(val file: File, private val run: String, private val model: St
             ArtLogEntry.serializer(),
             ArtLogEntry(
                 run = run, artist = d.artist, tick = d.tick, day = d.day, time = d.time, item = d.item, piece = d.piece,
-                commission = d.commission, title = d.title, tags = d.tags, shows = d.shows, ops = d.ops, calls = d.calls,
+                title = d.title, tags = d.tags, shows = d.shows, ops = d.ops, calls = d.calls,
                 letters = d.artwork?.letters().orEmpty(), palette = d.artwork?.palette?.map { "#%06x".format(it) }.orEmpty(),
                 raw = d.raw, latencyMs = d.latency.inWholeMilliseconds, promptTokens = d.usage.promptTokens,
                 completionTokens = d.usage.completionTokens, error = d.error,

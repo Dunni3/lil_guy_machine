@@ -376,7 +376,7 @@ object Shapes {
 
     /**
      * The shapes that show [noun] itself: a piece shows its subject only when its subject stage drew
-     * one of these, which is what a commission pays for. None when the noun has no shape.
+     * one of these. None when the noun has no shape.
      */
     fun showing(noun: String): List<Shape> = when (noun.lowercase()) {
         "boat", "sailboat" -> listOf(of("sailboat"))

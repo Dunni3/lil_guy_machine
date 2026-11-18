@@ -29,7 +29,6 @@ import dev.lilguy.protocol.MotionView
 import dev.lilguy.protocol.VariantChange
 import dev.lilguy.protocol.CellView
 import dev.lilguy.protocol.Clock
-import dev.lilguy.protocol.CommissionView
 import dev.lilguy.protocol.Content
 import dev.lilguy.protocol.DecisionView
 import dev.lilguy.protocol.DrawingView
@@ -133,11 +132,8 @@ class StateReader(private val dbEvery: Duration = 1.seconds) {
                 Growth(l.skills, l.books.map { BookView(it.id, it.title, it.read, it.chapters, it.raises, it.teaches) }, l.done.mapValues { (_, t) -> Tally(t.count, t.firstTick) })
             } ?: Growth(emptyMap(), emptyList(), emptyMap()),
             gallery = now.life?.let { l ->
-                Gallery(
-                    l.art.map { PieceView(it.id, it.item, it.title, it.hung, it.sellsFor, it.commission) },
-                    l.commission?.let { CommissionView(it.id, it.wants, it.request, it.reward, it.until) },
-                )
-            } ?: Gallery(emptyList(), null),
+                Gallery(l.art.map { PieceView(it.id, it.item, it.title, it.hung, it.sellsFor) })
+            } ?: Gallery(emptyList()),
             shop = now.life?.let { l ->
                 ShopState(
                     l.catalog.map { CatalogState(it.id, it.owned, it.affordable, it.gives, it.taughtBy) },
@@ -312,7 +308,7 @@ class StateReader(private val dbEvery: Duration = 1.seconds) {
             },
             drawings = indexed(drawings, "drawings") { i, d ->
                 val art = d.artwork
-                DrawingView(i, d.piece, d.tick, d.day, d.time, d.item, d.title, d.tags, d.commission, d.shows, art?.palette.orEmpty(), art?.size ?: 0, art?.letters().orEmpty())
+                DrawingView(i, d.piece, d.tick, d.day, d.time, d.item, d.title, d.tags, d.shows, art?.palette.orEmpty(), art?.size ?: 0, art?.letters().orEmpty())
             },
             searches = indexed(searches, "searches") { i, w ->
                 SearchView(i, w.tick, w.day, w.time, w.query, w.searcher, w.summary, w.sources.map { SourceView(it.title, it.url, it.snippet) }, w.queries, w.error?.take(300), w.refused, w.latencyMs, w.thought, w.then)

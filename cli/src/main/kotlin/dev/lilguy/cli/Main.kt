@@ -24,7 +24,6 @@ import dev.lilguy.agent.memory.InMemoryStore
 import dev.lilguy.agent.memory.PlacedStore
 import dev.lilguy.agent.memory.Oracle
 import dev.lilguy.agent.art.ArtStudio
-import dev.lilguy.agent.art.CommissionVoice
 import dev.lilguy.agent.art.Drawing
 import dev.lilguy.agent.art.Painter
 import dev.lilguy.agent.memory.MemoryScorer
@@ -331,7 +330,7 @@ fun main(argv: Array<String>) {
             requireNotNull(runDb) { "--memory-endpoint needs the run database (drop --no-db)" }
             Endpoints.create(config, name)
         }
-        // Like the app: the writer (thoughts, the self-model, commissions) defaults to the memory endpoint; "none" turns it off.
+        // Like the app: the writer (thoughts, the self-model) defaults to the memory endpoint; "none" turns it off.
         val writerEndpoint = (args.string("--writer-endpoint") ?: args.string("--journal-endpoint") ?: args.string("--memory-endpoint"))?.takeIf { it != "none" }
         val writerModel = writerEndpoint?.let { Endpoints.create(config, it) }
         // Recall and significance are scored by a typesafe endpoint: the one named, or the deciding one if it can score.
@@ -356,7 +355,6 @@ fun main(argv: Array<String>) {
             val run = if (recorder != null) runId else "$stamp-$n"
             val studio = if (!painting) null else ArtStudio(
                 Painter(ledger.meter(painterModel, TokenPurpose.Art, priceOf(painterEndpoint ?: endpoint))), st, run, dir = logDir?.let { d -> File(d, "art-%02d".format(n)) },
-                voice = writerModel?.let { CommissionVoice(ledger.meter(it, TokenPurpose.Art, priceOf(writerEndpoint!!))) },
             ) { d ->
                 log?.write(d)
                 life?.drawing(d)

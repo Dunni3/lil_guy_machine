@@ -6,6 +6,9 @@ status: active
 
 # Fun comes from how unfamiliar what he does is, by what it's like, not what it's called
 
+Amended by `2026-11-17-the-bored-lock-reads-what-he-has-done-lately.md`: the bored lock reads the verb's own
+feature, not the whole event, and `stale_stimulation` is −3.
+
 Amends `2026-10-31-stimulation-habituation-and-novelty-mood-is-the-summary.md` and
 `2026-11-01-boredom-locks-what-he-has-worn-thin-and-new-things-feed-him.md` for content that has
 `familiarity` (the bedroom does). Without it, both stand as written.

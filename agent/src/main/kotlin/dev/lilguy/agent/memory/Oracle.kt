@@ -41,23 +41,78 @@ data class DocSection(val id: String, val title: String, val text: String)
  * The docs the oracle searches: how his world works, one section per rule, verb, item and book,
  * generated from the content as he knows it ([BedroomWorld.knownContent]), so they never drift from
  * the world and never tell him what a book hasn't taught him yet. Then the hand-written [guide]
- * (resources/docs/bedroom-guide.md) for what lives in code: how art is drawn, what meets a request.
+ * (resources/docs/bedroom-guide.md): how each part of the world works, in words, each section shown
+ * once he knows what it's about. He searches and reads them himself ([search], the `search_docs` and
+ * `read_docs` looks), and the [Oracle] answers from them.
  */
 object WorldDocs {
     private const val INVENT_RULE = "At a workbench he designs one new thing of his own and builds it: it has one use, up to a few qualities and a look he chooses. " +
         "He never sets a price: the materials cost a base for its use plus an amount per point of quality strength, taken from his money when he finishes. " +
         "A design outside these rules isn't built, costs nothing but the time, and frustrates him. A thing to look at takes one of the room's few spare spots."
 
-    fun of(content: BedroomContent): List<DocSection> = generated(content) + guide
+    /** The docs for [content] as he knows it; the last one is kept, since the content changes only when he learns something. */
+    fun of(content: BedroomContent): List<DocSection> {
+        last?.let { (c, docs) -> if (c === content) return docs }
+        val known = content.verbs.mapTo(HashSet()) { it.id } + content.items.map { it.id }
+        return (generated(content) + guided.filter { known.containsAll(it.first) }.map { it.second }).also { last = content to it }
+    }
 
-    /** The hand-written sections: each `## id: title` heading starts one. */
-    val guide: List<DocSection> by lazy {
+    @Volatile private var last: Pair<BedroomContent, List<DocSection>>? = null
+
+    /** Every hand-written section, whatever he knows. */
+    val guide: List<DocSection> get() = guided.map { it.second }
+
+    /**
+     * The hand-written sections, each with the verb and item ids it waits for: each `## id: title`
+     * heading starts one, and a heading ending `[when: a, b]` waits until he knows a and b.
+     */
+    private val guided: List<Pair<Set<String>, DocSection>> by lazy {
         val text = WorldDocs::class.java.getResource("/docs/bedroom-guide.md")?.readText() ?: return@lazy emptyList()
         text.split(Regex("(?m)^## ")).drop(1).map { block ->
             val heading = block.substringBefore('\n')
-            DocSection(heading.substringBefore(": ").trim(), heading.substringAfter(": ").trim(), block.substringAfter('\n').trim().replace(Regex("\\s*\n\\s*"), " "))
+            val gate = Regex("""\s*\[when:([^\]]*)]\s*$""").find(heading)
+            val head = gate?.let { heading.substring(0, it.range.first) } ?: heading
+            val waits = gate?.groupValues?.get(1)?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }?.toSet().orEmpty()
+            waits to DocSection(head.substringBefore(": ").trim(), head.substringAfter(": ").trim(), block.substringAfter('\n').trim().replace(Regex("\\s*\n\\s*"), " "))
         }
     }
+
+    /**
+     * The [limit] sections of [docs] that best match [query]: each of its words counts most in a
+     * section's id, then its title, then its text, with plurals and -ing folded; the guide's first on
+     * ties. None for a query with no words, or that shares none.
+     */
+    fun search(docs: List<DocSection>, query: String, limit: Int = 8): List<DocSection> {
+        val words = terms(query)
+        if (words.isEmpty()) return emptyList()
+        return docs.withIndex()
+            .map { (i, d) ->
+                val id = terms(d.id.replace(Regex("[:_]"), " "))
+                val title = terms(d.title)
+                val text = terms(d.text)
+                Triple(d, words.sumOf { w -> (if (w in id) 4 else 0) + (if (w in title) 3 else 0) + (if (w in text) 1 else 0) }, i)
+            }
+            .filter { it.second > 0 }
+            .sortedWith(compareByDescending<Triple<DocSection, Int, Int>> { it.second }.thenBy { !it.first.id.startsWith("guide:") }.thenBy { it.third })
+            .take(limit)
+            .map { it.first }
+    }
+
+    private fun terms(text: String): Set<String> =
+        text.lowercase().split(Regex("[^a-z0-9]+")).filter { it.length >= 3 && it !in STOP }.map(::stem).toSet()
+
+    private fun stem(w: String): String = when {
+        w.length > 5 && w.endsWith("ing") -> w.dropLast(3)
+        w.length > 4 && w.endsWith("ies") -> w.dropLast(3) + "y"
+        w.length > 4 && w.endsWith("ed") -> w.dropLast(2)
+        w.length > 3 && w.endsWith("s") && !w.endsWith("ss") -> w.dropLast(1)
+        else -> w
+    }
+
+    private val STOP = setOf(
+        "the", "and", "how", "what", "can", "you", "your", "does", "for", "get", "his", "him", "are", "why", "when", "where", "with", "that", "this",
+        "into", "from", "there", "about", "some", "more", "just", "have", "its", "not", "was", "who", "which", "much", "many", "make", "way", "any", "all",
+    )
 
     private fun generated(content: BedroomContent): List<DocSection> = buildList {
         add(DocSection("rules:needs", "how needs move, and when he can't work", enc(content.needs)))
@@ -68,7 +123,6 @@ object WorldDocs {
         content.familiarity?.let { add(DocSection("rules:familiarity", "what makes something fresh or familiar: features of what it's like (verb, kind, place, thing, group, quality, skill, makes, sky), each fading by half every half_life_days", enc(it))) }
         content.frustration?.let { add(DocSection("rules:frustration", "frustration", enc(it))) }
         add(DocSection("rules:skills", "what skills do", enc(content.skills)))
-        content.commissions?.let { c -> add(DocSection("rules:commissions", "requests for a piece of art", "A request comes each day at ${c.arrive}: an adjective and a noun. The first piece sold that matches it (the adjective in its title or tags, a shape of the noun drawn in it) earns $${c.reward} on top of its price.")) }
         add(DocSection("rules:gallery", "hanging art", enc(content.gallery)))
         add(DocSection("rules:qualities", "what items are worth to him", enc(content.qualityValue)))
         content.comfort?.let { add(DocSection("rules:comfort", "comfort: what he can see from where he stands", "A thing counts toward comfort in full within `near` tiles of him and fades out by `far`; it counts in full at `lit` light, less when dimmer, none in the dark. Only the place he's in counts. Asleep, what's round him counts lit or not. ${enc(it)}")) }
@@ -158,7 +212,7 @@ class Oracle(
             usage += d.usage
             d.value.open.filter { it in byId }.distinct().take(MAX_OPEN)
         }.getOrNull().orEmpty()
-        val opened = searched.ifEmpty { Keywords.rank(docs, question, MAX_OPEN, { "${it.title} ${it.text}" }, { -docs.indexOf(it).toLong() }).map { it.first.id } }
+        val opened = searched.ifEmpty { WorldDocs.search(docs, question, MAX_OPEN).map { it.id } }
         val text = call(timeout) {
             val d = model.decide(
                 DecisionRequest(

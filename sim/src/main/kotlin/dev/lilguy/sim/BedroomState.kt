@@ -53,9 +53,6 @@ data class BedroomState(
     val music: Music?,
     @SerialName("saving_for") val savingFor: String?,
     val pieces: List<Piece>,
-    val commission: Commission?,
-    /** Commissions so far: each one's random is seeded from the world's seed and this count, so it's all the randomness to keep. */
-    val commissions: Int,
     val authored: List<AuthoredView>,
     @SerialName("authored_count") val authoredCount: Int,
     /** What he has invented, oldest first: put back into the content before the rest is loaded. */
@@ -117,24 +114,12 @@ data class BedroomState(
     data class Piece(
         val id: Int,
         val item: String,
-        val commission: Int?,
         val skill: Double,
         /** held, hung or sold. */
         val state: String,
         val title: String?,
         val tags: List<String>,
         val shows: String?,
-    )
-
-    @Serializable
-    data class Commission(
-        val id: Int,
-        val adjective: String,
-        val noun: String,
-        val wants: String,
-        val until: Long,
-        val request: String?,
-        val fulfilled: Boolean,
     )
 
     companion object {

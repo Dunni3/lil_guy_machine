@@ -270,6 +270,7 @@ data class ArtPieceRow(
     val letters: List<String>,
     val ops: Int,
     @SerialName("png_blob") val pngBlob: String?,
+    /** The request a piece was drawn for, in runs from before commissions were removed; null since. */
     val commission: String?,
     val artist: String?,
 ) : Row

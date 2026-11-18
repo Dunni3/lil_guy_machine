@@ -69,7 +69,7 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   A model that calls tools (an `openai_compat` endpoint) decides by calling one of his verbs as a tool
   (`agent/.../BedroomTools.kt`, `PromptBuilder.ToolTurn`; `docs/decisions/2026-11-15-a-text-model-decides-*`): his recent actions
   go back as his own calls with their outcomes as results; each call's `thought` is his thought of the moment (`AgentMemory.thought`), and before
-  acting he may look (`ToolSet.looks`: `look_around`, where he is and what's round him, `agent/.../Surroundings.kt`, which also writes the status's `here`; `walk_to` walks him over to a thing; `recall`, `AgentMemory.search`; `ask`, the oracle; `search`, the real web: `agent/.../web/Searcher.kt` over
+  acting he may look (`ToolSet.looks`: `look_around`, where he is and what's round him, `agent/.../Surroundings.kt`, which also writes the status's `here`; `walk_to` walks him over to a thing; `recall`, `AgentMemory.search`; `search_docs` and `read_docs`, the world's docs read directly with no model call (`WorldDocs`: generated sections plus the hand-written game guide `agent/src/main/resources/docs/bedroom-guide.md`, one prose section per mechanic, which a new mechanic should get a line in; `docs/decisions/2026-11-17-he-reads-the-game-guide-*`); `ask`, the oracle; `search`, the real web: `agent/.../web/Searcher.kt` over
   `decision/.../WebSearch.kt`, Gemini grounded on Google Search or Brave, from endpoints.yaml's `search:` block, shown in the web menu's WEB tab;
   `docs/decisions/2026-11-15-he-searches-the-real-web-*`), so he isn't offered think. `menu.yaml` groups his options into a tree for Jev, who walks down it by beam search
   (`decision/.../BeamSearch.kt`, `beam` on the endpoint) instead of picking from one flat list. Skills
@@ -134,13 +134,12 @@ and `ANDROID_HOME` (`~/Library/Android/sdk`). Outside it, set them before `./gra
   `BedroomWorld`'s `ScriptView`, `putCode` and `runBehaviors`. `devise` writes code at his desk; `invent` writes each thing's
   function with it. The coder: `agent/.../code/Coder.kt` (deciding model if it's a text model, else the writer).
 - Art: `agent/.../art/`: `Painter.kt` (the deciding model draws each piece as a run of closed picks:
-  subject, crayon box, then a stroke a call; `CommissionVoice` words each day's commission on a text
-  model), `Strokes.kt` (the drawing spec as menus of strokes by stage: background, subject,
+  subject of his own from rules.yaml `subjects`, crayon box, then a stroke a call; nobody commissions
+  pieces: `docs/decisions/2026-11-17-no-commissions.md`), `Strokes.kt` (the drawing spec as menus of strokes by stage: background, subject,
   details), `Shapes.kt` (stencils for each subject noun and the scenery), `Palettes.kt` (named crayon boxes),
   `Artwork.kt` (ops rasterized to a grid, and a PNG encoder with no ImageIO), `ArtStudio.kt` (the `draw`
-  handler: saves `art-NN/piece-NNN.png`, delivers title and tags to the piece; commission wording goes
-  through `BedroomWorld.annotate`). `agent/.../Menu.kt` puts one pick to any model (a choice set
-  for Jev, a prompt plus enum schema for a text model). The sim's pieces, commissions and
+  handler: saves `art-NN/piece-NNN.png`, delivers title and tags to the piece). `agent/.../Menu.kt` puts one pick to any model (a choice set
+  for Jev, a prompt plus enum schema for a text model). The sim's pieces and
   hanging are in `BedroomWorld.kt`. The app's textures for them are in `ArtTextures.kt`. The piece
   under way is reported stroke by stroke (`Underway`, `ArtStudio.underway`) and played out in the room
   by `app/.../PaintScene.kt` (brush on the real cells, dips, stepping back, a flourish), fed stroke by stroke at the pace

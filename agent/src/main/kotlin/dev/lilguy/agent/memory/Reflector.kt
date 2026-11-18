@@ -73,10 +73,10 @@ class Reflector(
 
     /**
      * Writes one reflection over the events since the last; [self] is his self-model as the prompts
-     * show it. Returns it as a [Thought] (with [Thought.reflection] set; null text and an error when
+     * show it; [outOfReach] what his options lock now and why ([Describe.outOfReach]). Returns it as a [Thought] (with [Thought.reflection] set; null text and an error when
      * the model failed, and then nothing is stored), or null when there was nothing to reflect on.
      */
-    suspend fun reflect(self: String?, tick: Long): Thought? {
+    suspend fun reflect(self: String?, tick: Long, outOfReach: String? = null): Thought? {
         val from = store.coveredThrough(run, LEVEL)
         val all = store.eventsAfter(run, from, 10_000)
         if (all.isEmpty()) return null
@@ -100,6 +100,7 @@ class Reflector(
                 at = e.place ?: at
                 appendLine("[${e.stamp}]$where ${label(e.kind)}: ${e.text}")
             }
+            outOfReach?.let { append("\nWhat's out of your reach right now, and why:\n$it\n") }
             append("\nStep back and think it over.")
         }
         val request = DecisionRequest(system = system(core), messages = listOf(Message(Message.Role.User, user)), temperature = TEMPERATURE, timeout = timeout)

@@ -182,7 +182,7 @@
                     "string",
                     "null"
                   ],
-                  "description": "Sells everything carried that answers to the name, at each item's `sellable` price (plus `price_per_level` a level of its skill when the piece was made), plus any commission reward. (at the finish)"
+                  "description": "Sells everything carried that answers to the name, at each item's `sellable` price (plus `price_per_level` a level of its skill when the piece was made). (at the finish)"
                 },
                 "basket": {
                   "anyOf": [
@@ -381,7 +381,7 @@
                     "string",
                     "null"
                   ],
-                  "description": "Authored: the drawing model draws a drawable item the verb produced (listed after its produce); the piece gets its title, tags and the noun it drew a shape for, which a commission is matched on. Without an artist the piece is made undrawn. (during; kept at the finish)"
+                  "description": "Authored: the drawing model draws a drawable item the verb produced (listed after its produce); the piece gets its title, tags and the noun it drew a shape for, which is new to him the first time. Without an artist the piece is made undrawn. (during; kept at the finish)"
                 },
                 "build": {
                   "anyOf": [

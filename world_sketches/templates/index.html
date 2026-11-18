@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lil Guy Worlds</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Nunito:wght@400;600;800&family=Rubik+Mono+One&family=Silkscreen&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="top">
+    <h1>lil guy <span>·</span> world sketches</h1>
+    <p>Where he could live next. Round two joins your favourites into one house and one world, and the
+      first eight sketches are still below it. Everything here is live.</p>
+    <nav>
+      {% for section in sections %}{% for s in section.sketches %}
+      <a href="#{{ s.id }}">{{ s.title }}</a>
+      {% endfor %}{% endfor %}
+    </nav>
+  </header>
+
+  {% for section in sections %}
+  <section>
+    <h2>{{ section.title }}</h2>
+    <p class="intro">{{ section.intro }}</p>
+    {% for s in section.sketches %}
+    <article class="card{{ ' wide' if s.wide }}" id="{{ s.id }}">
+      <div class="stage">
+        {% if s.kind == 'world3d' %}<div class="world3d"></div>{% else %}<canvas data-sketch="{{ s.id }}" aria-label="{{ s.title }} sketch"></canvas>{% endif %}
+        <p class="try">{{ s.try }}</p>
+      </div>
+      <aside>
+        <div>
+          <h3>{{ s.title }}</h3>
+          <ul class="tags">{% for t in s.tags %}<li>{{ t }}</li>{% endfor %}</ul>
+          <div class="swatches">{% for c in s.palette %}<i style="background: {{ c }}" title="{{ c }}"></i>{% endfor %}</div>
+          <p>{{ s.blurb }}</p>
+        </div>
+        <div>
+          <h4>How it could plug in</h4>
+          <ul class="ideas">{% for i in s.ideas %}<li>{{ i }}</li>{% endfor %}</ul>
+        </div>
+      </aside>
+    </article>
+    {% endfor %}
+  </section>
+  {% endfor %}
+
+  <footer>Throwaway sketches: canvas 2D, plus three.js for the 3D world. Source in <code>static/</code>.</footer>
+
+  <script type="importmap">
+  { "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  } }
+  </script>
+  <script src="{{ url_for('static', filename='common.js') }}"></script>
+  <script src="{{ url_for('static', filename='rooms.js') }}"></script>
+  <script src="{{ url_for('static', filename='outdoors.js') }}"></script>
+  <script src="{{ url_for('static', filename='house.js') }}"></script>
+  <script src="{{ url_for('static', filename='snapon.js') }}"></script>
+  <script src="{{ url_for('static', filename='main.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='world3d.js') }}"></script>
+</body>
+</html>

@@ -418,7 +418,7 @@ class AgentMemory(
 
     /**
      * Records what he chose, then starts its verb's `during` authored ops (with [brief] to write
-     * from), words a new commission, scores the new events and ranks recall for the next decision,
+     * from), scores the new events and ranks recall for the next decision,
      * and writes memories: a stretch if one is ready, or the whole day and his self-model if he is
      * going to sleep.
      */
@@ -426,7 +426,6 @@ class AgentMemory(
         chosen = Chosen(intent, obs.clock)
         annotateSearches(obs.tick) { s -> if (s.then == null) s.copy(then = Describe.action(intent)) else null }
         brief?.let { authors.acted(obs, intent, it.persona, it.situation, it.system) }
-        studio?.word(obs)
         if (scorer != null) {
             if (scope == null) score(scorer, obs, intent)
             else if (scoringJob?.isActive != true) scoringJob = scope.launch { score(scorer, obs, intent) }
@@ -434,7 +433,8 @@ class AgentMemory(
         reflector?.let { r ->
             val reflecting = reflectJob?.isActive == true
             if (!reflecting && r.ready()) {
-                if (scope == null) reflect(r, obs.tick) else reflectJob = scope.launch { reflect(r, obs.tick) }
+                val locked = Describe.outOfReach(obs)
+                if (scope == null) reflect(r, obs.tick, locked) else reflectJob = scope.launch { reflect(r, obs.tick, locked) }
             }
         }
         val s = summarizer ?: return
@@ -506,9 +506,9 @@ class AgentMemory(
         return answer
     }
 
-    /** He steps back: a reflection over the events since the last one. */
-    private suspend fun reflect(r: Reflector, tick: Long) {
-        val t = r.reflect(selfText(), tick) ?: return
+    /** He steps back: a reflection over the events since the last one, knowing what's [outOfReach] now. */
+    private suspend fun reflect(r: Reflector, tick: Long, outOfReach: String?) {
+        val t = r.reflect(selfText(), tick, outOfReach) ?: return
         thoughtLog += t
         onReflection(t)
     }

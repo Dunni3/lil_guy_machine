@@ -297,7 +297,6 @@ class LifeRecorder(val recorder: RunRecorder, private val autosaveMinutes: Int =
                 put("title", d.title)
                 putJsonArray("tags") { d.tags.forEach { add(JsonPrimitive(it)) } }
                 put("shows", d.shows)
-                put("commission", d.commission)
                 put("ops", d.ops)
                 put("calls", d.calls)
             },
@@ -310,7 +309,7 @@ class LifeRecorder(val recorder: RunRecorder, private val autosaveMinutes: Int =
             ArtPieceRow(
                 s.runId, s.sessionId, s.seq, s.tick, s.day, s.minuteOfDay, piece, d.item, d.title, d.tags, d.shows,
                 palette = art.palette.map { "#%06x".format(it) }, letters = art.letters(), ops = d.ops,
-                pngBlob = recorder.blob(art.png(), "image/png"), commission = d.commission, artist = d.artist,
+                pngBlob = recorder.blob(art.png(), "image/png"), commission = null, artist = d.artist,
             ),
         )
     }

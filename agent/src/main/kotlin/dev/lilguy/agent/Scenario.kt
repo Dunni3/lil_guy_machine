@@ -2,6 +2,7 @@ package dev.lilguy.agent
 
 import dev.lilguy.agent.memory.AgentMemory
 import dev.lilguy.agent.memory.Describe
+import dev.lilguy.agent.memory.WorldDocs
 import dev.lilguy.decision.DecisionModel
 import dev.lilguy.sim.BedroomContent
 import dev.lilguy.sim.BedroomState
@@ -49,7 +50,7 @@ fun bedroomScenario(
     content: BedroomContent = BedroomContent.default(),
     longTerm: AgentMemory? = null,
     granted: Set<String> = emptySet(),
-    /** Picks the commissions. */
+    /** Seeds the weather. */
     seed: Long = 0,
     /** A checkpoint to carry on from, in place of a fresh room; what the content no longer has goes to [dropped]. */
     from: BedroomState? = null,
@@ -98,7 +99,7 @@ fun bedroomScenario(
         view = { BedroomPrompt.deciding(it, shown()) },
         // A model that calls tools calls his verbs.
         toolTurn = PromptBuilder.ToolTurn(
-            system = { BedroomPrompt.system(shown(), ticksPerMinute, self(), tools = true, map = map(), looks = setOfNotNull(BedroomTools.LOOK_AROUND, "recall".takeIf { longTerm != null }, "ask".takeIf { longTerm?.canAsk == true }, "search".takeIf { longTerm?.canSearch == true })) },
+            system = { BedroomPrompt.system(shown(), ticksPerMinute, self(), tools = true, map = map(), looks = setOfNotNull(BedroomTools.LOOK_AROUND, BedroomTools.SEARCH_DOCS, "recall".takeIf { longTerm != null }, "ask".takeIf { longTerm?.canAsk == true }, "search".takeIf { longTerm?.canSearch == true })) },
             tools = { obs ->
                 // Looking round is always there: it reads the observation the sim already made, so it's free.
                 val look = { Surroundings.look(obs, shown()) }
@@ -108,6 +109,8 @@ fun bedroomScenario(
                     ask = if (m == null || !m.canAsk) null else { q -> m.ask(q, obs, Describe.state(obs))?.reply?.let { it.text ?: "No answer came (${it.error})." } ?: "No one can answer that now." },
                     search = if (m == null || !m.canSearch) null else { q -> m.searchWeb(q, obs)?.answer() ?: "You can't search right now." },
                     look = look,
+                    // The world's docs are read straight from what he knows, so they're always there and cost no call.
+                    docs = { WorldDocs.of(world.knownContent()) },
                 )
                 BedroomTools.of(obs, ticksPerMinute, looks, ponder = pondering?.let { Intent.Do(it) })
             },

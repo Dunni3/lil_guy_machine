@@ -37,7 +37,7 @@ endpoints:
     reasoning_effort: low
     price_in: 1.5
     price_out: 9
-  # The live life's writer: memories, thoughts, the self-model, shopping, commissions. About a tenth of
+  # The live life's writer: memories, thoughts, the self-model, shopping. About a tenth of
   # gemini's cost a call, with thoughts and memories as good in side-by-side replays.
   gemini-lite:
     kind: openai_compat
@@ -135,8 +135,8 @@ agents:
   - character: hero
     endpoint: typesafe        # swap to "local" with no code change
     memory_endpoint: gemini-lite # writes long-term memories; must write text (not typesafe). Optional.
-    writer_endpoint: gemini-lite # writes his thoughts (think), his self-model each night and the day's
-                              # commission; must write text. Defaults to memory_endpoint; "none" and
+    writer_endpoint: gemini-lite # writes his thoughts (think) and his self-model each night;
+                              # must write text. Defaults to memory_endpoint; "none" and
                               # he isn't offered think. (journal_endpoint is the old name, still read.)
     recall_endpoint: typesafe # scores which memories and thoughts reach each prompt, and each event's
                               # significance; typesafe only. Optional: without it recall uses keywords.

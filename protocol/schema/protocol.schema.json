@@ -627,42 +627,6 @@
             ],
             "additionalProperties": false
         },
-        "CommissionView": {
-            "title": "CommissionView",
-            "type": "object",
-            "properties": {
-                "id": {
-                    "type": "integer"
-                },
-                "wants": {
-                    "type": "string"
-                },
-                "request": {
-                    "anyOf": [
-                        {
-                            "type": "string"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ]
-                },
-                "reward": {
-                    "type": "integer"
-                },
-                "until": {
-                    "type": "string"
-                }
-            },
-            "required": [
-                "id",
-                "wants",
-                "request",
-                "reward",
-                "until"
-            ],
-            "additionalProperties": false
-        },
         "Configure": {
             "title": "Configure",
             "type": "object",
@@ -1041,16 +1005,6 @@
                         "type": "string"
                     }
                 },
-                "commission": {
-                    "anyOf": [
-                        {
-                            "type": "string"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ]
-                },
                 "shows": {
                     "anyOf": [
                         {
@@ -1086,7 +1040,6 @@
                 "item",
                 "title",
                 "tags",
-                "commission",
                 "shows",
                 "palette",
                 "size",
@@ -1408,21 +1361,10 @@
                     "items": {
                         "$ref": "#/$defs/PieceView"
                     }
-                },
-                "commission": {
-                    "anyOf": [
-                        {
-                            "$ref": "#/$defs/CommissionView"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ]
                 }
             },
             "required": [
-                "art",
-                "commission"
+                "art"
             ],
             "additionalProperties": false
         },
@@ -2258,16 +2200,6 @@
                             "type": "null"
                         }
                     ]
-                },
-                "commission": {
-                    "anyOf": [
-                        {
-                            "type": "string"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ]
                 }
             },
             "required": [
@@ -2275,8 +2207,7 @@
                 "item",
                 "title",
                 "hung",
-                "sells_for",
-                "commission"
+                "sells_for"
             ],
             "additionalProperties": false
         },
